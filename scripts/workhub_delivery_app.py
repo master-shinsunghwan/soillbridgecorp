@@ -735,10 +735,11 @@ HTML = r"""<!doctype html>
       border-bottom: 1px solid #6baa2d;
       color: #111827;
       font-weight: 850;
-      padding: 8px 7px;
+      padding: 5px 6px;
       text-align: center;
       white-space: nowrap;
       vertical-align: bottom;
+      line-height: 1.18;
     }
     .ledger-table th.has-filter {
       padding-right: 26px;
@@ -842,13 +843,18 @@ HTML = r"""<!doctype html>
     }
     .ledger-table td {
       border-bottom: 1px solid #e6eaf0;
-      padding: 8px 7px;
-      vertical-align: top;
+      padding: 4px 6px;
+      vertical-align: middle;
       text-align: center;
       color: #1f2937;
+      font-size: 11px;
+      line-height: 1.22;
     }
     .ledger-table tr.completed-cs td {
       background: #fff8d8;
+    }
+    .ledger-table tr.management-duplicate td {
+      background: var(--duplicate-row-color, #eef6ff);
     }
     .ledger-table td.left { text-align: left; }
     .ledger-status {
@@ -867,23 +873,24 @@ HTML = r"""<!doctype html>
     .ledger-status-select {
       width: 100%;
       min-width: 118px;
-      height: 34px;
+      height: 28px;
       border: 1px solid #aab2bf;
       border-radius: 6px;
-      padding: 0 8px;
-      font-size: 13px;
+      padding: 0 6px;
+      font-size: 11px;
       font-family: inherit;
       background: white;
     }
     .ledger-status-select { min-width: 128px; }
     .ledger-save {
-      height: 34px;
-      min-width: 54px;
+      height: 28px;
+      min-width: 48px;
       border: 1px solid #087a46;
       border-radius: 6px;
       background: #eefaf3;
       color: #087a46;
       font-weight: 850;
+      font-size: 11px;
       cursor: pointer;
     }
 
@@ -1881,8 +1888,42 @@ HTML = r"""<!doctype html>
         managementBody.appendChild(row);
         return;
       }
+      const duplicateColors = [
+        "#fff7d6",
+        "#e8f7ee",
+        "#e8f1ff",
+        "#f4eaff",
+        "#ffecef",
+        "#e8faf8",
+        "#fff0df",
+        "#eef2ff",
+      ];
+      const duplicateCounts = new Map();
+      const duplicateColorByKey = new Map();
+      records.forEach((record) => {
+        const dateKey = String(record.order_date || record.ship_date || "").trim();
+        const invoiceKey = String(record.invoice_number || "").trim();
+        if (!dateKey || !invoiceKey) return;
+        const key = `${dateKey}||${invoiceKey}`;
+        duplicateCounts.set(key, (duplicateCounts.get(key) || 0) + 1);
+      });
+      let duplicateGroupIndex = 0;
       records.forEach((record) => {
         const row = document.createElement("tr");
+        const dateKey = String(record.order_date || record.ship_date || "").trim();
+        const invoiceKey = String(record.invoice_number || "").trim();
+        const duplicateKey = dateKey && invoiceKey ? `${dateKey}||${invoiceKey}` : "";
+        if (duplicateKey && duplicateCounts.get(duplicateKey) > 1) {
+          if (!duplicateColorByKey.has(duplicateKey)) {
+            duplicateColorByKey.set(
+              duplicateKey,
+              duplicateColors[duplicateGroupIndex % duplicateColors.length]
+            );
+            duplicateGroupIndex += 1;
+          }
+          row.classList.add("management-duplicate");
+          row.style.setProperty("--duplicate-row-color", duplicateColorByKey.get(duplicateKey));
+        }
         row.innerHTML = `
           <td>${escapeHtml(record.order_date)}</td>
           <td>${escapeHtml(record.ship_date)}</td>
