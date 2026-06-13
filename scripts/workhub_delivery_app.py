@@ -1164,6 +1164,7 @@ HTML = r"""<!doctype html>
         <div class="workspace-head">
           <div class="workspace-title">통합관리대장 관리</div>
           <div class="workspace-actions">
+            <button class="workspace-button" type="button" id="managementSaveAll">저장</button>
             <button class="workspace-button" type="button" data-open-window="management">새창으로 열기</button>
           </div>
         </div>
@@ -1173,6 +1174,7 @@ HTML = r"""<!doctype html>
         <div class="workspace-head">
           <div class="workspace-title">CS 처리대장</div>
           <div class="workspace-actions">
+            <button class="workspace-button" type="button" id="ledgerSaveAll">저장</button>
             <button class="workspace-button" type="button" data-open-window="ledger">새창으로 열기</button>
           </div>
         </div>
@@ -1404,23 +1406,23 @@ HTML = r"""<!doctype html>
               <thead>
                 <tr>
                   <th>저장</th>
-                  <th>주문일자</th>
-                  <th>출고일</th>
-                  <th>매입거래처</th>
-                  <th>매출거래처</th>
-                  <th>거래구분</th>
-                  <th>장부입력확인</th>
-                  <th>주문자</th>
-                  <th>발신자연락처</th>
-                  <th>수령자</th>
-                  <th>수령자연락처</th>
-                  <th>제품명</th>
-                  <th>수량</th>
-                  <th>상세주소</th>
-                  <th>택배사</th>
-                  <th>운송장번호</th>
-                  <th>특이사항</th>
-                  <th>원본시트</th>
+                  <th class="has-filter"><span class="ledger-th-title">주문일자</span><button class="ledger-filter-trigger" type="button" data-management-filter-button="order_date" data-label="주문일자">▼</button></th>
+                  <th class="has-filter"><span class="ledger-th-title">출고일</span><button class="ledger-filter-trigger" type="button" data-management-filter-button="ship_date" data-label="출고일">▼</button></th>
+                  <th class="has-filter"><span class="ledger-th-title">매입거래처</span><button class="ledger-filter-trigger" type="button" data-management-filter-button="purchase_vendor" data-label="매입거래처">▼</button></th>
+                  <th class="has-filter"><span class="ledger-th-title">매출거래처</span><button class="ledger-filter-trigger" type="button" data-management-filter-button="sales_vendor" data-label="매출거래처">▼</button></th>
+                  <th class="has-filter"><span class="ledger-th-title">거래구분</span><button class="ledger-filter-trigger" type="button" data-management-filter-button="transaction_type" data-label="거래구분">▼</button></th>
+                  <th class="has-filter"><span class="ledger-th-title">장부입력확인</span><button class="ledger-filter-trigger" type="button" data-management-filter-button="ledger_checked" data-label="장부입력확인">▼</button></th>
+                  <th class="has-filter"><span class="ledger-th-title">주문자</span><button class="ledger-filter-trigger" type="button" data-management-filter-button="orderer_name" data-label="주문자">▼</button></th>
+                  <th class="has-filter"><span class="ledger-th-title">발신자연락처</span><button class="ledger-filter-trigger" type="button" data-management-filter-button="sender_phone" data-label="발신자연락처">▼</button></th>
+                  <th class="has-filter"><span class="ledger-th-title">수령자</span><button class="ledger-filter-trigger" type="button" data-management-filter-button="receiver_name" data-label="수령자">▼</button></th>
+                  <th class="has-filter"><span class="ledger-th-title">수령자연락처</span><button class="ledger-filter-trigger" type="button" data-management-filter-button="receiver_phone" data-label="수령자연락처">▼</button></th>
+                  <th class="has-filter"><span class="ledger-th-title">제품명</span><button class="ledger-filter-trigger" type="button" data-management-filter-button="product_name" data-label="제품명">▼</button></th>
+                  <th class="has-filter"><span class="ledger-th-title">수량</span><button class="ledger-filter-trigger" type="button" data-management-filter-button="quantity" data-label="수량">▼</button></th>
+                  <th class="has-filter"><span class="ledger-th-title">상세주소</span><button class="ledger-filter-trigger" type="button" data-management-filter-button="receiver_address" data-label="상세주소">▼</button></th>
+                  <th class="has-filter"><span class="ledger-th-title">택배사</span><button class="ledger-filter-trigger" type="button" data-management-filter-button="courier" data-label="택배사">▼</button></th>
+                  <th class="has-filter"><span class="ledger-th-title">운송장번호</span><button class="ledger-filter-trigger" type="button" data-management-filter-button="invoice_number" data-label="운송장번호">▼</button></th>
+                  <th class="has-filter"><span class="ledger-th-title">특이사항</span><button class="ledger-filter-trigger" type="button" data-management-filter-button="memo" data-label="특이사항">▼</button></th>
+                  <th class="has-filter"><span class="ledger-th-title">원본시트</span><button class="ledger-filter-trigger" type="button" data-management-filter-button="source_sheet" data-label="원본시트">▼</button></th>
                   <th>CS접수</th>
                 </tr>
               </thead>
@@ -1513,7 +1515,10 @@ HTML = r"""<!doctype html>
     const managementImportInput = document.querySelector("#managementImportInput");
     const managementImportDropMain = document.querySelector("#managementImportDropMain");
     const managementBody = document.querySelector("#managementBody");
+    const managementSaveAll = document.querySelector("#managementSaveAll");
+    const ledgerSaveAll = document.querySelector("#ledgerSaveAll");
     const ledgerFilterButtons = Array.from(document.querySelectorAll("[data-ledger-filter-button]"));
+    const managementFilterButtons = Array.from(document.querySelectorAll("[data-management-filter-button]"));
     const ledgerFilterPopover = document.querySelector("#ledgerFilterPopover");
     const ledgerFilterTitle = document.querySelector("#ledgerFilterTitle");
     const ledgerFilterSearch = document.querySelector("#ledgerFilterSearch");
@@ -1533,11 +1538,16 @@ HTML = r"""<!doctype html>
     let currentMode = "dashboard";
     let vendorContacts = [];
     let ledgerCases = [];
+    let managementRecords = [];
     let activeLedgerFilterField = "";
+    let activeManagementFilterField = "";
     const ledgerFilters = {};
+    const managementFilters = {};
+    let isBulkSaving = false;
 
     if (managementWorkspaceMount && managementFields) managementWorkspaceMount.appendChild(managementFields);
     if (ledgerWorkspaceMount && ledgerFields) ledgerWorkspaceMount.appendChild(ledgerFields);
+    if (ledgerFilterPopover) document.body.appendChild(ledgerFilterPopover);
 
     function addProductRow(productName = "", quantity = "", packQuantity = "") {
       const row = document.createElement("div");
@@ -1829,6 +1839,28 @@ HTML = r"""<!doctype html>
       if (currentMode === "ledger") notice.textContent = `${filtered.length}건 조회되었습니다.`;
     }
 
+    function managementFieldValue(record, field) {
+      return record[field] || "";
+    }
+
+    function matchesManagementFilters(record) {
+      return Object.entries(managementFilters).every(([field, filterValue]) => {
+        const value = String(filterValue || "").trim().toLowerCase();
+        if (!value) return true;
+        return String(managementFieldValue(record, field)).toLowerCase().includes(value);
+      });
+    }
+
+    function applyManagementFilters() {
+      const filtered = managementRecords.filter(matchesManagementFilters);
+      renderManagement(filtered);
+      managementFilterButtons.forEach((button) => {
+        const field = button.dataset.managementFilterButton;
+        button.classList.toggle("active", Boolean(managementFilters[field]));
+      });
+      if (currentMode === "management") notice.textContent = `${filtered.length}건 조회되었습니다.`;
+    }
+
     function renderLedgerFilterOptions(field, searchText = "") {
       const normalizedSearch = searchText.trim().toLowerCase();
       const values = Array.from(new Set(
@@ -1846,7 +1878,25 @@ HTML = r"""<!doctype html>
         : `<button class="ledger-filter-option" type="button" disabled>표시할 값이 없습니다.</button>`;
     }
 
+    function renderManagementFilterOptions(field, searchText = "") {
+      const normalizedSearch = searchText.trim().toLowerCase();
+      const values = Array.from(new Set(
+        managementRecords
+          .map((record) => String(managementFieldValue(record, field) || "").trim())
+          .filter(Boolean)
+      )).sort((left, right) => left.localeCompare(right, "ko"));
+      const filteredValues = values
+        .filter((value) => !normalizedSearch || value.toLowerCase().includes(normalizedSearch))
+        .slice(0, 220);
+      ledgerFilterOptions.innerHTML = filteredValues.length
+        ? filteredValues.map((value) => (
+          `<button class="ledger-filter-option" type="button" data-filter-value="${escapeHtml(value)}">${escapeHtml(value)}</button>`
+        )).join("")
+        : `<button class="ledger-filter-option" type="button" disabled>표시할 값이 없습니다.</button>`;
+    }
+
     function openLedgerFilter(button) {
+      activeManagementFilterField = "";
       activeLedgerFilterField = button.dataset.ledgerFilterButton || "";
       ledgerFilterTitle.textContent = `${button.dataset.label || "필터"} 필터`;
       ledgerFilterSearch.value = ledgerFilters[activeLedgerFilterField] || "";
@@ -1859,9 +1909,24 @@ HTML = r"""<!doctype html>
       ledgerFilterSearch.select();
     }
 
+    function openManagementFilter(button) {
+      activeLedgerFilterField = "";
+      activeManagementFilterField = button.dataset.managementFilterButton || "";
+      ledgerFilterTitle.textContent = `${button.dataset.label || "필터"} 필터`;
+      ledgerFilterSearch.value = managementFilters[activeManagementFilterField] || "";
+      renderManagementFilterOptions(activeManagementFilterField, ledgerFilterSearch.value);
+      const rect = button.getBoundingClientRect();
+      ledgerFilterPopover.style.left = `${Math.min(rect.left, window.innerWidth - 280)}px`;
+      ledgerFilterPopover.style.top = `${Math.min(rect.bottom + 6, window.innerHeight - 410)}px`;
+      ledgerFilterPopover.classList.add("open");
+      ledgerFilterSearch.focus();
+      ledgerFilterSearch.select();
+    }
+
     function closeLedgerFilter() {
       ledgerFilterPopover.classList.remove("open");
       activeLedgerFilterField = "";
+      activeManagementFilterField = "";
     }
 
     function setLedgerFilter(value) {
@@ -1871,6 +1936,28 @@ HTML = r"""<!doctype html>
       else delete ledgerFilters[activeLedgerFilterField];
       applyLedgerFilters();
       closeLedgerFilter();
+    }
+
+    function setManagementFilter(value) {
+      if (!activeManagementFilterField) return;
+      const normalized = String(value || "").trim();
+      if (normalized) managementFilters[activeManagementFilterField] = normalized;
+      else delete managementFilters[activeManagementFilterField];
+      applyManagementFilters();
+      closeLedgerFilter();
+    }
+
+    function setActivePopoverFilter(value) {
+      if (activeManagementFilterField) setManagementFilter(value);
+      else setLedgerFilter(value);
+    }
+
+    function refreshActiveFilterOptions() {
+      if (activeManagementFilterField) {
+        renderManagementFilterOptions(activeManagementFilterField, ledgerFilterSearch.value);
+      } else {
+        renderLedgerFilterOptions(activeLedgerFilterField, ledgerFilterSearch.value);
+      }
     }
 
     function resetCsFormInputs() {
@@ -2085,10 +2172,11 @@ HTML = r"""<!doctype html>
         const response = await fetch(`/api/management-records?${params.toString()}`);
         if (!response.ok) return;
         const data = await response.json();
-        renderManagement(data.records || []);
-        if (currentMode === "management") notice.textContent = `${(data.records || []).length}건 조회되었습니다.`;
+        managementRecords = data.records || [];
+        applyManagementFilters();
       } catch {
-        renderManagement([]);
+        managementRecords = [];
+        applyManagementFilters();
         notice.textContent = "통합관리대장을 불러오지 못했습니다.";
       }
     }
@@ -2125,19 +2213,24 @@ HTML = r"""<!doctype html>
       return payload;
     }
 
+    async function saveManagementPayload(payload) {
+      const response = await fetch("/api/management-record-update", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "통합관리대장 저장에 실패했습니다.");
+      return data;
+    }
+
     async function saveManagementRow(button) {
       const row = button.closest("tr");
       if (!row) return;
       const payload = collectManagementRow(row);
       try {
         button.disabled = true;
-        const response = await fetch("/api/management-record-update", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-        });
-        const data = await response.json();
-        if (!response.ok) throw new Error(data.error || "통합관리대장 저장에 실패했습니다.");
+        const data = await saveManagementPayload(payload);
         notice.textContent = data.message || "통합관리대장 행을 저장했습니다.";
         await loadManagementRecords();
       } catch (error) {
@@ -2176,42 +2269,88 @@ HTML = r"""<!doctype html>
       }
     }
 
+    function collectLedgerRow(row) {
+      return {
+        id: row.dataset.caseId,
+        status: row.querySelector('[data-field="status"]')?.value || "",
+        cs_type: row.querySelector('[data-field="cs_type"]')?.value.trim() || "",
+        return_invoice: row.querySelector('[data-field="return_invoice"]')?.value.trim() || "",
+        reship_invoice: row.querySelector('[data-field="reship_invoice"]')?.value.trim() || "",
+      };
+    }
+
+    async function saveLedgerPayload(payload) {
+      const response = await fetch("/api/cs-case-update", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "CS 처리내용 저장에 실패했습니다.");
+      return data;
+    }
+
+    function updateLedgerCaseCache(payload) {
+      const savedCase = ledgerCases.find((item) => String(item.id) === String(payload.id));
+      if (!savedCase) return;
+      savedCase.status = payload.status;
+      savedCase.cs_type = payload.cs_type;
+      savedCase.return_invoice = payload.return_invoice;
+      savedCase.reship_invoice = payload.reship_invoice;
+    }
+
     async function saveLedgerRow(button) {
       const row = button.closest("tr");
       if (!row) return;
-      const caseId = row.dataset.caseId;
-      const status = row.querySelector('[data-field="status"]').value;
-      const csType = row.querySelector('[data-field="cs_type"]').value.trim();
-      const returnInvoice = row.querySelector('[data-field="return_invoice"]').value.trim();
-      const reshipInvoice = row.querySelector('[data-field="reship_invoice"]').value.trim();
+      const payload = collectLedgerRow(row);
       try {
         button.disabled = true;
-        const response = await fetch("/api/cs-case-update", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            id: caseId,
-            status,
-            cs_type: csType,
-            return_invoice: returnInvoice,
-            reship_invoice: reshipInvoice,
-          }),
-        });
-        const data = await response.json();
-        if (!response.ok) throw new Error(data.error || "CS 처리내용 저장에 실패했습니다.");
+        const data = await saveLedgerPayload(payload);
         notice.textContent = data.message || "CS 처리내용을 저장했습니다.";
-        const savedCase = ledgerCases.find((item) => String(item.id) === String(caseId));
-        if (savedCase) {
-          savedCase.status = status;
-          savedCase.cs_type = csType;
-          savedCase.return_invoice = returnInvoice;
-          savedCase.reship_invoice = reshipInvoice;
-        }
+        updateLedgerCaseCache(payload);
         applyLedgerFilters();
       } catch (error) {
         notice.textContent = error.message;
       } finally {
         button.disabled = false;
+      }
+    }
+
+    async function saveVisibleManagementRows({ silent = false } = {}) {
+      const rows = Array.from(managementBody.querySelectorAll("tr[data-record-id]"));
+      if (rows.length === 0) return 0;
+      for (const row of rows) {
+        await saveManagementPayload(collectManagementRow(row));
+      }
+      if (!silent) notice.textContent = `통합관리대장 ${rows.length}건 저장 완료`;
+      return rows.length;
+    }
+
+    async function saveVisibleLedgerRows({ silent = false } = {}) {
+      const rows = Array.from(ledgerBody.querySelectorAll("tr[data-case-id]"));
+      if (rows.length === 0) return 0;
+      for (const row of rows) {
+        const payload = collectLedgerRow(row);
+        await saveLedgerPayload(payload);
+        updateLedgerCaseCache(payload);
+        updateLedgerRowCompletion(row);
+      }
+      if (!silent) notice.textContent = `CS 처리대장 ${rows.length}건 저장 완료`;
+      return rows.length;
+    }
+
+    async function saveCurrentWorkspaceRows({ silent = false, mode = currentMode } = {}) {
+      if (isBulkSaving) return 0;
+      if (mode !== "management" && mode !== "ledger") return 0;
+      try {
+        isBulkSaving = true;
+        if (mode === "management") return await saveVisibleManagementRows({ silent });
+        return await saveVisibleLedgerRows({ silent });
+      } catch (error) {
+        if (!silent) notice.textContent = error.message;
+        return 0;
+      } finally {
+        isBulkSaving = false;
       }
     }
 
@@ -2404,6 +2543,7 @@ HTML = r"""<!doctype html>
         managementSearchInput.value = "";
         managementImportInput.value = "";
         managementImportDropMain.textContent = "업로드";
+        Object.keys(managementFilters).forEach((key) => delete managementFilters[key]);
         closeLedgerFilter();
         loadManagementRecords();
       }
@@ -2573,21 +2713,31 @@ HTML = r"""<!doctype html>
         openLedgerFilter(button);
       });
     });
+    managementFilterButtons.forEach((button) => {
+      button.addEventListener("click", (event) => {
+        event.stopPropagation();
+        openManagementFilter(button);
+      });
+    });
     ledgerFilterSearch.addEventListener("input", () => {
-      renderLedgerFilterOptions(activeLedgerFilterField, ledgerFilterSearch.value);
+      refreshActiveFilterOptions();
     });
     ledgerFilterSearch.addEventListener("keydown", (event) => {
-      if (event.key === "Enter") setLedgerFilter(ledgerFilterSearch.value);
+      if (event.key === "Enter") setActivePopoverFilter(ledgerFilterSearch.value);
       if (event.key === "Escape") closeLedgerFilter();
     });
-    ledgerFilterApply.addEventListener("click", () => setLedgerFilter(ledgerFilterSearch.value));
-    ledgerFilterClear.addEventListener("click", () => setLedgerFilter(""));
+    ledgerFilterApply.addEventListener("click", () => setActivePopoverFilter(ledgerFilterSearch.value));
+    ledgerFilterClear.addEventListener("click", () => setActivePopoverFilter(""));
     ledgerFilterOptions.addEventListener("click", (event) => {
       const option = event.target.closest("[data-filter-value]");
-      if (option) setLedgerFilter(option.dataset.filterValue || "");
+      if (option) setActivePopoverFilter(option.dataset.filterValue || "");
     });
     document.addEventListener("click", (event) => {
-      if (!ledgerFilterPopover.contains(event.target) && !event.target.closest("[data-ledger-filter-button]")) {
+      if (
+        !ledgerFilterPopover.contains(event.target)
+        && !event.target.closest("[data-ledger-filter-button]")
+        && !event.target.closest("[data-management-filter-button]")
+      ) {
         closeLedgerFilter();
       }
     });
@@ -2596,6 +2746,8 @@ HTML = r"""<!doctype html>
     ledgerImportInput.addEventListener("change", uploadLedgerWorkbook);
     managementRefresh.addEventListener("click", loadManagementRecords);
     managementImportInput.addEventListener("change", uploadManagementWorkbook);
+    managementSaveAll.addEventListener("click", () => saveCurrentWorkspaceRows({ mode: "management" }));
+    ledgerSaveAll.addEventListener("click", () => saveCurrentWorkspaceRows({ mode: "ledger" }));
     managementBody.addEventListener("click", (event) => {
       const saveButton = event.target.closest(".management-save");
       if (saveButton) {
@@ -2630,6 +2782,10 @@ HTML = r"""<!doctype html>
     });
     [csOriginInput, csProductInput, csReceiverInput, csPhoneInput, csAddressInput, csContentInput]
       .forEach((input) => input.addEventListener("input", refreshCsBody));
+
+    setInterval(() => {
+      saveCurrentWorkspaceRows({ silent: true });
+    }, 10 * 60 * 1000);
 
     uploadForm.addEventListener("submit", async (event) => {
       event.preventDefault();
