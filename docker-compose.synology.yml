@@ -1,0 +1,16 @@
+services:
+  workhub:
+    build: .
+    container_name: soilbridge-workhub
+    restart: unless-stopped
+    ports:
+      - "8765:8765"
+    environment:
+      WORKHUB_HOST: "0.0.0.0"
+      WORKHUB_PORT: "8765"
+      WORKHUB_DATA_DIR: "/data"
+      # 권장: 임의의 긴 문자열로 바꿔서 사용하세요.
+      # 이 값이 바뀌면 저장된 네이버 비밀번호를 다시 입력해야 합니다.
+      WORKHUB_SECRET_KEY: "CHANGE_ME_SOILBRIDGE_WORKHUB_SECRET"
+    volumes:
+      - ./workhub-data:/data

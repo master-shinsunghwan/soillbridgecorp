@@ -1,0 +1,39 @@
+# Local/editor state
+.agents/
+.bkit-codex/
+.codex/
+.codex_tmp/
+.cursor/
+
+# Build artifacts and generated outputs
+.build/
+output/
+outputs/
+dist/
+build/
+*.exe
+*.zip
+*.msi
+
+# Runtime data and secrets
+config/
+data/
+*.db
+*.sqlite
+*.sqlite3
+secret.key
+mail_settings.json
+vendor_contacts.json
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Node dependencies
+node_modules/
+
+# OS files
+Thumbs.db
+.DS_Store
