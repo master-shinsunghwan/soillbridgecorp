@@ -699,13 +699,13 @@ HTML = r"""<!doctype html>
       background: white;
       scrollbar-gutter: stable both-edges;
     }
-    .modal.ledger-modal .ledger-fields {
+    .modal.ledger-modal.ledger-view .ledger-fields {
       display: flex !important;
       flex-direction: column;
       flex: 1;
       min-height: 0;
     }
-    .modal.ledger-modal .management-fields {
+    .modal.ledger-modal.management-view .management-fields {
       display: flex !important;
       flex-direction: column;
       flex: 1;
@@ -2033,7 +2033,10 @@ HTML = r"""<!doctype html>
       currentMode = mode;
       closeLedgerCsPopup();
       modal.classList.add("open");
-      modal.querySelector(".modal").classList.toggle("ledger-modal", mode === "ledger" || mode === "management");
+      const modalPanel = modal.querySelector(".modal");
+      modalPanel.classList.toggle("ledger-modal", mode === "ledger" || mode === "management");
+      modalPanel.classList.toggle("ledger-view", mode === "ledger");
+      modalPanel.classList.toggle("management-view", mode === "management");
       result.classList.remove("open");
       resultText.value = "";
       fileInput.value = "";
