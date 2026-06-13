@@ -76,6 +76,7 @@ export const Bell = {};
 export const Download = {};
 export const Truck = {};
 export const Mail = {};
+export const Upload = {};
 export const X = {};
 """.strip()
 
@@ -424,9 +425,10 @@ HTML = r"""<!doctype html>
     }
     .ledger-toolbar {
       display: grid;
-      grid-template-columns: 1fr 180px auto auto;
+      grid-template-columns: 1fr 180px auto auto auto;
       gap: 10px;
       margin-bottom: 14px;
+      align-items: center;
     }
     .ledger-toolbar input,
     .ledger-toolbar select {
@@ -438,6 +440,26 @@ HTML = r"""<!doctype html>
       font-family: inherit;
       background: white;
     }
+    .ledger-import-button {
+      height: 44px;
+      min-width: 112px;
+      border: 1px solid #0d6ddf;
+      border-radius: 7px;
+      background: #eef6ff;
+      color: #0d56c2;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 7px;
+      font-size: 14px;
+      font-weight: 850;
+      cursor: pointer;
+    }
+    .ledger-import-button svg {
+      width: 16px;
+      height: 16px;
+    }
+    .ledger-import-button input { display: none; }
     .ledger-wrap {
       border: 1px solid #d7dce5;
       border-radius: 8px;
@@ -463,9 +485,31 @@ HTML = r"""<!doctype html>
       text-align: center;
       white-space: nowrap;
     }
+    .ledger-filter-row th {
+      top: 33px;
+      background: #d9efbd;
+      padding: 4px 5px;
+      border-bottom: 1px solid #b5d58a;
+    }
+    .ledger-filter-row input,
+    .ledger-filter-row select {
+      width: 100%;
+      height: 24px;
+      border: 1px solid #86a85e;
+      border-radius: 4px;
+      background: white;
+      color: #111827;
+      font-size: 11px;
+      font-family: inherit;
+      padding: 0 5px;
+    }
     .ledger-table th.invoice-head {
       background: #f3b21d;
       border-bottom-color: #c98e10;
+    }
+    .ledger-filter-row th.invoice-head {
+      background: #f9d889;
+      border-bottom-color: #d6a020;
     }
     .ledger-table td {
       border-bottom: 1px solid #e6eaf0;
@@ -473,6 +517,9 @@ HTML = r"""<!doctype html>
       vertical-align: top;
       text-align: center;
       color: #1f2937;
+    }
+    .ledger-table tr.completed-cs td {
+      background: #fff8d8;
     }
     .ledger-table td.left { text-align: left; }
     .ledger-status {
@@ -741,7 +788,14 @@ HTML = r"""<!doctype html>
           </div>
           <div class="text-field">
             <label class="field-label" for="csTypeInput">CS타입</label>
-            <input id="csTypeInput" name="cs_type" type="text" placeholder="예) 불량 / 오배송 / 누락 / 변심반품" />
+            <select id="csTypeInput" name="cs_type">
+              <option value="">선택</option>
+              <option value="변심반품">변심반품</option>
+              <option value="불량반품">불량반품</option>
+              <option value="불량교환">불량교환</option>
+              <option value="불량재출고(미회수)">불량재출고(미회수)</option>
+              <option value="오출고(오배송)">오출고(오배송)</option>
+            </select>
           </div>
           <div class="text-field">
             <label class="field-label" for="csContentInput">CS내용</label>
@@ -769,18 +823,18 @@ HTML = r"""<!doctype html>
             <select id="ledgerStatusFilter">
               <option value="">상태 전체</option>
               <option value="회수지시">회수지시</option>
-              <option value="회수완료">회수완료</option>
+              <option value="회수 완료">회수 완료</option>
               <option value="재발송 완료">재발송 완료</option>
-              <option value="전체 처리 완료">전체 처리 완료</option>
+              <option value="전체 처리완료">전체 처리완료</option>
             </select>
             <button class="btn blue" id="ledgerRefresh" type="button">조회</button>
             <button class="btn primary" id="ledgerAddCs" type="button">CS 추가</button>
+            <label class="ledger-import-button" for="ledgerImportInput">
+              <i data-lucide="upload"></i>
+              <span id="ledgerImportDropMain">업로드</span>
+              <input id="ledgerImportInput" name="ledger_import" type="file" accept=".xlsx,.xlsm" />
+            </label>
           </div>
-          <label class="dropzone" for="ledgerImportInput" style="margin-bottom:14px;">
-            <span class="drop-main" id="ledgerImportDropMain">CS 처리대장 엑셀을 업로드해주세요.</span>
-            <span class="drop-sub">xlsx/xlsm 파일을 업로드하면 DB에 일괄 저장합니다.</span>
-            <input id="ledgerImportInput" name="ledger_import" type="file" accept=".xlsx,.xlsm" />
-          </label>
           <div class="ledger-wrap">
             <table class="ledger-table">
               <thead>
@@ -807,6 +861,29 @@ HTML = r"""<!doctype html>
                   <th>송장번호</th>
                   <th>저장</th>
                 </tr>
+                <tr class="ledger-filter-row">
+                  <th><input data-ledger-filter="occurred_at" placeholder="필터" /></th>
+                  <th><input data-ledger-filter="sales_vendor" placeholder="필터" /></th>
+                  <th><input data-ledger-filter="purchase_vendor" placeholder="필터" /></th>
+                  <th><select data-ledger-filter="status"><option value="">전체</option></select></th>
+                  <th><input data-ledger-filter="completed_at" placeholder="필터" /></th>
+                  <th><select data-ledger-filter="cs_type"><option value="">전체</option></select></th>
+                  <th><input data-ledger-filter="cs_content" placeholder="필터" /></th>
+                  <th class="invoice-head"><input data-ledger-filter="reship_invoice" placeholder="필터" /></th>
+                  <th class="invoice-head"><input data-ledger-filter="return_invoice" placeholder="필터" /></th>
+                  <th><input data-ledger-filter="order_date" placeholder="필터" /></th>
+                  <th><input data-ledger-filter="ship_date" placeholder="필터" /></th>
+                  <th><input data-ledger-filter="orderer_name" placeholder="필터" /></th>
+                  <th><input data-ledger-filter="orderer_phone" placeholder="필터" /></th>
+                  <th><input data-ledger-filter="receiver_name" placeholder="필터" /></th>
+                  <th><input data-ledger-filter="receiver_phone" placeholder="필터" /></th>
+                  <th><input data-ledger-filter="product_name" placeholder="필터" /></th>
+                  <th><input data-ledger-filter="quantity" placeholder="필터" /></th>
+                  <th><input data-ledger-filter="receiver_address" placeholder="필터" /></th>
+                  <th><input data-ledger-filter="courier" placeholder="필터" /></th>
+                  <th><input data-ledger-filter="original_invoice" placeholder="필터" /></th>
+                  <th></th>
+                </tr>
               </thead>
               <tbody id="ledgerBody"></tbody>
             </table>
@@ -829,8 +906,8 @@ HTML = r"""<!doctype html>
   </div>
 
   <script type="module">
-    import { createIcons, BriefcaseBusiness, Home, MessageCircle, Info, ChevronDown, ChevronRight, PlusSquare, RefreshCw, Ellipsis, Headphones, Package, ClipboardCheck, CircleDollarSign, FileText, FileSpreadsheet, ClipboardList, BarChart3, CopyCheck, Bell, Download, Truck, Mail, X } from "/lucide/dist/esm/lucide.js";
-    createIcons({ icons: { BriefcaseBusiness, Home, MessageCircle, Info, ChevronDown, ChevronRight, PlusSquare, RefreshCw, Ellipsis, Headphones, Package, ClipboardCheck, CircleDollarSign, FileText, FileSpreadsheet, ClipboardList, BarChart3, CopyCheck, Bell, Download, Truck, Mail, X } });
+    import { createIcons, BriefcaseBusiness, Home, MessageCircle, Info, ChevronDown, ChevronRight, PlusSquare, RefreshCw, Ellipsis, Headphones, Package, ClipboardCheck, CircleDollarSign, FileText, FileSpreadsheet, ClipboardList, BarChart3, CopyCheck, Bell, Download, Truck, Mail, Upload, X } from "/lucide/dist/esm/lucide.js";
+    createIcons({ icons: { BriefcaseBusiness, Home, MessageCircle, Info, ChevronDown, ChevronRight, PlusSquare, RefreshCw, Ellipsis, Headphones, Package, ClipboardCheck, CircleDollarSign, FileText, FileSpreadsheet, ClipboardList, BarChart3, CopyCheck, Bell, Download, Truck, Mail, Upload, X } });
 
     const modal = document.querySelector("#modal");
     const modalTitle = document.querySelector("#modalTitle");
@@ -881,12 +958,14 @@ HTML = r"""<!doctype html>
     const ledgerBody = document.querySelector("#ledgerBody");
     const ledgerImportInput = document.querySelector("#ledgerImportInput");
     const ledgerImportDropMain = document.querySelector("#ledgerImportDropMain");
+    const ledgerColumnFilters = Array.from(document.querySelectorAll("[data-ledger-filter]"));
     const result = document.querySelector("#result");
     const resultText = document.querySelector("#resultText");
     const notice = document.querySelector("#notice");
     const submitButton = document.querySelector("#submitButton");
     let currentMode = "delivery";
     let vendorContacts = [];
+    let ledgerCases = [];
 
     function addProductRow(productName = "", quantity = "", packQuantity = "") {
       const row = document.createElement("div");
@@ -1100,6 +1179,83 @@ HTML = r"""<!doctype html>
         .replaceAll('"', "&quot;");
     }
 
+    function todayStatusDate() {
+      const now = new Date();
+      return `${now.getMonth() + 1}/${now.getDate()}`;
+    }
+
+    function ledgerStatusOptions(currentStatus = "") {
+      const dateText = todayStatusDate();
+      const statuses = [
+        `회수지시(${dateText})`,
+        `회수 완료(${dateText})`,
+        `재발송 완료(${dateText})`,
+        `재발송 완료(${dateText})/회수지시(${dateText})`,
+        "전체 처리완료",
+      ];
+      const normalizedCurrent = currentStatus || statuses[0];
+      return statuses.includes(normalizedCurrent) ? statuses : [normalizedCurrent, ...statuses];
+    }
+
+    const csTypeOptions = ["변심반품", "불량반품", "불량교환", "불량재출고(미회수)", "오출고(오배송)"];
+
+    function selectOptions(options, currentValue = "") {
+      const normalizedCurrent = currentValue || "";
+      const optionList = normalizedCurrent && !options.includes(normalizedCurrent)
+        ? [normalizedCurrent, ...options]
+        : options;
+      return optionList.map((option) => (
+        `<option value="${escapeHtml(option)}" ${option === normalizedCurrent ? "selected" : ""}>${escapeHtml(option)}</option>`
+      )).join("");
+    }
+
+    function isCompletedCsCase(csCase) {
+      const type = String(csCase.cs_type || "").trim();
+      const status = String(csCase.status || "").replaceAll(" ", "");
+      if ((type === "변심반품" || type === "변신반품" || type === "불량반품") && status.includes("회수완료")) return true;
+      if ((type === "불량교환" || type === "오출고(오배송)") && status.includes("전체처리완료")) return true;
+      return false;
+    }
+
+    function ledgerFieldValue(csCase, field) {
+      if (field === "purchase_vendor") return csCase.purchase_vendor || csCase.vendor_name || "";
+      if (field === "occurred_at") return csCase.occurred_at || csCase.created_at || "";
+      if (field === "original_invoice") return csCase.original_invoice || csCase.original_info || "";
+      return csCase[field] || "";
+    }
+
+    function matchesLedgerFilters(csCase) {
+      const toolbarStatus = ledgerStatusFilter.value.trim().toLowerCase();
+      if (toolbarStatus && !String(csCase.status || "").toLowerCase().includes(toolbarStatus)) return false;
+      return ledgerColumnFilters.every((filter) => {
+        const value = filter.value.trim().toLowerCase();
+        if (!value) return true;
+        return String(ledgerFieldValue(csCase, filter.dataset.ledgerFilter)).toLowerCase().includes(value);
+      });
+    }
+
+    function applyLedgerFilters() {
+      const filtered = ledgerCases.filter(matchesLedgerFilters);
+      renderLedger(filtered);
+      if (currentMode === "ledger") notice.textContent = `${filtered.length}건 조회되었습니다.`;
+    }
+
+    function initializeLedgerFilterOptions() {
+      const statusFilter = document.querySelector('[data-ledger-filter="status"]');
+      const typeFilter = document.querySelector('[data-ledger-filter="cs_type"]');
+      if (statusFilter) {
+        const filterStatuses = ["회수지시", "회수 완료", "재발송 완료", "전체 처리완료"];
+        statusFilter.innerHTML = `<option value="">전체</option>${filterStatuses.map((status) => (
+          `<option value="${escapeHtml(status)}">${escapeHtml(status)}</option>`
+        )).join("")}`;
+      }
+      if (typeFilter) {
+        typeFilter.innerHTML = `<option value="">전체</option>${csTypeOptions.map((type) => (
+          `<option value="${escapeHtml(type)}">${escapeHtml(type)}</option>`
+        )).join("")}`;
+      }
+    }
+
     function renderLedger(cases) {
       ledgerBody.innerHTML = "";
       if (!cases || cases.length === 0) {
@@ -1111,19 +1267,16 @@ HTML = r"""<!doctype html>
       cases.forEach((csCase) => {
         const row = document.createElement("tr");
         row.dataset.caseId = csCase.id;
-        const statuses = ["회수지시", "회수완료", "재발송 완료", "전체 처리 완료"];
-        const currentStatus = csCase.status || "회수지시";
-        const statusList = statuses.includes(currentStatus) ? statuses : [currentStatus, ...statuses];
-        const statusOptions = statusList.map((status) => (
-          `<option value="${escapeHtml(status)}" ${status === currentStatus ? "selected" : ""}>${escapeHtml(status)}</option>`
-        )).join("");
+        const statusOptions = selectOptions(ledgerStatusOptions(csCase.status), csCase.status || ledgerStatusOptions()[0]);
+        const csTypeSelectOptions = `<option value="" ${csCase.cs_type ? "" : "selected"}>선택</option>${selectOptions(csTypeOptions, csCase.cs_type)}`;
+        if (isCompletedCsCase(csCase)) row.classList.add("completed-cs");
         row.innerHTML = `
           <td>${escapeHtml(csCase.occurred_at || csCase.created_at)}</td>
           <td>${escapeHtml(csCase.sales_vendor)}</td>
           <td>${escapeHtml(csCase.purchase_vendor || csCase.vendor_name)}</td>
           <td><select class="ledger-status-select" data-field="status">${statusOptions}</select></td>
           <td>${escapeHtml(csCase.completed_at)}</td>
-          <td><input class="ledger-edit" data-field="cs_type" value="${escapeHtml(csCase.cs_type)}" /></td>
+          <td><select class="ledger-status-select" data-field="cs_type">${csTypeSelectOptions}</select></td>
           <td class="left">${escapeHtml(csCase.cs_content)}</td>
           <td><input class="ledger-edit" data-field="reship_invoice" value="${escapeHtml(csCase.reship_invoice)}" /></td>
           <td><input class="ledger-edit" data-field="return_invoice" value="${escapeHtml(csCase.return_invoice)}" /></td>
@@ -1157,18 +1310,17 @@ HTML = r"""<!doctype html>
 
     async function loadLedgerCases() {
       const query = ledgerSearchInput.value.trim();
-      const status = ledgerStatusFilter.value;
       const params = new URLSearchParams({ limit: "200" });
       if (query) params.set("q", query);
-      if (status) params.set("status", status);
       const url = `/api/cs-cases?${params.toString()}`;
       try {
         const response = await fetch(url);
         if (!response.ok) return;
         const data = await response.json();
-        renderLedger(data.cases || []);
-        notice.textContent = `${(data.cases || []).length}건 조회되었습니다.`;
+        ledgerCases = data.cases || [];
+        applyLedgerFilters();
       } catch {
+        ledgerCases = [];
         renderLedger([]);
         notice.textContent = "CS 처리대장을 불러오지 못했습니다.";
       }
@@ -1194,6 +1346,7 @@ HTML = r"""<!doctype html>
         notice.textContent = error.message;
       } finally {
         ledgerImportInput.value = "";
+        ledgerImportDropMain.textContent = "업로드";
       }
     }
 
@@ -1221,6 +1374,14 @@ HTML = r"""<!doctype html>
         const data = await response.json();
         if (!response.ok) throw new Error(data.error || "CS 처리내용 저장에 실패했습니다.");
         notice.textContent = data.message || "CS 처리내용을 저장했습니다.";
+        const savedCase = ledgerCases.find((item) => String(item.id) === String(caseId));
+        if (savedCase) {
+          savedCase.status = status;
+          savedCase.cs_type = csType;
+          savedCase.return_invoice = returnInvoice;
+          savedCase.reship_invoice = reshipInvoice;
+        }
+        applyLedgerFilters();
       } catch (error) {
         notice.textContent = error.message;
       } finally {
@@ -1383,7 +1544,8 @@ HTML = r"""<!doctype html>
         ledgerSearchInput.value = "";
         ledgerStatusFilter.value = "";
         ledgerImportInput.value = "";
-        ledgerImportDropMain.textContent = "CS 처리대장 엑셀을 업로드해주세요.";
+        ledgerImportDropMain.textContent = "업로드";
+        ledgerColumnFilters.forEach((filter) => { filter.value = ""; });
         loadLedgerCases();
       }
 
@@ -1457,8 +1619,9 @@ HTML = r"""<!doctype html>
       document.querySelector("label[for='ledgerImportInput']"),
       ledgerImportInput,
       ledgerImportDropMain,
-      "CS 처리대장 엑셀을 업로드해주세요."
+      "업로드"
     );
+    initializeLedgerFilterOptions();
     document.querySelector("#addProductRow").addEventListener("click", () => addProductRow());
     receiptTypeSelect.addEventListener("change", resetProductRows);
     vendorContactSelect.addEventListener("change", applySelectedVendor);
@@ -1466,7 +1629,11 @@ HTML = r"""<!doctype html>
     vendorContactsFileInput.addEventListener("change", uploadVendorContactsWorkbook);
     saveCsCaseButton.addEventListener("click", saveCurrentCsCase);
     ledgerRefresh.addEventListener("click", loadLedgerCases);
-    ledgerStatusFilter.addEventListener("change", loadLedgerCases);
+    ledgerStatusFilter.addEventListener("change", applyLedgerFilters);
+    ledgerColumnFilters.forEach((filter) => {
+      filter.addEventListener("input", applyLedgerFilters);
+      filter.addEventListener("change", applyLedgerFilters);
+    });
     ledgerAddCs.addEventListener("click", () => {
       openModal("cs");
       notice.textContent = "새 CS 내용을 입력한 뒤 CS건 DB 저장을 눌러주세요.";
