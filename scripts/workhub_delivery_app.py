@@ -273,6 +273,13 @@ HTML = r"""<!doctype html>
       height: calc(100vh - 18px);
       max-height: calc(100vh - 18px);
       padding: 18px 18px 20px;
+      overflow: hidden;
+    }
+    .modal.ledger-modal #uploadForm {
+      height: calc(100% - 54px);
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
     }
     .modal-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; }
     .modal-title { font-size: 25px; font-weight: 850; }
@@ -463,9 +470,23 @@ HTML = r"""<!doctype html>
     .ledger-wrap {
       border: 1px solid #d7dce5;
       border-radius: 8px;
-      overflow: auto;
+      overflow-x: scroll;
+      overflow-y: auto;
       max-height: calc(100vh - 230px);
+      max-width: 100%;
       background: white;
+      scrollbar-gutter: stable both-edges;
+    }
+    .modal.ledger-modal .ledger-fields {
+      display: flex !important;
+      flex-direction: column;
+      flex: 1;
+      min-height: 0;
+    }
+    .modal.ledger-modal .ledger-wrap {
+      flex: 1;
+      min-height: 0;
+      max-height: none;
     }
     .ledger-table {
       width: 100%;
@@ -484,15 +505,14 @@ HTML = r"""<!doctype html>
       padding: 8px 7px;
       text-align: center;
       white-space: nowrap;
+      vertical-align: bottom;
     }
-    .ledger-filter-row th {
-      top: 33px;
-      background: #d9efbd;
-      padding: 4px 5px;
-      border-bottom: 1px solid #b5d58a;
+    .ledger-th-title {
+      display: block;
+      margin-bottom: 5px;
     }
-    .ledger-filter-row input,
-    .ledger-filter-row select {
+    .ledger-table th input,
+    .ledger-table th select {
       width: 100%;
       height: 24px;
       border: 1px solid #86a85e;
@@ -502,14 +522,11 @@ HTML = r"""<!doctype html>
       font-size: 11px;
       font-family: inherit;
       padding: 0 5px;
+      font-weight: 500;
     }
     .ledger-table th.invoice-head {
       background: #f3b21d;
       border-bottom-color: #c98e10;
-    }
-    .ledger-filter-row th.invoice-head {
-      background: #f9d889;
-      border-bottom-color: #d6a020;
     }
     .ledger-table td {
       border-bottom: 1px solid #e6eaf0;
@@ -839,49 +856,26 @@ HTML = r"""<!doctype html>
             <table class="ledger-table">
               <thead>
                 <tr>
-                  <th>날짜</th>
-                  <th>매출거래처</th>
-                  <th>매입거래처</th>
-                  <th>처리진행상태</th>
-                  <th>완료일</th>
-                  <th>처리내용</th>
-                  <th>C/S 내용</th>
-                  <th class="invoice-head">재발송운송장번호</th>
-                  <th class="invoice-head">회수운송장번호</th>
-                  <th>주문일자</th>
-                  <th>출고일</th>
-                  <th>주문자</th>
-                  <th>연락처</th>
-                  <th>수령자</th>
-                  <th>연락처</th>
-                  <th>제품명</th>
-                  <th>수량</th>
-                  <th>상세주소</th>
-                  <th>택배사</th>
-                  <th>송장번호</th>
-                  <th>저장</th>
-                </tr>
-                <tr class="ledger-filter-row">
-                  <th><input data-ledger-filter="occurred_at" placeholder="필터" /></th>
-                  <th><input data-ledger-filter="sales_vendor" placeholder="필터" /></th>
-                  <th><input data-ledger-filter="purchase_vendor" placeholder="필터" /></th>
-                  <th><select data-ledger-filter="status"><option value="">전체</option></select></th>
-                  <th><input data-ledger-filter="completed_at" placeholder="필터" /></th>
-                  <th><select data-ledger-filter="cs_type"><option value="">전체</option></select></th>
-                  <th><input data-ledger-filter="cs_content" placeholder="필터" /></th>
-                  <th class="invoice-head"><input data-ledger-filter="reship_invoice" placeholder="필터" /></th>
-                  <th class="invoice-head"><input data-ledger-filter="return_invoice" placeholder="필터" /></th>
-                  <th><input data-ledger-filter="order_date" placeholder="필터" /></th>
-                  <th><input data-ledger-filter="ship_date" placeholder="필터" /></th>
-                  <th><input data-ledger-filter="orderer_name" placeholder="필터" /></th>
-                  <th><input data-ledger-filter="orderer_phone" placeholder="필터" /></th>
-                  <th><input data-ledger-filter="receiver_name" placeholder="필터" /></th>
-                  <th><input data-ledger-filter="receiver_phone" placeholder="필터" /></th>
-                  <th><input data-ledger-filter="product_name" placeholder="필터" /></th>
-                  <th><input data-ledger-filter="quantity" placeholder="필터" /></th>
-                  <th><input data-ledger-filter="receiver_address" placeholder="필터" /></th>
-                  <th><input data-ledger-filter="courier" placeholder="필터" /></th>
-                  <th><input data-ledger-filter="original_invoice" placeholder="필터" /></th>
+                  <th><span class="ledger-th-title">날짜</span><input data-ledger-filter="occurred_at" placeholder="필터" /></th>
+                  <th><span class="ledger-th-title">매출거래처</span><input data-ledger-filter="sales_vendor" placeholder="필터" /></th>
+                  <th><span class="ledger-th-title">매입거래처</span><input data-ledger-filter="purchase_vendor" placeholder="필터" /></th>
+                  <th><span class="ledger-th-title">처리진행상태</span><select data-ledger-filter="status"><option value="">전체</option></select></th>
+                  <th><span class="ledger-th-title">완료일</span><input data-ledger-filter="completed_at" placeholder="필터" /></th>
+                  <th><span class="ledger-th-title">처리내용</span><select data-ledger-filter="cs_type"><option value="">전체</option></select></th>
+                  <th><span class="ledger-th-title">C/S 내용</span><input data-ledger-filter="cs_content" placeholder="필터" /></th>
+                  <th class="invoice-head"><span class="ledger-th-title">재발송운송장번호</span><input data-ledger-filter="reship_invoice" placeholder="필터" /></th>
+                  <th class="invoice-head"><span class="ledger-th-title">회수운송장번호</span><input data-ledger-filter="return_invoice" placeholder="필터" /></th>
+                  <th><span class="ledger-th-title">주문일자</span><input data-ledger-filter="order_date" placeholder="필터" /></th>
+                  <th><span class="ledger-th-title">출고일</span><input data-ledger-filter="ship_date" placeholder="필터" /></th>
+                  <th><span class="ledger-th-title">주문자</span><input data-ledger-filter="orderer_name" placeholder="필터" /></th>
+                  <th><span class="ledger-th-title">연락처</span><input data-ledger-filter="orderer_phone" placeholder="필터" /></th>
+                  <th><span class="ledger-th-title">수령자</span><input data-ledger-filter="receiver_name" placeholder="필터" /></th>
+                  <th><span class="ledger-th-title">연락처</span><input data-ledger-filter="receiver_phone" placeholder="필터" /></th>
+                  <th><span class="ledger-th-title">제품명</span><input data-ledger-filter="product_name" placeholder="필터" /></th>
+                  <th><span class="ledger-th-title">수량</span><input data-ledger-filter="quantity" placeholder="필터" /></th>
+                  <th><span class="ledger-th-title">상세주소</span><input data-ledger-filter="receiver_address" placeholder="필터" /></th>
+                  <th><span class="ledger-th-title">택배사</span><input data-ledger-filter="courier" placeholder="필터" /></th>
+                  <th><span class="ledger-th-title">송장번호</span><input data-ledger-filter="original_invoice" placeholder="필터" /></th>
                   <th></th>
                 </tr>
               </thead>
@@ -1209,12 +1203,24 @@ HTML = r"""<!doctype html>
       )).join("");
     }
 
-    function isCompletedCsCase(csCase) {
-      const type = String(csCase.cs_type || "").trim();
-      const status = String(csCase.status || "").replaceAll(" ", "");
+    function isCompletedByValues(typeValue, statusValue) {
+      const type = String(typeValue || "").replaceAll(" ", "").trim();
+      const status = String(statusValue || "").replaceAll(" ", "").trim();
       if ((type === "변심반품" || type === "변신반품" || type === "불량반품") && status.includes("회수완료")) return true;
       if ((type === "불량교환" || type === "오출고(오배송)") && status.includes("전체처리완료")) return true;
+      if (type === "불량재출고(미회수)" && status.includes("재발송완료")) return true;
       return false;
+    }
+
+    function isCompletedCsCase(csCase) {
+      return isCompletedByValues(csCase.cs_type, csCase.status);
+    }
+
+    function updateLedgerRowCompletion(row) {
+      if (!row) return;
+      const status = row.querySelector('[data-field="status"]')?.value || "";
+      const csType = row.querySelector('[data-field="cs_type"]')?.value || "";
+      row.classList.toggle("completed-cs", isCompletedByValues(csType, status));
     }
 
     function ledgerFieldValue(csCase, field) {
@@ -1642,6 +1648,10 @@ HTML = r"""<!doctype html>
     ledgerBody.addEventListener("click", (event) => {
       const button = event.target.closest(".ledger-save");
       if (button) saveLedgerRow(button);
+    });
+    ledgerBody.addEventListener("change", (event) => {
+      const field = event.target.closest('[data-field="status"], [data-field="cs_type"]');
+      if (field) updateLedgerRowCompletion(field.closest("tr"));
     });
     ledgerSearchInput.addEventListener("keydown", (event) => {
       if (event.key === "Enter") {
