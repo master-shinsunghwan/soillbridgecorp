@@ -507,22 +507,101 @@ HTML = r"""<!doctype html>
       white-space: nowrap;
       vertical-align: bottom;
     }
+    .ledger-table th.has-filter {
+      padding-right: 26px;
+    }
     .ledger-th-title {
       display: block;
-      margin-bottom: 5px;
+      line-height: 1.2;
     }
-    .ledger-table th input,
-    .ledger-table th select {
-      width: 100%;
-      height: 24px;
-      border: 1px solid #86a85e;
-      border-radius: 4px;
-      background: white;
+    .ledger-filter-trigger {
+      position: absolute;
+      right: 5px;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 19px;
+      height: 19px;
+      border: 1px solid rgba(17, 24, 39, .42);
+      border-radius: 3px;
+      background: rgba(255,255,255,.88);
       color: #111827;
       font-size: 11px;
+      line-height: 1;
+      cursor: pointer;
+      padding: 0;
+    }
+    .ledger-filter-trigger.active {
+      background: #155bc8;
+      border-color: #0f4aaa;
+      color: white;
+    }
+    .ledger-filter-popover {
+      position: fixed;
+      z-index: 40;
+      display: none;
+      width: 260px;
+      max-height: 390px;
+      padding: 10px;
+      border: 1px solid #98a2b3;
+      border-radius: 7px;
+      background: white;
+      box-shadow: 0 14px 32px rgba(15, 23, 42, .24);
+    }
+    .ledger-filter-popover.open { display: block; }
+    .ledger-filter-title {
+      font-size: 13px;
+      font-weight: 850;
+      margin-bottom: 8px;
+    }
+    .ledger-filter-search {
+      width: 100%;
+      height: 34px;
+      border: 1px solid #aab2bf;
+      border-radius: 5px;
+      padding: 0 8px;
       font-family: inherit;
-      padding: 0 5px;
-      font-weight: 500;
+      font-size: 13px;
+      margin-bottom: 8px;
+    }
+    .ledger-filter-option-list {
+      max-height: 230px;
+      overflow: auto;
+      border: 1px solid #e2e6ee;
+      border-radius: 5px;
+      margin-bottom: 9px;
+    }
+    .ledger-filter-option {
+      width: 100%;
+      min-height: 28px;
+      border: 0;
+      border-bottom: 1px solid #eef1f5;
+      background: white;
+      padding: 5px 7px;
+      text-align: left;
+      font-family: inherit;
+      font-size: 12px;
+      cursor: pointer;
+    }
+    .ledger-filter-option:hover { background: #eef6ff; }
+    .ledger-filter-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 7px;
+    }
+    .ledger-filter-actions button {
+      height: 30px;
+      border-radius: 5px;
+      border: 1px solid #aab2bf;
+      background: white;
+      font-family: inherit;
+      font-weight: 800;
+      cursor: pointer;
+      padding: 0 10px;
+    }
+    .ledger-filter-actions .apply {
+      border-color: #087a46;
+      background: #087a46;
+      color: white;
     }
     .ledger-table th.invoice-head {
       background: #f3b21d;
@@ -856,31 +935,40 @@ HTML = r"""<!doctype html>
             <table class="ledger-table">
               <thead>
                 <tr>
-                  <th><span class="ledger-th-title">날짜</span><input data-ledger-filter="occurred_at" placeholder="필터" /></th>
-                  <th><span class="ledger-th-title">매출거래처</span><input data-ledger-filter="sales_vendor" placeholder="필터" /></th>
-                  <th><span class="ledger-th-title">매입거래처</span><input data-ledger-filter="purchase_vendor" placeholder="필터" /></th>
-                  <th><span class="ledger-th-title">처리진행상태</span><select data-ledger-filter="status"><option value="">전체</option></select></th>
-                  <th><span class="ledger-th-title">완료일</span><input data-ledger-filter="completed_at" placeholder="필터" /></th>
-                  <th><span class="ledger-th-title">처리내용</span><select data-ledger-filter="cs_type"><option value="">전체</option></select></th>
-                  <th><span class="ledger-th-title">C/S 내용</span><input data-ledger-filter="cs_content" placeholder="필터" /></th>
-                  <th class="invoice-head"><span class="ledger-th-title">재발송운송장번호</span><input data-ledger-filter="reship_invoice" placeholder="필터" /></th>
-                  <th class="invoice-head"><span class="ledger-th-title">회수운송장번호</span><input data-ledger-filter="return_invoice" placeholder="필터" /></th>
-                  <th><span class="ledger-th-title">주문일자</span><input data-ledger-filter="order_date" placeholder="필터" /></th>
-                  <th><span class="ledger-th-title">출고일</span><input data-ledger-filter="ship_date" placeholder="필터" /></th>
-                  <th><span class="ledger-th-title">주문자</span><input data-ledger-filter="orderer_name" placeholder="필터" /></th>
-                  <th><span class="ledger-th-title">연락처</span><input data-ledger-filter="orderer_phone" placeholder="필터" /></th>
-                  <th><span class="ledger-th-title">수령자</span><input data-ledger-filter="receiver_name" placeholder="필터" /></th>
-                  <th><span class="ledger-th-title">연락처</span><input data-ledger-filter="receiver_phone" placeholder="필터" /></th>
-                  <th><span class="ledger-th-title">제품명</span><input data-ledger-filter="product_name" placeholder="필터" /></th>
-                  <th><span class="ledger-th-title">수량</span><input data-ledger-filter="quantity" placeholder="필터" /></th>
-                  <th><span class="ledger-th-title">상세주소</span><input data-ledger-filter="receiver_address" placeholder="필터" /></th>
-                  <th><span class="ledger-th-title">택배사</span><input data-ledger-filter="courier" placeholder="필터" /></th>
-                  <th><span class="ledger-th-title">송장번호</span><input data-ledger-filter="original_invoice" placeholder="필터" /></th>
+                  <th class="has-filter"><span class="ledger-th-title">날짜</span><button class="ledger-filter-trigger" type="button" data-ledger-filter-button="occurred_at" data-label="날짜">▼</button></th>
+                  <th class="has-filter"><span class="ledger-th-title">매출거래처</span><button class="ledger-filter-trigger" type="button" data-ledger-filter-button="sales_vendor" data-label="매출거래처">▼</button></th>
+                  <th class="has-filter"><span class="ledger-th-title">매입거래처</span><button class="ledger-filter-trigger" type="button" data-ledger-filter-button="purchase_vendor" data-label="매입거래처">▼</button></th>
+                  <th class="has-filter"><span class="ledger-th-title">처리진행상태</span><button class="ledger-filter-trigger" type="button" data-ledger-filter-button="status" data-label="처리진행상태">▼</button></th>
+                  <th class="has-filter"><span class="ledger-th-title">완료일</span><button class="ledger-filter-trigger" type="button" data-ledger-filter-button="completed_at" data-label="완료일">▼</button></th>
+                  <th class="has-filter"><span class="ledger-th-title">처리내용</span><button class="ledger-filter-trigger" type="button" data-ledger-filter-button="cs_type" data-label="처리내용">▼</button></th>
+                  <th class="has-filter"><span class="ledger-th-title">C/S 내용</span><button class="ledger-filter-trigger" type="button" data-ledger-filter-button="cs_content" data-label="C/S 내용">▼</button></th>
+                  <th class="invoice-head has-filter"><span class="ledger-th-title">재발송운송장번호</span><button class="ledger-filter-trigger" type="button" data-ledger-filter-button="reship_invoice" data-label="재발송운송장번호">▼</button></th>
+                  <th class="invoice-head has-filter"><span class="ledger-th-title">회수운송장번호</span><button class="ledger-filter-trigger" type="button" data-ledger-filter-button="return_invoice" data-label="회수운송장번호">▼</button></th>
+                  <th class="has-filter"><span class="ledger-th-title">주문일자</span><button class="ledger-filter-trigger" type="button" data-ledger-filter-button="order_date" data-label="주문일자">▼</button></th>
+                  <th class="has-filter"><span class="ledger-th-title">출고일</span><button class="ledger-filter-trigger" type="button" data-ledger-filter-button="ship_date" data-label="출고일">▼</button></th>
+                  <th class="has-filter"><span class="ledger-th-title">주문자</span><button class="ledger-filter-trigger" type="button" data-ledger-filter-button="orderer_name" data-label="주문자">▼</button></th>
+                  <th class="has-filter"><span class="ledger-th-title">연락처</span><button class="ledger-filter-trigger" type="button" data-ledger-filter-button="orderer_phone" data-label="주문자 연락처">▼</button></th>
+                  <th class="has-filter"><span class="ledger-th-title">수령자</span><button class="ledger-filter-trigger" type="button" data-ledger-filter-button="receiver_name" data-label="수령자">▼</button></th>
+                  <th class="has-filter"><span class="ledger-th-title">연락처</span><button class="ledger-filter-trigger" type="button" data-ledger-filter-button="receiver_phone" data-label="수령자 연락처">▼</button></th>
+                  <th class="has-filter"><span class="ledger-th-title">제품명</span><button class="ledger-filter-trigger" type="button" data-ledger-filter-button="product_name" data-label="제품명">▼</button></th>
+                  <th class="has-filter"><span class="ledger-th-title">수량</span><button class="ledger-filter-trigger" type="button" data-ledger-filter-button="quantity" data-label="수량">▼</button></th>
+                  <th class="has-filter"><span class="ledger-th-title">상세주소</span><button class="ledger-filter-trigger" type="button" data-ledger-filter-button="receiver_address" data-label="상세주소">▼</button></th>
+                  <th class="has-filter"><span class="ledger-th-title">택배사</span><button class="ledger-filter-trigger" type="button" data-ledger-filter-button="courier" data-label="택배사">▼</button></th>
+                  <th class="has-filter"><span class="ledger-th-title">송장번호</span><button class="ledger-filter-trigger" type="button" data-ledger-filter-button="original_invoice" data-label="송장번호">▼</button></th>
                   <th></th>
                 </tr>
               </thead>
               <tbody id="ledgerBody"></tbody>
             </table>
+          </div>
+        </div>
+        <div class="ledger-filter-popover" id="ledgerFilterPopover">
+          <div class="ledger-filter-title" id="ledgerFilterTitle">필터</div>
+          <input class="ledger-filter-search" id="ledgerFilterSearch" type="text" placeholder="검색어 입력" />
+          <div class="ledger-filter-option-list" id="ledgerFilterOptions"></div>
+          <div class="ledger-filter-actions">
+            <button type="button" id="ledgerFilterClear">전체</button>
+            <button class="apply" type="button" id="ledgerFilterApply">적용</button>
           </div>
         </div>
         <div class="notice" id="notice"></div>
@@ -952,7 +1040,13 @@ HTML = r"""<!doctype html>
     const ledgerBody = document.querySelector("#ledgerBody");
     const ledgerImportInput = document.querySelector("#ledgerImportInput");
     const ledgerImportDropMain = document.querySelector("#ledgerImportDropMain");
-    const ledgerColumnFilters = Array.from(document.querySelectorAll("[data-ledger-filter]"));
+    const ledgerFilterButtons = Array.from(document.querySelectorAll("[data-ledger-filter-button]"));
+    const ledgerFilterPopover = document.querySelector("#ledgerFilterPopover");
+    const ledgerFilterTitle = document.querySelector("#ledgerFilterTitle");
+    const ledgerFilterSearch = document.querySelector("#ledgerFilterSearch");
+    const ledgerFilterOptions = document.querySelector("#ledgerFilterOptions");
+    const ledgerFilterClear = document.querySelector("#ledgerFilterClear");
+    const ledgerFilterApply = document.querySelector("#ledgerFilterApply");
     const result = document.querySelector("#result");
     const resultText = document.querySelector("#resultText");
     const notice = document.querySelector("#notice");
@@ -960,6 +1054,8 @@ HTML = r"""<!doctype html>
     let currentMode = "delivery";
     let vendorContacts = [];
     let ledgerCases = [];
+    let activeLedgerFilterField = "";
+    const ledgerFilters = {};
 
     function addProductRow(productName = "", quantity = "", packQuantity = "") {
       const row = document.createElement("div");
@@ -1206,6 +1302,7 @@ HTML = r"""<!doctype html>
     function isCompletedByValues(typeValue, statusValue) {
       const type = String(typeValue || "").replaceAll(" ", "").trim();
       const status = String(statusValue || "").replaceAll(" ", "").trim();
+      if (status.includes("전체처리완료")) return true;
       if ((type === "변심반품" || type === "변신반품" || type === "불량반품") && status.includes("회수완료")) return true;
       if ((type === "불량교환" || type === "오출고(오배송)") && status.includes("전체처리완료")) return true;
       if (type === "불량재출고(미회수)" && status.includes("재발송완료")) return true;
@@ -1233,33 +1330,65 @@ HTML = r"""<!doctype html>
     function matchesLedgerFilters(csCase) {
       const toolbarStatus = ledgerStatusFilter.value.trim().toLowerCase();
       if (toolbarStatus && !String(csCase.status || "").toLowerCase().includes(toolbarStatus)) return false;
-      return ledgerColumnFilters.every((filter) => {
-        const value = filter.value.trim().toLowerCase();
+      return Object.entries(ledgerFilters).every(([field, filterValue]) => {
+        const value = String(filterValue || "").trim().toLowerCase();
         if (!value) return true;
-        return String(ledgerFieldValue(csCase, filter.dataset.ledgerFilter)).toLowerCase().includes(value);
+        return String(ledgerFieldValue(csCase, field)).toLowerCase().includes(value);
       });
     }
 
     function applyLedgerFilters() {
       const filtered = ledgerCases.filter(matchesLedgerFilters);
       renderLedger(filtered);
+      ledgerFilterButtons.forEach((button) => {
+        const field = button.dataset.ledgerFilterButton;
+        button.classList.toggle("active", Boolean(ledgerFilters[field]));
+      });
       if (currentMode === "ledger") notice.textContent = `${filtered.length}건 조회되었습니다.`;
     }
 
-    function initializeLedgerFilterOptions() {
-      const statusFilter = document.querySelector('[data-ledger-filter="status"]');
-      const typeFilter = document.querySelector('[data-ledger-filter="cs_type"]');
-      if (statusFilter) {
-        const filterStatuses = ["회수지시", "회수 완료", "재발송 완료", "전체 처리완료"];
-        statusFilter.innerHTML = `<option value="">전체</option>${filterStatuses.map((status) => (
-          `<option value="${escapeHtml(status)}">${escapeHtml(status)}</option>`
-        )).join("")}`;
-      }
-      if (typeFilter) {
-        typeFilter.innerHTML = `<option value="">전체</option>${csTypeOptions.map((type) => (
-          `<option value="${escapeHtml(type)}">${escapeHtml(type)}</option>`
-        )).join("")}`;
-      }
+    function renderLedgerFilterOptions(field, searchText = "") {
+      const normalizedSearch = searchText.trim().toLowerCase();
+      const values = Array.from(new Set(
+        ledgerCases
+          .map((csCase) => String(ledgerFieldValue(csCase, field) || "").trim())
+          .filter(Boolean)
+      )).sort((left, right) => left.localeCompare(right, "ko"));
+      const filteredValues = values
+        .filter((value) => !normalizedSearch || value.toLowerCase().includes(normalizedSearch))
+        .slice(0, 220);
+      ledgerFilterOptions.innerHTML = filteredValues.length
+        ? filteredValues.map((value) => (
+          `<button class="ledger-filter-option" type="button" data-filter-value="${escapeHtml(value)}">${escapeHtml(value)}</button>`
+        )).join("")
+        : `<button class="ledger-filter-option" type="button" disabled>표시할 값이 없습니다.</button>`;
+    }
+
+    function openLedgerFilter(button) {
+      activeLedgerFilterField = button.dataset.ledgerFilterButton || "";
+      ledgerFilterTitle.textContent = `${button.dataset.label || "필터"} 필터`;
+      ledgerFilterSearch.value = ledgerFilters[activeLedgerFilterField] || "";
+      renderLedgerFilterOptions(activeLedgerFilterField, ledgerFilterSearch.value);
+      const rect = button.getBoundingClientRect();
+      ledgerFilterPopover.style.left = `${Math.min(rect.left, window.innerWidth - 280)}px`;
+      ledgerFilterPopover.style.top = `${Math.min(rect.bottom + 6, window.innerHeight - 410)}px`;
+      ledgerFilterPopover.classList.add("open");
+      ledgerFilterSearch.focus();
+      ledgerFilterSearch.select();
+    }
+
+    function closeLedgerFilter() {
+      ledgerFilterPopover.classList.remove("open");
+      activeLedgerFilterField = "";
+    }
+
+    function setLedgerFilter(value) {
+      if (!activeLedgerFilterField) return;
+      const normalized = String(value || "").trim();
+      if (normalized) ledgerFilters[activeLedgerFilterField] = normalized;
+      else delete ledgerFilters[activeLedgerFilterField];
+      applyLedgerFilters();
+      closeLedgerFilter();
     }
 
     function renderLedger(cases) {
@@ -1551,7 +1680,8 @@ HTML = r"""<!doctype html>
         ledgerStatusFilter.value = "";
         ledgerImportInput.value = "";
         ledgerImportDropMain.textContent = "업로드";
-        ledgerColumnFilters.forEach((filter) => { filter.value = ""; });
+        Object.keys(ledgerFilters).forEach((key) => delete ledgerFilters[key]);
+        closeLedgerFilter();
         loadLedgerCases();
       }
 
@@ -1627,7 +1757,6 @@ HTML = r"""<!doctype html>
       ledgerImportDropMain,
       "업로드"
     );
-    initializeLedgerFilterOptions();
     document.querySelector("#addProductRow").addEventListener("click", () => addProductRow());
     receiptTypeSelect.addEventListener("change", resetProductRows);
     vendorContactSelect.addEventListener("change", applySelectedVendor);
@@ -1636,9 +1765,29 @@ HTML = r"""<!doctype html>
     saveCsCaseButton.addEventListener("click", saveCurrentCsCase);
     ledgerRefresh.addEventListener("click", loadLedgerCases);
     ledgerStatusFilter.addEventListener("change", applyLedgerFilters);
-    ledgerColumnFilters.forEach((filter) => {
-      filter.addEventListener("input", applyLedgerFilters);
-      filter.addEventListener("change", applyLedgerFilters);
+    ledgerFilterButtons.forEach((button) => {
+      button.addEventListener("click", (event) => {
+        event.stopPropagation();
+        openLedgerFilter(button);
+      });
+    });
+    ledgerFilterSearch.addEventListener("input", () => {
+      renderLedgerFilterOptions(activeLedgerFilterField, ledgerFilterSearch.value);
+    });
+    ledgerFilterSearch.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") setLedgerFilter(ledgerFilterSearch.value);
+      if (event.key === "Escape") closeLedgerFilter();
+    });
+    ledgerFilterApply.addEventListener("click", () => setLedgerFilter(ledgerFilterSearch.value));
+    ledgerFilterClear.addEventListener("click", () => setLedgerFilter(""));
+    ledgerFilterOptions.addEventListener("click", (event) => {
+      const option = event.target.closest("[data-filter-value]");
+      if (option) setLedgerFilter(option.dataset.filterValue || "");
+    });
+    document.addEventListener("click", (event) => {
+      if (!ledgerFilterPopover.contains(event.target) && !event.target.closest("[data-ledger-filter-button]")) {
+        closeLedgerFilter();
+      }
     });
     ledgerAddCs.addEventListener("click", () => {
       openModal("cs");
@@ -1937,6 +2086,77 @@ def extract_invoice_number(value: str) -> str:
     return numbers[-1] if numbers else ""
 
 
+def normalize_compact(value: str) -> str:
+    return re.sub(r"[\s/_-]+", "", str(value or "").strip())
+
+
+def status_date_text(*values: object) -> str:
+    for value in values:
+        text = clean_cell(value)
+        if not text:
+            continue
+        month_day = re.search(r"(\d{1,2})\s*월\s*(\d{1,2})\s*일?", text)
+        if month_day:
+            return f"{int(month_day.group(1))}/{int(month_day.group(2))}"
+        slash_day = re.search(r"(?<!\d)(\d{1,2})[./-](\d{1,2})(?!\d)", text)
+        if slash_day:
+            return f"{int(slash_day.group(1))}/{int(slash_day.group(2))}"
+        iso_day = re.search(r"(\d{4})-(\d{1,2})-(\d{1,2})", text)
+        if iso_day:
+            return f"{int(iso_day.group(2))}/{int(iso_day.group(3))}"
+    now = datetime.now()
+    return f"{now.month}/{now.day}"
+
+
+def normalize_cs_type_value(cs_type: str, cs_content: str, status: str = "") -> str:
+    existing = clean_cell(cs_type)
+    if existing in {"변심반품", "변신반품", "불량반품", "불량교환", "불량재출고(미회수)", "오출고(오배송)"}:
+        return "변심반품" if existing == "변신반품" else existing
+
+    text = normalize_compact(f"{existing} {cs_content} {status}")
+    if not text:
+        return ""
+
+    if any(keyword in text for keyword in ["오배송", "오출고", "오발주", "중복발주", "중복출고", "이중발주", "이중출고", "주소오류", "주소오기재"]):
+        return "오출고(오배송)"
+    if any(keyword in text for keyword in ["출고취소", "출고전취소", "출소취소"]):
+        return "오출고(오배송)"
+    if any(keyword in text for keyword in ["변심", "단순변심"]):
+        return "변심반품"
+    if any(keyword in text for keyword in ["맞교환", "불량교환", "제품불량교환", "교환요청", "교환원", "교환진행", "교환"]):
+        return "불량교환"
+    if any(keyword in text for keyword in ["누락재발송", "누락재배송", "부분재발송", "부족분재발송", "일부재발송", "일부분재배송", "미수령재배송", "재출고", "재발송요청", "배출고", "누락배송", "부분누락", "부분발송", "부분미발송", "미발송", "추가배송", "추가구매", "제품미수령", "화물추적", "배송추적", "배송확인", "운송장회신", "충전기분실", "재발송", "발송완료"]):
+        return "불량재출고(미회수)"
+    if any(keyword in text for keyword in ["불량반품", "제품불량반품", "반품회수", "불량", "파손배송", "파손불량", "환불", "회수완료", "회수요청", "코팅벗겨짐", "입고사유확인"]):
+        return "불량반품"
+    if "반품" in text:
+        return "변심반품"
+    return ""
+
+
+def normalize_progress_status(status: str, completed_at: str = "", occurred_at: str = "") -> str:
+    raw = clean_cell(status)
+    text = normalize_compact(raw)
+    date_text = status_date_text(raw, completed_at, occurred_at)
+
+    has_return_complete = any(keyword in text for keyword in ["회수완료", "입고완료", "반품완료", "수거완료", "반송완료"])
+    has_return_request = any(keyword in text for keyword in ["회수요청", "회수지시", "회수등록", "회수접수", "업체처리요청", "자동수거", "직접수거", "업체측회수", "회수"])
+    has_reship_complete = any(keyword in text for keyword in ["재발송완료", "재출고완료", "발송완료", "출고완료", "재발송", "재출고", "배출고"])
+    has_all_done = any(keyword in text for keyword in ["전체처리완료", "처리완료", "업체처리완료", "정산반영완료", "사고처리완료", "확인완료", "수령확인완료", "화물추적완료"])
+
+    if has_all_done or (has_reship_complete and has_return_complete):
+        return "전체 처리완료"
+    if has_reship_complete and has_return_request:
+        return f"재발송 완료({date_text})/회수지시({date_text})"
+    if has_return_complete:
+        return f"회수 완료({date_text})"
+    if has_reship_complete or any(keyword in text for keyword in ["직접보내주심", "직접보냄", "업체에서직접보냄"]):
+        return f"재발송 완료({date_text})"
+    if has_return_request or any(keyword in text for keyword in ["반품", "회수철회", "반품철회"]):
+        return f"회수지시({date_text})"
+    return f"회수지시({date_text})"
+
+
 def cs_case_from_payload(payload: dict, status: str = "접수", mail_sent: bool = False) -> dict[str, str]:
     original_info = clean_payload_text(payload, "cs_origin")
     return {
@@ -2211,8 +2431,9 @@ def import_cs_cases_from_workbook(path: Path) -> tuple[int, int]:
                 )
                 request_text = row_value(row, request_idx)
                 cs_text = row_value(row, cs_content_idx)
-                cs_type = request_text
                 cs_content = cs_text or request_text
+                raw_status = row_value(row, status_idx)
+                cs_type = normalize_cs_type_value(request_text, cs_content, raw_status)
                 product_name = row_value(row, product_idx)
                 orderer_name = row_value(row, orderer_idx)
                 orderer_phone = row_value(row, orderer_phone_idx)
@@ -2225,7 +2446,7 @@ def import_cs_cases_from_workbook(path: Path) -> tuple[int, int]:
                 values = [
                     timestamp,
                     timestamp,
-                    row_value(row, status_idx) or "가져옴",
+                    normalize_progress_status(raw_status, row_value(row, completed_idx), row_value(row, date_idx)),
                     vendor_name,
                     "",
                     original_info,
