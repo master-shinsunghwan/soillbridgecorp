@@ -14,6 +14,7 @@ import ctypes
 import hashlib
 import hmac
 import secrets
+from copy import copy
 from io import BytesIO
 from datetime import date, datetime
 from email.message import EmailMessage
@@ -48,6 +49,7 @@ MAIL_SETTINGS_PATH = CONFIG_DIR / "mail_settings.json"
 VENDOR_CONTACTS_PATH = CONFIG_DIR / "vendor_contacts.json"
 LUCIDE_DIR = ROOT / "node_modules" / "lucide"
 LOTTE_TEMPLATE = ROOT / "templates" / "lotte_order_form_template.xlsx"
+MANAGEMENT_EXPORT_TEMPLATE = ROOT / "templates" / "management_ledger_export_template.xlsx"
 NAVER_SMTP_HOST = "smtp.naver.com"
 NAVER_SMTP_PORT = 465
 SECRET_KEY_PATH = CONFIG_DIR / "secret.key"
@@ -3785,19 +3787,19 @@ def clean_cell(value: object) -> str:
 
 
 MANAGEMENT_EXPORT_COLUMNS = [
-    ("order_date", "주문일자"),
-    ("ship_date", "출고일"),
     ("purchase_vendor", "매입거래처"),
     ("sales_vendor", "매출거래처"),
     ("transaction_type", "거래구분"),
     ("ledger_checked", "장부입력확인"),
+    ("order_date", "주문일자"),
+    ("ship_date", "출고일"),
     ("orderer_name", "주문자"),
     ("sender_phone", "발신자연락처"),
     ("receiver_name", "수령자"),
     ("receiver_phone", "수령자연락처"),
-    ("product_name", "제품명"),
+    ("product_name", "제 품 명"),
     ("quantity", "수량"),
-    ("receiver_address", "상세주소"),
+    ("receiver_address", "상 세 주 소"),
     ("courier", "택배사"),
     ("invoice_number", "운송장번호"),
     ("memo", "특이사항"),
@@ -3838,6 +3840,93 @@ def workbook_bytes_from_rows(rows: list[dict], columns: list[tuple[str, str]], s
     for column_cells in worksheet.columns:
         max_length = max((len(clean_cell(cell.value)) for cell in column_cells), default=0)
         worksheet.column_dimensions[column_cells[0].column_letter].width = min(max(max_length + 2, 10), 42)
+    stream = BytesIO()
+    workbook.save(stream)
+    return stream.getvalue()
+
+
+def extract_year_month(*values: object) -> tuple[str, str] | None:
+    for value in values:
+        text = clean_cell(value)
+        if not text:
+            continue
+        match = re.search(r"(\d{4})[-./년\s]+(\d{1,2})", text)
+        if match:
+            return match.group(1), f"{int(match.group(2)):02d}"
+    return None
+
+
+def grouped_management_rows(rows: list[dict]) -> list[tuple[str, list[dict]]]:
+    groups: dict[str, list[dict]] = {}
+    for row in rows:
+        year_month = extract_year_month(row.get("order_date"), row.get("ship_date"))
+        key = f"{year_month[0]}년 {year_month[1]}월" if year_month else "다운로드"
+        groups.setdefault(key, []).append(row)
+    return sorted(groups.items(), key=lambda item: item[0])
+
+
+def cell_style_snapshot(cell) -> dict:
+    return {
+        "font": copy(cell.font),
+        "fill": copy(cell.fill),
+        "border": copy(cell.border),
+        "alignment": copy(cell.alignment),
+        "protection": copy(cell.protection),
+        "number_format": cell.number_format,
+    }
+
+
+def apply_cell_style(cell, style: dict) -> None:
+    cell.font = copy(style["font"])
+    cell.fill = copy(style["fill"])
+    cell.border = copy(style["border"])
+    cell.alignment = copy(style["alignment"])
+    cell.protection = copy(style["protection"])
+    cell.number_format = style["number_format"]
+
+
+def clear_management_template_sheet(worksheet, style_row: list[dict], row_height: float | None) -> None:
+    if worksheet.max_row > 2:
+        worksheet.delete_rows(3, worksheet.max_row - 2)
+    for column_index, (_, header) in enumerate(MANAGEMENT_EXPORT_COLUMNS, start=1):
+        worksheet.cell(2, column_index, header)
+    if row_height:
+        worksheet.row_dimensions[3].height = row_height
+    for column_index, style in enumerate(style_row, start=1):
+        apply_cell_style(worksheet.cell(3, column_index), style)
+
+
+def populate_management_template_sheet(worksheet, title: str, rows: list[dict], style_row: list[dict], row_height: float | None) -> None:
+    worksheet.title = title[:31]
+    worksheet.cell(1, 1, "(주)소일브릿지(SOILBRIDGE) 월별 발주 리스트")
+    for row_offset, row in enumerate(rows, start=3):
+        if row_height:
+            worksheet.row_dimensions[row_offset].height = row_height
+        for column_index, (key, _) in enumerate(MANAGEMENT_EXPORT_COLUMNS, start=1):
+            cell = worksheet.cell(row_offset, column_index, clean_cell(row.get(key, "")))
+            apply_cell_style(cell, style_row[column_index - 1])
+    last_row = max(2, len(rows) + 2)
+    worksheet.auto_filter.ref = f"A2:P{last_row}"
+    worksheet.freeze_panes = "A3"
+
+
+def management_workbook_bytes_from_template(rows: list[dict]) -> bytes:
+    if not MANAGEMENT_EXPORT_TEMPLATE.exists():
+        return workbook_bytes_from_rows(rows, MANAGEMENT_EXPORT_COLUMNS, "통합관리대장")
+    workbook = load_workbook(MANAGEMENT_EXPORT_TEMPLATE)
+    base_sheet = workbook.worksheets[0]
+    max_columns = len(MANAGEMENT_EXPORT_COLUMNS)
+    style_row = [cell_style_snapshot(base_sheet.cell(3, column_index)) for column_index in range(1, max_columns + 1)]
+    row_height = base_sheet.row_dimensions[3].height
+    for sheet in list(workbook.worksheets)[1:]:
+        workbook.remove(sheet)
+    clear_management_template_sheet(base_sheet, style_row, row_height)
+    groups = grouped_management_rows(rows) or [("다운로드", rows)]
+    sheets = [base_sheet]
+    for _title, _rows in groups[1:]:
+        sheets.append(workbook.copy_worksheet(base_sheet))
+    for worksheet, (title, group_rows) in zip(sheets, groups, strict=False):
+        populate_management_template_sheet(worksheet, title, group_rows, style_row, row_height)
     stream = BytesIO()
     workbook.save(stream)
     return stream.getvalue()
@@ -4509,7 +4598,7 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                 rows = payload.get("rows", [])
                 if not isinstance(rows, list) or not rows:
                     raise ValueError("엑셀로 다운로드할 통합관리대장 데이터가 없습니다.")
-                data = workbook_bytes_from_rows(rows, MANAGEMENT_EXPORT_COLUMNS, "통합관리대장")
+                data = management_workbook_bytes_from_template(rows)
                 filename = quote(f"통합관리대장_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx")
                 self.send_response(200)
                 self.send_header("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
