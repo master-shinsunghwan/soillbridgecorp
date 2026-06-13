@@ -447,25 +447,29 @@ HTML = r"""<!doctype html>
     }
     .ledger-table {
       width: 100%;
-      min-width: 1680px;
+      min-width: 2600px;
       border-collapse: collapse;
-      font-size: 13px;
+      font-size: 12px;
     }
     .ledger-table th {
       position: sticky;
       top: 0;
       z-index: 1;
-      background: #f3f6fb;
-      border-bottom: 1px solid #cfd5df;
-      color: #273244;
+      background: #8ecf45;
+      border-bottom: 1px solid #6baa2d;
+      color: #111827;
       font-weight: 850;
-      padding: 9px 8px;
+      padding: 8px 7px;
       text-align: center;
       white-space: nowrap;
     }
+    .ledger-table th.invoice-head {
+      background: #f3b21d;
+      border-bottom-color: #c98e10;
+    }
     .ledger-table td {
       border-bottom: 1px solid #e6eaf0;
-      padding: 9px 8px;
+      padding: 8px 7px;
       vertical-align: top;
       text-align: center;
       color: #1f2937;
@@ -781,21 +785,26 @@ HTML = r"""<!doctype html>
             <table class="ledger-table">
               <thead>
                 <tr>
-                  <th>ID</th>
-                  <th>상태</th>
-                  <th>발생업체</th>
-                  <th>처리업체</th>
-                  <th>상품명</th>
-                  <th>수령인</th>
+                  <th>날짜</th>
+                  <th>매출거래처</th>
+                  <th>매입거래처</th>
+                  <th>처리진행상태</th>
+                  <th>완료일</th>
+                  <th>처리내용</th>
+                  <th>C/S 내용</th>
+                  <th class="invoice-head">재발송운송장번호</th>
+                  <th class="invoice-head">회수운송장번호</th>
+                  <th>주문일자</th>
+                  <th>출고일</th>
+                  <th>주문자</th>
                   <th>연락처</th>
-                  <th>주소</th>
-                  <th>원송장</th>
-                  <th>회수송장</th>
-                  <th>재출고송장</th>
-                  <th>CS타입</th>
-                  <th>CS내용</th>
-                  <th>메일발송</th>
-                  <th>등록일</th>
+                  <th>수령자</th>
+                  <th>연락처</th>
+                  <th>제품명</th>
+                  <th>수량</th>
+                  <th>상세주소</th>
+                  <th>택배사</th>
+                  <th>송장번호</th>
                   <th>저장</th>
                 </tr>
               </thead>
@@ -1095,7 +1104,7 @@ HTML = r"""<!doctype html>
       ledgerBody.innerHTML = "";
       if (!cases || cases.length === 0) {
         const row = document.createElement("tr");
-        row.innerHTML = `<td colspan="16">조회된 CS건이 없습니다.</td>`;
+        row.innerHTML = `<td colspan="21">조회된 CS건이 없습니다.</td>`;
         ledgerBody.appendChild(row);
         return;
       }
@@ -1109,21 +1118,26 @@ HTML = r"""<!doctype html>
           `<option value="${escapeHtml(status)}" ${status === currentStatus ? "selected" : ""}>${escapeHtml(status)}</option>`
         )).join("");
         row.innerHTML = `
-          <td>${escapeHtml(csCase.id)}</td>
-          <td><select class="ledger-status-select" data-field="status">${statusOptions}</select></td>
+          <td>${escapeHtml(csCase.occurred_at || csCase.created_at)}</td>
           <td>${escapeHtml(csCase.sales_vendor)}</td>
-          <td>${escapeHtml(csCase.vendor_name)}</td>
-          <td class="left">${escapeHtml(csCase.product_name)}</td>
-          <td>${escapeHtml(csCase.receiver_name)}</td>
-          <td>${escapeHtml(csCase.receiver_phone)}</td>
-          <td class="left">${escapeHtml(csCase.receiver_address)}</td>
-          <td>${escapeHtml(csCase.original_invoice || csCase.original_info)}</td>
-          <td><input class="ledger-edit" data-field="return_invoice" value="${escapeHtml(csCase.return_invoice)}" /></td>
-          <td><input class="ledger-edit" data-field="reship_invoice" value="${escapeHtml(csCase.reship_invoice)}" /></td>
+          <td>${escapeHtml(csCase.purchase_vendor || csCase.vendor_name)}</td>
+          <td><select class="ledger-status-select" data-field="status">${statusOptions}</select></td>
+          <td>${escapeHtml(csCase.completed_at)}</td>
           <td><input class="ledger-edit" data-field="cs_type" value="${escapeHtml(csCase.cs_type)}" /></td>
           <td class="left">${escapeHtml(csCase.cs_content)}</td>
-          <td>${escapeHtml(csCase.mail_sent_at)}</td>
-          <td>${escapeHtml(csCase.created_at)}</td>
+          <td><input class="ledger-edit" data-field="reship_invoice" value="${escapeHtml(csCase.reship_invoice)}" /></td>
+          <td><input class="ledger-edit" data-field="return_invoice" value="${escapeHtml(csCase.return_invoice)}" /></td>
+          <td>${escapeHtml(csCase.order_date)}</td>
+          <td>${escapeHtml(csCase.ship_date)}</td>
+          <td>${escapeHtml(csCase.orderer_name)}</td>
+          <td>${escapeHtml(csCase.orderer_phone)}</td>
+          <td>${escapeHtml(csCase.receiver_name)}</td>
+          <td>${escapeHtml(csCase.receiver_phone)}</td>
+          <td class="left">${escapeHtml(csCase.product_name)}</td>
+          <td>${escapeHtml(csCase.quantity)}</td>
+          <td class="left">${escapeHtml(csCase.receiver_address)}</td>
+          <td>${escapeHtml(csCase.courier)}</td>
+          <td>${escapeHtml(csCase.original_invoice || csCase.original_info)}</td>
           <td><button class="ledger-save" type="button" data-case-id="${escapeHtml(csCase.id)}">저장</button></td>
         `;
         ledgerBody.appendChild(row);
@@ -1683,6 +1697,8 @@ def init_db() -> None:
                 original_info TEXT,
                 original_invoice TEXT,
                 product_name TEXT,
+                orderer_name TEXT,
+                orderer_phone TEXT,
                 receiver_name TEXT,
                 receiver_phone TEXT,
                 receiver_address TEXT,
@@ -1719,6 +1735,8 @@ def init_db() -> None:
             "completed_at": "TEXT",
             "order_date": "TEXT",
             "ship_date": "TEXT",
+            "orderer_name": "TEXT",
+            "orderer_phone": "TEXT",
             "sales_vendor": "TEXT",
             "purchase_vendor": "TEXT",
             "courier": "TEXT",
@@ -1751,6 +1769,8 @@ def cs_case_from_payload(payload: dict, status: str = "접수", mail_sent: bool 
         "original_info": original_info,
         "original_invoice": clean_payload_text(payload, "original_invoice") or extract_invoice_number(original_info),
         "product_name": clean_payload_text(payload, "cs_product"),
+        "orderer_name": clean_payload_text(payload, "orderer_name"),
+        "orderer_phone": clean_payload_text(payload, "orderer_phone"),
         "receiver_name": clean_payload_text(payload, "cs_receiver"),
         "receiver_phone": clean_payload_text(payload, "cs_phone"),
         "receiver_address": clean_payload_text(payload, "cs_address"),
@@ -1777,6 +1797,8 @@ def save_cs_case(payload: dict, status: str = "접수", mail_sent: bool = False)
         "original_info",
         "original_invoice",
         "product_name",
+        "orderer_name",
+        "orderer_phone",
         "receiver_name",
         "receiver_phone",
         "receiver_address",
@@ -1824,6 +1846,8 @@ def list_cs_cases(query: str = "", status: str = "", limit: int = 20) -> list[di
                 OR original_info LIKE ?
                 OR original_invoice LIKE ?
                 OR product_name LIKE ?
+                OR orderer_name LIKE ?
+                OR orderer_phone LIKE ?
                 OR receiver_name LIKE ?
                 OR receiver_phone LIKE ?
                 OR receiver_address LIKE ?
@@ -1834,7 +1858,7 @@ def list_cs_cases(query: str = "", status: str = "", limit: int = 20) -> list[di
             )
             """
         )
-        params = [pattern] * 14
+        params = [pattern] * 16
     if status:
         conditions.append("status = ?")
         params.append(status)
@@ -1845,9 +1869,10 @@ def list_cs_cases(query: str = "", status: str = "", limit: int = 20) -> list[di
         rows = connection.execute(
             f"""
             SELECT id, created_at, updated_at, status, vendor_name, vendor_email,
-                   original_info, original_invoice, product_name, receiver_name,
+                   original_info, original_invoice, product_name, orderer_name, orderer_phone, receiver_name,
                    receiver_phone, receiver_address, cs_type, cs_content, return_invoice,
-                   reship_invoice, mail_subject, mail_sent_at, sales_vendor, purchase_vendor
+                   reship_invoice, mail_subject, mail_sent_at, occurred_at, completed_at, order_date,
+                   ship_date, sales_vendor, purchase_vendor, courier, quantity
               FROM cs_cases
               {where}
              ORDER BY id DESC
@@ -1923,6 +1948,17 @@ def row_value(row: tuple, idx: int | None) -> str:
     return clean_cell(row[idx])
 
 
+def contact_index_after(headers: list[str], anchor_idx: int | None, before_idx: int | None = None) -> int | None:
+    contact_indexes = [idx for idx, header in enumerate(headers) if "연락처" in header]
+    if not contact_indexes:
+        return None
+    if anchor_idx is not None:
+        for idx in contact_indexes:
+            if idx > anchor_idx and (before_idx is None or idx < before_idx):
+                return idx
+    return None
+
+
 def receiver_phone_index(headers: list[str], receiver_idx: int | None) -> int | None:
     contact_indexes = [idx for idx, header in enumerate(headers) if "연락처" in header]
     if not contact_indexes:
@@ -1945,12 +1981,12 @@ def import_cs_cases_from_workbook(path: Path) -> tuple[int, int]:
     insert_sql = """
         INSERT OR IGNORE INTO cs_cases (
             created_at, updated_at, status, vendor_name, vendor_email,
-            original_info, original_invoice, product_name, receiver_name,
+            original_info, original_invoice, product_name, orderer_name, orderer_phone, receiver_name,
             receiver_phone, receiver_address, cs_type, cs_content, return_invoice,
             reship_invoice, mail_subject, mail_body, mail_sent_at,
             source_file, source_sheet, source_row, occurred_at, completed_at,
             order_date, ship_date, sales_vendor, purchase_vendor, courier, quantity
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """
 
     connection = connect_db()
@@ -1970,7 +2006,9 @@ def import_cs_cases_from_workbook(path: Path) -> tuple[int, int]:
             completed_idx = find_header(headers, {"처리완료일", "완료일"})
             order_idx = find_header(headers, {"주문일자"})
             ship_idx = find_header(headers, {"출고일"})
+            orderer_idx = find_header(headers, {"주문자", "주문인", "구매자"})
             receiver_idx = find_header(headers, {"수령자"})
+            orderer_phone_idx = contact_index_after(headers, orderer_idx, receiver_idx)
             phone_idx = receiver_phone_index(headers, receiver_idx)
             product_idx = find_header(headers, {"제품명"})
             quantity_idx = find_header(headers, {"수량"})
@@ -1999,6 +2037,8 @@ def import_cs_cases_from_workbook(path: Path) -> tuple[int, int]:
                 cs_type = request_text
                 cs_content = cs_text or request_text
                 product_name = row_value(row, product_idx)
+                orderer_name = row_value(row, orderer_idx)
+                orderer_phone = row_value(row, orderer_phone_idx)
                 receiver_name = row_value(row, receiver_idx)
                 receiver_phone = row_value(row, phone_idx)
 
@@ -2014,6 +2054,8 @@ def import_cs_cases_from_workbook(path: Path) -> tuple[int, int]:
                     original_info,
                     extract_invoice_number(original_invoice) or original_invoice,
                     product_name,
+                    orderer_name,
+                    orderer_phone,
                     receiver_name,
                     receiver_phone,
                     row_value(row, address_idx),
