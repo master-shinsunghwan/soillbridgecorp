@@ -150,36 +150,40 @@ HTML = r"""<!doctype html>
       padding: 0 4px;
     }
     .brand-label { font-size: 18px; font-weight: 900; line-height: 1.32; margin: 0; }
-    .sidebar-notice {
-      border: 1px solid rgba(255,255,255,.16);
+    .right-notice {
+      min-height: 44px;
+      border: 1px solid var(--line);
       border-radius: 8px;
-      background: rgba(255,255,255,.08);
-      padding: 11px 12px;
-      margin: -10px 4px 16px;
-      color: #eef4ff;
+      background: white;
+      padding: 7px 10px;
+      color: #344054;
+      overflow: hidden;
     }
-    .sidebar-notice-kicker {
+    .right-notice-kicker {
       font-size: 11px;
       font-weight: 900;
-      color: #a9bff0;
-      margin-bottom: 6px;
+      color: #155bc8;
+      margin-bottom: 2px;
     }
-    .sidebar-notice-title {
+    .right-notice-title {
       font-size: 13px;
       font-weight: 900;
-      line-height: 1.32;
-      margin-bottom: 4px;
+      line-height: 1.24;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
-    .sidebar-notice-meta {
+    .right-notice-meta {
       font-size: 11px;
-      color: #bdc9e2;
-      margin-bottom: 6px;
+      color: #667085;
+      margin-top: 1px;
     }
-    .sidebar-notice-body {
-      font-size: 12px;
-      line-height: 1.42;
-      color: #e5ecfb;
-      max-height: 68px;
+    .right-notice-body {
+      font-size: 11px;
+      line-height: 1.3;
+      color: #475467;
+      margin-top: 2px;
+      max-height: 30px;
       overflow: hidden;
       white-space: pre-line;
     }
@@ -254,7 +258,7 @@ HTML = r"""<!doctype html>
     .topbar {
       height: 74px;
       display: grid;
-      grid-template-columns: 1fr minmax(260px, 430px) auto;
+      grid-template-columns: 1fr minmax(240px, 360px) minmax(220px, 320px) auto;
       align-items: center;
       gap: 18px;
       padding: 0 22px;
@@ -1114,6 +1118,11 @@ HTML = r"""<!doctype html>
       padding: 0 12px;
       cursor: pointer;
     }
+    .workspace-button.danger {
+      border-color: #f1a7a7;
+      background: #fff1f1;
+      color: #b42318;
+    }
     .workspace-mount {
       flex: 1;
       min-height: 0;
@@ -1164,11 +1173,6 @@ HTML = r"""<!doctype html>
         <div class="brand-icon"><i data-lucide="briefcase-business"></i></div>
         <div class="brand-label">(주)소일브릿지<br>업무자동화</div>
       </div>
-      <div class="sidebar-notice" id="sidebarNoticePreview">
-        <div class="sidebar-notice-kicker">금일 공지사항</div>
-        <div class="sidebar-notice-title">등록된 공지 없음</div>
-        <div class="sidebar-notice-body">공지사항 메뉴를 눌러 내용을 입력해주세요.</div>
-      </div>
       <div class="nav-section">MAIN</div>
       <button class="nav-item active" type="button" data-view="dashboard"><i data-lucide="home"></i> <span>공지사항</span></button>
       <div class="nav-group" id="orderNavGroup">
@@ -1198,6 +1202,11 @@ HTML = r"""<!doctype html>
           <p class="subtitle">발주 파일 변환과 인수증 생성을 한 곳에서 처리합니다.</p>
         </div>
         <div class="top-search"><i data-lucide="file-text"></i> 파일명, 수령인, 송장번호, CS내용 검색</div>
+        <div class="right-notice" id="sidebarNoticePreview">
+          <div class="right-notice-kicker">금일 공지사항</div>
+          <div class="right-notice-title">등록된 공지 없음</div>
+          <div class="right-notice-body">공지사항 메뉴를 눌러 내용을 입력해주세요.</div>
+        </div>
         <div class="top-tools">
           <button class="icon-button" type="button"><i data-lucide="bell"></i></button>
           <button class="icon-button" type="button"><i data-lucide="refresh-cw"></i></button>
@@ -1313,6 +1322,7 @@ HTML = r"""<!doctype html>
           <div class="workspace-title">통합관리대장 관리</div>
           <div class="workspace-actions">
             <button class="workspace-button" type="button" id="managementSaveAll">해당 내용 저장</button>
+            <button class="workspace-button danger" type="button" id="managementDeleteSelected">선택 주문 삭제</button>
             <button class="workspace-button" type="button" data-open-window="management">새창으로 열기</button>
           </div>
         </div>
@@ -1323,6 +1333,7 @@ HTML = r"""<!doctype html>
           <div class="workspace-title">CS 처리대장</div>
           <div class="workspace-actions">
             <button class="workspace-button" type="button" id="ledgerSaveAll">해당 내용 저장</button>
+            <button class="workspace-button danger" type="button" id="ledgerDeleteSelected">선택 주문 삭제</button>
             <button class="workspace-button" type="button" data-open-window="ledger">새창으로 열기</button>
           </div>
         </div>
@@ -1732,6 +1743,8 @@ HTML = r"""<!doctype html>
     const managementBody = document.querySelector("#managementBody");
     const managementSaveAll = document.querySelector("#managementSaveAll");
     const ledgerSaveAll = document.querySelector("#ledgerSaveAll");
+    const managementDeleteSelected = document.querySelector("#managementDeleteSelected");
+    const ledgerDeleteSelected = document.querySelector("#ledgerDeleteSelected");
     const ledgerFilterButtons = Array.from(document.querySelectorAll("[data-ledger-filter-button]"));
     const managementFilterButtons = Array.from(document.querySelectorAll("[data-management-filter-button]"));
     const ledgerFilterPopover = document.querySelector("#ledgerFilterPopover");
@@ -1852,9 +1865,9 @@ HTML = r"""<!doctype html>
       if (!payload.title && !payload.body) {
         noticePreview.innerHTML = `<strong>저장된 공지사항이 없습니다.</strong>공지사항을 입력하고 저장하면 이곳에서 미리 볼 수 있습니다.`;
         sidebarNoticePreview.innerHTML = `
-          <div class="sidebar-notice-kicker">금일 공지사항</div>
-          <div class="sidebar-notice-title">등록된 공지 없음</div>
-          <div class="sidebar-notice-body">공지사항 메뉴를 눌러 내용을 입력해주세요.</div>
+          <div class="right-notice-kicker">금일 공지사항</div>
+          <div class="right-notice-title">등록된 공지 없음</div>
+          <div class="right-notice-body">공지사항 메뉴를 눌러 내용을 입력해주세요.</div>
         `;
         return;
       }
@@ -1865,10 +1878,10 @@ HTML = r"""<!doctype html>
         <div>${escapeHtml(payload.body).replaceAll("\n", "<br>")}</div>
       `;
       sidebarNoticePreview.innerHTML = `
-        <div class="sidebar-notice-kicker">금일 공지사항</div>
-        <div class="sidebar-notice-title">${escapeHtml(payload.title || "제목 없음")}</div>
-        <div class="sidebar-notice-meta">${escapeHtml(meta)}</div>
-        <div class="sidebar-notice-body">${escapeHtml(payload.body || "내용 없음")}</div>
+        <div class="right-notice-kicker">금일 공지사항</div>
+        <div class="right-notice-title">${escapeHtml(payload.title || "제목 없음")}</div>
+        <div class="right-notice-meta">${escapeHtml(meta)}</div>
+        <div class="right-notice-body">${escapeHtml(payload.body || "내용 없음")}</div>
       `;
     }
 
@@ -2778,6 +2791,40 @@ HTML = r"""<!doctype html>
       }
     }
 
+    function selectedIds(container, rowSelector, idName) {
+      return selectedRows(container, rowSelector)
+        .map((row) => row.dataset[idName])
+        .filter(Boolean);
+    }
+
+    async function deleteSelectedRows(mode) {
+      const isManagement = mode === "management";
+      const ids = isManagement
+        ? selectedIds(managementBody, "tr[data-record-id]", "recordId")
+        : selectedIds(ledgerBody, "tr[data-case-id]", "caseId");
+      if (ids.length === 0) {
+        notice.textContent = isManagement ? "삭제할 통합관리대장 행을 체크해주세요." : "삭제할 CS 처리대장 행을 체크해주세요.";
+        return;
+      }
+      const label = isManagement ? "통합관리대장" : "CS 처리대장";
+      if (!window.confirm(`${label} 선택 주문 ${ids.length}건을 삭제할까요?`)) return;
+      const endpoint = isManagement ? "/api/management-records-delete" : "/api/cs-cases-delete";
+      try {
+        const response = await fetch(endpoint, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ids }),
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "선택 주문 삭제에 실패했습니다.");
+        notice.textContent = data.message || `${label} 선택 주문 ${ids.length}건을 삭제했습니다.`;
+        if (isManagement) await loadManagementRecords();
+        else await loadLedgerCases();
+      } catch (error) {
+        notice.textContent = error.message;
+      }
+    }
+
     function collectManagementExportRows() {
       return Array.from(managementBody.querySelectorAll("tr[data-record-id]")).map((row) => collectManagementRow(row));
     }
@@ -3258,6 +3305,8 @@ HTML = r"""<!doctype html>
     managementImportInput.addEventListener("change", uploadManagementWorkbook);
     managementSaveAll.addEventListener("click", () => saveCurrentWorkspaceRows({ mode: "management", selectedOnly: true }));
     ledgerSaveAll.addEventListener("click", () => saveCurrentWorkspaceRows({ mode: "ledger", selectedOnly: true }));
+    managementDeleteSelected.addEventListener("click", () => deleteSelectedRows("management"));
+    ledgerDeleteSelected.addEventListener("click", () => deleteSelectedRows("ledger"));
     managementPageSize.addEventListener("change", loadManagementRecords);
     ledgerPageSize.addEventListener("change", loadLedgerCases);
     ledgerYearFilter.addEventListener("change", loadLedgerCases);
@@ -3881,6 +3930,20 @@ def update_cs_case(case_id: int, payload: dict) -> None:
         connection.close()
 
 
+def delete_cs_cases(case_ids: list[int]) -> int:
+    init_db()
+    if not case_ids:
+        return 0
+    placeholders = ", ".join("?" for _ in case_ids)
+    connection = connect_db()
+    try:
+        cursor = connection.execute(f"DELETE FROM cs_cases WHERE id IN ({placeholders})", case_ids)
+        connection.commit()
+        return int(cursor.rowcount or 0)
+    finally:
+        connection.close()
+
+
 def list_management_records(query: str = "", limit: int = 300, year: str = "", month: str = "") -> list[dict[str, str | int]]:
     init_db()
     query = query.strip()
@@ -3991,6 +4054,20 @@ def update_management_record(record_id: int, payload: dict) -> None:
         connection.commit()
         if cursor.rowcount == 0:
             raise ValueError("수정할 통합관리대장 행을 찾지 못했습니다.")
+    finally:
+        connection.close()
+
+
+def delete_management_records(record_ids: list[int]) -> int:
+    init_db()
+    if not record_ids:
+        return 0
+    placeholders = ", ".join("?" for _ in record_ids)
+    connection = connect_db()
+    try:
+        cursor = connection.execute(f"DELETE FROM management_records WHERE id IN ({placeholders})", record_ids)
+        connection.commit()
+        return int(cursor.rowcount or 0)
     finally:
         connection.close()
 
@@ -4864,6 +4941,16 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                 self.send_json({"message": "CS 처리내용을 저장했습니다.", "case_id": case_id})
                 return
 
+            if self.path == "/api/cs-cases-delete":
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(length).decode("utf-8"))
+                case_ids = [int(value) for value in payload.get("ids", []) if str(value).isdigit()]
+                if not case_ids:
+                    raise ValueError("삭제할 CS 처리대장 행이 없습니다.")
+                deleted = delete_cs_cases(case_ids)
+                self.send_json({"message": f"CS 처리대장 선택 주문 {deleted}건을 삭제했습니다.", "deleted": deleted})
+                return
+
             if self.path == "/api/management-record-update":
                 length = int(self.headers.get("Content-Length", "0"))
                 payload = json.loads(self.rfile.read(length).decode("utf-8"))
@@ -4872,6 +4959,16 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                     raise ValueError("수정할 통합관리대장 행 ID가 없습니다.")
                 update_management_record(record_id, payload)
                 self.send_json({"message": "통합관리대장 행을 저장했습니다.", "record_id": record_id})
+                return
+
+            if self.path == "/api/management-records-delete":
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(length).decode("utf-8"))
+                record_ids = [int(value) for value in payload.get("ids", []) if str(value).isdigit()]
+                if not record_ids:
+                    raise ValueError("삭제할 통합관리대장 행이 없습니다.")
+                deleted = delete_management_records(record_ids)
+                self.send_json({"message": f"통합관리대장 선택 주문 {deleted}건을 삭제했습니다.", "deleted": deleted})
                 return
 
             if self.path == "/api/management-to-cs":
