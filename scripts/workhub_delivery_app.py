@@ -89,22 +89,24 @@ HTML = r"""<!doctype html>
   <title>(주)소일브릿지 발주 업무자동화</title>
   <style>
     :root {
-      --bg: #f7f9fc;
+      --bg: #f5f7fb;
       --panel: #ffffff;
-      --line: #d7dce5;
+      --line: #e3e8f2;
       --text: #111827;
-      --muted: #687385;
-      --blue: #155bc8;
-      --blue-soft: #eaf2ff;
-      --green: #087a46;
-      --green-soft: #eaf8ef;
-      --orange: #b45c08;
-      --orange-soft: #fff2dd;
-      --purple: #663399;
-      --purple-soft: #f0e8fb;
-      --red: #c80d1e;
-      --red-soft: #ffe4e7;
-      --shadow: 0 18px 45px rgba(15, 23, 42, .16);
+      --muted: #667085;
+      --navy: #071a3b;
+      --navy-2: #10285a;
+      --blue: #2563eb;
+      --blue-soft: #dbeafe;
+      --green: #079455;
+      --green-soft: #dcfae6;
+      --orange: #d97706;
+      --orange-soft: #fef0c7;
+      --purple: #7c3aed;
+      --purple-soft: #ede9fe;
+      --red: #dc2626;
+      --red-soft: #fee2e2;
+      --shadow: 0 10px 28px rgba(15, 23, 42, .08);
       font-family: Pretendard, Inter, "Noto Sans KR", "Malgun Gothic", Arial, sans-serif;
     }
 
@@ -112,64 +114,132 @@ HTML = r"""<!doctype html>
     body {
       margin: 0;
       color: var(--text);
-      background:
-        radial-gradient(circle at 10% 0%, rgba(255,255,255,.95), transparent 34%),
-        linear-gradient(180deg, #fbfcfe 0%, var(--bg) 100%);
+      background: var(--bg);
       letter-spacing: 0;
     }
 
-    .app { min-height: 100vh; display: grid; grid-template-columns: 218px 1fr; }
+    .app { min-height: 100vh; display: grid; grid-template-columns: 232px minmax(0, 1fr); }
     .sidebar {
-      border-right: 1px solid var(--line);
-      background: rgba(255,255,255,.74);
-      backdrop-filter: blur(10px);
-      padding: 26px 12px;
+      background: linear-gradient(180deg, var(--navy), #081430);
+      color: white;
+      padding: 22px 16px;
     }
     .brand-icon {
-      width: 60px; height: 60px; border-radius: 10px;
+      width: 38px; height: 38px; border-radius: 9px;
       display: grid; place-items: center;
-      background: linear-gradient(180deg, #18355f, #0c1f3f);
+      background: linear-gradient(145deg, #2f6df6, #7c3aed);
       color: white;
-      box-shadow: 0 8px 18px rgba(15, 35, 70, .22);
-      margin: 0 0 8px 12px;
+      box-shadow: 0 8px 18px rgba(15, 35, 70, .18);
+      margin: 0;
+      flex: 0 0 auto;
     }
-    .brand-label { font-size: 19px; font-weight: 800; line-height: 1.35; margin: 0 0 24px 9px; }
+    .brand-icon svg { width: 21px; height: 21px; }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 11px;
+      margin-bottom: 26px;
+      padding: 0 4px;
+    }
+    .brand-label { font-size: 18px; font-weight: 900; line-height: 1.32; margin: 0; }
     .nav-item, .nav-section, .app-add {
       display: flex; align-items: center; gap: 13px;
-      min-height: 43px; padding: 0 14px; border-radius: 7px;
-      font-size: 17px; font-weight: 520; color: #151a22;
+      min-height: 43px; padding: 0 12px; border-radius: 8px;
+      font-size: 14px; font-weight: 750; color: #d9e3ff;
+      margin-bottom: 6px;
     }
     .nav-item.active {
-      color: var(--blue);
-      background: linear-gradient(90deg, #dceaff, #cfe0f9);
-      font-weight: 750;
+      color: white;
+      background: rgba(72, 118, 255, .28);
+      box-shadow: inset 0 0 0 1px rgba(255,255,255,.08);
     }
-    .nav-section { justify-content: space-between; margin-top: 20px; color: #313946; }
-    .hash { font-size: 22px; width: 24px; text-align: center; color: #263241; }
-    .divider { height: 1px; background: var(--line); margin: 18px 6px; }
+    .nav-item svg { width: 18px; height: 18px; flex: 0 0 auto; }
+    .nav-section {
+      min-height: auto;
+      padding: 0 8px 8px;
+      margin: 18px 0 0;
+      color: #9fb0d3;
+      font-size: 12px;
+      font-weight: 850;
+    }
+    .hash { font-size: 15px; width: 22px; text-align: center; color: #d9e3ff; font-weight: 900; }
+    .divider { height: 1px; background: rgba(255,255,255,.12); margin: 18px 6px; }
 
     main { min-width: 0; }
     .topbar {
-      min-height: 108px; display: flex; align-items: center; justify-content: space-between;
-      padding: 0 22px 0 31px; border-bottom: 1px solid var(--line);
-      background: rgba(255,255,255,.8);
+      height: 74px;
+      display: grid;
+      grid-template-columns: 1fr minmax(260px, 430px) auto;
+      align-items: center;
+      gap: 18px;
+      padding: 0 22px;
     }
     .title-wrap { display: grid; gap: 8px; }
-    .title { display: flex; align-items: center; gap: 10px; font-size: 34px; font-weight: 850; line-height: 1; }
-    .subtitle { margin: 0; color: var(--muted); font-size: 16px; font-weight: 520; }
+    .title { display: flex; align-items: center; gap: 10px; font-size: 25px; font-weight: 900; line-height: 1.2; }
+    .subtitle { display: none; }
     .top-actions { display: flex; gap: 12px; }
     .top-button {
-      height: 44px; padding: 0 15px; border-radius: 8px; border: 1px solid #c4cad5;
+      height: 38px; padding: 0 13px; border-radius: 8px; border: 1px solid var(--line);
       background: #fff; display: flex; align-items: center; gap: 8px;
-      font-size: 16px; font-weight: 650; color: #171b22;
+      font-size: 13px; font-weight: 850; color: #344054;
+    }
+    .top-search {
+      height: 42px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: white;
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      padding: 0 14px;
+      color: #98a2b3;
+      font-size: 13px;
+      font-weight: 700;
+    }
+    .top-tools {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .icon-button {
+      width: 38px;
+      height: 38px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: white;
+      display: grid;
+      place-items: center;
+      color: #344054;
+      cursor: default;
+    }
+    .icon-button svg,
+    .top-search svg { width: 17px; height: 17px; }
+    .user-chip {
+      height: 40px;
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      padding: 0 11px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: white;
+      font-size: 13px;
+      font-weight: 850;
+      white-space: nowrap;
+    }
+    .avatar {
+      width: 27px;
+      height: 27px;
+      border-radius: 50%;
+      background: linear-gradient(145deg, #155bc8, #08a66c);
     }
 
-    .content { padding: 32px 34px; display: grid; gap: 22px; }
+    .content { padding: 0 22px 24px; display: grid; gap: 16px; }
     .card {
-      background: rgba(255,255,255,.88);
-      border: 1px solid #cfd5df;
+      background: var(--panel);
+      border: 1px solid var(--line);
       border-radius: 8px;
-      box-shadow: 0 1px 1px rgba(0,0,0,.02);
+      box-shadow: var(--shadow);
     }
     .summary { padding: 18px 21px 26px; }
     .section-title { margin: 0 0 26px; font-size: 24px; font-weight: 850; }
@@ -189,13 +259,71 @@ HTML = r"""<!doctype html>
     .metric-value.orange { color: #d16b0b; }
     .metric-value.green { color: var(--green); }
 
-    .action-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 22px; max-width: 1120px; }
-    .action-card {
-      min-height: 286px;
-      padding: 24px 24px 22px;
+    .stat-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 14px;
+    }
+    .stat-card {
+      padding: 18px 18px 17px;
+      min-height: 116px;
+      display: grid;
+      grid-template-columns: 1fr 56px;
+      gap: 10px;
+      align-items: center;
+    }
+    .stat-label {
+      color: #344054;
+      font-size: 13px;
+      font-weight: 850;
+      margin-bottom: 10px;
+    }
+    .stat-value {
+      font-size: 28px;
+      line-height: 1;
+      font-weight: 950;
+    }
+    .stat-trend {
+      margin-top: 12px;
+      font-size: 12px;
+      color: var(--green);
+      font-weight: 850;
+    }
+    .stat-trend.red { color: var(--red); }
+    .stat-icon {
+      width: 54px;
+      height: 54px;
+      border-radius: 16px;
+      display: grid;
+      place-items: center;
+      font-size: 24px;
+      font-weight: 950;
+    }
+    .stat-icon svg { width: 24px; height: 24px; }
+    .stat-icon.blue { color: var(--blue); background: var(--blue-soft); }
+    .stat-icon.green { color: var(--green); background: var(--green-soft); }
+    .stat-icon.orange { color: var(--orange); background: var(--orange-soft); }
+    .stat-icon.purple { color: var(--purple); background: var(--purple-soft); }
+
+    .dashboard-card { padding: 0; }
+    .dashboard-head {
       display: flex;
-      flex-direction: column;
+      align-items: center;
       justify-content: space-between;
+      margin-bottom: 13px;
+    }
+    .dashboard-title {
+      font-size: 17px;
+      font-weight: 950;
+    }
+    .action-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+    .action-card {
+      min-height: 150px;
+      padding: 16px;
+      display: grid;
+      grid-template-columns: 46px minmax(0, 1fr);
+      gap: 12px;
+      align-items: start;
       transition: border-color .16s ease, box-shadow .16s ease, transform .16s ease;
     }
     .action-card:hover {
@@ -203,43 +331,48 @@ HTML = r"""<!doctype html>
       box-shadow: 0 12px 28px rgba(15, 23, 42, .08);
       transform: translateY(-1px);
     }
-    .action-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 22px; }
-    .action-icon { width: 72px; height: 72px; border-radius: 15px; display: grid; place-items: center; flex: 0 0 auto; }
+    .action-main { min-width: 0; }
+    .action-top { display: contents; }
+    .action-icon { width: 42px; height: 42px; border-radius: 10px; display: grid; place-items: center; flex: 0 0 auto; }
+    .action-icon svg { width: 20px; height: 20px; }
     .action-icon.blue { background: var(--blue-soft); color: var(--blue); }
     .action-icon.green { background: var(--green-soft); color: var(--green); }
     .action-icon.orange { background: var(--orange-soft); color: var(--orange); }
     .action-icon.purple { background: var(--purple-soft); color: var(--purple); }
     .action-kicker {
-      height: 30px;
+      height: 23px;
       padding: 0 12px;
       display: inline-flex;
       align-items: center;
       border-radius: 999px;
-      font-size: 13px;
+      font-size: 11px;
       font-weight: 850;
       background: #f3f6fb;
       color: #566174;
       white-space: nowrap;
+      margin-bottom: 9px;
     }
     .action-kicker.blue { background: var(--blue-soft); color: var(--blue); }
     .action-kicker.green { background: var(--green-soft); color: var(--green); }
     .action-kicker.orange { background: var(--orange-soft); color: var(--orange); }
     .action-kicker.purple { background: var(--purple-soft); color: var(--purple); }
-    .action-title { font-size: 25px; font-weight: 850; margin: 0 0 12px; }
-    .action-sub { min-height: 48px; color: var(--muted); font-size: 16px; line-height: 1.55; margin: 0 0 26px; }
+    .action-title { font-size: 15px; font-weight: 950; margin: 0 0 6px; }
+    .action-sub { min-height: 38px; color: var(--muted); font-size: 12px; line-height: 1.45; margin: 0 0 12px; }
     .action-button {
-      height: 52px;
-      border-radius: 8px;
-      border: 1px solid #7da8ea;
-      background: #f9fbff;
-      color: var(--blue);
-      font-size: 18px;
-      font-weight: 800;
+      height: 31px;
+      min-width: 88px;
+      padding: 0 12px;
+      border-radius: 7px;
+      border: 1px solid #cbd5e1;
+      background: white;
+      color: #1f2937;
+      font-size: 12px;
+      font-weight: 900;
       cursor: pointer;
     }
-    .action-button.green { color: var(--green); border-color: #6eb78f; background: #fbfffc; }
-    .action-button.orange { color: var(--orange); border-color: #e3a556; background: #fffdf9; }
-    .action-button.purple { color: var(--purple); border-color: #a084c8; background: #fdfbff; }
+    .action-button.green { color: #1f2937; border-color: #cbd5e1; background: white; }
+    .action-button.orange { color: #1f2937; border-color: #cbd5e1; background: white; }
+    .action-button.purple { color: #1f2937; border-color: #cbd5e1; background: white; }
     .action-button:hover { filter: brightness(.985); }
 
     .lower { display: grid; grid-template-columns: 2fr 1fr; gap: 34px; }
@@ -698,106 +831,163 @@ HTML = r"""<!doctype html>
       cursor: pointer;
     }
 
-    @media (max-width: 980px) {
+    @media (max-width: 1180px) {
+      .app { grid-template-columns: 76px minmax(0, 1fr); }
+      .brand { justify-content: center; padding: 0; }
+      .brand-label, .nav-item span, .nav-section { display: none; }
+      .nav-item { justify-content: center; padding: 0; }
+      .stat-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .action-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+    @media (max-width: 760px) {
       .app { grid-template-columns: 1fr; }
       .sidebar { display: none; }
-      .topbar { padding: 0 16px; }
-      .title { font-size: 28px; }
-      .metrics, .action-grid, .lower { grid-template-columns: 1fr; }
-      .metric:not(:last-child)::after { display: none; }
+      .topbar {
+        height: auto;
+        padding: 16px 12px;
+        grid-template-columns: 1fr;
+      }
+      .top-tools { display: none; }
+      .content { padding: 0 12px 18px; }
+      .title { font-size: 22px; }
+      .stat-grid,
+      .action-grid { grid-template-columns: 1fr; }
     }
   </style>
 </head>
 <body>
   <div class="app">
     <aside class="sidebar">
-      <div class="brand-icon"><i data-lucide="briefcase-business"></i></div>
-      <div class="brand-label">(주)소일브릿지 발주<br>업무자동화</div>
-      <div class="nav-item active"><i data-lucide="home"></i> 발주 자동화</div>
+      <div class="brand">
+        <div class="brand-icon"><i data-lucide="briefcase-business"></i></div>
+        <div class="brand-label">(주)소일브릿지<br>업무자동화</div>
+      </div>
+      <div class="nav-section">MAIN</div>
+      <div class="nav-item active"><i data-lucide="home"></i> <span>대시보드</span></div>
+      <div class="nav-item"><i data-lucide="clipboard-list"></i> <span>발주 자동화</span></div>
+      <div class="nav-item"><i data-lucide="clipboard-check"></i> <span>CS 처리대장</span></div>
+      <div class="nav-item"><i data-lucide="mail"></i> <span>업체 메일</span></div>
+      <div class="nav-section">TOOLS</div>
+      <div class="nav-item"><i data-lucide="file-spreadsheet"></i> <span>송장 추출</span></div>
+      <div class="nav-item"><i data-lucide="truck"></i> <span>차량인수증</span></div>
     </aside>
 
     <main>
       <header class="topbar">
         <div class="title-wrap">
-          <div class="title">(주)소일브릿지 발주 업무자동화 <i data-lucide="chevron-down"></i></div>
+          <div class="title">업무 자동화 대시보드 <i data-lucide="chevron-down"></i></div>
           <p class="subtitle">발주 파일 변환과 인수증 생성을 한 곳에서 처리합니다.</p>
+        </div>
+        <div class="top-search"><i data-lucide="file-text"></i> 파일명, 수령인, 송장번호, CS내용 검색</div>
+        <div class="top-tools">
+          <button class="icon-button" type="button"><i data-lucide="bell"></i></button>
+          <button class="icon-button" type="button"><i data-lucide="refresh-cw"></i></button>
+          <div class="user-chip"><span class="avatar"></span><span>관리자</span></div>
         </div>
       </header>
 
       <section class="content">
-        <div class="action-grid">
-          <article class="card action-card">
+        <div class="stat-grid">
+          <article class="card stat-card">
             <div>
-              <div class="action-top">
-                <div class="action-icon blue"><i data-lucide="file-text"></i></div>
-                <span class="action-kicker blue">텍스트</span>
-              </div>
-              <h2 class="action-title">개별 택배건 정리</h2>
-              <p class="action-sub">주소일브릿지 엑셀을 전달용 텍스트로 변환합니다.</p>
+              <div class="stat-label">오늘 택배건</div>
+              <div class="stat-value">352</div>
+              <div class="stat-trend">전일 대비 ▲ 12.5%</div>
             </div>
-            <button class="action-button" data-open="delivery">엑셀 업로드</button>
+            <div class="stat-icon blue"><i data-lucide="package"></i></div>
           </article>
-
-          <article class="card action-card">
+          <article class="card stat-card">
             <div>
-              <div class="action-top">
-                <div class="action-icon green"><i data-lucide="file-spreadsheet"></i></div>
-                <span class="action-kicker green">엑셀</span>
-              </div>
-              <h2 class="action-title">송장번호 추출</h2>
-              <p class="action-sub">출고송장 엑셀에서 수하인별 송장번호 엑셀을 생성합니다.</p>
+              <div class="stat-label">송장 추출</div>
+              <div class="stat-value">87</div>
+              <div class="stat-trend">완료율 ▲ 5.3%</div>
             </div>
-            <button class="action-button green" data-open="invoice">엑셀 업로드</button>
+            <div class="stat-icon purple"><i data-lucide="file-spreadsheet"></i></div>
           </article>
-
-          <article class="card action-card">
+          <article class="card stat-card">
             <div>
-              <div class="action-top">
-                <div class="action-icon orange"><i data-lucide="clipboard-list"></i></div>
-                <span class="action-kicker orange">양식</span>
-              </div>
-              <h2 class="action-title">롯데택배 발주서 변환</h2>
-              <p class="action-sub">주소일브릿지 원본을 업로드해 지정 양식으로 출력합니다.</p>
+              <div class="stat-label">CS 미처리</div>
+              <div class="stat-value">23</div>
+              <div class="stat-trend red">전일 대비 ▲ 3.1%</div>
             </div>
-            <button class="action-button orange" data-open="lotte">엑셀 업로드</button>
+            <div class="stat-icon orange"><i data-lucide="headphones"></i></div>
           </article>
-
-          <article class="card action-card">
+          <article class="card stat-card">
             <div>
-              <div class="action-top">
-                <div class="action-icon purple"><i data-lucide="truck"></i></div>
-                <span class="action-kicker purple">직접입력</span>
-              </div>
-              <h2 class="action-title">차량인수증 생성</h2>
-              <p class="action-sub">직접 입력한 제품 내역을 인수증 양식으로 출력합니다.</p>
+              <div class="stat-label">완료 처리</div>
+              <div class="stat-value">128</div>
+              <div class="stat-trend">전일 대비 ▲ 18.2%</div>
             </div>
-            <button class="action-button purple" data-open="vehicle">인수증 입력</button>
-          </article>
-
-          <article class="card action-card">
-            <div>
-              <div class="action-top">
-                <div class="action-icon blue"><i data-lucide="mail"></i></div>
-                <span class="action-kicker blue">메일</span>
-              </div>
-              <h2 class="action-title">업체 CS 요청</h2>
-              <p class="action-sub">업체별 CS 요청 내용을 작성해 네이버 메일로 전송합니다.</p>
-            </div>
-            <button class="action-button" data-open="cs">메일 작성</button>
-          </article>
-
-          <article class="card action-card">
-            <div>
-              <div class="action-top">
-                <div class="action-icon green"><i data-lucide="clipboard-check"></i></div>
-                <span class="action-kicker green">DB</span>
-              </div>
-              <h2 class="action-title">CS 처리대장</h2>
-              <p class="action-sub">자동화 DB에 저장된 CS건을 처리대장 형태로 조회합니다.</p>
-            </div>
-            <button class="action-button green" data-open="ledger">처리대장 보기</button>
+            <div class="stat-icon green"><i data-lucide="copy-check"></i></div>
           </article>
         </div>
+
+        <section class="dashboard-card">
+          <div class="dashboard-head">
+            <div class="dashboard-title">빠른 실행</div>
+          </div>
+          <div class="action-grid">
+          <article class="card action-card">
+            <div class="action-icon blue"><i data-lucide="file-text"></i></div>
+            <div class="action-main">
+                <span class="action-kicker blue">텍스트</span>
+              <h2 class="action-title">개별 택배건 정리</h2>
+              <p class="action-sub">주소일브릿지 엑셀을 전달용 텍스트로 변환합니다.</p>
+              <button class="action-button" data-open="delivery">엑셀 업로드</button>
+            </div>
+          </article>
+
+          <article class="card action-card">
+            <div class="action-icon green"><i data-lucide="file-spreadsheet"></i></div>
+            <div class="action-main">
+                <span class="action-kicker green">엑셀</span>
+              <h2 class="action-title">송장번호 추출</h2>
+              <p class="action-sub">출고송장 엑셀에서 수하인별 송장번호 엑셀을 생성합니다.</p>
+              <button class="action-button green" data-open="invoice">엑셀 업로드</button>
+            </div>
+          </article>
+
+          <article class="card action-card">
+            <div class="action-icon orange"><i data-lucide="clipboard-list"></i></div>
+            <div class="action-main">
+                <span class="action-kicker orange">양식</span>
+              <h2 class="action-title">롯데택배 발주서 변환</h2>
+              <p class="action-sub">주소일브릿지 원본을 업로드해 지정 양식으로 출력합니다.</p>
+              <button class="action-button orange" data-open="lotte">엑셀 업로드</button>
+            </div>
+          </article>
+
+          <article class="card action-card">
+            <div class="action-icon purple"><i data-lucide="truck"></i></div>
+            <div class="action-main">
+                <span class="action-kicker purple">직접입력</span>
+              <h2 class="action-title">차량인수증 생성</h2>
+              <p class="action-sub">직접 입력한 제품 내역을 인수증 양식으로 출력합니다.</p>
+              <button class="action-button purple" data-open="vehicle">인수증 입력</button>
+            </div>
+          </article>
+
+          <article class="card action-card">
+            <div class="action-icon blue"><i data-lucide="mail"></i></div>
+            <div class="action-main">
+                <span class="action-kicker blue">메일</span>
+              <h2 class="action-title">업체 CS 요청</h2>
+              <p class="action-sub">업체별 CS 요청 내용을 작성해 네이버 메일로 전송합니다.</p>
+              <button class="action-button" data-open="cs">메일 작성</button>
+            </div>
+          </article>
+
+          <article class="card action-card">
+            <div class="action-icon green"><i data-lucide="clipboard-check"></i></div>
+            <div class="action-main">
+                <span class="action-kicker green">DB</span>
+              <h2 class="action-title">CS 처리대장</h2>
+              <p class="action-sub">자동화 DB에 저장된 CS건을 처리대장 형태로 조회합니다.</p>
+              <button class="action-button green" data-open="ledger">처리대장 보기</button>
+            </div>
+          </article>
+          </div>
+        </section>
       </section>
     </main>
   </div>
