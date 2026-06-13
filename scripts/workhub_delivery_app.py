@@ -659,25 +659,34 @@ HTML = r"""<!doctype html>
       margin-top: 3px;
     }
     .ledger-toolbar {
-      display: grid;
-      grid-template-columns: 1fr 180px auto auto auto;
-      gap: 10px;
-      margin-bottom: 14px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 7px;
+      margin-bottom: 10px;
       align-items: center;
     }
+    .ledger-toolbar input { flex: 1 1 280px; min-width: 220px; }
     .ledger-toolbar input,
     .ledger-toolbar select {
-      height: 44px;
+      height: 34px;
       border: 1px solid #aab2bf;
       border-radius: 7px;
-      padding: 0 12px;
-      font-size: 15px;
+      padding: 0 9px;
+      font-size: 12px;
       font-family: inherit;
       background: white;
     }
+    .ledger-toolbar select { flex: 0 0 auto; max-width: 160px; }
+    .ledger-toolbar .btn {
+      height: 34px;
+      min-width: auto;
+      padding: 0 11px;
+      border-radius: 7px;
+      font-size: 12px;
+    }
     .ledger-import-button {
-      height: 44px;
-      min-width: 112px;
+      height: 34px;
+      min-width: 86px;
       border: 1px solid #0d6ddf;
       border-radius: 7px;
       background: #eef6ff;
@@ -685,14 +694,14 @@ HTML = r"""<!doctype html>
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      gap: 7px;
-      font-size: 14px;
+      gap: 6px;
+      font-size: 12px;
       font-weight: 850;
       cursor: pointer;
     }
     .ledger-import-button svg {
-      width: 16px;
-      height: 16px;
+      width: 14px;
+      height: 14px;
     }
     .ledger-import-button input { display: none; }
     .ledger-wrap {
@@ -1361,6 +1370,12 @@ HTML = r"""<!doctype html>
               <option value="재발송 완료">재발송 완료</option>
               <option value="전체 처리완료">전체 처리완료</option>
             </select>
+            <select id="ledgerYearFilter">
+              <option value="">년도별로 보기</option>
+            </select>
+            <select id="ledgerMonthFilter">
+              <option value="">월별로 보기</option>
+            </select>
             <button class="btn blue" id="ledgerRefresh" type="button">조회</button>
             <select id="ledgerPageSize">
               <option value="100">100개씩 보기</option>
@@ -1411,6 +1426,12 @@ HTML = r"""<!doctype html>
         <div class="management-fields" id="managementFields">
           <div class="ledger-toolbar">
             <input id="managementSearchInput" type="text" placeholder="거래처, 수령자, 상품명, 주소, 송장번호 검색" />
+            <select id="managementYearFilter">
+              <option value="">년도별로 보기</option>
+            </select>
+            <select id="managementMonthFilter">
+              <option value="">월별로 보기</option>
+            </select>
             <button class="btn blue" id="managementRefresh" type="button">조회</button>
             <select id="managementPageSize">
               <option value="100">100개씩 보기</option>
@@ -1532,6 +1553,8 @@ HTML = r"""<!doctype html>
     const ledgerCsPopupClose = document.querySelector("#ledgerCsPopupClose");
     const ledgerSearchInput = document.querySelector("#ledgerSearchInput");
     const ledgerStatusFilter = document.querySelector("#ledgerStatusFilter");
+    const ledgerYearFilter = document.querySelector("#ledgerYearFilter");
+    const ledgerMonthFilter = document.querySelector("#ledgerMonthFilter");
     const ledgerRefresh = document.querySelector("#ledgerRefresh");
     const ledgerPageSize = document.querySelector("#ledgerPageSize");
     const ledgerDownloadExcel = document.querySelector("#ledgerDownloadExcel");
@@ -1540,6 +1563,8 @@ HTML = r"""<!doctype html>
     const ledgerImportInput = document.querySelector("#ledgerImportInput");
     const ledgerImportDropMain = document.querySelector("#ledgerImportDropMain");
     const managementSearchInput = document.querySelector("#managementSearchInput");
+    const managementYearFilter = document.querySelector("#managementYearFilter");
+    const managementMonthFilter = document.querySelector("#managementMonthFilter");
     const managementRefresh = document.querySelector("#managementRefresh");
     const managementPageSize = document.querySelector("#managementPageSize");
     const managementDownloadExcel = document.querySelector("#managementDownloadExcel");
@@ -1579,6 +1604,8 @@ HTML = r"""<!doctype html>
     if (managementWorkspaceMount && managementFields) managementWorkspaceMount.appendChild(managementFields);
     if (ledgerWorkspaceMount && ledgerFields) ledgerWorkspaceMount.appendChild(ledgerFields);
     if (ledgerFilterPopover) document.body.appendChild(ledgerFilterPopover);
+    fillPeriodSelects(ledgerYearFilter, ledgerMonthFilter);
+    fillPeriodSelects(managementYearFilter, managementMonthFilter);
 
     function addProductRow(productName = "", quantity = "", packQuantity = "") {
       const row = document.createElement("div");
@@ -1604,6 +1631,27 @@ HTML = r"""<!doctype html>
       const now = new Date();
       const offset = now.getTimezoneOffset() * 60000;
       return new Date(now.getTime() - offset).toISOString().slice(0, 10);
+    }
+
+    function fillPeriodSelects(yearSelect, monthSelect) {
+      const currentYear = new Date().getFullYear();
+      const startYear = 2023;
+      for (let year = currentYear + 1; year >= startYear; year -= 1) {
+        const option = document.createElement("option");
+        option.value = String(year);
+        option.textContent = `${year}년`;
+        yearSelect.appendChild(option);
+      }
+      for (let month = 1; month <= 12; month += 1) {
+        const option = document.createElement("option");
+        option.value = String(month).padStart(2, "0");
+        option.textContent = `${month}월`;
+        monthSelect.appendChild(option);
+      }
+    }
+
+    function ensureYearForMonth(yearSelect, monthSelect) {
+      if (monthSelect.value && !yearSelect.value) yearSelect.value = String(new Date().getFullYear());
     }
 
     function collectVehiclePayload() {
@@ -2100,6 +2148,8 @@ HTML = r"""<!doctype html>
       const query = ledgerSearchInput.value.trim();
       const params = new URLSearchParams({ limit: ledgerPageSize.value || "100" });
       if (query) params.set("q", query);
+      if (ledgerYearFilter.value) params.set("year", ledgerYearFilter.value);
+      if (ledgerMonthFilter.value) params.set("month", ledgerMonthFilter.value);
       const url = `/api/cs-cases?${params.toString()}`;
       try {
         const response = await fetch(url);
@@ -2213,6 +2263,8 @@ HTML = r"""<!doctype html>
       const query = managementSearchInput.value.trim();
       const params = new URLSearchParams({ limit: managementPageSize.value || "100" });
       if (query) params.set("q", query);
+      if (managementYearFilter.value) params.set("year", managementYearFilter.value);
+      if (managementMonthFilter.value) params.set("month", managementMonthFilter.value);
       try {
         const response = await fetch(`/api/management-records?${params.toString()}`);
         if (!response.ok) return;
@@ -2654,6 +2706,8 @@ HTML = r"""<!doctype html>
         templateInput.required = false;
         ledgerSearchInput.value = "";
         ledgerStatusFilter.value = "";
+        ledgerYearFilter.value = "";
+        ledgerMonthFilter.value = "";
         ledgerImportInput.value = "";
         ledgerImportDropMain.textContent = "업로드";
         Object.keys(ledgerFilters).forEach((key) => delete ledgerFilters[key]);
@@ -2672,6 +2726,8 @@ HTML = r"""<!doctype html>
         fileInput.required = false;
         templateInput.required = false;
         managementSearchInput.value = "";
+        managementYearFilter.value = "";
+        managementMonthFilter.value = "";
         managementImportInput.value = "";
         managementImportDropMain.textContent = "업로드";
         Object.keys(managementFilters).forEach((key) => delete managementFilters[key]);
@@ -2882,6 +2938,16 @@ HTML = r"""<!doctype html>
     ledgerSaveAll.addEventListener("click", () => saveCurrentWorkspaceRows({ mode: "ledger" }));
     managementPageSize.addEventListener("change", loadManagementRecords);
     ledgerPageSize.addEventListener("change", loadLedgerCases);
+    ledgerYearFilter.addEventListener("change", loadLedgerCases);
+    managementYearFilter.addEventListener("change", loadManagementRecords);
+    ledgerMonthFilter.addEventListener("change", () => {
+      ensureYearForMonth(ledgerYearFilter, ledgerMonthFilter);
+      loadLedgerCases();
+    });
+    managementMonthFilter.addEventListener("change", () => {
+      ensureYearForMonth(managementYearFilter, managementMonthFilter);
+      loadManagementRecords();
+    });
     managementDownloadExcel.addEventListener("click", () => {
       downloadExcel("/api/management-export", collectManagementExportRows(), "통합관리대장.xlsx", managementDownloadExcel);
     });
@@ -3391,7 +3457,25 @@ def save_cs_case(payload: dict, status: str = "접수", mail_sent: bool = False)
         connection.close()
 
 
-def list_cs_cases(query: str = "", status: str = "", limit: int = 20) -> list[dict[str, str | int]]:
+def date_period_condition(fields: list[str], year: str = "", month: str = "") -> tuple[str, list[str]]:
+    year = clean_cell(year)
+    month = clean_cell(month).zfill(2) if clean_cell(month) else ""
+    if not re.fullmatch(r"\d{4}", year):
+        year = ""
+    if not re.fullmatch(r"\d{2}", month) or not (1 <= int(month) <= 12):
+        month = ""
+    if not year and not month:
+        return "", []
+    if year and month:
+        pattern = f"{year}-{month}%"
+    elif year:
+        pattern = f"{year}%"
+    else:
+        pattern = f"%-{month}-%"
+    return "(" + " OR ".join(f"{field} LIKE ?" for field in fields) + ")", [pattern] * len(fields)
+
+
+def list_cs_cases(query: str = "", status: str = "", limit: int = 20, year: str = "", month: str = "") -> list[dict[str, str | int]]:
     init_db()
     query = query.strip()
     status = status.strip()
@@ -3425,6 +3509,14 @@ def list_cs_cases(query: str = "", status: str = "", limit: int = 20) -> list[di
     if status:
         conditions.append("status = ?")
         params.append(status)
+    period_condition, period_params = date_period_condition(
+        ["occurred_at", "order_date", "ship_date", "created_at"],
+        year,
+        month,
+    )
+    if period_condition:
+        conditions.append(period_condition)
+        params.extend(period_params)
     where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
     params.append(limit)
     connection = connect_db()
@@ -3476,7 +3568,7 @@ def update_cs_case(case_id: int, payload: dict) -> None:
         connection.close()
 
 
-def list_management_records(query: str = "", limit: int = 300) -> list[dict[str, str | int]]:
+def list_management_records(query: str = "", limit: int = 300, year: str = "", month: str = "") -> list[dict[str, str | int]]:
     init_db()
     query = query.strip()
     params: list[object] = []
@@ -3505,6 +3597,10 @@ def list_management_records(query: str = "", limit: int = 300) -> list[dict[str,
             """
         )
         params = [pattern] * 15
+    period_condition, period_params = date_period_condition(["order_date", "ship_date", "created_at"], year, month)
+    if period_condition:
+        conditions.append(period_condition)
+        params.extend(period_params)
     where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
     params.append(limit)
     connection = connect_db()
@@ -4306,22 +4402,26 @@ class WorkhubHandler(BaseHTTPRequestHandler):
             params = parse_qs(parsed.query)
             query = params.get("q", [""])[0]
             status = params.get("status", [""])[0]
+            year = params.get("year", [""])[0]
+            month = params.get("month", [""])[0]
             try:
                 limit = min(max(int(params.get("limit", ["100"])[0]), 1), 5000)
             except ValueError:
                 limit = 100
-            self.send_json({"cases": list_cs_cases(query=query, status=status, limit=limit)})
+            self.send_json({"cases": list_cs_cases(query=query, status=status, limit=limit, year=year, month=month)})
             return
 
         if self.path.startswith("/api/management-records"):
             parsed = urlsplit(self.path)
             params = parse_qs(parsed.query)
             query = params.get("q", [""])[0]
+            year = params.get("year", [""])[0]
+            month = params.get("month", [""])[0]
             try:
                 limit = min(max(int(params.get("limit", ["100"])[0]), 1), 5000)
             except ValueError:
                 limit = 100
-            self.send_json({"records": list_management_records(query=query, limit=limit)})
+            self.send_json({"records": list_management_records(query=query, limit=limit, year=year, month=month)})
             return
 
         if self.path.startswith("/lucide/"):
