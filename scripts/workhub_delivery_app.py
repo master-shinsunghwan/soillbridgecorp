@@ -150,6 +150,39 @@ HTML = r"""<!doctype html>
       padding: 0 4px;
     }
     .brand-label { font-size: 18px; font-weight: 900; line-height: 1.32; margin: 0; }
+    .sidebar-notice {
+      border: 1px solid rgba(255,255,255,.16);
+      border-radius: 8px;
+      background: rgba(255,255,255,.08);
+      padding: 11px 12px;
+      margin: -10px 4px 16px;
+      color: #eef4ff;
+    }
+    .sidebar-notice-kicker {
+      font-size: 11px;
+      font-weight: 900;
+      color: #a9bff0;
+      margin-bottom: 6px;
+    }
+    .sidebar-notice-title {
+      font-size: 13px;
+      font-weight: 900;
+      line-height: 1.32;
+      margin-bottom: 4px;
+    }
+    .sidebar-notice-meta {
+      font-size: 11px;
+      color: #bdc9e2;
+      margin-bottom: 6px;
+    }
+    .sidebar-notice-body {
+      font-size: 12px;
+      line-height: 1.42;
+      color: #e5ecfb;
+      max-height: 68px;
+      overflow: hidden;
+      white-space: pre-line;
+    }
     .nav-item, .nav-section, .app-add {
       display: flex; align-items: center; gap: 13px;
       min-height: 43px; padding: 0 12px; border-radius: 8px;
@@ -366,6 +399,77 @@ HTML = r"""<!doctype html>
     }
     .dashboard-title {
       font-size: 17px;
+      font-weight: 950;
+    }
+    .notice-template {
+      display: grid;
+      gap: 10px;
+      padding: 14px;
+    }
+    .notice-template-grid {
+      display: grid;
+      grid-template-columns: 150px 1fr 160px;
+      gap: 8px;
+    }
+    .notice-template input,
+    .notice-template textarea {
+      border: 1px solid #cbd5e1;
+      border-radius: 7px;
+      padding: 0 10px;
+      font-family: inherit;
+      font-size: 13px;
+      background: white;
+    }
+    .notice-template input { height: 34px; }
+    .notice-template textarea {
+      min-height: 78px;
+      padding-top: 9px;
+      resize: vertical;
+    }
+    .notice-template-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+    }
+    .notice-preview {
+      border: 1px solid #e5e7eb;
+      border-radius: 7px;
+      padding: 10px 12px;
+      background: #f8fafc;
+      font-size: 13px;
+      line-height: 1.5;
+      color: #344054;
+    }
+    .notice-preview strong {
+      display: block;
+      color: #111827;
+      font-size: 14px;
+      margin-bottom: 3px;
+    }
+    .notice-popup-backdrop {
+      position: fixed;
+      inset: 0;
+      display: none;
+      place-items: center;
+      background: rgba(15, 23, 42, .28);
+      z-index: 70;
+      padding: 18px;
+    }
+    .notice-popup-backdrop.open { display: grid; }
+    .notice-popup {
+      width: min(680px, 100%);
+      border-radius: 10px;
+      border: 1px solid #d7dce5;
+      background: white;
+      box-shadow: 0 22px 50px rgba(15, 23, 42, .24);
+    }
+    .notice-popup-head {
+      height: 52px;
+      padding: 0 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid #e5e7eb;
       font-weight: 950;
     }
     .action-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
@@ -926,6 +1030,12 @@ HTML = r"""<!doctype html>
       font-size: 11px;
       cursor: pointer;
     }
+    .ledger-check {
+      width: 16px;
+      height: 16px;
+      accent-color: #155bc8;
+      cursor: pointer;
+    }
     .management-edit {
       width: 100%;
       min-width: 86px;
@@ -1053,6 +1163,11 @@ HTML = r"""<!doctype html>
       <div class="brand">
         <div class="brand-icon"><i data-lucide="briefcase-business"></i></div>
         <div class="brand-label">(주)소일브릿지<br>업무자동화</div>
+      </div>
+      <div class="sidebar-notice" id="sidebarNoticePreview">
+        <div class="sidebar-notice-kicker">금일 공지사항</div>
+        <div class="sidebar-notice-title">등록된 공지 없음</div>
+        <div class="sidebar-notice-body">공지사항 메뉴를 눌러 내용을 입력해주세요.</div>
       </div>
       <div class="nav-section">MAIN</div>
       <button class="nav-item active" type="button" data-view="dashboard"><i data-lucide="home"></i> <span>공지사항</span></button>
@@ -1197,7 +1312,7 @@ HTML = r"""<!doctype html>
         <div class="workspace-head">
           <div class="workspace-title">통합관리대장 관리</div>
           <div class="workspace-actions">
-            <button class="workspace-button" type="button" id="managementSaveAll">전체저장하기</button>
+            <button class="workspace-button" type="button" id="managementSaveAll">해당 내용 저장</button>
             <button class="workspace-button" type="button" data-open-window="management">새창으로 열기</button>
           </div>
         </div>
@@ -1207,13 +1322,38 @@ HTML = r"""<!doctype html>
         <div class="workspace-head">
           <div class="workspace-title">CS 처리대장</div>
           <div class="workspace-actions">
-            <button class="workspace-button" type="button" id="ledgerSaveAll">전체저장하기</button>
+            <button class="workspace-button" type="button" id="ledgerSaveAll">해당 내용 저장</button>
             <button class="workspace-button" type="button" data-open-window="ledger">새창으로 열기</button>
           </div>
         </div>
         <div class="workspace-mount" id="ledgerWorkspaceMount"></div>
       </section>
     </main>
+  </div>
+
+  <div class="notice-popup-backdrop" id="noticePopup">
+    <div class="notice-popup" role="dialog" aria-modal="true">
+      <div class="notice-popup-head">
+        <span>공지사항 입력</span>
+        <button class="close" id="noticePopupClose" type="button" aria-label="닫기"><i data-lucide="x"></i></button>
+      </div>
+      <div class="notice-template">
+        <div class="notice-template-grid">
+          <input id="noticeDateInput" type="date" />
+          <input id="noticeTitleInput" type="text" placeholder="공지 제목" />
+          <input id="noticeOwnerInput" type="text" placeholder="담당자" />
+        </div>
+        <textarea id="noticeBodyInput" placeholder="공지 내용을 입력해주세요. 예) 금일 출고 마감 시간 / 택배 특이사항 / 업체 회신 필요 건"></textarea>
+        <div class="notice-template-actions">
+          <button class="workspace-button" type="button" id="noticeClearButton">초기화</button>
+          <button class="workspace-button" type="button" id="noticeSaveButton">공지 저장</button>
+        </div>
+        <div class="notice-preview" id="noticePreview">
+          <strong>저장된 공지사항이 없습니다.</strong>
+          공지사항을 입력하고 저장하면 이곳에서 미리 볼 수 있습니다.
+        </div>
+      </div>
+    </div>
   </div>
 
   <div class="modal-backdrop" id="modal">
@@ -1412,7 +1552,7 @@ HTML = r"""<!doctype html>
             <table class="ledger-table">
               <thead>
                 <tr>
-                  <th>저장</th>
+                  <th>선택</th>
                   <th class="has-filter"><span class="ledger-th-title">날짜</span><button class="ledger-filter-trigger" type="button" data-ledger-filter-button="occurred_at" data-label="날짜">▼</button></th>
                   <th class="has-filter"><span class="ledger-th-title">매출거래처</span><button class="ledger-filter-trigger" type="button" data-ledger-filter-button="sales_vendor" data-label="매출거래처">▼</button></th>
                   <th class="has-filter"><span class="ledger-th-title">매입거래처</span><button class="ledger-filter-trigger" type="button" data-ledger-filter-button="purchase_vendor" data-label="매입거래처">▼</button></th>
@@ -1468,7 +1608,7 @@ HTML = r"""<!doctype html>
             <table class="ledger-table">
               <thead>
                 <tr>
-                  <th>저장</th>
+                  <th>선택</th>
                   <th class="has-filter"><span class="ledger-th-title">주문일자</span><button class="ledger-filter-trigger" type="button" data-management-filter-button="order_date" data-label="주문일자">▼</button></th>
                   <th class="has-filter"><span class="ledger-th-title">출고일</span><button class="ledger-filter-trigger" type="button" data-management-filter-button="ship_date" data-label="출고일">▼</button></th>
                   <th class="has-filter"><span class="ledger-th-title">매입거래처</span><button class="ledger-filter-trigger" type="button" data-management-filter-button="purchase_vendor" data-label="매입거래처">▼</button></th>
@@ -1606,6 +1746,16 @@ HTML = r"""<!doctype html>
     const submitButton = document.querySelector("#submitButton");
     const pageTitle = document.querySelector(".title");
     const dashboardContent = document.querySelector("#dashboardContent");
+    const noticeDateInput = document.querySelector("#noticeDateInput");
+    const noticeTitleInput = document.querySelector("#noticeTitleInput");
+    const noticeOwnerInput = document.querySelector("#noticeOwnerInput");
+    const noticeBodyInput = document.querySelector("#noticeBodyInput");
+    const noticeSaveButton = document.querySelector("#noticeSaveButton");
+    const noticeClearButton = document.querySelector("#noticeClearButton");
+    const noticePreview = document.querySelector("#noticePreview");
+    const sidebarNoticePreview = document.querySelector("#sidebarNoticePreview");
+    const noticePopup = document.querySelector("#noticePopup");
+    const noticePopupClose = document.querySelector("#noticePopupClose");
     const managementWorkspace = document.querySelector("#managementWorkspace");
     const ledgerWorkspace = document.querySelector("#ledgerWorkspace");
     const managementWorkspaceMount = document.querySelector("#managementWorkspaceMount");
@@ -1625,6 +1775,7 @@ HTML = r"""<!doctype html>
     if (ledgerFilterPopover) document.body.appendChild(ledgerFilterPopover);
     fillPeriodSelects(ledgerYearFilter, ledgerMonthFilter);
     fillPeriodSelects(managementYearFilter, managementMonthFilter);
+    loadNoticeTemplate();
 
     function addProductRow(productName = "", quantity = "", packQuantity = "") {
       const row = document.createElement("div");
@@ -1671,6 +1822,82 @@ HTML = r"""<!doctype html>
 
     function ensureYearForMonth(yearSelect, monthSelect) {
       if (monthSelect.value && !yearSelect.value) yearSelect.value = String(new Date().getFullYear());
+    }
+
+    function loadNoticeTemplate() {
+      let saved = {};
+      try {
+        saved = JSON.parse(localStorage.getItem("workhub_notice_template") || "{}");
+      } catch {
+        saved = {};
+      }
+      noticeDateInput.value = saved.date || todayString();
+      noticeTitleInput.value = saved.title || "";
+      noticeOwnerInput.value = saved.owner || "";
+      noticeBodyInput.value = saved.body || "";
+      renderNoticePreview();
+    }
+
+    function noticePayload() {
+      return {
+        date: noticeDateInput.value || todayString(),
+        title: noticeTitleInput.value.trim(),
+        owner: noticeOwnerInput.value.trim(),
+        body: noticeBodyInput.value.trim(),
+      };
+    }
+
+    function renderNoticePreview() {
+      const payload = noticePayload();
+      if (!payload.title && !payload.body) {
+        noticePreview.innerHTML = `<strong>저장된 공지사항이 없습니다.</strong>공지사항을 입력하고 저장하면 이곳에서 미리 볼 수 있습니다.`;
+        sidebarNoticePreview.innerHTML = `
+          <div class="sidebar-notice-kicker">금일 공지사항</div>
+          <div class="sidebar-notice-title">등록된 공지 없음</div>
+          <div class="sidebar-notice-body">공지사항 메뉴를 눌러 내용을 입력해주세요.</div>
+        `;
+        return;
+      }
+      const meta = [shortKoreanDate(payload.date), payload.owner ? `담당 ${escapeHtml(payload.owner)}` : ""].filter(Boolean).join(" / ");
+      noticePreview.innerHTML = `
+        <strong>${escapeHtml(payload.title || "제목 없음")}</strong>
+        <div>${escapeHtml(meta)}</div>
+        <div>${escapeHtml(payload.body).replaceAll("\n", "<br>")}</div>
+      `;
+      sidebarNoticePreview.innerHTML = `
+        <div class="sidebar-notice-kicker">금일 공지사항</div>
+        <div class="sidebar-notice-title">${escapeHtml(payload.title || "제목 없음")}</div>
+        <div class="sidebar-notice-meta">${escapeHtml(meta)}</div>
+        <div class="sidebar-notice-body">${escapeHtml(payload.body || "내용 없음")}</div>
+      `;
+    }
+
+    function openNoticePopup() {
+      loadNoticeTemplate();
+      noticePopup.classList.add("open");
+      setTimeout(() => noticeTitleInput.focus(), 0);
+    }
+
+    function closeNoticePopup() {
+      noticePopup.classList.remove("open");
+    }
+
+    function saveNoticeTemplate() {
+      const payload = noticePayload();
+      localStorage.setItem("workhub_notice_template", JSON.stringify(payload));
+      renderNoticePreview();
+      notice.textContent = "공지사항을 저장했습니다.";
+      closeNoticePopup();
+    }
+
+    function clearNoticeTemplate() {
+      localStorage.removeItem("workhub_notice_template");
+      noticeTitleInput.value = "";
+      noticeOwnerInput.value = "";
+      noticeBodyInput.value = "";
+      noticeDateInput.value = todayString();
+      renderNoticePreview();
+      notice.textContent = "공지사항 입력 내용을 초기화했습니다.";
     }
 
     function collectVehiclePayload() {
@@ -1864,6 +2091,49 @@ HTML = r"""<!doctype html>
       return `${now.getMonth() + 1}/${now.getDate()}`;
     }
 
+    function parseDateParts(value) {
+      const text = String(value || "").trim();
+      if (!text) return null;
+      let match = text.match(/(\d{4})[-./년\s]+(\d{1,2})[-./월\s]+(\d{1,2})/);
+      if (match) {
+        return {
+          year: match[1],
+          month: String(Number(match[2])).padStart(2, "0"),
+          day: String(Number(match[3])).padStart(2, "0"),
+        };
+      }
+      match = text.match(/(\d{1,2})\s*월\s*(\d{1,2})\s*일?/);
+      if (match) {
+        return {
+          year: "",
+          month: String(Number(match[1])).padStart(2, "0"),
+          day: String(Number(match[2])).padStart(2, "0"),
+        };
+      }
+      match = text.match(/^(\d{1,2})[./-](\d{1,2})$/);
+      if (match) {
+        return {
+          year: "",
+          month: String(Number(match[1])).padStart(2, "0"),
+          day: String(Number(match[2])).padStart(2, "0"),
+        };
+      }
+      return null;
+    }
+
+    function shortKoreanDate(value) {
+      const parts = parseDateParts(value);
+      return parts ? `${Number(parts.month)}월 ${Number(parts.day)}일` : String(value || "");
+    }
+
+    function fullDateForSave(displayValue, rawValue) {
+      const displayParts = parseDateParts(displayValue);
+      if (!displayParts) return String(displayValue || "").trim();
+      const rawParts = parseDateParts(rawValue);
+      const year = displayParts.year || rawParts?.year || String(new Date().getFullYear());
+      return `${year}-${displayParts.month}-${displayParts.day}`;
+    }
+
     function ledgerStatusOptions(currentStatus = "") {
       const dateText = todayStatusDate();
       const statuses = [
@@ -2044,6 +2314,11 @@ HTML = r"""<!doctype html>
       return Array.from(container.querySelectorAll(`${rowSelector}[data-dirty="1"]`));
     }
 
+    function selectedRows(container, rowSelector) {
+      return Array.from(container.querySelectorAll(rowSelector))
+        .filter((row) => row.querySelector("[data-row-check]")?.checked);
+    }
+
     function setLedgerFilter(value) {
       if (!activeLedgerFilterField) return;
       const normalized = String(value || "").trim();
@@ -2128,7 +2403,7 @@ HTML = r"""<!doctype html>
         const csTypeSelectOptions = `<option value="" ${csCase.cs_type ? "" : "selected"}>선택</option>${selectOptions(csTypeOptions, csCase.cs_type)}`;
         if (isCompletedCsCase(csCase)) row.classList.add("completed-cs");
         row.innerHTML = `
-          <td><button class="ledger-save" type="button" data-case-id="${escapeHtml(csCase.id)}">저장</button></td>
+          <td><input class="ledger-check" type="checkbox" data-row-check /></td>
           <td>${escapeHtml(csCase.occurred_at || csCase.created_at)}</td>
           <td>${escapeHtml(csCase.sales_vendor)}</td>
           <td>${escapeHtml(csCase.purchase_vendor || csCase.vendor_name)}</td>
@@ -2138,8 +2413,8 @@ HTML = r"""<!doctype html>
           <td class="left">${escapeHtml(csCase.cs_content)}</td>
           <td><input class="ledger-edit" data-field="reship_invoice" value="${escapeHtml(csCase.reship_invoice)}" /></td>
           <td><input class="ledger-edit" data-field="return_invoice" value="${escapeHtml(csCase.return_invoice)}" /></td>
-          <td>${escapeHtml(csCase.order_date)}</td>
-          <td>${escapeHtml(csCase.ship_date)}</td>
+          <td data-full-date="${escapeHtml(csCase.order_date)}">${escapeHtml(shortKoreanDate(csCase.order_date))}</td>
+          <td data-full-date="${escapeHtml(csCase.ship_date)}">${escapeHtml(shortKoreanDate(csCase.ship_date))}</td>
           <td>${escapeHtml(csCase.orderer_name)}</td>
           <td>${escapeHtml(csCase.orderer_phone)}</td>
           <td>${escapeHtml(csCase.receiver_name)}</td>
@@ -2257,9 +2532,9 @@ HTML = r"""<!doctype html>
         const csReceived = Boolean(record.cs_received_at);
         if (csReceived) row.classList.add("management-cs-received");
         row.innerHTML = `
-          <td><button class="ledger-save management-save" type="button">저장</button></td>
-          <td><input class="management-edit" data-management-field="order_date" value="${escapeHtml(record.order_date)}" /></td>
-          <td><input class="management-edit" data-management-field="ship_date" value="${escapeHtml(record.ship_date)}" /></td>
+          <td><input class="ledger-check" type="checkbox" data-row-check /></td>
+          <td><input class="management-edit" data-management-field="order_date" data-raw-date="${escapeHtml(record.order_date)}" value="${escapeHtml(shortKoreanDate(record.order_date))}" /></td>
+          <td><input class="management-edit" data-management-field="ship_date" data-raw-date="${escapeHtml(record.ship_date)}" value="${escapeHtml(shortKoreanDate(record.ship_date))}" /></td>
           <td><input class="management-edit" data-management-field="purchase_vendor" value="${escapeHtml(record.purchase_vendor)}" /></td>
           <td><input class="management-edit" data-management-field="sales_vendor" value="${escapeHtml(record.sales_vendor)}" /></td>
           <td><input class="management-edit" data-management-field="transaction_type" value="${escapeHtml(record.transaction_type)}" /></td>
@@ -2326,7 +2601,10 @@ HTML = r"""<!doctype html>
     function collectManagementRow(row) {
       const payload = { id: row.dataset.recordId };
       row.querySelectorAll("[data-management-field]").forEach((input) => {
-        payload[input.dataset.managementField] = input.value.trim();
+        const field = input.dataset.managementField;
+        payload[field] = field === "order_date" || field === "ship_date"
+          ? fullDateForSave(input.value.trim(), input.dataset.rawDate || "")
+          : input.value.trim();
       });
       return payload;
     }
@@ -2444,10 +2722,12 @@ HTML = r"""<!doctype html>
       }
     }
 
-    async function saveVisibleManagementRows({ silent = false } = {}) {
-      const rows = dirtyRows(managementBody, "tr[data-record-id]");
+    async function saveVisibleManagementRows({ silent = false, selectedOnly = false } = {}) {
+      const rows = selectedOnly
+        ? selectedRows(managementBody, "tr[data-record-id]")
+        : dirtyRows(managementBody, "tr[data-record-id]");
       if (rows.length === 0) {
-        if (!silent) notice.textContent = "저장할 변경 내용이 없습니다.";
+        if (!silent) notice.textContent = selectedOnly ? "체크된 통합관리대장 행이 없습니다." : "저장할 변경 내용이 없습니다.";
         return 0;
       }
       for (const row of rows) {
@@ -2455,15 +2735,19 @@ HTML = r"""<!doctype html>
         await saveManagementPayload(payload);
         updateManagementRecordCache(payload);
         markRowDirty(row, false);
+        const checkbox = row.querySelector("[data-row-check]");
+        if (checkbox) checkbox.checked = false;
       }
-      if (!silent) notice.textContent = `통합관리대장 변경내용 ${rows.length}건 저장 완료`;
+      if (!silent) notice.textContent = `통합관리대장 ${rows.length}건 저장 완료`;
       return rows.length;
     }
 
-    async function saveVisibleLedgerRows({ silent = false } = {}) {
-      const rows = dirtyRows(ledgerBody, "tr[data-case-id]");
+    async function saveVisibleLedgerRows({ silent = false, selectedOnly = false } = {}) {
+      const rows = selectedOnly
+        ? selectedRows(ledgerBody, "tr[data-case-id]")
+        : dirtyRows(ledgerBody, "tr[data-case-id]");
       if (rows.length === 0) {
-        if (!silent) notice.textContent = "저장할 변경 내용이 없습니다.";
+        if (!silent) notice.textContent = selectedOnly ? "체크된 CS 처리대장 행이 없습니다." : "저장할 변경 내용이 없습니다.";
         return 0;
       }
       for (const row of rows) {
@@ -2472,18 +2756,20 @@ HTML = r"""<!doctype html>
         updateLedgerCaseCache(payload);
         updateLedgerRowCompletion(row);
         markRowDirty(row, false);
+        const checkbox = row.querySelector("[data-row-check]");
+        if (checkbox) checkbox.checked = false;
       }
-      if (!silent) notice.textContent = `CS 처리대장 변경내용 ${rows.length}건 저장 완료`;
+      if (!silent) notice.textContent = `CS 처리대장 ${rows.length}건 저장 완료`;
       return rows.length;
     }
 
-    async function saveCurrentWorkspaceRows({ silent = false, mode = currentMode } = {}) {
+    async function saveCurrentWorkspaceRows({ silent = false, mode = currentMode, selectedOnly = false } = {}) {
       if (isBulkSaving) return 0;
       if (mode !== "management" && mode !== "ledger") return 0;
       try {
         isBulkSaving = true;
-        if (mode === "management") return await saveVisibleManagementRows({ silent });
-        return await saveVisibleLedgerRows({ silent });
+        if (mode === "management") return await saveVisibleManagementRows({ silent, selectedOnly });
+        return await saveVisibleLedgerRows({ silent, selectedOnly });
       } catch (error) {
         if (!silent) notice.textContent = error.message;
         return 0;
@@ -2500,6 +2786,10 @@ HTML = r"""<!doctype html>
       return row.children[index]?.textContent.trim() || "";
     }
 
+    function fullDateFromCell(row, index) {
+      return row.children[index]?.dataset.fullDate || textFromCell(row, index);
+    }
+
     function collectLedgerExportRows() {
       return Array.from(ledgerBody.querySelectorAll("tr[data-case-id]")).map((row) => ({
         occurred_at: textFromCell(row, 1),
@@ -2511,8 +2801,8 @@ HTML = r"""<!doctype html>
         cs_content: textFromCell(row, 7),
         reship_invoice: row.querySelector('[data-field="reship_invoice"]')?.value.trim() || "",
         return_invoice: row.querySelector('[data-field="return_invoice"]')?.value.trim() || "",
-        order_date: textFromCell(row, 10),
-        ship_date: textFromCell(row, 11),
+        order_date: fullDateFromCell(row, 10),
+        ship_date: fullDateFromCell(row, 11),
         orderer_name: textFromCell(row, 12),
         orderer_phone: textFromCell(row, 13),
         receiver_name: textFromCell(row, 14),
@@ -2834,13 +3124,20 @@ HTML = r"""<!doctype html>
       });
     });
     document.querySelectorAll("[data-view]").forEach((button) => {
-      button.addEventListener("click", () => showWorkspace(button.dataset.view));
+      button.addEventListener("click", () => {
+        showWorkspace(button.dataset.view);
+        if (button.dataset.view === "dashboard") openNoticePopup();
+      });
     });
     document.querySelectorAll("[data-open-window]").forEach((button) => {
       button.addEventListener("click", () => openWorkspaceWindow(button.dataset.openWindow));
     });
     document.querySelector("#orderNavToggle").addEventListener("click", () => {
       document.querySelector("#orderNavGroup").classList.toggle("open");
+    });
+    noticePopupClose.addEventListener("click", closeNoticePopup);
+    noticePopup.addEventListener("click", (event) => {
+      if (event.target === noticePopup) closeNoticePopup();
     });
     document.querySelector("#closeModal").addEventListener("click", closeModal);
     document.querySelector("#cancel").addEventListener("click", closeModal);
@@ -2909,6 +3206,10 @@ HTML = r"""<!doctype html>
       "업로드"
     );
     document.querySelector("#addProductRow").addEventListener("click", () => addProductRow());
+    noticeSaveButton.addEventListener("click", saveNoticeTemplate);
+    noticeClearButton.addEventListener("click", clearNoticeTemplate);
+    [noticeDateInput, noticeTitleInput, noticeOwnerInput, noticeBodyInput]
+      .forEach((input) => input.addEventListener("input", renderNoticePreview));
     receiptTypeSelect.addEventListener("change", resetProductRows);
     vendorContactSelect.addEventListener("change", applySelectedVendor);
     saveVendorContactButton.addEventListener("click", saveCurrentVendorContact);
@@ -2955,8 +3256,8 @@ HTML = r"""<!doctype html>
     ledgerImportInput.addEventListener("change", uploadLedgerWorkbook);
     managementRefresh.addEventListener("click", loadManagementRecords);
     managementImportInput.addEventListener("change", uploadManagementWorkbook);
-    managementSaveAll.addEventListener("click", () => saveCurrentWorkspaceRows({ mode: "management" }));
-    ledgerSaveAll.addEventListener("click", () => saveCurrentWorkspaceRows({ mode: "ledger" }));
+    managementSaveAll.addEventListener("click", () => saveCurrentWorkspaceRows({ mode: "management", selectedOnly: true }));
+    ledgerSaveAll.addEventListener("click", () => saveCurrentWorkspaceRows({ mode: "ledger", selectedOnly: true }));
     managementPageSize.addEventListener("change", loadManagementRecords);
     ledgerPageSize.addEventListener("change", loadLedgerCases);
     ledgerYearFilter.addEventListener("change", loadLedgerCases);
@@ -2979,17 +3280,8 @@ HTML = r"""<!doctype html>
       if (event.target.closest("[data-management-field]")) markRowDirty(event.target.closest("tr"));
     });
     managementBody.addEventListener("click", (event) => {
-      const saveButton = event.target.closest(".management-save");
-      if (saveButton) {
-        saveManagementRow(saveButton);
-        return;
-      }
       const csButton = event.target.closest(".management-cs-button");
       if (csButton) receiveManagementCs(csButton);
-    });
-    ledgerBody.addEventListener("click", (event) => {
-      const button = event.target.closest(".ledger-save");
-      if (button) saveLedgerRow(button);
     });
     ledgerBody.addEventListener("input", (event) => {
       if (event.target.closest("[data-field]")) markRowDirty(event.target.closest("tr"));
