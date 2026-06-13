@@ -14,6 +14,7 @@ import ctypes
 import hashlib
 import hmac
 import secrets
+from io import BytesIO
 from datetime import date, datetime
 from email.message import EmailMessage
 from email.utils import formataddr
@@ -21,7 +22,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, quote, unquote, urlsplit
 
-from openpyxl import load_workbook
+from openpyxl import Workbook, load_workbook
 
 from delivery_text_summary import summarize_workbook
 from invoice_number_exporter import export_invoice_numbers, extract_invoice_rows
@@ -119,6 +120,11 @@ HTML = r"""<!doctype html>
     }
 
     .app { min-height: 100vh; display: grid; grid-template-columns: 232px minmax(0, 1fr); }
+    body.standalone .app { grid-template-columns: minmax(0, 1fr); }
+    body.standalone .sidebar,
+    body.standalone .top-search,
+    body.standalone .top-tools { display: none; }
+    body.standalone .topbar { grid-template-columns: 1fr; }
     .sidebar {
       background: linear-gradient(180deg, var(--navy), #081430);
       color: white;
@@ -853,6 +859,9 @@ HTML = r"""<!doctype html>
     .ledger-table tr.completed-cs td {
       background: #fff8d8;
     }
+    .ledger-table tr.row-dirty td {
+      box-shadow: inset 0 0 0 9999px rgba(37, 99, 235, .035);
+    }
     .ledger-table tr.management-duplicate td {
       background: var(--duplicate-row-color, #eef6ff);
     }
@@ -1164,7 +1173,7 @@ HTML = r"""<!doctype html>
         <div class="workspace-head">
           <div class="workspace-title">통합관리대장 관리</div>
           <div class="workspace-actions">
-            <button class="workspace-button" type="button" id="managementSaveAll">저장</button>
+            <button class="workspace-button" type="button" id="managementSaveAll">전체저장하기</button>
             <button class="workspace-button" type="button" data-open-window="management">새창으로 열기</button>
           </div>
         </div>
@@ -1174,7 +1183,7 @@ HTML = r"""<!doctype html>
         <div class="workspace-head">
           <div class="workspace-title">CS 처리대장</div>
           <div class="workspace-actions">
-            <button class="workspace-button" type="button" id="ledgerSaveAll">저장</button>
+            <button class="workspace-button" type="button" id="ledgerSaveAll">전체저장하기</button>
             <button class="workspace-button" type="button" data-open-window="ledger">새창으로 열기</button>
           </div>
         </div>
@@ -1353,6 +1362,14 @@ HTML = r"""<!doctype html>
               <option value="전체 처리완료">전체 처리완료</option>
             </select>
             <button class="btn blue" id="ledgerRefresh" type="button">조회</button>
+            <select id="ledgerPageSize">
+              <option value="100">100개씩 보기</option>
+              <option value="500">500개씩 보기</option>
+              <option value="1000">1,000개씩 보기</option>
+              <option value="2000">2,000개씩 보기</option>
+              <option value="5000">5,000개씩 보기</option>
+            </select>
+            <button class="btn blue" id="ledgerDownloadExcel" type="button">엑셀 다운로드</button>
             <button class="btn primary" id="ledgerAddCs" type="button">CS 추가</button>
             <label class="ledger-import-button" for="ledgerImportInput">
               <i data-lucide="upload"></i>
@@ -1395,6 +1412,14 @@ HTML = r"""<!doctype html>
           <div class="ledger-toolbar">
             <input id="managementSearchInput" type="text" placeholder="거래처, 수령자, 상품명, 주소, 송장번호 검색" />
             <button class="btn blue" id="managementRefresh" type="button">조회</button>
+            <select id="managementPageSize">
+              <option value="100">100개씩 보기</option>
+              <option value="500">500개씩 보기</option>
+              <option value="1000">1,000개씩 보기</option>
+              <option value="2000">2,000개씩 보기</option>
+              <option value="5000">5,000개씩 보기</option>
+            </select>
+            <button class="btn blue" id="managementDownloadExcel" type="button">엑셀 다운로드</button>
             <label class="ledger-import-button" for="managementImportInput">
               <i data-lucide="upload"></i>
               <span id="managementImportDropMain">업로드</span>
@@ -1422,7 +1447,6 @@ HTML = r"""<!doctype html>
                   <th class="has-filter"><span class="ledger-th-title">택배사</span><button class="ledger-filter-trigger" type="button" data-management-filter-button="courier" data-label="택배사">▼</button></th>
                   <th class="has-filter"><span class="ledger-th-title">운송장번호</span><button class="ledger-filter-trigger" type="button" data-management-filter-button="invoice_number" data-label="운송장번호">▼</button></th>
                   <th class="has-filter"><span class="ledger-th-title">특이사항</span><button class="ledger-filter-trigger" type="button" data-management-filter-button="memo" data-label="특이사항">▼</button></th>
-                  <th class="has-filter"><span class="ledger-th-title">원본시트</span><button class="ledger-filter-trigger" type="button" data-management-filter-button="source_sheet" data-label="원본시트">▼</button></th>
                   <th>CS접수</th>
                 </tr>
               </thead>
@@ -1458,6 +1482,9 @@ HTML = r"""<!doctype html>
   <script type="module">
     import { createIcons, BriefcaseBusiness, Home, MessageCircle, Info, ChevronDown, ChevronRight, PlusSquare, RefreshCw, Ellipsis, Headphones, Package, ClipboardCheck, CircleDollarSign, FileText, FileSpreadsheet, ClipboardList, BarChart3, CopyCheck, Bell, Download, Truck, Mail, Upload, Database, X } from "/lucide/dist/esm/lucide.js";
     createIcons({ icons: { BriefcaseBusiness, Home, MessageCircle, Info, ChevronDown, ChevronRight, PlusSquare, RefreshCw, Ellipsis, Headphones, Package, ClipboardCheck, CircleDollarSign, FileText, FileSpreadsheet, ClipboardList, BarChart3, CopyCheck, Bell, Download, Truck, Mail, Upload, Database, X } });
+    if (new URLSearchParams(window.location.search).get("standalone") === "1") {
+      document.body.classList.add("standalone");
+    }
 
     const modal = document.querySelector("#modal");
     const modalTitle = document.querySelector("#modalTitle");
@@ -1506,12 +1533,16 @@ HTML = r"""<!doctype html>
     const ledgerSearchInput = document.querySelector("#ledgerSearchInput");
     const ledgerStatusFilter = document.querySelector("#ledgerStatusFilter");
     const ledgerRefresh = document.querySelector("#ledgerRefresh");
+    const ledgerPageSize = document.querySelector("#ledgerPageSize");
+    const ledgerDownloadExcel = document.querySelector("#ledgerDownloadExcel");
     const ledgerAddCs = document.querySelector("#ledgerAddCs");
     const ledgerBody = document.querySelector("#ledgerBody");
     const ledgerImportInput = document.querySelector("#ledgerImportInput");
     const ledgerImportDropMain = document.querySelector("#ledgerImportDropMain");
     const managementSearchInput = document.querySelector("#managementSearchInput");
     const managementRefresh = document.querySelector("#managementRefresh");
+    const managementPageSize = document.querySelector("#managementPageSize");
+    const managementDownloadExcel = document.querySelector("#managementDownloadExcel");
     const managementImportInput = document.querySelector("#managementImportInput");
     const managementImportDropMain = document.querySelector("#managementImportDropMain");
     const managementBody = document.querySelector("#managementBody");
@@ -1929,6 +1960,21 @@ HTML = r"""<!doctype html>
       activeManagementFilterField = "";
     }
 
+    function markRowDirty(row, dirty = true) {
+      if (!row || !row.dataset) return;
+      if (dirty) {
+        row.dataset.dirty = "1";
+        row.classList.add("row-dirty");
+      } else {
+        delete row.dataset.dirty;
+        row.classList.remove("row-dirty");
+      }
+    }
+
+    function dirtyRows(container, rowSelector) {
+      return Array.from(container.querySelectorAll(`${rowSelector}[data-dirty="1"]`));
+    }
+
     function setLedgerFilter(value) {
       if (!activeLedgerFilterField) return;
       const normalized = String(value || "").trim();
@@ -2052,7 +2098,7 @@ HTML = r"""<!doctype html>
 
     async function loadLedgerCases() {
       const query = ledgerSearchInput.value.trim();
-      const params = new URLSearchParams({ limit: "200" });
+      const params = new URLSearchParams({ limit: ledgerPageSize.value || "100" });
       if (query) params.set("q", query);
       const url = `/api/cs-cases?${params.toString()}`;
       try {
@@ -2096,7 +2142,7 @@ HTML = r"""<!doctype html>
       managementBody.innerHTML = "";
       if (!records || records.length === 0) {
         const row = document.createElement("tr");
-        row.innerHTML = `<td colspan="19">조회된 통합관리대장 데이터가 없습니다.</td>`;
+        row.innerHTML = `<td colspan="18">조회된 통합관리대장 데이터가 없습니다.</td>`;
         managementBody.appendChild(row);
         return;
       }
@@ -2157,7 +2203,6 @@ HTML = r"""<!doctype html>
           <td><input class="management-edit" data-management-field="courier" value="${escapeHtml(record.courier)}" /></td>
           <td><input class="management-edit" data-management-field="invoice_number" value="${escapeHtml(record.invoice_number)}" /></td>
           <td class="left"><input class="management-edit wide" data-management-field="memo" value="${escapeHtml(record.memo)}" /></td>
-          <td>${escapeHtml(record.source_sheet)}</td>
           <td><button class="management-cs-button" type="button" ${csReceived ? "disabled" : ""}>${csReceived ? "접수완료" : "CS접수"}</button></td>
         `;
         managementBody.appendChild(row);
@@ -2166,7 +2211,7 @@ HTML = r"""<!doctype html>
 
     async function loadManagementRecords() {
       const query = managementSearchInput.value.trim();
-      const params = new URLSearchParams({ limit: "300" });
+      const params = new URLSearchParams({ limit: managementPageSize.value || "100" });
       if (query) params.set("q", query);
       try {
         const response = await fetch(`/api/management-records?${params.toString()}`);
@@ -2224,6 +2269,14 @@ HTML = r"""<!doctype html>
       return data;
     }
 
+    function updateManagementRecordCache(payload) {
+      const record = managementRecords.find((item) => String(item.id) === String(payload.id));
+      if (!record) return;
+      Object.entries(payload).forEach(([key, value]) => {
+        if (key !== "id") record[key] = value;
+      });
+    }
+
     async function saveManagementRow(button) {
       const row = button.closest("tr");
       if (!row) return;
@@ -2232,7 +2285,8 @@ HTML = r"""<!doctype html>
         button.disabled = true;
         const data = await saveManagementPayload(payload);
         notice.textContent = data.message || "통합관리대장 행을 저장했습니다.";
-        await loadManagementRecords();
+        updateManagementRecordCache(payload);
+        markRowDirty(row, false);
       } catch (error) {
         notice.textContent = error.message;
       } finally {
@@ -2308,7 +2362,8 @@ HTML = r"""<!doctype html>
         const data = await saveLedgerPayload(payload);
         notice.textContent = data.message || "CS 처리내용을 저장했습니다.";
         updateLedgerCaseCache(payload);
-        applyLedgerFilters();
+        updateLedgerRowCompletion(row);
+        markRowDirty(row, false);
       } catch (error) {
         notice.textContent = error.message;
       } finally {
@@ -2317,25 +2372,35 @@ HTML = r"""<!doctype html>
     }
 
     async function saveVisibleManagementRows({ silent = false } = {}) {
-      const rows = Array.from(managementBody.querySelectorAll("tr[data-record-id]"));
-      if (rows.length === 0) return 0;
-      for (const row of rows) {
-        await saveManagementPayload(collectManagementRow(row));
+      const rows = dirtyRows(managementBody, "tr[data-record-id]");
+      if (rows.length === 0) {
+        if (!silent) notice.textContent = "저장할 변경 내용이 없습니다.";
+        return 0;
       }
-      if (!silent) notice.textContent = `통합관리대장 ${rows.length}건 저장 완료`;
+      for (const row of rows) {
+        const payload = collectManagementRow(row);
+        await saveManagementPayload(payload);
+        updateManagementRecordCache(payload);
+        markRowDirty(row, false);
+      }
+      if (!silent) notice.textContent = `통합관리대장 변경내용 ${rows.length}건 저장 완료`;
       return rows.length;
     }
 
     async function saveVisibleLedgerRows({ silent = false } = {}) {
-      const rows = Array.from(ledgerBody.querySelectorAll("tr[data-case-id]"));
-      if (rows.length === 0) return 0;
+      const rows = dirtyRows(ledgerBody, "tr[data-case-id]");
+      if (rows.length === 0) {
+        if (!silent) notice.textContent = "저장할 변경 내용이 없습니다.";
+        return 0;
+      }
       for (const row of rows) {
         const payload = collectLedgerRow(row);
         await saveLedgerPayload(payload);
         updateLedgerCaseCache(payload);
         updateLedgerRowCompletion(row);
+        markRowDirty(row, false);
       }
-      if (!silent) notice.textContent = `CS 처리대장 ${rows.length}건 저장 완료`;
+      if (!silent) notice.textContent = `CS 처리대장 변경내용 ${rows.length}건 저장 완료`;
       return rows.length;
     }
 
@@ -2351,6 +2416,72 @@ HTML = r"""<!doctype html>
         return 0;
       } finally {
         isBulkSaving = false;
+      }
+    }
+
+    function collectManagementExportRows() {
+      return Array.from(managementBody.querySelectorAll("tr[data-record-id]")).map((row) => collectManagementRow(row));
+    }
+
+    function textFromCell(row, index) {
+      return row.children[index]?.textContent.trim() || "";
+    }
+
+    function collectLedgerExportRows() {
+      return Array.from(ledgerBody.querySelectorAll("tr[data-case-id]")).map((row) => ({
+        occurred_at: textFromCell(row, 1),
+        sales_vendor: textFromCell(row, 2),
+        purchase_vendor: textFromCell(row, 3),
+        status: row.querySelector('[data-field="status"]')?.value || "",
+        completed_at: textFromCell(row, 5),
+        cs_type: row.querySelector('[data-field="cs_type"]')?.value || "",
+        cs_content: textFromCell(row, 7),
+        reship_invoice: row.querySelector('[data-field="reship_invoice"]')?.value.trim() || "",
+        return_invoice: row.querySelector('[data-field="return_invoice"]')?.value.trim() || "",
+        order_date: textFromCell(row, 10),
+        ship_date: textFromCell(row, 11),
+        orderer_name: textFromCell(row, 12),
+        orderer_phone: textFromCell(row, 13),
+        receiver_name: textFromCell(row, 14),
+        receiver_phone: textFromCell(row, 15),
+        product_name: textFromCell(row, 16),
+        quantity: textFromCell(row, 17),
+        receiver_address: textFromCell(row, 18),
+        courier: textFromCell(row, 19),
+        original_invoice: textFromCell(row, 20),
+      }));
+    }
+
+    async function downloadExcel(endpoint, rows, fallbackName, button) {
+      if (!rows.length) {
+        notice.textContent = "다운로드할 데이터가 없습니다.";
+        return;
+      }
+      try {
+        button.disabled = true;
+        const response = await fetch(endpoint, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ rows }),
+        });
+        if (!response.ok) {
+          const data = await response.json();
+          throw new Error(data.error || "엑셀 다운로드에 실패했습니다.");
+        }
+        const blob = await response.blob();
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = filenameFromResponse(response, fallbackName);
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        URL.revokeObjectURL(url);
+        notice.textContent = "엑셀 다운로드가 시작되었습니다.";
+      } catch (error) {
+        notice.textContent = error.message;
+      } finally {
+        button.disabled = false;
       }
     }
 
@@ -2611,6 +2742,7 @@ HTML = r"""<!doctype html>
     function openWorkspaceWindow(mode) {
       const url = new URL(window.location.href);
       url.searchParams.set("view", mode);
+      url.searchParams.set("standalone", "1");
       window.open(url.toString(), "_blank", "width=1480,height=920");
     }
 
@@ -2748,6 +2880,17 @@ HTML = r"""<!doctype html>
     managementImportInput.addEventListener("change", uploadManagementWorkbook);
     managementSaveAll.addEventListener("click", () => saveCurrentWorkspaceRows({ mode: "management" }));
     ledgerSaveAll.addEventListener("click", () => saveCurrentWorkspaceRows({ mode: "ledger" }));
+    managementPageSize.addEventListener("change", loadManagementRecords);
+    ledgerPageSize.addEventListener("change", loadLedgerCases);
+    managementDownloadExcel.addEventListener("click", () => {
+      downloadExcel("/api/management-export", collectManagementExportRows(), "통합관리대장.xlsx", managementDownloadExcel);
+    });
+    ledgerDownloadExcel.addEventListener("click", () => {
+      downloadExcel("/api/cs-cases-export", collectLedgerExportRows(), "CS처리대장.xlsx", ledgerDownloadExcel);
+    });
+    managementBody.addEventListener("input", (event) => {
+      if (event.target.closest("[data-management-field]")) markRowDirty(event.target.closest("tr"));
+    });
     managementBody.addEventListener("click", (event) => {
       const saveButton = event.target.closest(".management-save");
       if (saveButton) {
@@ -2761,9 +2904,15 @@ HTML = r"""<!doctype html>
       const button = event.target.closest(".ledger-save");
       if (button) saveLedgerRow(button);
     });
+    ledgerBody.addEventListener("input", (event) => {
+      if (event.target.closest("[data-field]")) markRowDirty(event.target.closest("tr"));
+    });
     ledgerBody.addEventListener("change", (event) => {
       const field = event.target.closest('[data-field="status"], [data-field="cs_type"]');
-      if (field) updateLedgerRowCompletion(field.closest("tr"));
+      if (field) {
+        markRowDirty(field.closest("tr"));
+        updateLedgerRowCompletion(field.closest("tr"));
+      }
     });
     ledgerSearchInput.addEventListener("keydown", (event) => {
       if (event.key === "Enter") {
@@ -3520,6 +3669,65 @@ def clean_cell(value: object) -> str:
     return re.sub(r"[ \t]+", " ", text)
 
 
+MANAGEMENT_EXPORT_COLUMNS = [
+    ("order_date", "주문일자"),
+    ("ship_date", "출고일"),
+    ("purchase_vendor", "매입거래처"),
+    ("sales_vendor", "매출거래처"),
+    ("transaction_type", "거래구분"),
+    ("ledger_checked", "장부입력확인"),
+    ("orderer_name", "주문자"),
+    ("sender_phone", "발신자연락처"),
+    ("receiver_name", "수령자"),
+    ("receiver_phone", "수령자연락처"),
+    ("product_name", "제품명"),
+    ("quantity", "수량"),
+    ("receiver_address", "상세주소"),
+    ("courier", "택배사"),
+    ("invoice_number", "운송장번호"),
+    ("memo", "특이사항"),
+]
+
+
+LEDGER_EXPORT_COLUMNS = [
+    ("occurred_at", "날짜"),
+    ("sales_vendor", "매출거래처"),
+    ("purchase_vendor", "매입거래처"),
+    ("status", "처리진행상태"),
+    ("completed_at", "완료일"),
+    ("cs_type", "처리내용"),
+    ("cs_content", "C/S 내용"),
+    ("reship_invoice", "재발송운송장번호"),
+    ("return_invoice", "회수운송장번호"),
+    ("order_date", "주문일자"),
+    ("ship_date", "출고일"),
+    ("orderer_name", "주문자"),
+    ("orderer_phone", "연락처"),
+    ("receiver_name", "수령자"),
+    ("receiver_phone", "연락처"),
+    ("product_name", "제품명"),
+    ("quantity", "수량"),
+    ("receiver_address", "상세주소"),
+    ("courier", "택배사"),
+    ("original_invoice", "송장번호"),
+]
+
+
+def workbook_bytes_from_rows(rows: list[dict], columns: list[tuple[str, str]], sheet_name: str) -> bytes:
+    workbook = Workbook()
+    worksheet = workbook.active
+    worksheet.title = sheet_name[:31]
+    worksheet.append([header for _, header in columns])
+    for row in rows:
+        worksheet.append([clean_cell(row.get(key, "")) for key, _ in columns])
+    for column_cells in worksheet.columns:
+        max_length = max((len(clean_cell(cell.value)) for cell in column_cells), default=0)
+        worksheet.column_dimensions[column_cells[0].column_letter].width = min(max(max_length + 2, 10), 42)
+    stream = BytesIO()
+    workbook.save(stream)
+    return stream.getvalue()
+
+
 def find_header(headers: list[str], names: set[str]) -> int | None:
     for idx, header in enumerate(headers):
         if header in names:
@@ -4099,9 +4307,9 @@ class WorkhubHandler(BaseHTTPRequestHandler):
             query = params.get("q", [""])[0]
             status = params.get("status", [""])[0]
             try:
-                limit = min(max(int(params.get("limit", ["20"])[0]), 1), 500)
+                limit = min(max(int(params.get("limit", ["100"])[0]), 1), 5000)
             except ValueError:
-                limit = 20
+                limit = 100
             self.send_json({"cases": list_cs_cases(query=query, status=status, limit=limit)})
             return
 
@@ -4110,9 +4318,9 @@ class WorkhubHandler(BaseHTTPRequestHandler):
             params = parse_qs(parsed.query)
             query = params.get("q", [""])[0]
             try:
-                limit = min(max(int(params.get("limit", ["300"])[0]), 1), 1000)
+                limit = min(max(int(params.get("limit", ["100"])[0]), 1), 5000)
             except ValueError:
-                limit = 300
+                limit = 100
             self.send_json({"records": list_management_records(query=query, limit=limit)})
             return
 
@@ -4174,6 +4382,38 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                     raise ValueError("CS접수할 통합관리대장 행 ID가 없습니다.")
                 case_id = create_cs_case_from_management(record_id)
                 self.send_json({"message": "CS 처리대장에 접수했습니다.", "case_id": case_id})
+                return
+
+            if self.path == "/api/management-export":
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(length).decode("utf-8"))
+                rows = payload.get("rows", [])
+                if not isinstance(rows, list) or not rows:
+                    raise ValueError("엑셀로 다운로드할 통합관리대장 데이터가 없습니다.")
+                data = workbook_bytes_from_rows(rows, MANAGEMENT_EXPORT_COLUMNS, "통합관리대장")
+                filename = quote(f"통합관리대장_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx")
+                self.send_response(200)
+                self.send_header("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+                self.send_header("Content-Disposition", f"attachment; filename*=UTF-8''{filename}")
+                self.send_header("Content-Length", str(len(data)))
+                self.end_headers()
+                self.wfile.write(data)
+                return
+
+            if self.path == "/api/cs-cases-export":
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(length).decode("utf-8"))
+                rows = payload.get("rows", [])
+                if not isinstance(rows, list) or not rows:
+                    raise ValueError("엑셀로 다운로드할 CS 처리대장 데이터가 없습니다.")
+                data = workbook_bytes_from_rows(rows, LEDGER_EXPORT_COLUMNS, "CS처리대장")
+                filename = quote(f"CS처리대장_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx")
+                self.send_response(200)
+                self.send_header("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+                self.send_header("Content-Disposition", f"attachment; filename*=UTF-8''{filename}")
+                self.send_header("Content-Length", str(len(data)))
+                self.end_headers()
+                self.wfile.write(data)
                 return
 
             if self.path == "/api/vendor-contact":
