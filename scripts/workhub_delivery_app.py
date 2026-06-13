@@ -147,6 +147,12 @@ HTML = r"""<!doctype html>
       min-height: 43px; padding: 0 12px; border-radius: 8px;
       font-size: 14px; font-weight: 750; color: #d9e3ff;
       margin-bottom: 6px;
+      border: 0;
+      background: transparent;
+      width: 100%;
+      font-family: inherit;
+      text-align: left;
+      cursor: pointer;
     }
     .nav-item.active {
       color: white;
@@ -154,6 +160,44 @@ HTML = r"""<!doctype html>
       box-shadow: inset 0 0 0 1px rgba(255,255,255,.08);
     }
     .nav-item svg { width: 18px; height: 18px; flex: 0 0 auto; }
+    .nav-item .nav-label {
+      display: flex;
+      align-items: center;
+      gap: 13px;
+      min-width: 0;
+    }
+    .nav-item .nav-chevron {
+      margin-left: auto;
+      width: 16px;
+      height: 16px;
+      transition: transform .16s ease;
+    }
+    .nav-group.open .nav-chevron { transform: rotate(90deg); }
+    .nav-submenu {
+      display: none;
+      margin: -2px 0 8px 31px;
+      padding-left: 10px;
+      border-left: 1px solid rgba(255,255,255,.14);
+    }
+    .nav-group.open .nav-submenu { display: grid; gap: 4px; }
+    .nav-subitem {
+      min-height: 34px;
+      padding: 0 10px;
+      border: 0;
+      border-radius: 7px;
+      background: transparent;
+      color: #c9d6f4;
+      font-family: inherit;
+      font-size: 13px;
+      font-weight: 750;
+      text-align: left;
+      cursor: pointer;
+    }
+    .nav-subitem:hover,
+    .nav-item:hover {
+      background: rgba(255,255,255,.08);
+      color: white;
+    }
     .nav-section {
       min-height: auto;
       padding: 0 8px 8px;
@@ -834,7 +878,7 @@ HTML = r"""<!doctype html>
     @media (max-width: 1180px) {
       .app { grid-template-columns: 76px minmax(0, 1fr); }
       .brand { justify-content: center; padding: 0; }
-      .brand-label, .nav-item span, .nav-section { display: none; }
+      .brand-label, .nav-item > span, .nav-label span, .nav-section, .nav-submenu { display: none; }
       .nav-item { justify-content: center; padding: 0; }
       .stat-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       .action-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -863,19 +907,31 @@ HTML = r"""<!doctype html>
         <div class="brand-label">(주)소일브릿지<br>업무자동화</div>
       </div>
       <div class="nav-section">MAIN</div>
-      <div class="nav-item active"><i data-lucide="home"></i> <span>대시보드</span></div>
-      <div class="nav-item"><i data-lucide="clipboard-list"></i> <span>발주 자동화</span></div>
-      <div class="nav-item"><i data-lucide="clipboard-check"></i> <span>CS 처리대장</span></div>
-      <div class="nav-item"><i data-lucide="mail"></i> <span>업체 메일</span></div>
+      <button class="nav-item active" type="button"><i data-lucide="home"></i> <span>공지사항</span></button>
+      <div class="nav-group" id="orderNavGroup">
+        <button class="nav-item" id="orderNavToggle" type="button">
+          <span class="nav-label"><i data-lucide="clipboard-list"></i> <span>발주업무</span></span>
+          <i class="nav-chevron" data-lucide="chevron-right"></i>
+        </button>
+        <div class="nav-submenu">
+          <button class="nav-subitem" type="button" data-open="delivery">개별 택배건 정리</button>
+          <button class="nav-subitem" type="button" data-open="invoice">송장번호 추출</button>
+          <button class="nav-subitem" type="button" data-open="lotte">롯데택배 발주서 변환</button>
+          <button class="nav-subitem" type="button" data-open="vehicle">차량인수증</button>
+        </div>
+      </div>
+      <button class="nav-item" type="button"><i data-lucide="database"></i> <span>통합관리대장 관리</span></button>
+      <button class="nav-item" type="button" data-open="ledger"><i data-lucide="clipboard-check"></i> <span>CS 처리대장</span></button>
+      <button class="nav-item" type="button" data-open="cs"><i data-lucide="mail"></i> <span>업체 메일</span></button>
       <div class="nav-section">TOOLS</div>
-      <div class="nav-item"><i data-lucide="file-spreadsheet"></i> <span>송장 추출</span></div>
-      <div class="nav-item"><i data-lucide="truck"></i> <span>차량인수증</span></div>
+      <button class="nav-item" type="button" data-open="invoice"><i data-lucide="file-spreadsheet"></i> <span>송장 추출</span></button>
+      <button class="nav-item" type="button" data-open="vehicle"><i data-lucide="truck"></i> <span>차량인수증</span></button>
     </aside>
 
     <main>
       <header class="topbar">
         <div class="title-wrap">
-          <div class="title">업무 자동화 대시보드 <i data-lucide="chevron-down"></i></div>
+          <div class="title">금일 공지사항 <i data-lucide="chevron-down"></i></div>
           <p class="subtitle">발주 파일 변환과 인수증 생성을 한 곳에서 처리합니다.</p>
         </div>
         <div class="top-search"><i data-lucide="file-text"></i> 파일명, 수령인, 송장번호, CS내용 검색</div>
@@ -1226,8 +1282,8 @@ HTML = r"""<!doctype html>
   </div>
 
   <script type="module">
-    import { createIcons, BriefcaseBusiness, Home, MessageCircle, Info, ChevronDown, ChevronRight, PlusSquare, RefreshCw, Ellipsis, Headphones, Package, ClipboardCheck, CircleDollarSign, FileText, FileSpreadsheet, ClipboardList, BarChart3, CopyCheck, Bell, Download, Truck, Mail, Upload, X } from "/lucide/dist/esm/lucide.js";
-    createIcons({ icons: { BriefcaseBusiness, Home, MessageCircle, Info, ChevronDown, ChevronRight, PlusSquare, RefreshCw, Ellipsis, Headphones, Package, ClipboardCheck, CircleDollarSign, FileText, FileSpreadsheet, ClipboardList, BarChart3, CopyCheck, Bell, Download, Truck, Mail, Upload, X } });
+    import { createIcons, BriefcaseBusiness, Home, MessageCircle, Info, ChevronDown, ChevronRight, PlusSquare, RefreshCw, Ellipsis, Headphones, Package, ClipboardCheck, CircleDollarSign, FileText, FileSpreadsheet, ClipboardList, BarChart3, CopyCheck, Bell, Download, Truck, Mail, Upload, Database, X } from "/lucide/dist/esm/lucide.js";
+    createIcons({ icons: { BriefcaseBusiness, Home, MessageCircle, Info, ChevronDown, ChevronRight, PlusSquare, RefreshCw, Ellipsis, Headphones, Package, ClipboardCheck, CircleDollarSign, FileText, FileSpreadsheet, ClipboardList, BarChart3, CopyCheck, Bell, Download, Truck, Mail, Upload, Database, X } });
 
     const modal = document.querySelector("#modal");
     const modalTitle = document.querySelector("#modalTitle");
@@ -1981,6 +2037,9 @@ HTML = r"""<!doctype html>
 
     document.querySelectorAll("[data-open]").forEach((button) => {
       button.addEventListener("click", () => openModal(button.dataset.open));
+    });
+    document.querySelector("#orderNavToggle").addEventListener("click", () => {
+      document.querySelector("#orderNavGroup").classList.toggle("open");
     });
     document.querySelector("#closeModal").addEventListener("click", closeModal);
     document.querySelector("#cancel").addEventListener("click", closeModal);
