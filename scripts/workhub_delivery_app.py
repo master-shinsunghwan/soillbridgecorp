@@ -703,6 +703,19 @@ HTML = r"""<!doctype html>
       width: 14px;
       height: 14px;
     }
+    .ledger-count {
+      height: 34px;
+      display: inline-flex;
+      align-items: center;
+      padding: 0 8px;
+      border: 1px solid #d7dce5;
+      border-radius: 7px;
+      background: #f8fafc;
+      color: #475467;
+      font-size: 12px;
+      font-weight: 800;
+      white-space: nowrap;
+    }
     .ledger-import-button input { display: none; }
     .ledger-wrap {
       border: 1px solid #d7dce5;
@@ -1384,6 +1397,7 @@ HTML = r"""<!doctype html>
               <option value="2000">2,000개씩 보기</option>
               <option value="5000">5,000개씩 보기</option>
             </select>
+            <span class="ledger-count" id="ledgerCountLabel">표시 0건</span>
             <button class="btn blue" id="ledgerDownloadExcel" type="button">엑셀 다운로드</button>
             <button class="btn primary" id="ledgerAddCs" type="button">CS 추가</button>
             <label class="ledger-import-button" for="ledgerImportInput">
@@ -1440,6 +1454,7 @@ HTML = r"""<!doctype html>
               <option value="2000">2,000개씩 보기</option>
               <option value="5000">5,000개씩 보기</option>
             </select>
+            <span class="ledger-count" id="managementCountLabel">표시 0건</span>
             <button class="btn blue" id="managementDownloadExcel" type="button">엑셀 다운로드</button>
             <label class="ledger-import-button" for="managementImportInput">
               <i data-lucide="upload"></i>
@@ -1558,6 +1573,7 @@ HTML = r"""<!doctype html>
     const ledgerRefresh = document.querySelector("#ledgerRefresh");
     const ledgerPageSize = document.querySelector("#ledgerPageSize");
     const ledgerDownloadExcel = document.querySelector("#ledgerDownloadExcel");
+    const ledgerCountLabel = document.querySelector("#ledgerCountLabel");
     const ledgerAddCs = document.querySelector("#ledgerAddCs");
     const ledgerBody = document.querySelector("#ledgerBody");
     const ledgerImportInput = document.querySelector("#ledgerImportInput");
@@ -1568,6 +1584,7 @@ HTML = r"""<!doctype html>
     const managementRefresh = document.querySelector("#managementRefresh");
     const managementPageSize = document.querySelector("#managementPageSize");
     const managementDownloadExcel = document.querySelector("#managementDownloadExcel");
+    const managementCountLabel = document.querySelector("#managementCountLabel");
     const managementImportInput = document.querySelector("#managementImportInput");
     const managementImportDropMain = document.querySelector("#managementImportDropMain");
     const managementBody = document.querySelector("#managementBody");
@@ -1915,6 +1932,7 @@ HTML = r"""<!doctype html>
         const field = button.dataset.ledgerFilterButton;
         button.classList.toggle("active", Boolean(ledgerFilters[field]));
       });
+      ledgerCountLabel.textContent = `불러온 ${ledgerCases.length}건 / 표시 ${filtered.length}건`;
       if (currentMode === "ledger") notice.textContent = `${filtered.length}건 조회되었습니다.`;
     }
 
@@ -1937,6 +1955,7 @@ HTML = r"""<!doctype html>
         const field = button.dataset.managementFilterButton;
         button.classList.toggle("active", Boolean(managementFilters[field]));
       });
+      managementCountLabel.textContent = `불러온 ${managementRecords.length}건 / 표시 ${filtered.length}건`;
       if (currentMode === "management") notice.textContent = `${filtered.length}건 조회되었습니다.`;
     }
 
