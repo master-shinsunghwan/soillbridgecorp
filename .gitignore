@@ -15,6 +15,17 @@ build/
 *.zip
 *.msi
 
+# Archived planning/research materials not used by Workhub app
+docs/
+scripts/attach_delivery_product_images.py
+scripts/build_china_oem_fob_rfq.mjs
+scripts/build_delivery_meeting_report.mjs
+scripts/build_integrated_delivery_research.mjs
+scripts/generate_delivery_packaging_report.py
+scripts/generate_launch_crosscheck_report.py
+scripts/toss_price_compare.py
+scripts/toss_price_compare_README.md
+
 # Runtime data and secrets
 config/
 data/
