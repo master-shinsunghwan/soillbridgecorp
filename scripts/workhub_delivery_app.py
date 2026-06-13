@@ -503,6 +503,7 @@ HTML = r"""<!doctype html>
     .vehicle-fields { display: none; }
     .cs-fields { display: none; }
     .ledger-fields { display: none; }
+    .management-fields { display: none; }
     .ledger-cs-popup-head { display: none; }
     .modal.ledger-modal .cs-fields.ledger-cs-popup {
       position: absolute;
@@ -704,7 +705,18 @@ HTML = r"""<!doctype html>
       flex: 1;
       min-height: 0;
     }
+    .modal.ledger-modal .management-fields {
+      display: flex !important;
+      flex-direction: column;
+      flex: 1;
+      min-height: 0;
+    }
     .modal.ledger-modal .ledger-wrap {
+      flex: 1;
+      min-height: 0;
+      max-height: none;
+    }
+    .modal.ledger-modal .management-wrap {
       flex: 1;
       min-height: 0;
       max-height: none;
@@ -920,7 +932,7 @@ HTML = r"""<!doctype html>
           <button class="nav-subitem" type="button" data-open="vehicle">차량인수증</button>
         </div>
       </div>
-      <button class="nav-item" type="button"><i data-lucide="database"></i> <span>통합관리대장 관리</span></button>
+      <button class="nav-item" type="button" data-open="management"><i data-lucide="database"></i> <span>통합관리대장 관리</span></button>
       <button class="nav-item" type="button" data-open="ledger"><i data-lucide="clipboard-check"></i> <span>CS 처리대장</span></button>
       <button class="nav-item" type="button" data-open="cs"><i data-lucide="mail"></i> <span>업체 메일</span></button>
       <div class="nav-section">TOOLS</div>
@@ -1256,6 +1268,43 @@ HTML = r"""<!doctype html>
             </table>
           </div>
         </div>
+        <div class="management-fields" id="managementFields">
+          <div class="ledger-toolbar">
+            <input id="managementSearchInput" type="text" placeholder="거래처, 수령자, 상품명, 주소, 송장번호 검색" />
+            <button class="btn blue" id="managementRefresh" type="button">조회</button>
+            <label class="ledger-import-button" for="managementImportInput">
+              <i data-lucide="upload"></i>
+              <span id="managementImportDropMain">업로드</span>
+              <input id="managementImportInput" name="management_import" type="file" accept=".xlsx,.xlsm" />
+            </label>
+          </div>
+          <div class="ledger-wrap management-wrap">
+            <table class="ledger-table">
+              <thead>
+                <tr>
+                  <th>주문일자</th>
+                  <th>출고일</th>
+                  <th>매입거래처</th>
+                  <th>매출거래처</th>
+                  <th>거래구분</th>
+                  <th>장부입력확인</th>
+                  <th>주문자</th>
+                  <th>발신자연락처</th>
+                  <th>수령자</th>
+                  <th>수령자연락처</th>
+                  <th>제품명</th>
+                  <th>수량</th>
+                  <th>상세주소</th>
+                  <th>택배사</th>
+                  <th>운송장번호</th>
+                  <th>특이사항</th>
+                  <th>원본시트</th>
+                </tr>
+              </thead>
+              <tbody id="managementBody"></tbody>
+            </table>
+          </div>
+        </div>
         <div class="ledger-filter-popover" id="ledgerFilterPopover">
           <div class="ledger-filter-title" id="ledgerFilterTitle">필터</div>
           <input class="ledger-filter-search" id="ledgerFilterSearch" type="text" placeholder="검색어 입력" />
@@ -1299,6 +1348,7 @@ HTML = r"""<!doctype html>
     const vehicleFields = document.querySelector("#vehicleFields");
     const csFields = document.querySelector("#csFields");
     const ledgerFields = document.querySelector("#ledgerFields");
+    const managementFields = document.querySelector("#managementFields");
     const productTable = document.querySelector("#productTable");
     const receiptTypeSelect = document.querySelector("#receiptTypeSelect");
     const supplierInput = document.querySelector("#supplierInput");
@@ -1335,6 +1385,11 @@ HTML = r"""<!doctype html>
     const ledgerBody = document.querySelector("#ledgerBody");
     const ledgerImportInput = document.querySelector("#ledgerImportInput");
     const ledgerImportDropMain = document.querySelector("#ledgerImportDropMain");
+    const managementSearchInput = document.querySelector("#managementSearchInput");
+    const managementRefresh = document.querySelector("#managementRefresh");
+    const managementImportInput = document.querySelector("#managementImportInput");
+    const managementImportDropMain = document.querySelector("#managementImportDropMain");
+    const managementBody = document.querySelector("#managementBody");
     const ledgerFilterButtons = Array.from(document.querySelectorAll("[data-ledger-filter-button]"));
     const ledgerFilterPopover = document.querySelector("#ledgerFilterPopover");
     const ledgerFilterTitle = document.querySelector("#ledgerFilterTitle");
@@ -1818,6 +1873,79 @@ HTML = r"""<!doctype html>
       }
     }
 
+    function renderManagement(records) {
+      managementBody.innerHTML = "";
+      if (!records || records.length === 0) {
+        const row = document.createElement("tr");
+        row.innerHTML = `<td colspan="17">조회된 통합관리대장 데이터가 없습니다.</td>`;
+        managementBody.appendChild(row);
+        return;
+      }
+      records.forEach((record) => {
+        const row = document.createElement("tr");
+        row.innerHTML = `
+          <td>${escapeHtml(record.order_date)}</td>
+          <td>${escapeHtml(record.ship_date)}</td>
+          <td>${escapeHtml(record.purchase_vendor)}</td>
+          <td>${escapeHtml(record.sales_vendor)}</td>
+          <td>${escapeHtml(record.transaction_type)}</td>
+          <td>${escapeHtml(record.ledger_checked)}</td>
+          <td>${escapeHtml(record.orderer_name)}</td>
+          <td>${escapeHtml(record.sender_phone)}</td>
+          <td>${escapeHtml(record.receiver_name)}</td>
+          <td>${escapeHtml(record.receiver_phone)}</td>
+          <td class="left">${escapeHtml(record.product_name)}</td>
+          <td>${escapeHtml(record.quantity)}</td>
+          <td class="left">${escapeHtml(record.receiver_address)}</td>
+          <td>${escapeHtml(record.courier)}</td>
+          <td>${escapeHtml(record.invoice_number)}</td>
+          <td class="left">${escapeHtml(record.memo)}</td>
+          <td>${escapeHtml(record.source_sheet)}</td>
+        `;
+        managementBody.appendChild(row);
+      });
+    }
+
+    async function loadManagementRecords() {
+      const query = managementSearchInput.value.trim();
+      const params = new URLSearchParams({ limit: "300" });
+      if (query) params.set("q", query);
+      try {
+        const response = await fetch(`/api/management-records?${params.toString()}`);
+        if (!response.ok) return;
+        const data = await response.json();
+        renderManagement(data.records || []);
+        if (currentMode === "management") notice.textContent = `${(data.records || []).length}건 조회되었습니다.`;
+      } catch {
+        renderManagement([]);
+        notice.textContent = "통합관리대장을 불러오지 못했습니다.";
+      }
+    }
+
+    async function uploadManagementWorkbook() {
+      const file = managementImportInput.files[0];
+      if (!file) return;
+      managementImportDropMain.textContent = file.name;
+      const formData = new FormData();
+      formData.append("file", file);
+      notice.textContent = "통합관리대장 데이터를 DB에 업로드 중입니다.";
+      try {
+        const response = await fetch("/api/management-import", {
+          method: "POST",
+          body: formData,
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "통합관리대장 업로드에 실패했습니다.");
+        notice.textContent = data.message || "통합관리대장 데이터를 업로드했습니다.";
+        await loadManagementRecords();
+      } catch (error) {
+        notice.textContent = error.message;
+      } finally {
+        managementImportInput.value = "";
+        managementImportDropMain.textContent = "업로드";
+      }
+    }
+
     async function saveLedgerRow(button) {
       const row = button.closest("tr");
       if (!row) return;
@@ -1905,7 +2033,7 @@ HTML = r"""<!doctype html>
       currentMode = mode;
       closeLedgerCsPopup();
       modal.classList.add("open");
-      modal.querySelector(".modal").classList.toggle("ledger-modal", mode === "ledger");
+      modal.querySelector(".modal").classList.toggle("ledger-modal", mode === "ledger" || mode === "management");
       result.classList.remove("open");
       resultText.value = "";
       fileInput.value = "";
@@ -1949,6 +2077,7 @@ HTML = r"""<!doctype html>
         vehicleFields.style.display = "none";
         csFields.style.display = "none";
         ledgerFields.style.display = "none";
+        managementFields.style.display = "none";
         fileInput.required = false;
         templateInput.required = false;
         dropSub.textContent = "주소일브릿지 엑셀을 업로드하면 전달용 텍스트를 만듭니다.";
@@ -1962,6 +2091,7 @@ HTML = r"""<!doctype html>
         vehicleFields.style.display = "none";
         csFields.style.display = "none";
         ledgerFields.style.display = "none";
+        managementFields.style.display = "none";
         fileInput.required = false;
         templateInput.required = false;
         dropSub.textContent = "출고송장 엑셀을 업로드하면 수하인별 송장번호 엑셀을 다운로드합니다.";
@@ -1975,6 +2105,7 @@ HTML = r"""<!doctype html>
         vehicleFields.style.display = "none";
         csFields.style.display = "none";
         ledgerFields.style.display = "none";
+        managementFields.style.display = "none";
         fileInput.required = false;
         templateInput.required = false;
         dropSub.textContent = "주소일브릿지 원본을 업로드하면 지정된 롯데택배 발주서 양식으로 출력합니다.";
@@ -1988,6 +2119,7 @@ HTML = r"""<!doctype html>
         vehicleFields.style.display = "block";
         csFields.style.display = "none";
         ledgerFields.style.display = "none";
+        managementFields.style.display = "none";
         fileInput.required = false;
         templateInput.required = false;
       } else if (mode === "cs") {
@@ -1999,12 +2131,13 @@ HTML = r"""<!doctype html>
         vehicleFields.style.display = "none";
         csFields.style.display = "block";
         ledgerFields.style.display = "none";
+        managementFields.style.display = "none";
         fileInput.required = false;
         templateInput.required = false;
         loadMailSettings();
         loadVendorContacts();
         loadCsCases();
-      } else {
+      } else if (mode === "ledger") {
         modalTitle.textContent = "CS 처리대장";
         submitButton.textContent = "닫기";
         submitButton.className = "btn";
@@ -2013,6 +2146,7 @@ HTML = r"""<!doctype html>
         vehicleFields.style.display = "none";
         csFields.style.display = "none";
         ledgerFields.style.display = "block";
+        managementFields.style.display = "none";
         fileInput.required = false;
         templateInput.required = false;
         ledgerSearchInput.value = "";
@@ -2022,11 +2156,28 @@ HTML = r"""<!doctype html>
         Object.keys(ledgerFilters).forEach((key) => delete ledgerFilters[key]);
         closeLedgerFilter();
         loadLedgerCases();
+      } else {
+        modalTitle.textContent = "통합관리대장 관리";
+        submitButton.textContent = "닫기";
+        submitButton.className = "btn";
+        deliveryOptions.style.display = "none";
+        templateUpload.style.display = "none";
+        vehicleFields.style.display = "none";
+        csFields.style.display = "none";
+        ledgerFields.style.display = "none";
+        managementFields.style.display = "block";
+        fileInput.required = false;
+        templateInput.required = false;
+        managementSearchInput.value = "";
+        managementImportInput.value = "";
+        managementImportDropMain.textContent = "업로드";
+        closeLedgerFilter();
+        loadManagementRecords();
       }
 
       const fileDrop = document.querySelector("label[for='fileInput']");
-      fileDrop.style.display = mode === "vehicle" || mode === "cs" || mode === "ledger" ? "none" : "grid";
-      fileLabel.style.display = mode === "vehicle" || mode === "cs" || mode === "ledger" ? "none" : "block";
+      fileDrop.style.display = mode === "vehicle" || mode === "cs" || mode === "ledger" || mode === "management" ? "none" : "grid";
+      fileLabel.style.display = mode === "vehicle" || mode === "cs" || mode === "ledger" || mode === "management" ? "none" : "block";
     }
 
     function closeModal() {
@@ -2101,6 +2252,12 @@ HTML = r"""<!doctype html>
       ledgerImportDropMain,
       "업로드"
     );
+    setupDropzone(
+      document.querySelector("label[for='managementImportInput']"),
+      managementImportInput,
+      managementImportDropMain,
+      "업로드"
+    );
     document.querySelector("#addProductRow").addEventListener("click", () => addProductRow());
     receiptTypeSelect.addEventListener("change", resetProductRows);
     vendorContactSelect.addEventListener("change", applySelectedVendor);
@@ -2136,6 +2293,8 @@ HTML = r"""<!doctype html>
     ledgerAddCs.addEventListener("click", openLedgerCsPopup);
     ledgerCsPopupClose.addEventListener("click", closeLedgerCsPopup);
     ledgerImportInput.addEventListener("change", uploadLedgerWorkbook);
+    managementRefresh.addEventListener("click", loadManagementRecords);
+    managementImportInput.addEventListener("change", uploadManagementWorkbook);
     ledgerBody.addEventListener("click", (event) => {
       const button = event.target.closest(".ledger-save");
       if (button) saveLedgerRow(button);
@@ -2150,6 +2309,12 @@ HTML = r"""<!doctype html>
         loadLedgerCases();
       }
     });
+    managementSearchInput.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        loadManagementRecords();
+      }
+    });
     vendorNameInput.addEventListener("input", () => {
       csSubjectInput.value = defaultCsSubject(vendorNameInput.value.trim());
     });
@@ -2162,7 +2327,7 @@ HTML = r"""<!doctype html>
       notice.textContent = "처리 중입니다.";
       submitButton.disabled = true;
       try {
-        if (currentMode === "ledger") {
+        if (currentMode === "ledger" || currentMode === "management") {
           closeModal();
         } else if (currentMode === "cs") {
           refreshCsBody();
@@ -2268,6 +2433,10 @@ def safe_filename(filename: str) -> str:
     filename = Path(filename).name
     filename = re.sub(r'[<>:"/\\|?*]+', "_", filename)
     return filename or "upload.xlsx"
+
+
+def original_uploaded_filename(filename: str) -> str:
+    return re.sub(r"^\d{10,}_", "", filename)
 
 
 def parse_multipart(headers, rfile) -> dict[str, tuple[str, bytes] | str]:
@@ -2418,6 +2587,37 @@ def init_db() -> None:
         connection.execute("CREATE INDEX IF NOT EXISTS idx_cs_cases_original_invoice ON cs_cases(original_invoice)")
         connection.execute("CREATE INDEX IF NOT EXISTS idx_cs_cases_receiver_phone ON cs_cases(receiver_phone)")
         connection.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_cs_cases_source ON cs_cases(source_file, source_sheet, source_row)")
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS management_records (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                created_at TEXT NOT NULL,
+                source_file TEXT NOT NULL,
+                source_sheet TEXT NOT NULL,
+                source_row INTEGER NOT NULL,
+                purchase_vendor TEXT,
+                sales_vendor TEXT,
+                transaction_type TEXT,
+                ledger_checked TEXT,
+                order_date TEXT,
+                ship_date TEXT,
+                orderer_name TEXT,
+                sender_phone TEXT,
+                receiver_name TEXT,
+                receiver_phone TEXT,
+                product_name TEXT,
+                quantity TEXT,
+                receiver_address TEXT,
+                courier TEXT,
+                invoice_number TEXT,
+                memo TEXT
+            )
+            """
+        )
+        connection.execute("CREATE INDEX IF NOT EXISTS idx_management_invoice ON management_records(invoice_number)")
+        connection.execute("CREATE INDEX IF NOT EXISTS idx_management_receiver_phone ON management_records(receiver_phone)")
+        connection.execute("CREATE INDEX IF NOT EXISTS idx_management_order_date ON management_records(order_date)")
+        connection.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_management_source ON management_records(source_file, source_sheet, source_row)")
         connection.commit()
     finally:
         connection.close()
@@ -2652,6 +2852,57 @@ def update_cs_case(case_id: int, payload: dict) -> None:
         connection.close()
 
 
+def list_management_records(query: str = "", limit: int = 300) -> list[dict[str, str | int]]:
+    init_db()
+    query = query.strip()
+    params: list[object] = []
+    conditions: list[str] = []
+    if query:
+        pattern = f"%{query}%"
+        conditions.append(
+            """
+            (
+                purchase_vendor LIKE ?
+                OR sales_vendor LIKE ?
+                OR transaction_type LIKE ?
+                OR ledger_checked LIKE ?
+                OR order_date LIKE ?
+                OR ship_date LIKE ?
+                OR orderer_name LIKE ?
+                OR sender_phone LIKE ?
+                OR receiver_name LIKE ?
+                OR receiver_phone LIKE ?
+                OR product_name LIKE ?
+                OR receiver_address LIKE ?
+                OR courier LIKE ?
+                OR invoice_number LIKE ?
+                OR memo LIKE ?
+            )
+            """
+        )
+        params = [pattern] * 15
+    where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+    params.append(limit)
+    connection = connect_db()
+    try:
+        rows = connection.execute(
+            f"""
+            SELECT id, created_at, source_file, source_sheet, source_row, purchase_vendor,
+                   sales_vendor, transaction_type, ledger_checked, order_date, ship_date,
+                   orderer_name, sender_phone, receiver_name, receiver_phone, product_name,
+                   quantity, receiver_address, courier, invoice_number, memo
+              FROM management_records
+              {where}
+             ORDER BY order_date DESC, id DESC
+             LIMIT ?
+            """,
+            params,
+        ).fetchall()
+    finally:
+        connection.close()
+    return [dict(row) for row in rows]
+
+
 def normalized_header(value: object) -> str:
     return re.sub(r"[\s\r\n/]+", "", str(value or "")).strip().lower()
 
@@ -2707,6 +2958,109 @@ def receiver_phone_index(headers: list[str], receiver_idx: int | None) -> int | 
             if idx > receiver_idx:
                 return idx
     return contact_indexes[-1]
+
+
+def management_header_indexes(headers: list[str]) -> dict[str, int | None]:
+    return {
+        "purchase_vendor": find_header(headers, {"매입거래처"}),
+        "sales_vendor": find_header(headers, {"매출거래처"}),
+        "transaction_type": find_header(headers, {"거래구분"}),
+        "ledger_checked": find_header(headers, {"장부입력확인"}),
+        "order_date": find_header(headers, {"주문일자"}),
+        "ship_date": find_header(headers, {"출고일"}),
+        "orderer_name": find_header(headers, {"주문자"}),
+        "sender_phone": find_header(headers, {"발신자연락처", "주문자연락처"}),
+        "receiver_name": find_header(headers, {"수령자", "수취인", "수하인"}),
+        "receiver_phone": find_header(headers, {"수령자연락처", "수취인연락처", "수하인연락처"}),
+        "product_name": find_header(headers, {"제품명", "상품명", "품명"}),
+        "quantity": find_header(headers, {"수량"}),
+        "receiver_address": find_header(headers, {"상세주소", "주소"}),
+        "courier": find_header(headers, {"택배사"}),
+        "invoice_number": find_header(headers, {"운송장번호", "송장번호"}),
+        "memo": find_header(headers, {"특이사항", "배송메세지", "배송메시지", "비고"}),
+    }
+
+
+def import_management_workbook(path: Path) -> tuple[int, int]:
+    init_db()
+    workbook = load_workbook(path, data_only=True, read_only=True)
+    inserted = 0
+    skipped = 0
+    timestamp = now_text()
+    source_file = original_uploaded_filename(path.name)
+    columns = [
+        "created_at",
+        "source_file",
+        "source_sheet",
+        "source_row",
+        "purchase_vendor",
+        "sales_vendor",
+        "transaction_type",
+        "ledger_checked",
+        "order_date",
+        "ship_date",
+        "orderer_name",
+        "sender_phone",
+        "receiver_name",
+        "receiver_phone",
+        "product_name",
+        "quantity",
+        "receiver_address",
+        "courier",
+        "invoice_number",
+        "memo",
+    ]
+    placeholders = ", ".join("?" for _ in columns)
+    connection = connect_db()
+    try:
+        for worksheet in workbook.worksheets:
+            rows = worksheet.iter_rows(max_col=80, values_only=True)
+            next(rows, None)
+            header_row = next(rows, None)
+            if not header_row:
+                continue
+            headers = [normalized_header(value) for value in header_row]
+            indexes = management_header_indexes(headers)
+            if indexes["receiver_name"] is None or indexes["product_name"] is None:
+                continue
+            for excel_row_number, row in enumerate(rows, start=3):
+                record = {
+                    "created_at": timestamp,
+                    "source_file": source_file,
+                    "source_sheet": worksheet.title,
+                    "source_row": excel_row_number,
+                    "purchase_vendor": row_value(row, indexes["purchase_vendor"]),
+                    "sales_vendor": row_value(row, indexes["sales_vendor"]),
+                    "transaction_type": row_value(row, indexes["transaction_type"]),
+                    "ledger_checked": row_value(row, indexes["ledger_checked"]),
+                    "order_date": row_value(row, indexes["order_date"]),
+                    "ship_date": row_value(row, indexes["ship_date"]),
+                    "orderer_name": row_value(row, indexes["orderer_name"]),
+                    "sender_phone": row_value(row, indexes["sender_phone"]),
+                    "receiver_name": row_value(row, indexes["receiver_name"]),
+                    "receiver_phone": row_value(row, indexes["receiver_phone"]),
+                    "product_name": row_value(row, indexes["product_name"]),
+                    "quantity": row_value(row, indexes["quantity"]),
+                    "receiver_address": row_value(row, indexes["receiver_address"]),
+                    "courier": row_value(row, indexes["courier"]),
+                    "invoice_number": row_value(row, indexes["invoice_number"]),
+                    "memo": row_value(row, indexes["memo"]),
+                }
+                if not any(record[key] for key in ("receiver_name", "product_name", "invoice_number", "receiver_address")):
+                    continue
+                cursor = connection.execute(
+                    f"INSERT OR IGNORE INTO management_records ({', '.join(columns)}) VALUES ({placeholders})",
+                    [record[column] for column in columns],
+                )
+                if cursor.rowcount:
+                    inserted += 1
+                else:
+                    skipped += 1
+        connection.commit()
+    finally:
+        connection.close()
+        workbook.close()
+    return inserted, skipped
 
 
 def import_cs_cases_from_workbook(path: Path) -> tuple[int, int]:
@@ -3149,6 +3503,17 @@ class WorkhubHandler(BaseHTTPRequestHandler):
             self.send_json({"cases": list_cs_cases(query=query, status=status, limit=limit)})
             return
 
+        if self.path.startswith("/api/management-records"):
+            parsed = urlsplit(self.path)
+            params = parse_qs(parsed.query)
+            query = params.get("q", [""])[0]
+            try:
+                limit = min(max(int(params.get("limit", ["300"])[0]), 1), 1000)
+            except ValueError:
+                limit = 300
+            self.send_json({"records": list_management_records(query=query, limit=limit)})
+            return
+
         if self.path.startswith("/lucide/"):
             relative = unquote(self.path.removeprefix("/lucide/"))
             target = (LUCIDE_DIR / relative).resolve()
@@ -3246,6 +3611,16 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                 inserted, skipped = import_cs_cases_from_workbook(upload_path)
                 self.send_json({
                     "message": f"CS 처리대장 {inserted}건 업로드 완료, 중복 {skipped}건 제외했습니다.",
+                    "inserted": inserted,
+                    "skipped": skipped,
+                })
+                return
+
+            if self.path == "/api/management-import":
+                upload_path = save_uploaded_file(fields, "file")
+                inserted, skipped = import_management_workbook(upload_path)
+                self.send_json({
+                    "message": f"통합관리대장 {inserted}건 업로드 완료, 중복 {skipped}건 제외했습니다.",
                     "inserted": inserted,
                     "skipped": skipped,
                 })
