@@ -893,6 +893,102 @@ HTML = r"""<!doctype html>
       font-size: 11px;
       cursor: pointer;
     }
+    .management-edit {
+      width: 100%;
+      min-width: 86px;
+      height: 26px;
+      border: 1px solid transparent;
+      border-radius: 5px;
+      padding: 0 5px;
+      background: rgba(255,255,255,.72);
+      font-family: inherit;
+      font-size: 11px;
+    }
+    .management-edit:focus {
+      border-color: #2563eb;
+      background: white;
+      outline: none;
+      box-shadow: 0 0 0 2px rgba(37, 99, 235, .12);
+    }
+    .management-edit.wide { min-width: 260px; }
+    .management-cs-button {
+      height: 28px;
+      min-width: 58px;
+      border: 1px solid #155bc8;
+      border-radius: 6px;
+      background: #eef6ff;
+      color: #155bc8;
+      font-size: 11px;
+      font-weight: 850;
+      cursor: pointer;
+    }
+    .management-cs-button:disabled {
+      border-color: #7a5a00;
+      background: rgba(255,255,255,.46);
+      color: #5f4300;
+      cursor: default;
+    }
+    .ledger-table tr.management-cs-received td {
+      background: #ffc000 !important;
+    }
+    .management-cs-received .management-edit {
+      background: rgba(255,255,255,.48);
+    }
+    .workspace-view {
+      display: none;
+      flex-direction: column;
+      gap: 12px;
+      min-height: 0;
+      height: calc(100vh - 74px);
+      padding: 0 22px 24px;
+    }
+    .workspace-view.active { display: flex; }
+    .workspace-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      min-height: 48px;
+    }
+    .workspace-title {
+      font-size: 18px;
+      font-weight: 950;
+    }
+    .workspace-actions {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+    .workspace-button {
+      height: 34px;
+      border: 1px solid #cbd5e1;
+      border-radius: 7px;
+      background: white;
+      color: #1f2937;
+      font-family: inherit;
+      font-size: 12px;
+      font-weight: 900;
+      padding: 0 12px;
+      cursor: pointer;
+    }
+    .workspace-mount {
+      flex: 1;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+    }
+    .workspace-view.active .ledger-fields,
+    .workspace-view.active .management-fields {
+      display: flex !important;
+      flex-direction: column;
+      flex: 1;
+      min-height: 0;
+    }
+    .workspace-view.active .ledger-wrap {
+      flex: 1;
+      min-height: 0;
+      max-height: none;
+    }
 
     @media (max-width: 1180px) {
       .app { grid-template-columns: 76px minmax(0, 1fr); }
@@ -926,7 +1022,7 @@ HTML = r"""<!doctype html>
         <div class="brand-label">(주)소일브릿지<br>업무자동화</div>
       </div>
       <div class="nav-section">MAIN</div>
-      <button class="nav-item active" type="button"><i data-lucide="home"></i> <span>공지사항</span></button>
+      <button class="nav-item active" type="button" data-view="dashboard"><i data-lucide="home"></i> <span>공지사항</span></button>
       <div class="nav-group" id="orderNavGroup">
         <button class="nav-item" id="orderNavToggle" type="button">
           <span class="nav-label"><i data-lucide="clipboard-list"></i> <span>발주업무</span></span>
@@ -961,7 +1057,7 @@ HTML = r"""<!doctype html>
         </div>
       </header>
 
-      <section class="content">
+      <section class="content" id="dashboardContent">
         <div class="stat-grid">
           <article class="card stat-card">
             <div>
@@ -1063,6 +1159,24 @@ HTML = r"""<!doctype html>
           </article>
           </div>
         </section>
+      </section>
+      <section class="workspace-view" id="managementWorkspace">
+        <div class="workspace-head">
+          <div class="workspace-title">통합관리대장 관리</div>
+          <div class="workspace-actions">
+            <button class="workspace-button" type="button" data-open-window="management">새창으로 열기</button>
+          </div>
+        </div>
+        <div class="workspace-mount" id="managementWorkspaceMount"></div>
+      </section>
+      <section class="workspace-view" id="ledgerWorkspace">
+        <div class="workspace-head">
+          <div class="workspace-title">CS 처리대장</div>
+          <div class="workspace-actions">
+            <button class="workspace-button" type="button" data-open-window="ledger">새창으로 열기</button>
+          </div>
+        </div>
+        <div class="workspace-mount" id="ledgerWorkspaceMount"></div>
       </section>
     </main>
   </div>
@@ -1289,6 +1403,7 @@ HTML = r"""<!doctype html>
             <table class="ledger-table">
               <thead>
                 <tr>
+                  <th>저장</th>
                   <th>주문일자</th>
                   <th>출고일</th>
                   <th>매입거래처</th>
@@ -1306,6 +1421,7 @@ HTML = r"""<!doctype html>
                   <th>운송장번호</th>
                   <th>특이사항</th>
                   <th>원본시트</th>
+                  <th>CS접수</th>
                 </tr>
               </thead>
               <tbody id="managementBody"></tbody>
@@ -1408,11 +1524,20 @@ HTML = r"""<!doctype html>
     const resultText = document.querySelector("#resultText");
     const notice = document.querySelector("#notice");
     const submitButton = document.querySelector("#submitButton");
-    let currentMode = "delivery";
+    const pageTitle = document.querySelector(".title");
+    const dashboardContent = document.querySelector("#dashboardContent");
+    const managementWorkspace = document.querySelector("#managementWorkspace");
+    const ledgerWorkspace = document.querySelector("#ledgerWorkspace");
+    const managementWorkspaceMount = document.querySelector("#managementWorkspaceMount");
+    const ledgerWorkspaceMount = document.querySelector("#ledgerWorkspaceMount");
+    let currentMode = "dashboard";
     let vendorContacts = [];
     let ledgerCases = [];
     let activeLedgerFilterField = "";
     const ledgerFilters = {};
+
+    if (managementWorkspaceMount && managementFields) managementWorkspaceMount.appendChild(managementFields);
+    if (ledgerWorkspaceMount && ledgerFields) ledgerWorkspaceMount.appendChild(ledgerFields);
 
     function addProductRow(productName = "", quantity = "", packQuantity = "") {
       const row = document.createElement("div");
@@ -1884,7 +2009,7 @@ HTML = r"""<!doctype html>
       managementBody.innerHTML = "";
       if (!records || records.length === 0) {
         const row = document.createElement("tr");
-        row.innerHTML = `<td colspan="17">조회된 통합관리대장 데이터가 없습니다.</td>`;
+        row.innerHTML = `<td colspan="19">조회된 통합관리대장 데이터가 없습니다.</td>`;
         managementBody.appendChild(row);
         return;
       }
@@ -1910,6 +2035,7 @@ HTML = r"""<!doctype html>
       let duplicateGroupIndex = 0;
       records.forEach((record) => {
         const row = document.createElement("tr");
+        row.dataset.recordId = record.id;
         const dateKey = String(record.order_date || record.ship_date || "").trim();
         const invoiceKey = String(record.invoice_number || "").trim();
         const duplicateKey = dateKey && invoiceKey ? `${dateKey}||${invoiceKey}` : "";
@@ -1924,24 +2050,28 @@ HTML = r"""<!doctype html>
           row.classList.add("management-duplicate");
           row.style.setProperty("--duplicate-row-color", duplicateColorByKey.get(duplicateKey));
         }
+        const csReceived = Boolean(record.cs_received_at);
+        if (csReceived) row.classList.add("management-cs-received");
         row.innerHTML = `
-          <td>${escapeHtml(record.order_date)}</td>
-          <td>${escapeHtml(record.ship_date)}</td>
-          <td>${escapeHtml(record.purchase_vendor)}</td>
-          <td>${escapeHtml(record.sales_vendor)}</td>
-          <td>${escapeHtml(record.transaction_type)}</td>
-          <td>${escapeHtml(record.ledger_checked)}</td>
-          <td>${escapeHtml(record.orderer_name)}</td>
-          <td>${escapeHtml(record.sender_phone)}</td>
-          <td>${escapeHtml(record.receiver_name)}</td>
-          <td>${escapeHtml(record.receiver_phone)}</td>
-          <td class="left">${escapeHtml(record.product_name)}</td>
-          <td>${escapeHtml(record.quantity)}</td>
-          <td class="left">${escapeHtml(record.receiver_address)}</td>
-          <td>${escapeHtml(record.courier)}</td>
-          <td>${escapeHtml(record.invoice_number)}</td>
-          <td class="left">${escapeHtml(record.memo)}</td>
+          <td><button class="ledger-save management-save" type="button">저장</button></td>
+          <td><input class="management-edit" data-management-field="order_date" value="${escapeHtml(record.order_date)}" /></td>
+          <td><input class="management-edit" data-management-field="ship_date" value="${escapeHtml(record.ship_date)}" /></td>
+          <td><input class="management-edit" data-management-field="purchase_vendor" value="${escapeHtml(record.purchase_vendor)}" /></td>
+          <td><input class="management-edit" data-management-field="sales_vendor" value="${escapeHtml(record.sales_vendor)}" /></td>
+          <td><input class="management-edit" data-management-field="transaction_type" value="${escapeHtml(record.transaction_type)}" /></td>
+          <td><input class="management-edit" data-management-field="ledger_checked" value="${escapeHtml(record.ledger_checked)}" /></td>
+          <td><input class="management-edit" data-management-field="orderer_name" value="${escapeHtml(record.orderer_name)}" /></td>
+          <td><input class="management-edit" data-management-field="sender_phone" value="${escapeHtml(record.sender_phone)}" /></td>
+          <td><input class="management-edit" data-management-field="receiver_name" value="${escapeHtml(record.receiver_name)}" /></td>
+          <td><input class="management-edit" data-management-field="receiver_phone" value="${escapeHtml(record.receiver_phone)}" /></td>
+          <td class="left"><input class="management-edit wide" data-management-field="product_name" value="${escapeHtml(record.product_name)}" /></td>
+          <td><input class="management-edit" data-management-field="quantity" value="${escapeHtml(record.quantity)}" /></td>
+          <td class="left"><input class="management-edit wide" data-management-field="receiver_address" value="${escapeHtml(record.receiver_address)}" /></td>
+          <td><input class="management-edit" data-management-field="courier" value="${escapeHtml(record.courier)}" /></td>
+          <td><input class="management-edit" data-management-field="invoice_number" value="${escapeHtml(record.invoice_number)}" /></td>
+          <td class="left"><input class="management-edit wide" data-management-field="memo" value="${escapeHtml(record.memo)}" /></td>
           <td>${escapeHtml(record.source_sheet)}</td>
+          <td><button class="management-cs-button" type="button" ${csReceived ? "disabled" : ""}>${csReceived ? "접수완료" : "CS접수"}</button></td>
         `;
         managementBody.appendChild(row);
       });
@@ -1984,6 +2114,65 @@ HTML = r"""<!doctype html>
       } finally {
         managementImportInput.value = "";
         managementImportDropMain.textContent = "업로드";
+      }
+    }
+
+    function collectManagementRow(row) {
+      const payload = { id: row.dataset.recordId };
+      row.querySelectorAll("[data-management-field]").forEach((input) => {
+        payload[input.dataset.managementField] = input.value.trim();
+      });
+      return payload;
+    }
+
+    async function saveManagementRow(button) {
+      const row = button.closest("tr");
+      if (!row) return;
+      const payload = collectManagementRow(row);
+      try {
+        button.disabled = true;
+        const response = await fetch("/api/management-record-update", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "통합관리대장 저장에 실패했습니다.");
+        notice.textContent = data.message || "통합관리대장 행을 저장했습니다.";
+        await loadManagementRecords();
+      } catch (error) {
+        notice.textContent = error.message;
+      } finally {
+        button.disabled = false;
+      }
+    }
+
+    async function receiveManagementCs(button) {
+      const row = button.closest("tr");
+      if (!row) return;
+      const payload = collectManagementRow(row);
+      try {
+        button.disabled = true;
+        const saveResponse = await fetch("/api/management-record-update", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        const saveData = await saveResponse.json();
+        if (!saveResponse.ok) throw new Error(saveData.error || "통합관리대장 저장에 실패했습니다.");
+        const response = await fetch("/api/management-to-cs", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: payload.id }),
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "CS 처리대장 접수에 실패했습니다.");
+        notice.textContent = data.message || "CS 처리대장에 접수했습니다.";
+        showWorkspace("ledger");
+      } catch (error) {
+        notice.textContent = error.message;
+      } finally {
+        button.disabled = false;
       }
     }
 
@@ -2230,8 +2419,76 @@ HTML = r"""<!doctype html>
       modal.classList.remove("open");
     }
 
+    function setPageTitle(text) {
+      if (!pageTitle) return;
+      const firstNode = pageTitle.childNodes[0];
+      if (firstNode && firstNode.nodeType === Node.TEXT_NODE) {
+        firstNode.nodeValue = `${text} `;
+      } else {
+        pageTitle.prepend(document.createTextNode(`${text} `));
+      }
+    }
+
+    function setActiveNav(mode) {
+      document.querySelectorAll(".nav-item").forEach((item) => item.classList.remove("active"));
+      const selector = mode === "dashboard" ? '[data-view="dashboard"]' : `[data-open="${mode}"]`;
+      const activeItem = document.querySelector(selector);
+      if (activeItem) activeItem.classList.add("active");
+    }
+
+    function showWorkspace(mode) {
+      closeModal();
+      currentMode = mode;
+      const showManagement = mode === "management";
+      const showLedger = mode === "ledger";
+      dashboardContent.style.display = mode === "dashboard" ? "" : "none";
+      managementWorkspace.classList.toggle("active", showManagement);
+      ledgerWorkspace.classList.toggle("active", showLedger);
+      setActiveNav(mode);
+      if (showManagement) {
+        setPageTitle("통합관리대장 관리");
+        managementSearchInput.value = "";
+        managementImportInput.value = "";
+        managementImportDropMain.textContent = "업로드";
+        closeLedgerFilter();
+        loadManagementRecords();
+      } else if (showLedger) {
+        setPageTitle("CS 처리대장");
+        ledgerSearchInput.value = "";
+        ledgerStatusFilter.value = "";
+        ledgerImportInput.value = "";
+        ledgerImportDropMain.textContent = "업로드";
+        Object.keys(ledgerFilters).forEach((key) => delete ledgerFilters[key]);
+        closeLedgerFilter();
+        loadLedgerCases();
+      } else {
+        currentMode = "dashboard";
+        setPageTitle("금일 공지사항");
+        closeLedgerFilter();
+      }
+    }
+
+    function openWorkspaceWindow(mode) {
+      const url = new URL(window.location.href);
+      url.searchParams.set("view", mode);
+      window.open(url.toString(), "_blank", "width=1480,height=920");
+    }
+
     document.querySelectorAll("[data-open]").forEach((button) => {
-      button.addEventListener("click", () => openModal(button.dataset.open));
+      button.addEventListener("click", () => {
+        const mode = button.dataset.open;
+        if (mode === "management" || mode === "ledger") {
+          showWorkspace(mode);
+          return;
+        }
+        openModal(mode);
+      });
+    });
+    document.querySelectorAll("[data-view]").forEach((button) => {
+      button.addEventListener("click", () => showWorkspace(button.dataset.view));
+    });
+    document.querySelectorAll("[data-open-window]").forEach((button) => {
+      button.addEventListener("click", () => openWorkspaceWindow(button.dataset.openWindow));
     });
     document.querySelector("#orderNavToggle").addEventListener("click", () => {
       document.querySelector("#orderNavGroup").classList.toggle("open");
@@ -2339,6 +2596,15 @@ HTML = r"""<!doctype html>
     ledgerImportInput.addEventListener("change", uploadLedgerWorkbook);
     managementRefresh.addEventListener("click", loadManagementRecords);
     managementImportInput.addEventListener("change", uploadManagementWorkbook);
+    managementBody.addEventListener("click", (event) => {
+      const saveButton = event.target.closest(".management-save");
+      if (saveButton) {
+        saveManagementRow(saveButton);
+        return;
+      }
+      const csButton = event.target.closest(".management-cs-button");
+      if (csButton) receiveManagementCs(csButton);
+    });
     ledgerBody.addEventListener("click", (event) => {
       const button = event.target.closest(".ledger-save");
       if (button) saveLedgerRow(button);
@@ -2467,6 +2733,9 @@ HTML = r"""<!doctype html>
       link.remove();
       URL.revokeObjectURL(url);
     });
+
+    const initialView = new URLSearchParams(window.location.search).get("view");
+    showWorkspace(initialView === "management" || initialView === "ledger" ? initialView : "dashboard");
   </script>
 </body>
 </html>
@@ -2654,10 +2923,16 @@ def init_db() -> None:
                 receiver_address TEXT,
                 courier TEXT,
                 invoice_number TEXT,
-                memo TEXT
+                memo TEXT,
+                cs_received_at TEXT
             )
             """
         )
+        management_columns = {
+            row["name"] for row in connection.execute("PRAGMA table_info(management_records)").fetchall()
+        }
+        if "cs_received_at" not in management_columns:
+            connection.execute("ALTER TABLE management_records ADD COLUMN cs_received_at TEXT")
         connection.execute("CREATE INDEX IF NOT EXISTS idx_management_invoice ON management_records(invoice_number)")
         connection.execute("CREATE INDEX IF NOT EXISTS idx_management_receiver_phone ON management_records(receiver_phone)")
         connection.execute("CREATE INDEX IF NOT EXISTS idx_management_order_date ON management_records(order_date)")
@@ -2934,7 +3209,7 @@ def list_management_records(query: str = "", limit: int = 300) -> list[dict[str,
             SELECT id, created_at, source_file, source_sheet, source_row, purchase_vendor,
                    sales_vendor, transaction_type, ledger_checked, order_date, ship_date,
                    orderer_name, sender_phone, receiver_name, receiver_phone, product_name,
-                   quantity, receiver_address, courier, invoice_number, memo
+                   quantity, receiver_address, courier, invoice_number, memo, cs_received_at
               FROM management_records
               {where}
              ORDER BY order_date DESC, id DESC
@@ -2945,6 +3220,133 @@ def list_management_records(query: str = "", limit: int = 300) -> list[dict[str,
     finally:
         connection.close()
     return [dict(row) for row in rows]
+
+
+MANAGEMENT_EDIT_COLUMNS = [
+    "purchase_vendor",
+    "sales_vendor",
+    "transaction_type",
+    "ledger_checked",
+    "order_date",
+    "ship_date",
+    "orderer_name",
+    "sender_phone",
+    "receiver_name",
+    "receiver_phone",
+    "product_name",
+    "quantity",
+    "receiver_address",
+    "courier",
+    "invoice_number",
+    "memo",
+]
+
+
+def get_management_record(record_id: int) -> dict[str, str | int]:
+    init_db()
+    connection = connect_db()
+    try:
+        row = connection.execute(
+            """
+            SELECT id, created_at, source_file, source_sheet, source_row, purchase_vendor,
+                   sales_vendor, transaction_type, ledger_checked, order_date, ship_date,
+                   orderer_name, sender_phone, receiver_name, receiver_phone, product_name,
+                   quantity, receiver_address, courier, invoice_number, memo, cs_received_at
+              FROM management_records
+             WHERE id = ?
+            """,
+            [record_id],
+        ).fetchone()
+    finally:
+        connection.close()
+    if not row:
+        raise ValueError("통합관리대장 행을 찾지 못했습니다.")
+    return dict(row)
+
+
+def update_management_record(record_id: int, payload: dict) -> None:
+    init_db()
+    values = [clean_payload_text(payload, column) for column in MANAGEMENT_EDIT_COLUMNS]
+    assignments = ", ".join(f"{column} = ?" for column in MANAGEMENT_EDIT_COLUMNS)
+    connection = connect_db()
+    try:
+        cursor = connection.execute(
+            f"UPDATE management_records SET {assignments} WHERE id = ?",
+            [*values, record_id],
+        )
+        connection.commit()
+        if cursor.rowcount == 0:
+            raise ValueError("수정할 통합관리대장 행을 찾지 못했습니다.")
+    finally:
+        connection.close()
+
+
+def create_cs_case_from_management(record_id: int) -> int:
+    record = get_management_record(record_id)
+    timestamp = now_text()
+    source_file = f"통합관리대장:{record.get('source_file', '')}"
+    source_sheet = str(record.get("source_sheet", "") or "")
+    source_row = int(record.get("source_row", 0) or 0)
+    connection = connect_db()
+    try:
+        cursor = connection.execute(
+            """
+            INSERT OR IGNORE INTO cs_cases (
+                created_at, updated_at, status, vendor_name, original_info, original_invoice,
+                product_name, orderer_name, orderer_phone, receiver_name, receiver_phone,
+                receiver_address, cs_type, cs_content, source_file, source_sheet, source_row,
+                occurred_at, order_date, ship_date, sales_vendor, purchase_vendor, courier, quantity
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                timestamp,
+                timestamp,
+                "접수",
+                record.get("purchase_vendor", ""),
+                f"{record.get('ship_date', '')} / {record.get('invoice_number', '')}".strip(" /"),
+                record.get("invoice_number", ""),
+                record.get("product_name", ""),
+                record.get("orderer_name", ""),
+                record.get("sender_phone", ""),
+                record.get("receiver_name", ""),
+                record.get("receiver_phone", ""),
+                record.get("receiver_address", ""),
+                "",
+                "",
+                source_file,
+                source_sheet,
+                source_row,
+                record.get("order_date", "") or record.get("ship_date", ""),
+                record.get("order_date", ""),
+                record.get("ship_date", ""),
+                record.get("sales_vendor", ""),
+                record.get("purchase_vendor", ""),
+                record.get("courier", ""),
+                record.get("quantity", ""),
+            ],
+        )
+        if cursor.rowcount:
+            case_id = int(cursor.lastrowid)
+        else:
+            existing = connection.execute(
+                "SELECT id FROM cs_cases WHERE source_file = ? AND source_sheet = ? AND source_row = ?",
+                [source_file, source_sheet, source_row],
+            ).fetchone()
+            case_id = int(existing["id"]) if existing else 0
+        connection.execute(
+            """
+            UPDATE management_records
+               SET cs_received_at = COALESCE(NULLIF(cs_received_at, ''), ?)
+             WHERE id = ?
+            """,
+            [timestamp, record_id],
+        )
+        connection.commit()
+    finally:
+        connection.close()
+    if not case_id:
+        raise ValueError("CS 처리대장 접수에 실패했습니다.")
+    return case_id
 
 
 def normalized_header(value: object) -> str:
@@ -3596,6 +3998,26 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                     raise ValueError("수정할 CS건 ID가 없습니다.")
                 update_cs_case(case_id, payload)
                 self.send_json({"message": "CS 처리내용을 저장했습니다.", "case_id": case_id})
+                return
+
+            if self.path == "/api/management-record-update":
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(length).decode("utf-8"))
+                record_id = int(payload.get("id", 0))
+                if not record_id:
+                    raise ValueError("수정할 통합관리대장 행 ID가 없습니다.")
+                update_management_record(record_id, payload)
+                self.send_json({"message": "통합관리대장 행을 저장했습니다.", "record_id": record_id})
+                return
+
+            if self.path == "/api/management-to-cs":
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(length).decode("utf-8"))
+                record_id = int(payload.get("id", 0))
+                if not record_id:
+                    raise ValueError("CS접수할 통합관리대장 행 ID가 없습니다.")
+                case_id = create_cs_case_from_management(record_id)
+                self.send_json({"message": "CS 처리대장에 접수했습니다.", "case_id": case_id})
                 return
 
             if self.path == "/api/vendor-contact":
