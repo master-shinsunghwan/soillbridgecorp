@@ -267,6 +267,7 @@ HTML = r"""<!doctype html>
       overflow-y: auto;
       background: white; border: 1px solid #b7bdc8; border-radius: 12px;
       box-shadow: var(--shadow); padding: 24px 28px 26px;
+      position: relative;
     }
     .modal.ledger-modal {
       width: calc(100vw - 18px);
@@ -325,6 +326,49 @@ HTML = r"""<!doctype html>
     .vehicle-fields { display: none; }
     .cs-fields { display: none; }
     .ledger-fields { display: none; }
+    .ledger-cs-popup-head { display: none; }
+    .modal.ledger-modal .cs-fields.ledger-cs-popup {
+      position: absolute;
+      z-index: 35;
+      top: 70px;
+      right: 22px;
+      bottom: 72px;
+      display: block !important;
+      width: min(560px, calc(100vw - 62px));
+      overflow: auto;
+      padding: 18px;
+      border: 1px solid #9aa4b2;
+      border-radius: 10px;
+      background: white;
+      box-shadow: 0 18px 44px rgba(15, 23, 42, .28);
+    }
+    .modal.ledger-modal .cs-fields.ledger-cs-popup .ledger-cs-popup-head {
+      position: sticky;
+      top: -18px;
+      z-index: 2;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin: -18px -18px 14px;
+      padding: 15px 18px;
+      border-bottom: 1px solid #d7dce5;
+      background: white;
+    }
+    .ledger-cs-popup-title {
+      font-size: 20px;
+      font-weight: 850;
+    }
+    .ledger-cs-popup-close {
+      height: 34px;
+      min-width: 64px;
+      border: 1px solid #aab2bf;
+      border-radius: 6px;
+      background: white;
+      font-family: inherit;
+      font-weight: 800;
+      cursor: pointer;
+    }
     .text-field { margin-top: 14px; }
     .text-field input,
     .text-field select,
@@ -827,6 +871,10 @@ HTML = r"""<!doctype html>
           </div>
         </div>
         <div class="cs-fields" id="csFields">
+          <div class="ledger-cs-popup-head">
+            <strong class="ledger-cs-popup-title">CS 추가</strong>
+            <button class="ledger-cs-popup-close" id="ledgerCsPopupClose" type="button">닫기</button>
+          </div>
           <div class="text-field">
             <label class="field-label" for="naverEmailInput">네이버 메일 아이디</label>
             <input id="naverEmailInput" name="naver_email" type="text" placeholder="예) soilbridge@naver.com" />
@@ -935,6 +983,7 @@ HTML = r"""<!doctype html>
             <table class="ledger-table">
               <thead>
                 <tr>
+                  <th>저장</th>
                   <th class="has-filter"><span class="ledger-th-title">날짜</span><button class="ledger-filter-trigger" type="button" data-ledger-filter-button="occurred_at" data-label="날짜">▼</button></th>
                   <th class="has-filter"><span class="ledger-th-title">매출거래처</span><button class="ledger-filter-trigger" type="button" data-ledger-filter-button="sales_vendor" data-label="매출거래처">▼</button></th>
                   <th class="has-filter"><span class="ledger-th-title">매입거래처</span><button class="ledger-filter-trigger" type="button" data-ledger-filter-button="purchase_vendor" data-label="매입거래처">▼</button></th>
@@ -955,7 +1004,6 @@ HTML = r"""<!doctype html>
                   <th class="has-filter"><span class="ledger-th-title">상세주소</span><button class="ledger-filter-trigger" type="button" data-ledger-filter-button="receiver_address" data-label="상세주소">▼</button></th>
                   <th class="has-filter"><span class="ledger-th-title">택배사</span><button class="ledger-filter-trigger" type="button" data-ledger-filter-button="courier" data-label="택배사">▼</button></th>
                   <th class="has-filter"><span class="ledger-th-title">송장번호</span><button class="ledger-filter-trigger" type="button" data-ledger-filter-button="original_invoice" data-label="송장번호">▼</button></th>
-                  <th></th>
                 </tr>
               </thead>
               <tbody id="ledgerBody"></tbody>
@@ -1033,6 +1081,7 @@ HTML = r"""<!doctype html>
     const csBodyInput = document.querySelector("#csBodyInput");
     const saveCsCaseButton = document.querySelector("#saveCsCase");
     const csCaseList = document.querySelector("#csCaseList");
+    const ledgerCsPopupClose = document.querySelector("#ledgerCsPopupClose");
     const ledgerSearchInput = document.querySelector("#ledgerSearchInput");
     const ledgerStatusFilter = document.querySelector("#ledgerStatusFilter");
     const ledgerRefresh = document.querySelector("#ledgerRefresh");
@@ -1391,6 +1440,44 @@ HTML = r"""<!doctype html>
       closeLedgerFilter();
     }
 
+    function resetCsFormInputs() {
+      naverEmailInput.value = "";
+      naverPasswordInput.value = "";
+      naverPasswordInput.placeholder = "저장된 비밀번호가 없으면 입력";
+      saveMailCredentials.checked = true;
+      vendorContactSelect.value = "";
+      vendorContactsFileInput.value = "";
+      vendorContactsDropMain.textContent = "업체명/메일주소 엑셀을 선택해주세요.";
+      recipientEmailInput.value = "";
+      vendorNameInput.value = "";
+      csOriginInput.value = "";
+      csProductInput.value = "";
+      csReceiverInput.value = "";
+      csPhoneInput.value = "";
+      csAddressInput.value = "";
+      csTypeInput.value = "";
+      csContentInput.value = "";
+      csSubjectInput.value = defaultCsSubject();
+      refreshCsBody();
+    }
+
+    function openLedgerCsPopup() {
+      closeLedgerFilter();
+      resetCsFormInputs();
+      csFields.classList.add("ledger-cs-popup");
+      csFields.style.display = "block";
+      loadMailSettings();
+      loadVendorContacts();
+      loadCsCases();
+      notice.textContent = "새 CS 내용을 입력한 뒤 CS건 DB 저장을 눌러주세요.";
+      setTimeout(() => vendorNameInput.focus(), 0);
+    }
+
+    function closeLedgerCsPopup() {
+      csFields.classList.remove("ledger-cs-popup");
+      if (currentMode === "ledger") csFields.style.display = "none";
+    }
+
     function renderLedger(cases) {
       ledgerBody.innerHTML = "";
       if (!cases || cases.length === 0) {
@@ -1406,6 +1493,7 @@ HTML = r"""<!doctype html>
         const csTypeSelectOptions = `<option value="" ${csCase.cs_type ? "" : "selected"}>선택</option>${selectOptions(csTypeOptions, csCase.cs_type)}`;
         if (isCompletedCsCase(csCase)) row.classList.add("completed-cs");
         row.innerHTML = `
+          <td><button class="ledger-save" type="button" data-case-id="${escapeHtml(csCase.id)}">저장</button></td>
           <td>${escapeHtml(csCase.occurred_at || csCase.created_at)}</td>
           <td>${escapeHtml(csCase.sales_vendor)}</td>
           <td>${escapeHtml(csCase.purchase_vendor || csCase.vendor_name)}</td>
@@ -1426,7 +1514,6 @@ HTML = r"""<!doctype html>
           <td class="left">${escapeHtml(csCase.receiver_address)}</td>
           <td>${escapeHtml(csCase.courier)}</td>
           <td>${escapeHtml(csCase.original_invoice || csCase.original_info)}</td>
-          <td><button class="ledger-save" type="button" data-case-id="${escapeHtml(csCase.id)}">저장</button></td>
         `;
         ledgerBody.appendChild(row);
       });
@@ -1541,7 +1628,12 @@ HTML = r"""<!doctype html>
         const data = await response.json();
         if (!response.ok) throw new Error(data.error || "CS건 저장에 실패했습니다.");
         notice.textContent = data.message || "CS건을 DB에 저장했습니다.";
-        await loadCsCases();
+        if (currentMode === "ledger") {
+          closeLedgerCsPopup();
+          await loadLedgerCases();
+        } else {
+          await loadCsCases();
+        }
       } catch (error) {
         notice.textContent = error.message;
       } finally {
@@ -1565,6 +1657,7 @@ HTML = r"""<!doctype html>
 
     function openModal(mode) {
       currentMode = mode;
+      closeLedgerCsPopup();
       modal.classList.add("open");
       modal.querySelector(".modal").classList.toggle("ledger-modal", mode === "ledger");
       result.classList.remove("open");
@@ -1691,6 +1784,8 @@ HTML = r"""<!doctype html>
     }
 
     function closeModal() {
+      closeLedgerCsPopup();
+      closeLedgerFilter();
       modal.classList.remove("open");
     }
 
@@ -1789,10 +1884,8 @@ HTML = r"""<!doctype html>
         closeLedgerFilter();
       }
     });
-    ledgerAddCs.addEventListener("click", () => {
-      openModal("cs");
-      notice.textContent = "새 CS 내용을 입력한 뒤 CS건 DB 저장을 눌러주세요.";
-    });
+    ledgerAddCs.addEventListener("click", openLedgerCsPopup);
+    ledgerCsPopupClose.addEventListener("click", closeLedgerCsPopup);
     ledgerImportInput.addEventListener("change", uploadLedgerWorkbook);
     ledgerBody.addEventListener("click", (event) => {
       const button = event.target.closest(".ledger-save");
@@ -2117,17 +2210,17 @@ def normalize_cs_type_value(cs_type: str, cs_content: str, status: str = "") -> 
     if not text:
         return ""
 
-    if any(keyword in text for keyword in ["오배송", "오출고", "오발주", "중복발주", "중복출고", "이중발주", "이중출고", "주소오류", "주소오기재"]):
+    if any(keyword in text for keyword in ["오배송", "오출고", "오발주", "착오", "중복발주", "중복출고", "이중발주", "이중출고", "주소오류", "주소오기재"]):
         return "오출고(오배송)"
     if any(keyword in text for keyword in ["출고취소", "출고전취소", "출소취소"]):
         return "오출고(오배송)"
     if any(keyword in text for keyword in ["변심", "단순변심"]):
         return "변심반품"
-    if any(keyword in text for keyword in ["맞교환", "불량교환", "제품불량교환", "교환요청", "교환원", "교환진행", "교환"]):
+    if any(keyword in text for keyword in ["맞교환", "맞효관", "불량교환", "제품불량교환", "교환요청", "교환원", "교환진행", "교환"]):
         return "불량교환"
-    if any(keyword in text for keyword in ["누락재발송", "누락재배송", "부분재발송", "부족분재발송", "일부재발송", "일부분재배송", "미수령재배송", "재출고", "재발송요청", "배출고", "누락배송", "부분누락", "부분발송", "부분미발송", "미발송", "추가배송", "추가구매", "제품미수령", "화물추적", "배송추적", "배송확인", "운송장회신", "충전기분실", "재발송", "발송완료"]):
+    if any(keyword in text for keyword in ["상품누락", "누락재발송", "누락재배송", "부분재발송", "부분재출고", "부족분재발송", "일부재발송", "일부분재배송", "미수령재배송", "재출고", "대체출고", "재발송요청", "배출고", "누락배송", "부분누락", "부분발송", "부분미발송", "미발송", "추가배송", "추가발송", "부품구매", "부품출고", "추가구매", "제품미수령", "화물추적", "배송추적", "배송확인", "운송장회신", "충전기분실", "재발송", "발송완료"]):
         return "불량재출고(미회수)"
-    if any(keyword in text for keyword in ["불량반품", "제품불량반품", "반품회수", "불량", "파손배송", "파손불량", "환불", "회수완료", "회수요청", "코팅벗겨짐", "입고사유확인"]):
+    if any(keyword in text for keyword in ["불량반품", "제품불량반품", "부분반품", "반품회수", "불량", "파손배송", "파손불량", "환불", "회수완료", "회수요청", "코팅벗겨짐", "입고사유확인"]):
         return "불량반품"
     if "반품" in text:
         return "변심반품"
@@ -2404,10 +2497,10 @@ def import_cs_cases_from_workbook(path: Path) -> tuple[int, int]:
             order_idx = find_header(headers, {"주문일자"})
             ship_idx = find_header(headers, {"출고일"})
             orderer_idx = find_header(headers, {"주문자", "주문인", "구매자"})
-            receiver_idx = find_header(headers, {"수령자"})
+            receiver_idx = find_header(headers, {"수령자", "수취인", "수하인", "받는분", "받으시는분"})
             orderer_phone_idx = contact_index_after(headers, orderer_idx, receiver_idx)
             phone_idx = receiver_phone_index(headers, receiver_idx)
-            product_idx = find_header(headers, {"제품명"})
+            product_idx = find_header(headers, {"제품명", "상품명", "품명"})
             quantity_idx = find_header(headers, {"수량"})
             address_idx = find_header_contains(headers, "상세", "주소")
             courier_idx = find_header(headers, {"택배사"})
@@ -2416,6 +2509,8 @@ def import_cs_cases_from_workbook(path: Path) -> tuple[int, int]:
             cs_content_idx = find_header(headers, {"cs내용", "c/s내용"})
             return_idx = find_header(headers, {"회수운송장번호"})
             reship_idx = find_header(headers, {"재발송운송장번호", "재발송송장번호"})
+            if address_idx is None and quantity_idx is not None and courier_idx is not None and quantity_idx + 1 < courier_idx:
+                address_idx = quantity_idx + 1
 
             for excel_row_number, row in enumerate(rows, start=3):
                 row = tuple(row)
