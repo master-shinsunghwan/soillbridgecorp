@@ -150,40 +150,38 @@ HTML = r"""<!doctype html>
       padding: 0 4px;
     }
     .brand-label { font-size: 18px; font-weight: 900; line-height: 1.32; margin: 0; }
-    .right-notice {
+    .notice-board {
       min-height: 44px;
       border: 1px solid var(--line);
       border-radius: 8px;
       background: white;
-      padding: 7px 10px;
+      padding: 13px 15px;
       color: #344054;
       overflow: hidden;
+      box-shadow: var(--shadow);
     }
-    .right-notice-kicker {
+    .notice-board-kicker {
       font-size: 11px;
       font-weight: 900;
       color: #155bc8;
-      margin-bottom: 2px;
+      margin-bottom: 5px;
     }
-    .right-notice-title {
-      font-size: 13px;
+    .notice-board-title {
+      font-size: 16px;
       font-weight: 900;
-      line-height: 1.24;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
+      line-height: 1.32;
     }
-    .right-notice-meta {
-      font-size: 11px;
+    .notice-board-meta {
+      font-size: 12px;
       color: #667085;
-      margin-top: 1px;
+      margin-top: 3px;
     }
-    .right-notice-body {
-      font-size: 11px;
-      line-height: 1.3;
+    .notice-board-body {
+      font-size: 13px;
+      line-height: 1.48;
       color: #475467;
-      margin-top: 2px;
-      max-height: 30px;
+      margin-top: 7px;
+      max-height: 72px;
       overflow: hidden;
       white-space: pre-line;
     }
@@ -258,7 +256,7 @@ HTML = r"""<!doctype html>
     .topbar {
       height: 74px;
       display: grid;
-      grid-template-columns: 1fr minmax(240px, 360px) minmax(220px, 320px) auto;
+      grid-template-columns: 1fr minmax(260px, 430px) auto;
       align-items: center;
       gap: 18px;
       padding: 0 22px;
@@ -1174,7 +1172,15 @@ HTML = r"""<!doctype html>
         <div class="brand-label">(주)소일브릿지<br>업무자동화</div>
       </div>
       <div class="nav-section">MAIN</div>
-      <button class="nav-item active" type="button" data-view="dashboard"><i data-lucide="home"></i> <span>공지사항</span></button>
+      <div class="nav-group open" id="noticeNavGroup">
+        <button class="nav-item active" id="noticeNavToggle" type="button" data-view="dashboard">
+          <span class="nav-label"><i data-lucide="home"></i> <span>공지사항</span></span>
+          <i class="nav-chevron" data-lucide="chevron-right"></i>
+        </button>
+        <div class="nav-submenu">
+          <button class="nav-subitem" id="noticeInputOpen" type="button">공지사항 입력</button>
+        </div>
+      </div>
       <div class="nav-group" id="orderNavGroup">
         <button class="nav-item" id="orderNavToggle" type="button">
           <span class="nav-label"><i data-lucide="clipboard-list"></i> <span>발주업무</span></span>
@@ -1202,11 +1208,6 @@ HTML = r"""<!doctype html>
           <p class="subtitle">발주 파일 변환과 인수증 생성을 한 곳에서 처리합니다.</p>
         </div>
         <div class="top-search"><i data-lucide="file-text"></i> 파일명, 수령인, 송장번호, CS내용 검색</div>
-        <div class="right-notice" id="sidebarNoticePreview">
-          <div class="right-notice-kicker">금일 공지사항</div>
-          <div class="right-notice-title">등록된 공지 없음</div>
-          <div class="right-notice-body">공지사항 메뉴를 눌러 내용을 입력해주세요.</div>
-        </div>
         <div class="top-tools">
           <button class="icon-button" type="button"><i data-lucide="bell"></i></button>
           <button class="icon-button" type="button"><i data-lucide="refresh-cw"></i></button>
@@ -1249,6 +1250,12 @@ HTML = r"""<!doctype html>
             <div class="stat-icon green"><i data-lucide="copy-check"></i></div>
           </article>
         </div>
+
+        <section class="notice-board" id="sidebarNoticePreview">
+          <div class="notice-board-kicker">금일 공지사항</div>
+          <div class="notice-board-title">등록된 공지 없음</div>
+          <div class="notice-board-body">공지사항 입력 메뉴를 눌러 내용을 입력해주세요.</div>
+        </section>
 
         <section class="dashboard-card">
           <div class="dashboard-head">
@@ -1865,9 +1872,9 @@ HTML = r"""<!doctype html>
       if (!payload.title && !payload.body) {
         noticePreview.innerHTML = `<strong>저장된 공지사항이 없습니다.</strong>공지사항을 입력하고 저장하면 이곳에서 미리 볼 수 있습니다.`;
         sidebarNoticePreview.innerHTML = `
-          <div class="right-notice-kicker">금일 공지사항</div>
-          <div class="right-notice-title">등록된 공지 없음</div>
-          <div class="right-notice-body">공지사항 메뉴를 눌러 내용을 입력해주세요.</div>
+          <div class="notice-board-kicker">금일 공지사항</div>
+          <div class="notice-board-title">등록된 공지 없음</div>
+          <div class="notice-board-body">공지사항 입력 메뉴를 눌러 내용을 입력해주세요.</div>
         `;
         return;
       }
@@ -1878,10 +1885,10 @@ HTML = r"""<!doctype html>
         <div>${escapeHtml(payload.body).replaceAll("\n", "<br>")}</div>
       `;
       sidebarNoticePreview.innerHTML = `
-        <div class="right-notice-kicker">금일 공지사항</div>
-        <div class="right-notice-title">${escapeHtml(payload.title || "제목 없음")}</div>
-        <div class="right-notice-meta">${escapeHtml(meta)}</div>
-        <div class="right-notice-body">${escapeHtml(payload.body || "내용 없음")}</div>
+        <div class="notice-board-kicker">금일 공지사항</div>
+        <div class="notice-board-title">${escapeHtml(payload.title || "제목 없음")}</div>
+        <div class="notice-board-meta">${escapeHtml(meta)}</div>
+        <div class="notice-board-body">${escapeHtml(payload.body || "내용 없음")}</div>
       `;
     }
 
@@ -3173,7 +3180,7 @@ HTML = r"""<!doctype html>
     document.querySelectorAll("[data-view]").forEach((button) => {
       button.addEventListener("click", () => {
         showWorkspace(button.dataset.view);
-        if (button.dataset.view === "dashboard") openNoticePopup();
+        if (button.id === "noticeNavToggle") document.querySelector("#noticeNavGroup").classList.toggle("open");
       });
     });
     document.querySelectorAll("[data-open-window]").forEach((button) => {
@@ -3182,6 +3189,7 @@ HTML = r"""<!doctype html>
     document.querySelector("#orderNavToggle").addEventListener("click", () => {
       document.querySelector("#orderNavGroup").classList.toggle("open");
     });
+    document.querySelector("#noticeInputOpen").addEventListener("click", openNoticePopup);
     noticePopupClose.addEventListener("click", closeNoticePopup);
     noticePopup.addEventListener("click", (event) => {
       if (event.target === noticePopup) closeNoticePopup();
