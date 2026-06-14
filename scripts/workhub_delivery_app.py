@@ -79,6 +79,7 @@ PERMISSION_DEFINITIONS = (
     ("excel_download", "엑셀 다운로드", "대장 및 변환 결과 다운로드"),
     ("cs_receive", "CS접수", "통합관리대장에서 CS 처리대장 접수"),
     ("mail_send", "메일 발송", "업체 CS 메일 발송"),
+    ("import_shipment_manage", "수입제품 진행 관리", "수입제품 출고 진행 입력/완료 처리"),
     ("user_admin", "사용자 관리", "계정 추가/수정/권한 변경"),
     ("backup_manage", "백업 관리", "수동/자동 백업 파일 관리"),
     ("system_update", "시스템 업데이트", "GitHub 업데이트 확인/적용"),
@@ -231,6 +232,75 @@ HTML = r"""<!doctype html>
       max-height: 72px;
       overflow: hidden;
       white-space: pre-line;
+    }
+    .import-progress-card {
+      overflow: hidden;
+      background: white;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: var(--shadow);
+    }
+    .import-progress-actions {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+    .import-table-wrap {
+      overflow: auto;
+      border-top: 1px solid var(--line);
+    }
+    .import-table {
+      width: 100%;
+      min-width: 1280px;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+    .import-table th {
+      height: 42px;
+      padding: 0 10px;
+      border: 1px solid #111827;
+      background: #fff200;
+      color: #111827;
+      text-align: center;
+      font-weight: 950;
+      white-space: nowrap;
+    }
+    .import-table td {
+      height: 42px;
+      padding: 6px 10px;
+      border: 1px solid #111827;
+      text-align: center;
+      font-weight: 700;
+      white-space: nowrap;
+      background: white;
+    }
+    .import-table td.left { text-align: left; }
+    .import-table tr.completed td {
+      background: #f3f4f6;
+      color: #667085;
+    }
+    .import-empty {
+      padding: 18px;
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 800;
+      text-align: center;
+    }
+    .import-row-actions {
+      display: inline-flex;
+      gap: 6px;
+      align-items: center;
+    }
+    .import-row-actions button {
+      height: 28px;
+      border: 1px solid #cbd5e1;
+      border-radius: 6px;
+      background: white;
+      color: #1f2937;
+      font-family: inherit;
+      font-size: 12px;
+      font-weight: 900;
+      cursor: pointer;
     }
     .nav-item, .nav-section, .app-add {
       display: flex; align-items: center; gap: 13px;
@@ -1718,6 +1788,40 @@ HTML = r"""<!doctype html>
           <div class="notice-board-body">공지사항 입력 메뉴를 눌러 내용을 입력해주세요.</div>
         </section>
 
+        <section class="import-progress-card" id="importProgressCard">
+          <div class="dashboard-head">
+            <div class="dashboard-title">수입제품 출고 진행 상황</div>
+            <div class="import-progress-actions">
+              <button class="workspace-button" type="button" id="importShipmentRefresh">새로고침</button>
+              <button class="workspace-button" type="button" id="importShipmentOpen">진행 입력</button>
+            </div>
+          </div>
+          <div class="import-table-wrap">
+            <table class="import-table">
+              <thead>
+                <tr>
+                  <th>출항일</th>
+                  <th>입항일</th>
+                  <th>선적항</th>
+                  <th>도착항</th>
+                  <th>SHPR</th>
+                  <th>ITEM</th>
+                  <th>선명</th>
+                  <th>HBL NO.</th>
+                  <th>SIZE</th>
+                  <th>진행상황</th>
+                  <th>프리타임</th>
+                  <th>입고예정일</th>
+                  <th data-import-manage-col>관리</th>
+                </tr>
+              </thead>
+              <tbody id="importShipmentBody">
+                <tr><td colspan="13"><div class="import-empty">등록된 수입제품 출고 진행 건이 없습니다.</div></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
         <section class="dashboard-card">
           <div class="dashboard-head">
             <div class="dashboard-title">빠른 실행</div>
@@ -1834,6 +1938,42 @@ HTML = r"""<!doctype html>
         <div class="notice-preview" id="noticePreview">
           <strong>저장된 공지사항이 없습니다.</strong>
           공지사항을 입력하고 저장하면 이곳에서 미리 볼 수 있습니다.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="notice-popup-backdrop" id="importShipmentPopup">
+    <div class="notice-popup" role="dialog" aria-modal="true">
+      <div class="notice-popup-head">
+        <span>수입제품 출고 진행 입력</span>
+        <button class="close" id="importShipmentClose" type="button" aria-label="닫기"><i data-lucide="x"></i></button>
+      </div>
+      <div class="notice-template">
+        <input id="importShipmentId" type="hidden" />
+        <div class="notice-template-grid">
+          <input id="importDepartureDate" type="text" placeholder="출항일 예) 6/10" />
+          <input id="importArrivalDate" type="text" placeholder="입항일 예) 6/13" />
+          <input id="importLoadingPort" type="text" placeholder="선적항" />
+        </div>
+        <div class="notice-template-grid">
+          <input id="importArrivalPort" type="text" placeholder="도착항" />
+          <input id="importShipper" type="text" placeholder="SHPR" />
+          <input id="importItem" type="text" placeholder="ITEM" />
+        </div>
+        <div class="notice-template-grid">
+          <input id="importVesselName" type="text" placeholder="선명" />
+          <input id="importHblNo" type="text" placeholder="HBL NO." />
+          <input id="importSize" type="text" placeholder="SIZE" />
+        </div>
+        <div class="notice-template-grid">
+          <input id="importProgressStatus" type="text" placeholder="진행상황" />
+          <input id="importFreeTime" type="text" placeholder="프리타임 예) 7일" />
+          <input id="importWarehouseDueDate" type="text" placeholder="입고예정일" />
+        </div>
+        <div class="notice-template-actions">
+          <button class="workspace-button" type="button" id="importShipmentReset">초기화</button>
+          <button class="workspace-button" type="button" id="importShipmentSave">저장</button>
         </div>
       </div>
     </div>
@@ -2181,6 +2321,8 @@ HTML = r"""<!doctype html>
       setHidden(document.querySelector("label[for='vendorContactsFileInput']"), !can("excel_upload"));
       setHidden(saveVendorContactButton, !can("mail_send"));
       document.querySelectorAll('[data-open="cs"]').forEach((button) => setHidden(button, !can("mail_send")));
+      setHidden(importShipmentOpen, !can("import_shipment_manage"));
+      document.querySelectorAll("[data-import-manage-col]").forEach((element) => setHidden(element, !can("import_shipment_manage")));
       if (!can("notice_manage")) {
         setHidden(noticeSaveButton, true);
         setHidden(noticeClearButton, true);
@@ -2291,6 +2433,26 @@ HTML = r"""<!doctype html>
     const sidebarNoticePreview = document.querySelector("#sidebarNoticePreview");
     const noticePopup = document.querySelector("#noticePopup");
     const noticePopupClose = document.querySelector("#noticePopupClose");
+    const importShipmentBody = document.querySelector("#importShipmentBody");
+    const importShipmentRefresh = document.querySelector("#importShipmentRefresh");
+    const importShipmentOpen = document.querySelector("#importShipmentOpen");
+    const importShipmentPopup = document.querySelector("#importShipmentPopup");
+    const importShipmentClose = document.querySelector("#importShipmentClose");
+    const importShipmentSave = document.querySelector("#importShipmentSave");
+    const importShipmentReset = document.querySelector("#importShipmentReset");
+    const importShipmentId = document.querySelector("#importShipmentId");
+    const importDepartureDate = document.querySelector("#importDepartureDate");
+    const importArrivalDate = document.querySelector("#importArrivalDate");
+    const importLoadingPort = document.querySelector("#importLoadingPort");
+    const importArrivalPort = document.querySelector("#importArrivalPort");
+    const importShipper = document.querySelector("#importShipper");
+    const importItem = document.querySelector("#importItem");
+    const importVesselName = document.querySelector("#importVesselName");
+    const importHblNo = document.querySelector("#importHblNo");
+    const importSize = document.querySelector("#importSize");
+    const importProgressStatus = document.querySelector("#importProgressStatus");
+    const importFreeTime = document.querySelector("#importFreeTime");
+    const importWarehouseDueDate = document.querySelector("#importWarehouseDueDate");
     const managementWorkspace = document.querySelector("#managementWorkspace");
     const ledgerWorkspace = document.querySelector("#ledgerWorkspace");
     const leaveWorkspace = document.querySelector("#leaveWorkspace");
@@ -2354,6 +2516,7 @@ HTML = r"""<!doctype html>
     let ledgerCases = [];
     let managementRecords = [];
     let managementPeriods = [];
+    let importShipments = [];
     let userAccounts = [];
     let activeLedgerFilterField = "";
     let activeManagementFilterField = "";
@@ -2368,6 +2531,7 @@ HTML = r"""<!doctype html>
     renderManagementPeriodControls();
     applyStaticPermissions();
     loadNoticeTemplate();
+    loadImportShipments();
 
     function addProductRow(productName = "", quantity = "", packQuantity = "") {
       const row = document.createElement("div");
@@ -3076,6 +3240,143 @@ HTML = r"""<!doctype html>
       noticeDateInput.value = todayString();
       renderNoticePreview();
       notice.textContent = "공지사항 입력 내용을 초기화했습니다.";
+    }
+
+    function resetImportShipmentForm(record = null) {
+      importShipmentId.value = record?.id || "";
+      importDepartureDate.value = record?.departure_date || "";
+      importArrivalDate.value = record?.arrival_date || "";
+      importLoadingPort.value = record?.loading_port || "";
+      importArrivalPort.value = record?.arrival_port || "";
+      importShipper.value = record?.shipper || "";
+      importItem.value = record?.item || "";
+      importVesselName.value = record?.vessel_name || "";
+      importHblNo.value = record?.hbl_no || "";
+      importSize.value = record?.size || "";
+      importProgressStatus.value = record?.progress_status || "";
+      importFreeTime.value = record?.free_time || "";
+      importWarehouseDueDate.value = record?.warehouse_due_date || "";
+    }
+
+    function importShipmentPayload() {
+      return {
+        id: importShipmentId.value,
+        departure_date: importDepartureDate.value.trim(),
+        arrival_date: importArrivalDate.value.trim(),
+        loading_port: importLoadingPort.value.trim(),
+        arrival_port: importArrivalPort.value.trim(),
+        shipper: importShipper.value.trim(),
+        item: importItem.value.trim(),
+        vessel_name: importVesselName.value.trim(),
+        hbl_no: importHblNo.value.trim(),
+        size: importSize.value.trim(),
+        progress_status: importProgressStatus.value.trim(),
+        free_time: importFreeTime.value.trim(),
+        warehouse_due_date: importWarehouseDueDate.value.trim(),
+      };
+    }
+
+    function openImportShipmentPopup(record = null) {
+      if (!can("import_shipment_manage")) {
+        notice.textContent = "수입제품 진행 관리 권한이 없습니다.";
+        return;
+      }
+      resetImportShipmentForm(record);
+      importShipmentPopup.classList.add("open");
+      setTimeout(() => importDepartureDate.focus(), 0);
+    }
+
+    function closeImportShipmentPopup() {
+      importShipmentPopup.classList.remove("open");
+    }
+
+    function renderImportShipments() {
+      if (!importShipments.length) {
+        importShipmentBody.innerHTML = `<tr><td colspan="13"><div class="import-empty">등록된 수입제품 출고 진행 건이 없습니다.</div></td></tr>`;
+        return;
+      }
+      importShipmentBody.innerHTML = "";
+      importShipments.forEach((record) => {
+        const row = document.createElement("tr");
+        if (record.completed_at) row.classList.add("completed");
+        const manageCell = can("import_shipment_manage")
+          ? `<td>
+              <span class="import-row-actions">
+                <button type="button" data-import-edit="${record.id}">수정</button>
+                ${record.completed_at ? "" : `<button type="button" data-import-complete="${record.id}">완료</button>`}
+              </span>
+            </td>`
+          : "";
+        row.innerHTML = `
+          <td>${escapeHtml(record.departure_date)}</td>
+          <td>${escapeHtml(record.arrival_date)}</td>
+          <td>${escapeHtml(record.loading_port)}</td>
+          <td>${escapeHtml(record.arrival_port)}</td>
+          <td>${escapeHtml(record.shipper)}</td>
+          <td class="left">${escapeHtml(record.item)}</td>
+          <td>${escapeHtml(record.vessel_name)}</td>
+          <td>${escapeHtml(record.hbl_no)}</td>
+          <td>${escapeHtml(record.size)}</td>
+          <td>${escapeHtml(record.completed_at ? "완료" : record.progress_status)}</td>
+          <td>${escapeHtml(record.free_time)}</td>
+          <td>${escapeHtml(record.warehouse_due_date)}</td>
+          ${manageCell}
+        `;
+        importShipmentBody.appendChild(row);
+      });
+    }
+
+    async function loadImportShipments() {
+      try {
+        const response = await fetch("/api/import-shipments");
+        if (!response.ok) throw new Error("수입제품 진행 상황을 불러오지 못했습니다.");
+        const data = await response.json();
+        importShipments = data.shipments || [];
+        renderImportShipments();
+      } catch (error) {
+        importShipments = [];
+        renderImportShipments();
+        notice.textContent = error.message;
+      }
+    }
+
+    async function saveImportShipment() {
+      if (!can("import_shipment_manage")) {
+        notice.textContent = "수입제품 진행 관리 권한이 없습니다.";
+        return;
+      }
+      const payload = importShipmentPayload();
+      const hasContent = Object.entries(payload).some(([key, value]) => key !== "id" && String(value || "").trim());
+      if (!hasContent) {
+        notice.textContent = "수입제품 출고 진행 내용을 입력해주세요.";
+        return;
+      }
+      const response = await fetch("/api/import-shipment-save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "수입제품 출고 진행 저장에 실패했습니다.");
+      notice.textContent = data.message || "수입제품 출고 진행 상황을 저장했습니다.";
+      closeImportShipmentPopup();
+      await loadImportShipments();
+    }
+
+    async function completeImportShipment(id) {
+      if (!can("import_shipment_manage")) {
+        notice.textContent = "수입제품 진행 관리 권한이 없습니다.";
+        return;
+      }
+      const response = await fetch("/api/import-shipment-complete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "수입제품 출고 진행 완료 처리에 실패했습니다.");
+      notice.textContent = data.message || "완료 처리했습니다.";
+      await loadImportShipments();
     }
 
     function collectVehiclePayload() {
@@ -4446,6 +4747,7 @@ HTML = r"""<!doctype html>
         currentMode = "dashboard";
         setPageTitle("금일 공지사항");
         closeLedgerFilter();
+        loadImportShipments();
       }
     }
 
@@ -4482,6 +4784,31 @@ HTML = r"""<!doctype html>
     noticePopupClose.addEventListener("click", closeNoticePopup);
     noticePopup.addEventListener("click", (event) => {
       if (event.target === noticePopup) closeNoticePopup();
+    });
+    importShipmentRefresh.addEventListener("click", loadImportShipments);
+    importShipmentOpen.addEventListener("click", () => openImportShipmentPopup());
+    importShipmentClose.addEventListener("click", closeImportShipmentPopup);
+    importShipmentReset.addEventListener("click", () => resetImportShipmentForm());
+    importShipmentSave.addEventListener("click", () => {
+      saveImportShipment().catch((error) => {
+        notice.textContent = error.message;
+      });
+    });
+    importShipmentPopup.addEventListener("click", (event) => {
+      if (event.target === importShipmentPopup) closeImportShipmentPopup();
+    });
+    importShipmentBody.addEventListener("click", (event) => {
+      const editButton = event.target.closest("[data-import-edit]");
+      const completeButton = event.target.closest("[data-import-complete]");
+      if (editButton) {
+        const record = importShipments.find((item) => String(item.id) === String(editButton.dataset.importEdit));
+        if (record) openImportShipmentPopup(record);
+      }
+      if (completeButton) {
+        completeImportShipment(completeButton.dataset.importComplete).catch((error) => {
+          notice.textContent = error.message;
+        });
+      }
     });
     document.querySelector("#closeModal").addEventListener("click", closeModal);
     document.querySelector("#cancel").addEventListener("click", closeModal);
@@ -5679,6 +6006,28 @@ def init_db() -> None:
         connection.execute("CREATE INDEX IF NOT EXISTS idx_management_receiver_phone ON management_records(receiver_phone)")
         connection.execute("CREATE INDEX IF NOT EXISTS idx_management_order_date ON management_records(order_date)")
         connection.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_management_source ON management_records(source_file, source_sheet, source_row)")
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS import_shipments (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                departure_date TEXT,
+                arrival_date TEXT,
+                loading_port TEXT,
+                arrival_port TEXT,
+                shipper TEXT,
+                item TEXT,
+                vessel_name TEXT,
+                hbl_no TEXT,
+                size TEXT,
+                progress_status TEXT,
+                free_time TEXT,
+                warehouse_due_date TEXT,
+                completed_at TEXT
+            )
+            """
+        )
         connection.execute(
             """
             CREATE TABLE IF NOT EXISTS leave_types (
@@ -7039,6 +7388,96 @@ def list_management_periods() -> list[dict[str, str | int]]:
     ]
 
 
+IMPORT_SHIPMENT_FIELDS = (
+    "departure_date",
+    "arrival_date",
+    "loading_port",
+    "arrival_port",
+    "shipper",
+    "item",
+    "vessel_name",
+    "hbl_no",
+    "size",
+    "progress_status",
+    "free_time",
+    "warehouse_due_date",
+)
+
+
+def list_import_shipments() -> list[dict[str, str | int]]:
+    init_db()
+    connection = connect_db()
+    try:
+        rows = connection.execute(
+            """
+            SELECT id, created_at, updated_at, departure_date, arrival_date,
+                   loading_port, arrival_port, shipper, item, vessel_name,
+                   hbl_no, size, progress_status, free_time, warehouse_due_date, completed_at
+              FROM import_shipments
+             ORDER BY CASE WHEN completed_at IS NULL OR completed_at = '' THEN 0 ELSE 1 END,
+                      id DESC
+            """
+        ).fetchall()
+    finally:
+        connection.close()
+    return [dict(row) for row in rows]
+
+
+def save_import_shipment(payload: dict) -> int:
+    init_db()
+    now = now_text()
+    values = {field: clean_payload_text(payload, field) for field in IMPORT_SHIPMENT_FIELDS}
+    if not any(values.values()):
+        raise ValueError("수입제품 출고 진행 내용을 입력해주세요.")
+    shipment_id = int(payload.get("id") or 0)
+    connection = connect_db()
+    try:
+        if shipment_id:
+            assignments = ", ".join(f"{field} = ?" for field in IMPORT_SHIPMENT_FIELDS)
+            cursor = connection.execute(
+                f"UPDATE import_shipments SET {assignments}, updated_at = ? WHERE id = ?",
+                [values[field] for field in IMPORT_SHIPMENT_FIELDS] + [now, shipment_id],
+            )
+            if cursor.rowcount == 0:
+                raise ValueError("수정할 수입제품 진행 건을 찾지 못했습니다.")
+        else:
+            columns = ["created_at", "updated_at", *IMPORT_SHIPMENT_FIELDS]
+            placeholders = ", ".join("?" for _ in columns)
+            cursor = connection.execute(
+                f"INSERT INTO import_shipments ({', '.join(columns)}) VALUES ({placeholders})",
+                [now, now] + [values[field] for field in IMPORT_SHIPMENT_FIELDS],
+            )
+            shipment_id = int(cursor.lastrowid)
+        connection.commit()
+        return shipment_id
+    finally:
+        connection.close()
+
+
+def complete_import_shipment(shipment_id: int) -> None:
+    if not shipment_id:
+        raise ValueError("완료 처리할 수입제품 진행 건이 없습니다.")
+    init_db()
+    now = now_text()
+    connection = connect_db()
+    try:
+        cursor = connection.execute(
+            """
+            UPDATE import_shipments
+               SET progress_status = '완료',
+                   completed_at = ?,
+                   updated_at = ?
+             WHERE id = ?
+            """,
+            (now, now, shipment_id),
+        )
+        connection.commit()
+        if cursor.rowcount == 0:
+            raise ValueError("완료 처리할 수입제품 진행 건을 찾지 못했습니다.")
+    finally:
+        connection.close()
+
+
 MANAGEMENT_EDIT_COLUMNS = [
     "purchase_vendor",
     "sales_vendor",
@@ -8105,6 +8544,10 @@ class WorkhubHandler(BaseHTTPRequestHandler):
             self.send_json({"periods": list_management_periods()})
             return
 
+        if self.path == "/api/import-shipments":
+            self.send_json({"shipments": list_import_shipments()})
+            return
+
         self.send_error(404)
 
     def do_POST(self) -> None:
@@ -8298,6 +8741,24 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                     raise ValueError("CS접수할 통합관리대장 행 ID가 없습니다.")
                 case_id = create_cs_case_from_management(record_id)
                 self.send_json({"message": "CS 처리대장에 접수했습니다.", "case_id": case_id})
+                return
+
+            if self.path == "/api/import-shipment-save":
+                if not self.require_permission(user, "import_shipment_manage", "수입제품 진행 관리"):
+                    return
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(length).decode("utf-8"))
+                shipment_id = save_import_shipment(payload)
+                self.send_json({"message": "수입제품 출고 진행 상황을 저장했습니다.", "shipment_id": shipment_id})
+                return
+
+            if self.path == "/api/import-shipment-complete":
+                if not self.require_permission(user, "import_shipment_manage", "수입제품 진행 관리"):
+                    return
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(length).decode("utf-8"))
+                complete_import_shipment(int(payload.get("id") or 0))
+                self.send_json({"message": "수입제품 출고 진행 건을 완료 처리했습니다."})
                 return
 
             if self.path == "/api/management-export":
