@@ -635,6 +635,87 @@ HTML = r"""<!doctype html>
     }
     .result-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 10px; }
     .notice { margin-top: 10px; min-height: 20px; color: var(--muted); font-size: 14px; }
+    .admin-panel {
+      display: grid;
+      gap: 14px;
+      padding: 16px;
+      background: white;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+    }
+    .admin-form {
+      display: grid;
+      grid-template-columns: 1.1fr 1.1fr .8fr 1fr auto auto;
+      gap: 10px;
+      align-items: end;
+    }
+    .admin-form label {
+      display: grid;
+      gap: 6px;
+      font-size: 12px;
+      font-weight: 850;
+      color: #344054;
+    }
+    .admin-form input,
+    .admin-form select {
+      height: 34px;
+      border: 1px solid #cfd6e2;
+      border-radius: 7px;
+      padding: 0 9px;
+      font-size: 13px;
+      font-weight: 700;
+      background: white;
+    }
+    .admin-check {
+      height: 34px;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 13px;
+      font-weight: 850;
+      color: #344054;
+    }
+    .admin-check input { width: 16px; height: 16px; }
+    .admin-table-wrap {
+      overflow: auto;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: white;
+    }
+    .admin-table {
+      width: 100%;
+      min-width: 760px;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+    .admin-table th {
+      height: 34px;
+      padding: 0 10px;
+      background: #eef6ff;
+      border-bottom: 1px solid var(--line);
+      text-align: left;
+      font-weight: 900;
+    }
+    .admin-table td {
+      height: 38px;
+      padding: 4px 10px;
+      border-bottom: 1px solid #edf1f7;
+      white-space: nowrap;
+    }
+    .admin-table tr:last-child td { border-bottom: 0; }
+    .admin-action {
+      height: 30px;
+      border: 1px solid #cfd6e2;
+      border-radius: 7px;
+      background: white;
+      font-size: 12px;
+      font-weight: 850;
+      cursor: pointer;
+    }
+    .admin-message { min-height: 20px; color: var(--muted); font-size: 13px; font-weight: 750; }
+    @media (max-width: 1100px) {
+      .admin-form { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
     .vehicle-fields { display: none; }
     .cs-fields { display: none; }
     .ledger-fields { display: none; }
@@ -1217,6 +1298,7 @@ HTML = r"""<!doctype html>
       <button class="nav-item" type="button" data-open="management"><i data-lucide="database"></i> <span>통합관리대장 관리</span></button>
       <button class="nav-item" type="button" data-open="ledger"><i data-lucide="clipboard-check"></i> <span>CS 처리대장</span></button>
       <button class="nav-item" type="button" data-open="cs"><i data-lucide="mail"></i> <span>업체 메일</span></button>
+      __ADMIN_NAV__
       <div class="nav-section">TOOLS</div>
       <button class="nav-item" type="button" data-open="invoice"><i data-lucide="file-spreadsheet"></i> <span>송장 추출</span></button>
       <button class="nav-item" type="button" data-open="vehicle"><i data-lucide="truck"></i> <span>차량인수증</span></button>
@@ -1368,6 +1450,7 @@ HTML = r"""<!doctype html>
         </div>
         <div class="workspace-mount" id="ledgerWorkspaceMount"></div>
       </section>
+      __ADMIN_WORKSPACE__
     </main>
   </div>
 
@@ -1800,12 +1883,24 @@ HTML = r"""<!doctype html>
     const noticePopupClose = document.querySelector("#noticePopupClose");
     const managementWorkspace = document.querySelector("#managementWorkspace");
     const ledgerWorkspace = document.querySelector("#ledgerWorkspace");
+    const userAdminWorkspace = document.querySelector("#userAdminWorkspace");
     const managementWorkspaceMount = document.querySelector("#managementWorkspaceMount");
     const ledgerWorkspaceMount = document.querySelector("#ledgerWorkspaceMount");
+    const userAdminRefresh = document.querySelector("#userAdminRefresh");
+    const userAdminId = document.querySelector("#userAdminId");
+    const userAdminUsername = document.querySelector("#userAdminUsername");
+    const userAdminDisplayName = document.querySelector("#userAdminDisplayName");
+    const userAdminRole = document.querySelector("#userAdminRole");
+    const userAdminPassword = document.querySelector("#userAdminPassword");
+    const userAdminActive = document.querySelector("#userAdminActive");
+    const userAdminSave = document.querySelector("#userAdminSave");
+    const userAdminBody = document.querySelector("#userAdminBody");
+    const userAdminMessage = document.querySelector("#userAdminMessage");
     let currentMode = "dashboard";
     let vendorContacts = [];
     let ledgerCases = [];
     let managementRecords = [];
+    let userAccounts = [];
     let activeLedgerFilterField = "";
     let activeManagementFilterField = "";
     const ledgerFilters = {};
@@ -1864,6 +1959,100 @@ HTML = r"""<!doctype html>
 
     function ensureYearForMonth(yearSelect, monthSelect) {
       if (monthSelect.value && !yearSelect.value) yearSelect.value = String(new Date().getFullYear());
+    }
+
+    function roleText(role) {
+      return role === "admin" ? "관리자" : "사용자";
+    }
+
+    function resetUserAdminForm() {
+      if (!userAdminId) return;
+      userAdminId.value = "";
+      userAdminUsername.value = "";
+      userAdminUsername.disabled = false;
+      userAdminDisplayName.value = "";
+      userAdminRole.value = "user";
+      userAdminPassword.value = "";
+      userAdminActive.checked = true;
+      userAdminMessage.textContent = "신규 사용자는 아이디와 비밀번호를 입력한 뒤 저장하세요.";
+    }
+
+    function renderUserAccounts() {
+      if (!userAdminBody) return;
+      if (!userAccounts.length) {
+        userAdminBody.innerHTML = `<tr><td colspan="6">등록된 사용자가 없습니다.</td></tr>`;
+        return;
+      }
+      userAdminBody.innerHTML = userAccounts.map((user) => `
+        <tr data-user-id="${user.id}">
+          <td>${escapeHtml(user.username)}</td>
+          <td>${escapeHtml(user.display_name)}</td>
+          <td>${roleText(user.role)}</td>
+          <td>${user.active ? "사용" : "중지"}</td>
+          <td>${escapeHtml(user.created_at || "")}</td>
+          <td><button class="admin-action" type="button" data-user-edit="${user.id}">수정</button></td>
+        </tr>
+      `).join("");
+    }
+
+    function editUserAccount(userId) {
+      const user = userAccounts.find((item) => String(item.id) === String(userId));
+      if (!user || !userAdminId) return;
+      userAdminId.value = user.id;
+      userAdminUsername.value = user.username || "";
+      userAdminUsername.disabled = false;
+      userAdminDisplayName.value = user.display_name || "";
+      userAdminRole.value = user.role || "user";
+      userAdminPassword.value = "";
+      userAdminActive.checked = Boolean(user.active);
+      userAdminMessage.textContent = `${user.username} 계정 수정 중입니다. 비밀번호는 변경할 때만 입력하세요.`;
+      userAdminUsername.focus();
+    }
+
+    async function loadUserAccounts() {
+      if (!userAdminBody) return;
+      userAdminMessage.textContent = "사용자 목록을 불러오는 중입니다.";
+      try {
+        const response = await fetch("/api/users");
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "사용자 목록을 불러오지 못했습니다.");
+        userAccounts = data.users || [];
+        renderUserAccounts();
+        if (!userAdminId.value) resetUserAdminForm();
+      } catch (error) {
+        userAdminMessage.textContent = error.message;
+      }
+    }
+
+    async function saveUserAccount() {
+      if (!userAdminSave) return;
+      const payload = {
+        id: userAdminId.value,
+        username: userAdminUsername.value.trim(),
+        display_name: userAdminDisplayName.value.trim(),
+        role: userAdminRole.value,
+        password: userAdminPassword.value,
+        active: userAdminActive.checked,
+      };
+      userAdminMessage.textContent = "사용자 계정을 저장하는 중입니다.";
+      userAdminSave.disabled = true;
+      try {
+        const response = await fetch("/api/users-save", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "사용자 계정을 저장하지 못했습니다.");
+        userAccounts = data.users || [];
+        renderUserAccounts();
+        resetUserAdminForm();
+        userAdminMessage.textContent = data.message || "사용자 계정을 저장했습니다.";
+      } catch (error) {
+        userAdminMessage.textContent = error.message;
+      } finally {
+        userAdminSave.disabled = false;
+      }
     }
 
     function loadNoticeTemplate() {
@@ -3152,12 +3341,15 @@ HTML = r"""<!doctype html>
 
     function showWorkspace(mode) {
       closeModal();
+      if (mode === "userAdmin" && !userAdminWorkspace) mode = "dashboard";
       currentMode = mode;
       const showManagement = mode === "management";
       const showLedger = mode === "ledger";
+      const showUserAdmin = mode === "userAdmin" && Boolean(userAdminWorkspace);
       dashboardContent.style.display = mode === "dashboard" ? "" : "none";
       managementWorkspace.classList.toggle("active", showManagement);
       ledgerWorkspace.classList.toggle("active", showLedger);
+      if (userAdminWorkspace) userAdminWorkspace.classList.toggle("active", showUserAdmin);
       setActiveNav(mode);
       if (showManagement) {
         setPageTitle("통합관리대장 관리");
@@ -3175,6 +3367,11 @@ HTML = r"""<!doctype html>
         Object.keys(ledgerFilters).forEach((key) => delete ledgerFilters[key]);
         closeLedgerFilter();
         loadLedgerCases();
+      } else if (showUserAdmin) {
+        setPageTitle("사용자 관리");
+        closeLedgerFilter();
+        resetUserAdminForm();
+        loadUserAccounts();
       } else {
         currentMode = "dashboard";
         setPageTitle("금일 공지사항");
@@ -3192,7 +3389,7 @@ HTML = r"""<!doctype html>
     document.querySelectorAll("[data-open]").forEach((button) => {
       button.addEventListener("click", () => {
         const mode = button.dataset.open;
-        if (mode === "management" || mode === "ledger") {
+        if (mode === "management" || mode === "ledger" || mode === "userAdmin") {
           showWorkspace(mode);
           return;
         }
@@ -3337,6 +3534,14 @@ HTML = r"""<!doctype html>
     ledgerSaveAll.addEventListener("click", () => saveCurrentWorkspaceRows({ mode: "ledger", selectedOnly: true }));
     managementDeleteSelected.addEventListener("click", () => deleteSelectedRows("management"));
     ledgerDeleteSelected.addEventListener("click", () => deleteSelectedRows("ledger"));
+    if (userAdminRefresh) userAdminRefresh.addEventListener("click", loadUserAccounts);
+    if (userAdminSave) userAdminSave.addEventListener("click", saveUserAccount);
+    if (userAdminBody) {
+      userAdminBody.addEventListener("click", (event) => {
+        const editButton = event.target.closest("[data-user-edit]");
+        if (editButton) editUserAccount(editButton.dataset.userEdit);
+      });
+    }
     managementPageSize.addEventListener("change", loadManagementRecords);
     ledgerPageSize.addEventListener("change", loadLedgerCases);
     ledgerYearFilter.addEventListener("change", loadLedgerCases);
@@ -3639,6 +3844,61 @@ LOGIN_HTML = r"""<!doctype html>
 </html>
 """
 
+ADMIN_NAV_HTML = r"""
+      <button class="nav-item" type="button" data-open="userAdmin"><i data-lucide="info"></i> <span>사용자 관리</span></button>
+"""
+
+ADMIN_WORKSPACE_HTML = r"""
+      <section class="workspace-view" id="userAdminWorkspace">
+        <div class="workspace-head">
+          <div class="workspace-title">사용자 관리</div>
+          <div class="workspace-actions">
+            <button class="workspace-button" type="button" id="userAdminRefresh">새로고침</button>
+          </div>
+        </div>
+        <div class="workspace-mount">
+          <div class="admin-panel">
+            <div class="admin-form">
+              <input id="userAdminId" type="hidden" />
+              <label>아이디
+                <input id="userAdminUsername" type="text" placeholder="예) hong" />
+              </label>
+              <label>표시 이름
+                <input id="userAdminDisplayName" type="text" placeholder="예) 홍길동" />
+              </label>
+              <label>권한
+                <select id="userAdminRole">
+                  <option value="user">사용자</option>
+                  <option value="admin">관리자</option>
+                </select>
+              </label>
+              <label>비밀번호
+                <input id="userAdminPassword" type="password" placeholder="신규/변경 시 입력" />
+              </label>
+              <label class="admin-check"><input id="userAdminActive" type="checkbox" checked /> 사용</label>
+              <button class="workspace-button" type="button" id="userAdminSave">저장</button>
+            </div>
+            <div class="admin-message" id="userAdminMessage"></div>
+            <div class="admin-table-wrap">
+              <table class="admin-table">
+                <thead>
+                  <tr>
+                    <th>아이디</th>
+                    <th>표시 이름</th>
+                    <th>권한</th>
+                    <th>상태</th>
+                    <th>생성일</th>
+                    <th>수정</th>
+                  </tr>
+                </thead>
+                <tbody id="userAdminBody"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </section>
+"""
+
 
 def safe_filename(filename: str) -> str:
     filename = Path(filename).name
@@ -3729,8 +3989,16 @@ def role_label(role: str) -> str:
 
 def render_app_html(user: dict[str, str]) -> str:
     display_name = user.get("display_name") or user.get("username") or "사용자"
-    display = f"{display_name} · {role_label(user.get('role', 'user'))}"
-    return HTML.replace("__USER_DISPLAY__", html_escape(display))
+    role = role_label(user.get("role", "user"))
+    display = display_name if display_name == role else f"{display_name} · {role}"
+    admin_nav = ADMIN_NAV_HTML if user.get("role") == "admin" else ""
+    admin_workspace = ADMIN_WORKSPACE_HTML if user.get("role") == "admin" else ""
+    return (
+        HTML
+        .replace("__USER_DISPLAY__", html_escape(display))
+        .replace("__ADMIN_NAV__", admin_nav)
+        .replace("__ADMIN_WORKSPACE__", admin_workspace)
+    )
 
 
 def render_login_html(show_error: bool = False) -> str:
@@ -3997,6 +4265,78 @@ def delete_login_session(token: str) -> None:
     try:
         connection.execute("DELETE FROM login_sessions WHERE token_hash = ?", (token_digest(token),))
         connection.commit()
+    finally:
+        connection.close()
+
+
+def list_users() -> list[dict[str, str | int]]:
+    init_db()
+    connection = connect_db()
+    try:
+        rows = connection.execute(
+            """
+            SELECT id, username, display_name, role, active, created_at, updated_at
+              FROM users
+             ORDER BY role = 'admin' DESC, username COLLATE NOCASE
+            """
+        ).fetchall()
+        return [dict(row) for row in rows]
+    finally:
+        connection.close()
+
+
+def save_user_account(payload: dict, actor: dict[str, str]) -> int:
+    init_db()
+    user_id = int(payload.get("id", 0) or 0)
+    username = clean_payload_text(payload, "username")
+    display_name = clean_payload_text(payload, "display_name")
+    role = clean_payload_text(payload, "role") or "user"
+    password = str(payload.get("password", "") or "")
+    active = 1 if payload.get("active", True) else 0
+    if role not in {"admin", "user"}:
+        raise ValueError("권한은 관리자 또는 사용자만 선택할 수 있습니다.")
+    if not re.fullmatch(r"[A-Za-z0-9_.-]{3,32}", username):
+        raise ValueError("아이디는 영문/숫자/._- 조합 3~32자로 입력해주세요.")
+    if not display_name:
+        display_name = username
+    if not user_id and not password:
+        raise ValueError("신규 사용자는 비밀번호를 입력해주세요.")
+    now = now_text()
+    connection = connect_db()
+    try:
+        if user_id:
+            existing = connection.execute("SELECT username FROM users WHERE id = ?", (user_id,)).fetchone()
+            if not existing:
+                raise ValueError("수정할 사용자를 찾지 못했습니다.")
+            if existing["username"] == actor.get("username") and not active:
+                raise ValueError("현재 로그인한 관리자 계정은 사용 중지할 수 없습니다.")
+            columns = [
+                "username = ?",
+                "display_name = ?",
+                "role = ?",
+                "active = ?",
+                "updated_at = ?",
+            ]
+            values: list[object] = [username, display_name, role, active, now]
+            if password:
+                columns.append("password_hash = ?")
+                values.append(password_hash(password))
+            values.append(user_id)
+            connection.execute(f"UPDATE users SET {', '.join(columns)} WHERE id = ?", values)
+            saved_id = user_id
+        else:
+            cursor = connection.execute(
+                """
+                INSERT INTO users (username, display_name, role, password_hash, active, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (username, display_name, role, password_hash(password), active, now, now),
+            )
+            saved_id = int(cursor.lastrowid)
+        connection.commit()
+        return saved_id
+    except sqlite3.IntegrityError as exc:
+        raise ValueError("이미 사용 중인 아이디입니다.") from exc
     finally:
         connection.close()
 
@@ -5257,6 +5597,13 @@ class WorkhubHandler(BaseHTTPRequestHandler):
             self.send_bytes(render_app_html(user).encode("utf-8"), "text/html; charset=utf-8")
             return
 
+        if self.path == "/api/users":
+            if user.get("role") != "admin":
+                self.send_json({"error": "관리자만 사용할 수 있습니다."}, status=403)
+                return
+            self.send_json({"users": list_users()})
+            return
+
         if self.path == "/api/mail-settings":
             self.send_json(load_mail_settings(include_password=False))
             return
@@ -5318,6 +5665,16 @@ class WorkhubHandler(BaseHTTPRequestHandler):
             user = self.current_user()
             if not user:
                 self.send_json({"error": "로그인이 필요합니다."}, status=401)
+                return
+
+            if self.path == "/api/users-save":
+                if user.get("role") != "admin":
+                    self.send_json({"error": "관리자만 사용할 수 있습니다."}, status=403)
+                    return
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(length).decode("utf-8"))
+                user_id = save_user_account(payload, user)
+                self.send_json({"message": "사용자 계정을 저장했습니다.", "user_id": user_id, "users": list_users()})
                 return
 
             if self.path == "/api/cs-mail":
