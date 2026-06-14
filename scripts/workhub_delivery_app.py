@@ -6932,53 +6932,23 @@ def list_management_records(query: str = "", limit: int | None = 300, year: str 
     where, params = management_query_conditions(query, year, month)
     connection = connect_db()
     try:
-        if limit is None:
-            rows = connection.execute(
-                f"""
-                SELECT id, created_at, source_file, source_sheet, source_row, purchase_vendor,
-                       sales_vendor, transaction_type, ledger_checked, order_date, ship_date,
-                       orderer_name, sender_phone, receiver_name, receiver_phone, product_name,
-                       quantity, receiver_address, courier, invoice_number, memo, cs_received_at
-                  FROM management_records
-                  {where}
-                 ORDER BY order_date DESC, id DESC
-                """,
-                params,
-            ).fetchall()
-        else:
-            rows = connection.execute(
-                f"""
-                WITH base AS (
-                    SELECT id, created_at, source_file, source_sheet, source_row, purchase_vendor,
-                           sales_vendor, transaction_type, ledger_checked, order_date, ship_date,
-                           orderer_name, sender_phone, receiver_name, receiver_phone, product_name,
-                           quantity, receiver_address, courier, invoice_number, memo, cs_received_at,
-                           CASE
-                               WHEN TRIM(COALESCE(invoice_number, '')) <> ''
-                               THEN COALESCE(NULLIF(TRIM(order_date), ''), NULLIF(TRIM(ship_date), ''), SUBSTR(created_at, 1, 10), '') || '||' || TRIM(invoice_number)
-                               ELSE 'row:' || id
-                           END AS order_key,
-                           COALESCE(NULLIF(TRIM(order_date), ''), NULLIF(TRIM(ship_date), ''), SUBSTR(created_at, 1, 10), '') AS order_sort_date
-                      FROM management_records
-                      {where}
-                ),
-                selected_orders AS (
-                    SELECT order_key, MAX(order_sort_date) AS sort_date, MAX(id) AS sort_id
-                      FROM base
-                     GROUP BY order_key
-                     ORDER BY sort_date DESC, sort_id DESC
-                     LIMIT ?
-                )
-                SELECT base.id, base.created_at, base.source_file, base.source_sheet, base.source_row, base.purchase_vendor,
-                       base.sales_vendor, base.transaction_type, base.ledger_checked, base.order_date, base.ship_date,
-                       base.orderer_name, base.sender_phone, base.receiver_name, base.receiver_phone, base.product_name,
-                       base.quantity, base.receiver_address, base.courier, base.invoice_number, base.memo, base.cs_received_at
-                  FROM base
-                  JOIN selected_orders ON selected_orders.order_key = base.order_key
-                 ORDER BY base.order_sort_date DESC, base.id DESC
-                """,
-                [*params, limit],
-            ).fetchall()
+        limit_sql = ""
+        if limit is not None:
+            limit_sql = "LIMIT ?"
+            params.append(limit)
+        rows = connection.execute(
+            f"""
+            SELECT id, created_at, source_file, source_sheet, source_row, purchase_vendor,
+                   sales_vendor, transaction_type, ledger_checked, order_date, ship_date,
+                   orderer_name, sender_phone, receiver_name, receiver_phone, product_name,
+                   quantity, receiver_address, courier, invoice_number, memo, cs_received_at
+              FROM management_records
+              {where}
+             ORDER BY order_date DESC, id DESC
+             {limit_sql}
+            """,
+            params,
+        ).fetchall()
     finally:
         connection.close()
     return [dict(row) for row in rows]
