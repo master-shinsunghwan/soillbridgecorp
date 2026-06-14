@@ -1378,6 +1378,57 @@ HTML = r"""<!doctype html>
       white-space: nowrap;
     }
     .ledger-import-button input { display: none; }
+    .cell-edit-bar {
+      display: none;
+      grid-template-columns: minmax(150px, auto) minmax(280px, 1fr) auto auto;
+      gap: 7px;
+      align-items: center;
+      margin: -2px 0 10px;
+      padding: 8px;
+      border: 1px solid #cfd6e2;
+      border-radius: 8px;
+      background: #f8fafc;
+    }
+    .cell-edit-bar.open { display: grid; }
+    .cell-edit-label {
+      color: #344054;
+      font-size: 12px;
+      font-weight: 900;
+      white-space: nowrap;
+    }
+    .cell-edit-control {
+      width: 100%;
+      min-height: 34px;
+      border: 1px solid #98a2b3;
+      border-radius: 7px;
+      padding: 6px 9px;
+      background: white;
+      color: #111827;
+      font-family: inherit;
+      font-size: 12px;
+      font-weight: 750;
+    }
+    textarea.cell-edit-control {
+      min-height: 64px;
+      resize: vertical;
+      line-height: 1.45;
+    }
+    .cell-edit-button {
+      height: 34px;
+      padding: 0 12px;
+      border: 1px solid #aab2bf;
+      border-radius: 7px;
+      background: white;
+      font-family: inherit;
+      font-size: 12px;
+      font-weight: 900;
+      cursor: pointer;
+    }
+    .cell-edit-button.apply {
+      border-color: #087a46;
+      background: #087a46;
+      color: white;
+    }
     .management-month-tabs {
       display: flex;
       flex-wrap: wrap;
@@ -1613,6 +1664,24 @@ HTML = r"""<!doctype html>
       background: var(--duplicate-row-color, #eef6ff);
     }
     .ledger-table td.left { text-align: left; }
+    .ledger-table td.editable-cell {
+      cursor: pointer;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 260px;
+    }
+    .ledger-table td.editable-cell.left {
+      max-width: 360px;
+    }
+    .ledger-table td.editable-cell:hover {
+      background: #eef6ff;
+    }
+    .ledger-table td.editable-cell.selected-cell {
+      outline: 2px solid #155bc8;
+      outline-offset: -2px;
+      background: #eef6ff;
+    }
     .ledger-status {
       display: inline-flex;
       align-items: center;
@@ -2400,6 +2469,12 @@ HTML = r"""<!doctype html>
             </div>
             <button class="btn primary" id="ledgerAddCs" type="button">CS 추가</button>
           </div>
+          <div class="cell-edit-bar" id="ledgerCellEditBar">
+            <div class="cell-edit-label" id="ledgerCellEditLabel">셀 선택</div>
+            <div id="ledgerCellEditMount"></div>
+            <button class="cell-edit-button apply" id="ledgerCellApply" type="button">적용</button>
+            <button class="cell-edit-button" id="ledgerCellCancel" type="button">취소</button>
+          </div>
           <input class="hidden-file-input" id="ledgerImportInput" name="ledger_import" type="file" accept=".xlsx,.xlsm" />
           <div class="ledger-wrap">
             <table class="ledger-table">
@@ -2458,6 +2533,12 @@ HTML = r"""<!doctype html>
                 <button type="button" data-management-download="selected">선택 다운로드</button>
               </div>
             </div>
+          </div>
+          <div class="cell-edit-bar" id="managementCellEditBar">
+            <div class="cell-edit-label" id="managementCellEditLabel">셀 선택</div>
+            <div id="managementCellEditMount"></div>
+            <button class="cell-edit-button apply" id="managementCellApply" type="button">적용</button>
+            <button class="cell-edit-button" id="managementCellCancel" type="button">취소</button>
           </div>
           <input class="hidden-file-input" id="managementImportInput" name="management_import" type="file" accept=".xlsx,.xlsm" />
           <div class="ledger-wrap management-wrap">
@@ -2574,6 +2655,16 @@ HTML = r"""<!doctype html>
     const csFields = document.querySelector("#csFields");
     const ledgerFields = document.querySelector("#ledgerFields");
     const managementFields = document.querySelector("#managementFields");
+    const ledgerCellEditBar = document.querySelector("#ledgerCellEditBar");
+    const ledgerCellEditLabel = document.querySelector("#ledgerCellEditLabel");
+    const ledgerCellEditMount = document.querySelector("#ledgerCellEditMount");
+    const ledgerCellApply = document.querySelector("#ledgerCellApply");
+    const ledgerCellCancel = document.querySelector("#ledgerCellCancel");
+    const managementCellEditBar = document.querySelector("#managementCellEditBar");
+    const managementCellEditLabel = document.querySelector("#managementCellEditLabel");
+    const managementCellEditMount = document.querySelector("#managementCellEditMount");
+    const managementCellApply = document.querySelector("#managementCellApply");
+    const managementCellCancel = document.querySelector("#managementCellCancel");
     const productTable = document.querySelector("#productTable");
     const receiptTypeSelect = document.querySelector("#receiptTypeSelect");
     const supplierInput = document.querySelector("#supplierInput");
@@ -2746,6 +2837,10 @@ HTML = r"""<!doctype html>
     let userAccounts = [];
     let activeLedgerFilterField = "";
     let activeManagementFilterField = "";
+    const activeCellEditors = {
+      ledger: null,
+      management: null,
+    };
     const ledgerFilters = {};
     const managementFilters = {};
     let isBulkSaving = false;
@@ -3880,10 +3975,16 @@ HTML = r"""<!doctype html>
       return isCompletedByValues(csCase.cs_type, csCase.status);
     }
 
+    function fieldValue(element) {
+      if (!element) return "";
+      if ("value" in element) return String(element.value || "").trim();
+      return String(element.dataset.value ?? element.textContent ?? "").trim();
+    }
+
     function updateLedgerRowCompletion(row) {
       if (!row) return;
-      const status = row.querySelector('[data-field="status"]')?.value || "";
-      const csType = row.querySelector('[data-field="cs_type"]')?.value || "";
+      const status = fieldValue(row.querySelector('[data-field="status"]'));
+      const csType = fieldValue(row.querySelector('[data-field="cs_type"]'));
       row.classList.toggle("completed-cs", isCompletedByValues(csType, status));
     }
 
@@ -4021,10 +4122,129 @@ HTML = r"""<!doctype html>
         row.querySelectorAll("[data-field], [data-management-field]").forEach((input) => {
           input.disabled = true;
         });
+        row.querySelectorAll(".editable-cell").forEach((cell) => {
+          cell.dataset.readonly = "1";
+        });
       }
       row.querySelectorAll(".management-cs-button").forEach((button) => {
         setHidden(button, !can("cs_receive"));
       });
+    }
+
+    function cellDisplayValue(value, options = {}) {
+      const raw = String(value || "");
+      if (options.date) return shortKoreanDate(raw);
+      return raw;
+    }
+
+    function editableCell({ scope, field, label, value, align = "", date = false, input = "text", options = [] }) {
+      const displayValue = cellDisplayValue(value, { date });
+      const className = `editable-cell ${align}`.trim();
+      const dataAttr = scope === "management" ? "data-management-field" : "data-field";
+      const optionData = options.length ? ` data-options="${escapeHtml(JSON.stringify(options))}"` : "";
+      return `<td class="${className}" ${dataAttr}="${escapeHtml(field)}" data-label="${escapeHtml(label)}" data-value="${escapeHtml(value)}" data-input="${escapeHtml(input)}"${date ? ` data-raw-date="${escapeHtml(value)}" data-date="1"` : ""}${optionData}>${escapeHtml(displayValue)}</td>`;
+    }
+
+    function selectedEditorParts(scope) {
+      if (scope === "management") {
+        return {
+          bar: managementCellEditBar,
+          label: managementCellEditLabel,
+          mount: managementCellEditMount,
+        };
+      }
+      return {
+        bar: ledgerCellEditBar,
+        label: ledgerCellEditLabel,
+        mount: ledgerCellEditMount,
+      };
+    }
+
+    function closeCellEditor(scope) {
+      const selected = activeCellEditors[scope];
+      if (selected?.cell) selected.cell.classList.remove("selected-cell");
+      activeCellEditors[scope] = null;
+      const parts = selectedEditorParts(scope);
+      parts.bar?.classList.remove("open");
+      if (parts.mount) parts.mount.innerHTML = "";
+      if (parts.label) parts.label.textContent = "셀 선택";
+    }
+
+    function editorOptionsFromCell(cell) {
+      try {
+        return JSON.parse(cell.dataset.options || "[]");
+      } catch {
+        return [];
+      }
+    }
+
+    function createCellEditorControl(cell) {
+      const inputType = cell.dataset.input || "text";
+      const currentValue = cell.dataset.value || cell.textContent.trim();
+      if (inputType === "select") {
+        const select = document.createElement("select");
+        select.className = "cell-edit-control";
+        editorOptionsFromCell(cell).forEach((option) => {
+          const item = document.createElement("option");
+          item.value = option;
+          item.textContent = option || "선택";
+          if (option === currentValue) item.selected = true;
+          select.appendChild(item);
+        });
+        return select;
+      }
+      if (inputType === "textarea") {
+        const textarea = document.createElement("textarea");
+        textarea.className = "cell-edit-control";
+        textarea.value = currentValue;
+        return textarea;
+      }
+      const input = document.createElement("input");
+      input.className = "cell-edit-control";
+      input.type = inputType === "date" ? "date" : "text";
+      input.value = currentValue;
+      return input;
+    }
+
+    function openCellEditor(scope, cell) {
+      if (!cell || cell.dataset.readonly === "1" || !can("ledger_edit")) return;
+      closeCellEditor(scope);
+      closeLedgerFilter();
+      const row = cell.closest("tr");
+      if (!row) return;
+      const parts = selectedEditorParts(scope);
+      const label = cell.dataset.label || cell.dataset.field || cell.dataset.managementField || "선택 셀";
+      const rowHint = scope === "management"
+        ? [row.querySelector('[data-management-field="order_date"]')?.textContent.trim(), row.querySelector('[data-management-field="receiver_name"]')?.textContent.trim(), row.querySelector('[data-management-field="product_name"]')?.textContent.trim()].filter(Boolean).join(" / ")
+        : [textFromCell(row, 1), textFromCell(row, 14), textFromCell(row, 16)].filter(Boolean).join(" / ");
+      const control = createCellEditorControl(cell);
+      parts.mount.innerHTML = "";
+      parts.mount.appendChild(control);
+      parts.label.textContent = rowHint ? `${label} · ${rowHint}` : label;
+      parts.bar.classList.add("open");
+      cell.classList.add("selected-cell");
+      activeCellEditors[scope] = { cell, control };
+      setTimeout(() => {
+        control.focus();
+        if (control.select) control.select();
+      }, 0);
+    }
+
+    function applyCellEditor(scope) {
+      const selected = activeCellEditors[scope];
+      if (!selected?.cell || !selected.control) return;
+      const { cell, control } = selected;
+      const row = cell.closest("tr");
+      const value = control.value || "";
+      cell.dataset.value = value;
+      if (cell.dataset.date === "1") cell.dataset.rawDate = value;
+      cell.textContent = cellDisplayValue(value, { date: cell.dataset.date === "1" });
+      markRowDirty(row, true);
+      const checkbox = row?.querySelector("[data-row-check]");
+      if (checkbox) checkbox.checked = true;
+      if (scope === "ledger") updateLedgerRowCompletion(row);
+      if (activeLedgerFilterField || activeManagementFilterField) refreshActiveFilterOptions();
+      notice.textContent = `${cell.dataset.label || "선택 셀"} 값을 반영했습니다. 저장하려면 체크된 항목 저장 버튼을 눌러주세요.`;
     }
 
     function dirtyRows(container, rowSelector) {
@@ -4106,6 +4326,7 @@ HTML = r"""<!doctype html>
     }
 
     function renderLedger(cases) {
+      closeCellEditor("ledger");
       ledgerBody.innerHTML = "";
       if (!cases || cases.length === 0) {
         const row = document.createElement("tr");
@@ -4116,20 +4337,21 @@ HTML = r"""<!doctype html>
       cases.forEach((csCase) => {
         const row = document.createElement("tr");
         row.dataset.caseId = csCase.id;
-        const statusOptions = selectOptions(ledgerStatusOptions(csCase.status), csCase.status || ledgerStatusOptions()[0]);
-        const csTypeSelectOptions = `<option value="" ${csCase.cs_type ? "" : "selected"}>선택</option>${selectOptions(csTypeOptions, csCase.cs_type)}`;
+        const statusValue = csCase.status || ledgerStatusOptions()[0];
+        const statusSelectOptions = ledgerStatusOptions(statusValue);
+        const csTypeSelectOptions = ["", ...csTypeOptions];
         if (isCompletedCsCase(csCase)) row.classList.add("completed-cs");
         row.innerHTML = `
           <td><input class="ledger-check" type="checkbox" data-row-check /></td>
           <td>${escapeHtml(csCase.occurred_at || csCase.created_at)}</td>
           <td>${escapeHtml(csCase.sales_vendor)}</td>
           <td>${escapeHtml(csCase.purchase_vendor || csCase.vendor_name)}</td>
-          <td><select class="ledger-status-select" data-field="status">${statusOptions}</select></td>
+          ${editableCell({ scope: "ledger", field: "status", label: "처리진행상태", value: statusValue, input: "select", options: statusSelectOptions })}
           <td>${escapeHtml(csCase.completed_at)}</td>
-          <td><select class="ledger-status-select" data-field="cs_type">${csTypeSelectOptions}</select></td>
+          ${editableCell({ scope: "ledger", field: "cs_type", label: "처리내용", value: csCase.cs_type, input: "select", options: csTypeSelectOptions })}
           <td class="left">${escapeHtml(csCase.cs_content)}</td>
-          <td><input class="ledger-edit" data-field="reship_invoice" value="${escapeHtml(csCase.reship_invoice)}" /></td>
-          <td><input class="ledger-edit" data-field="return_invoice" value="${escapeHtml(csCase.return_invoice)}" /></td>
+          ${editableCell({ scope: "ledger", field: "reship_invoice", label: "재발송운송장번호", value: csCase.reship_invoice })}
+          ${editableCell({ scope: "ledger", field: "return_invoice", label: "회수운송장번호", value: csCase.return_invoice })}
           <td data-full-date="${escapeHtml(csCase.order_date)}">${escapeHtml(shortKoreanDate(csCase.order_date))}</td>
           <td data-full-date="${escapeHtml(csCase.ship_date)}">${escapeHtml(shortKoreanDate(csCase.ship_date))}</td>
           <td>${escapeHtml(csCase.orderer_name)}</td>
@@ -4205,6 +4427,7 @@ HTML = r"""<!doctype html>
     }
 
     function renderManagement(records) {
+      closeCellEditor("management");
       managementBody.innerHTML = "";
       if (managementSelectAll) managementSelectAll.checked = false;
       if (!records || records.length === 0) {
@@ -4254,22 +4477,22 @@ HTML = r"""<!doctype html>
         if (csReceived) row.classList.add("management-cs-received");
         row.innerHTML = `
           <td><input class="ledger-check" type="checkbox" data-row-check /></td>
-          <td><input class="management-edit" data-management-field="order_date" data-raw-date="${escapeHtml(record.order_date)}" value="${escapeHtml(shortKoreanDate(record.order_date))}" /></td>
-          <td><input class="management-edit" data-management-field="ship_date" data-raw-date="${escapeHtml(record.ship_date)}" value="${escapeHtml(shortKoreanDate(record.ship_date))}" /></td>
-          <td><input class="management-edit" data-management-field="purchase_vendor" value="${escapeHtml(record.purchase_vendor)}" /></td>
-          <td><input class="management-edit" data-management-field="sales_vendor" value="${escapeHtml(record.sales_vendor)}" /></td>
-          <td><input class="management-edit" data-management-field="transaction_type" value="${escapeHtml(record.transaction_type)}" /></td>
-          <td><input class="management-edit" data-management-field="ledger_checked" value="${escapeHtml(record.ledger_checked)}" /></td>
-          <td><input class="management-edit" data-management-field="orderer_name" value="${escapeHtml(record.orderer_name)}" /></td>
-          <td><input class="management-edit" data-management-field="sender_phone" value="${escapeHtml(record.sender_phone)}" /></td>
-          <td><input class="management-edit" data-management-field="receiver_name" value="${escapeHtml(record.receiver_name)}" /></td>
-          <td><input class="management-edit" data-management-field="receiver_phone" value="${escapeHtml(record.receiver_phone)}" /></td>
-          <td class="left"><input class="management-edit wide" data-management-field="product_name" value="${escapeHtml(record.product_name)}" /></td>
-          <td><input class="management-edit" data-management-field="quantity" value="${escapeHtml(record.quantity)}" /></td>
-          <td class="left"><input class="management-edit wide" data-management-field="receiver_address" value="${escapeHtml(record.receiver_address)}" /></td>
-          <td><input class="management-edit" data-management-field="courier" value="${escapeHtml(record.courier)}" /></td>
-          <td><input class="management-edit" data-management-field="invoice_number" value="${escapeHtml(record.invoice_number)}" /></td>
-          <td class="left"><input class="management-edit wide" data-management-field="memo" value="${escapeHtml(record.memo)}" /></td>
+          ${editableCell({ scope: "management", field: "order_date", label: "주문일자", value: record.order_date, date: true, input: "date" })}
+          ${editableCell({ scope: "management", field: "ship_date", label: "출고일", value: record.ship_date, date: true, input: "date" })}
+          ${editableCell({ scope: "management", field: "purchase_vendor", label: "매입거래처", value: record.purchase_vendor })}
+          ${editableCell({ scope: "management", field: "sales_vendor", label: "매출거래처", value: record.sales_vendor })}
+          ${editableCell({ scope: "management", field: "transaction_type", label: "거래구분", value: record.transaction_type })}
+          ${editableCell({ scope: "management", field: "ledger_checked", label: "장부입력확인", value: record.ledger_checked })}
+          ${editableCell({ scope: "management", field: "orderer_name", label: "주문자", value: record.orderer_name })}
+          ${editableCell({ scope: "management", field: "sender_phone", label: "발신자연락처", value: record.sender_phone })}
+          ${editableCell({ scope: "management", field: "receiver_name", label: "수령자", value: record.receiver_name })}
+          ${editableCell({ scope: "management", field: "receiver_phone", label: "수령자연락처", value: record.receiver_phone })}
+          ${editableCell({ scope: "management", field: "product_name", label: "제품명", value: record.product_name, align: "left", input: "textarea" })}
+          ${editableCell({ scope: "management", field: "quantity", label: "수량", value: record.quantity })}
+          ${editableCell({ scope: "management", field: "receiver_address", label: "상세주소", value: record.receiver_address, align: "left", input: "textarea" })}
+          ${editableCell({ scope: "management", field: "courier", label: "택배사", value: record.courier })}
+          ${editableCell({ scope: "management", field: "invoice_number", label: "운송장번호", value: record.invoice_number })}
+          ${editableCell({ scope: "management", field: "memo", label: "특이사항", value: record.memo, align: "left", input: "textarea" })}
           <td><button class="management-cs-button" type="button" ${csReceived ? "disabled" : ""}>${csReceived ? "접수완료" : "CS접수"}</button></td>
         `;
         applyRowPermissions(row);
@@ -4345,11 +4568,12 @@ HTML = r"""<!doctype html>
 
     function collectManagementRow(row) {
       const payload = { id: row.dataset.recordId };
-      row.querySelectorAll("[data-management-field]").forEach((input) => {
-        const field = input.dataset.managementField;
+      row.querySelectorAll("[data-management-field]").forEach((cell) => {
+        const field = cell.dataset.managementField;
+        const value = fieldValue(cell);
         payload[field] = field === "order_date" || field === "ship_date"
-          ? fullDateForSave(input.value.trim(), input.dataset.rawDate || "")
-          : input.value.trim();
+          ? fullDateForSave(value, cell.dataset.rawDate || "")
+          : value;
       });
       return payload;
     }
@@ -4422,10 +4646,10 @@ HTML = r"""<!doctype html>
     function collectLedgerRow(row) {
       return {
         id: row.dataset.caseId,
-        status: row.querySelector('[data-field="status"]')?.value || "",
-        cs_type: row.querySelector('[data-field="cs_type"]')?.value.trim() || "",
-        return_invoice: row.querySelector('[data-field="return_invoice"]')?.value.trim() || "",
-        reship_invoice: row.querySelector('[data-field="reship_invoice"]')?.value.trim() || "",
+        status: fieldValue(row.querySelector('[data-field="status"]')),
+        cs_type: fieldValue(row.querySelector('[data-field="cs_type"]')),
+        return_invoice: fieldValue(row.querySelector('[data-field="return_invoice"]')),
+        reship_invoice: fieldValue(row.querySelector('[data-field="reship_invoice"]')),
       };
     }
 
@@ -4578,12 +4802,12 @@ HTML = r"""<!doctype html>
         occurred_at: textFromCell(row, 1),
         sales_vendor: textFromCell(row, 2),
         purchase_vendor: textFromCell(row, 3),
-        status: row.querySelector('[data-field="status"]')?.value || "",
+        status: fieldValue(row.querySelector('[data-field="status"]')),
         completed_at: textFromCell(row, 5),
-        cs_type: row.querySelector('[data-field="cs_type"]')?.value || "",
+        cs_type: fieldValue(row.querySelector('[data-field="cs_type"]')),
         cs_content: textFromCell(row, 7),
-        reship_invoice: row.querySelector('[data-field="reship_invoice"]')?.value.trim() || "",
-        return_invoice: row.querySelector('[data-field="return_invoice"]')?.value.trim() || "",
+        reship_invoice: fieldValue(row.querySelector('[data-field="reship_invoice"]')),
+        return_invoice: fieldValue(row.querySelector('[data-field="return_invoice"]')),
         order_date: fullDateFromCell(row, 10),
         ship_date: fullDateFromCell(row, 11),
         orderer_name: textFromCell(row, 12),
@@ -5354,10 +5578,12 @@ HTML = r"""<!doctype html>
     document.addEventListener("click", (event) => {
       if (!event.target.closest(".download-menu-wrap")) closeDownloadMenus();
     });
-    managementBody.addEventListener("input", (event) => {
-      if (event.target.closest("[data-management-field]")) markRowDirty(event.target.closest("tr"));
-    });
     managementBody.addEventListener("click", (event) => {
+      const editableCell = event.target.closest(".editable-cell[data-management-field]");
+      if (editableCell) {
+        openCellEditor("management", editableCell);
+        return;
+      }
       if (event.target.closest("[data-row-check]") && managementSelectAll) {
         const checks = Array.from(managementBody.querySelectorAll("tr[data-record-id] [data-row-check]"));
         managementSelectAll.checked = checks.length > 0 && checks.every((checkbox) => checkbox.checked);
@@ -5365,15 +5591,25 @@ HTML = r"""<!doctype html>
       const csButton = event.target.closest(".management-cs-button");
       if (csButton) receiveManagementCs(csButton);
     });
-    ledgerBody.addEventListener("input", (event) => {
-      if (event.target.closest("[data-field]")) markRowDirty(event.target.closest("tr"));
-    });
-    ledgerBody.addEventListener("change", (event) => {
-      const field = event.target.closest('[data-field="status"], [data-field="cs_type"]');
-      if (field) {
-        markRowDirty(field.closest("tr"));
-        updateLedgerRowCompletion(field.closest("tr"));
+    ledgerBody.addEventListener("click", (event) => {
+      const editableCell = event.target.closest(".editable-cell[data-field]");
+      if (editableCell) {
+        openCellEditor("ledger", editableCell);
       }
+    });
+    [ledgerCellApply, managementCellApply].forEach((button) => {
+      button?.addEventListener("click", () => applyCellEditor(button === ledgerCellApply ? "ledger" : "management"));
+    });
+    [ledgerCellCancel, managementCellCancel].forEach((button) => {
+      button?.addEventListener("click", () => closeCellEditor(button === ledgerCellCancel ? "ledger" : "management"));
+    });
+    [ledgerCellEditMount, managementCellEditMount].forEach((mount) => {
+      mount?.addEventListener("keydown", (event) => {
+        if (event.key !== "Enter") return;
+        if (event.target.tagName === "TEXTAREA" && !event.ctrlKey) return;
+        event.preventDefault();
+        applyCellEditor(mount === ledgerCellEditMount ? "ledger" : "management");
+      });
     });
     ledgerSearchInput.addEventListener("keydown", (event) => {
       if (event.key === "Enter") {
