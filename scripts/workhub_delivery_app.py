@@ -931,6 +931,15 @@ HTML = r"""<!doctype html>
     }
     .backup-action.danger { border-color: #f4a7a7; color: #b42318; }
     .backup-message { min-height: 20px; color: var(--muted); font-size: 13px; font-weight: 750; }
+    .backup-restore-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+      margin: 0 0 12px;
+    }
+    .backup-restore-row input { display: none; }
+    #backupRestoreInput { display: none; }
     @media (max-width: 1100px) {
       .admin-form { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       .permission-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -2186,6 +2195,7 @@ HTML = r"""<!doctype html>
     const leaveTabs = Array.from(document.querySelectorAll("[data-leave-tab]"));
     const backupRefresh = document.querySelector("#backupRefresh");
     const backupCreate = document.querySelector("#backupCreate");
+    const backupRestoreInput = document.querySelector("#backupRestoreInput");
     const backupPath = document.querySelector("#backupPath");
     const backupBody = document.querySelector("#backupBody");
     const backupMessage = document.querySelector("#backupMessage");
@@ -2389,6 +2399,7 @@ HTML = r"""<!doctype html>
           <td>${backupSizeText(backup.size)}</td>
           <td>
             <div class="backup-actions">
+              <button class="backup-action" type="button" data-backup-restore="${escapeHtml(backup.name)}">복원</button>
               <button class="backup-action" type="button" data-backup-download="${escapeHtml(backup.name)}">다운로드</button>
               <button class="backup-action danger" type="button" data-backup-delete="${escapeHtml(backup.name)}">삭제</button>
             </div>
@@ -2448,6 +2459,52 @@ HTML = r"""<!doctype html>
         await loadBackups();
       } catch (error) {
         backupMessage.textContent = error.message;
+      }
+    }
+
+    function restoreCompleteMessage(data) {
+      return `${data.message || "백업 데이터 복원이 완료되었습니다."} 프로그램을 다시 실행하거나 로그아웃 후 다시 로그인해주세요.`;
+    }
+
+    async function restoreBackupByName(name) {
+      if (!confirm(`${name} 백업 데이터로 현재 업무 데이터를 복원할까요?\n\n복원 전 현재 데이터는 자동으로 예비 백업됩니다.`)) return;
+      backupMessage.textContent = "백업 데이터를 복원하는 중입니다.";
+      try {
+        const response = await fetch("/api/backup-restore", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name }),
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "백업 복원에 실패했습니다.");
+        backupMessage.textContent = restoreCompleteMessage(data);
+      } catch (error) {
+        backupMessage.textContent = error.message;
+      }
+    }
+
+    async function restoreBackupFromUpload() {
+      if (!backupRestoreInput || !backupRestoreInput.files[0]) return;
+      const file = backupRestoreInput.files[0];
+      if (!confirm(`${file.name} 파일로 현재 업무 데이터를 복원할까요?\n\n복원 전 현재 데이터는 자동으로 예비 백업됩니다.`)) {
+        backupRestoreInput.value = "";
+        return;
+      }
+      const formData = new FormData();
+      formData.append("file", file);
+      backupMessage.textContent = "업로드한 백업 데이터를 복원하는 중입니다.";
+      try {
+        const response = await fetch("/api/backup-restore-upload", {
+          method: "POST",
+          body: formData,
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "백업 복원에 실패했습니다.");
+        backupMessage.textContent = restoreCompleteMessage(data);
+      } catch (error) {
+        backupMessage.textContent = error.message;
+      } finally {
+        backupRestoreInput.value = "";
       }
     }
 
@@ -4158,10 +4215,13 @@ HTML = r"""<!doctype html>
     if (userAdminRole) userAdminRole.addEventListener("change", syncPermissionChecksForRole);
     if (backupRefresh) backupRefresh.addEventListener("click", loadBackups);
     if (backupCreate) backupCreate.addEventListener("click", createBackupNow);
+    if (backupRestoreInput) backupRestoreInput.addEventListener("change", restoreBackupFromUpload);
     if (backupBody) {
       backupBody.addEventListener("click", (event) => {
+        const restoreButton = event.target.closest("[data-backup-restore]");
         const downloadButton = event.target.closest("[data-backup-download]");
         const deleteButton = event.target.closest("[data-backup-delete]");
+        if (restoreButton) restoreBackupByName(restoreButton.dataset.backupRestore);
         if (downloadButton) downloadBackup(downloadButton.dataset.backupDownload);
         if (deleteButton) deleteBackup(deleteButton.dataset.backupDelete);
       });
@@ -4668,6 +4728,8 @@ BACKUP_WORKSPACE_HTML = r"""
           <div class="workspace-actions">
             <button class="workspace-button" type="button" id="backupRefresh">새로고침</button>
             <button class="workspace-button" type="button" id="backupCreate">지금 백업하기</button>
+            <label class="workspace-button" for="backupRestoreInput">백업 파일 복원</label>
+            <input id="backupRestoreInput" type="file" accept=".zip" />
           </div>
         </div>
         <div class="workspace-mount">
@@ -4689,6 +4751,7 @@ BACKUP_WORKSPACE_HTML = r"""
             <div class="backup-card">
               <p class="backup-note">
                 백업에는 업무 DB, 메일 설정, 업체 주소록, 암호화 키가 포함됩니다. 나스에서는 이 백업 폴더를 Synology Hyper Backup 대상으로 잡으면 됩니다.
+                복원 전에는 현재 데이터를 자동으로 한 번 더 백업합니다.
               </p>
               <div class="backup-message" id="backupMessage"></div>
               <table class="backup-table">
@@ -4771,6 +4834,21 @@ def save_uploaded_file(fields: dict[str, tuple[str, bytes] | str], field_name: s
 
     UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
     path = UPLOAD_DIR / f"{int(time.time() * 1000)}_{filename}"
+    path.write_bytes(data)
+    return path
+
+
+def save_uploaded_backup_zip(fields: dict[str, tuple[str, bytes] | str], field_name: str = "file") -> Path:
+    uploaded = fields.get(field_name)
+    if not isinstance(uploaded, tuple):
+        raise ValueError("업로드된 백업 파일이 없습니다.")
+
+    filename, data = uploaded
+    if not filename.lower().endswith(".zip"):
+        raise ValueError("zip 백업 파일만 업로드할 수 있습니다.")
+
+    UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    path = UPLOAD_DIR / f"{int(time.time() * 1000)}_{safe_filename(filename)}"
     path.write_bytes(data)
     return path
 
@@ -5354,8 +5432,16 @@ def user_has_permission(user: dict[str, str], permission: str) -> bool:
     return permission in normalize_permissions(user.get("permissions", []), user.get("role", "user"))
 
 
+RESTORE_ALLOWED_FILES = {
+    "config/workhub.db": DB_PATH,
+    "config/mail_settings.json": MAIL_SETTINGS_PATH,
+    "config/vendor_contacts.json": VENDOR_CONTACTS_PATH,
+    "config/secret.key": SECRET_KEY_PATH,
+}
+
+
 def valid_backup_name(name: str) -> bool:
-    return bool(re.fullmatch(r"workhub_backup_\d{8}_\d{6}\.zip", name))
+    return bool(re.fullmatch(r"workhub_backup_\d{8}_\d{6}(?:_\d+)?\.zip", name))
 
 
 def backup_path_from_name(name: str) -> Path:
@@ -5408,6 +5494,10 @@ def create_workhub_backup(reason: str = "manual") -> dict[str, str | int]:
     BACKUP_DIR.mkdir(parents=True, exist_ok=True)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     output_path = BACKUP_DIR / f"workhub_backup_{timestamp}.zip"
+    counter = 1
+    while output_path.exists():
+        output_path = BACKUP_DIR / f"workhub_backup_{timestamp}_{counter}.zip"
+        counter += 1
     with tempfile.TemporaryDirectory(prefix="workhub_backup_", dir=BACKUP_DIR) as temp_dir:
         temp_db = Path(temp_dir) / "workhub.db"
         safe_sqlite_copy(temp_db)
@@ -5437,6 +5527,55 @@ def create_workhub_backup(reason: str = "manual") -> dict[str, str | int]:
             )
     cleanup_backup_retention()
     return backup_file_info(output_path)
+
+
+def validate_restored_db(path: Path) -> None:
+    connection = sqlite3.connect(path)
+    try:
+        result = connection.execute("PRAGMA quick_check").fetchone()
+        if not result or str(result[0]).lower() != "ok":
+            raise ValueError("백업 DB 파일 검증에 실패했습니다.")
+    finally:
+        connection.close()
+
+
+def restore_workhub_backup(source_zip: Path) -> dict[str, object]:
+    if not source_zip.exists() or not zipfile.is_zipfile(source_zip):
+        raise ValueError("올바른 백업 zip 파일이 아닙니다.")
+
+    pre_restore = create_workhub_backup("pre-restore")
+    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix="workhub_restore_", dir=BACKUP_DIR) as temp_dir:
+        temp_root = Path(temp_dir)
+        extracted: dict[str, Path] = {}
+        with zipfile.ZipFile(source_zip) as archive:
+            names = {item.filename.replace("\\", "/").lstrip("/") for item in archive.infolist()}
+            if "config/workhub.db" not in names:
+                raise ValueError("백업 파일 안에 config/workhub.db가 없습니다.")
+            for member in archive.infolist():
+                member_name = member.filename.replace("\\", "/").lstrip("/")
+                if member_name not in RESTORE_ALLOWED_FILES:
+                    continue
+                output = temp_root / member_name
+                output.parent.mkdir(parents=True, exist_ok=True)
+                output.write_bytes(archive.read(member))
+                extracted[member_name] = output
+
+        validate_restored_db(extracted["config/workhub.db"])
+
+        for backup_name, target in RESTORE_ALLOWED_FILES.items():
+            source = extracted.get(backup_name)
+            if source:
+                target.parent.mkdir(parents=True, exist_ok=True)
+                source.replace(target)
+            elif target.exists():
+                target.unlink()
+
+    return {
+        "message": "백업 데이터 복원이 완료되었습니다.",
+        "restored_from": source_zip.name,
+        "pre_restore_backup": pre_restore,
+    }
 
 
 def has_backup_for_date(date_token: str) -> bool:
@@ -7246,6 +7385,17 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                 self.send_json({"message": "백업 파일을 삭제했습니다.", "name": path.name})
                 return
 
+            if self.path == "/api/backup-restore":
+                if not self.require_permission(user, "backup_manage", "백업 관리"):
+                    return
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(length).decode("utf-8"))
+                path = backup_path_from_name(clean_payload_text(payload, "name"))
+                if not path.exists():
+                    raise FileNotFoundError("복원할 백업 파일을 찾지 못했습니다.")
+                self.send_json(restore_workhub_backup(path))
+                return
+
             if self.path == "/api/leave-request":
                 if not self.require_permission(user, "leave_view", "연차 조회"):
                     return
@@ -7443,6 +7593,13 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                 return
 
             fields = parse_multipart(self.headers, self.rfile)
+
+            if self.path == "/api/backup-restore-upload":
+                if not self.require_permission(user, "backup_manage", "백업 관리"):
+                    return
+                upload_path = save_uploaded_backup_zip(fields, "file")
+                self.send_json(restore_workhub_backup(upload_path))
+                return
 
             if self.path == "/api/vendor-contacts-import":
                 if not self.require_permission(user, "excel_upload", "엑셀 업로드"):
