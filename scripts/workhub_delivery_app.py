@@ -2394,6 +2394,15 @@ HTML = r"""<!doctype html>
       }
     }
 
+    function syncHalfDayDates() {
+      if (!leaveUnitSelect || !leaveStartDate || !leaveEndDate) return;
+      const isHalfDay = leaveUnitSelect.value === "HALF_DAY";
+      if (isHalfDay && leaveStartDate.value) {
+        leaveEndDate.value = leaveStartDate.value;
+      }
+      leaveEndDate.disabled = isHalfDay;
+    }
+
     async function decideLeaveRequest(requestId, decision) {
       const comment = decision === "reject" ? window.prompt("반려 사유를 입력해주세요.", "반려") || "반려" : "";
       leaveMessage.textContent = "연차 신청을 처리하는 중입니다.";
@@ -3982,6 +3991,8 @@ HTML = r"""<!doctype html>
     });
     if (leaveRefresh) leaveRefresh.addEventListener("click", loadLeaveData);
     if (leaveRequestSubmit) leaveRequestSubmit.addEventListener("click", submitLeaveRequest);
+    if (leaveUnitSelect) leaveUnitSelect.addEventListener("change", syncHalfDayDates);
+    if (leaveStartDate) leaveStartDate.addEventListener("change", syncHalfDayDates);
     if (leaveBalanceSave) leaveBalanceSave.addEventListener("click", saveLeaveBalance);
     if (leaveUsageSave) leaveUsageSave.addEventListener("click", saveHistoricalLeaveUsage);
     if (leaveApprovalBody) {
