@@ -1393,6 +1393,40 @@ HTML = r"""<!doctype html>
       gap: 5px;
       align-items: center;
     }
+    .download-menu-wrap {
+      position: relative;
+      display: inline-flex;
+    }
+    .download-menu {
+      position: absolute;
+      top: calc(100% + 5px);
+      right: 0;
+      z-index: 45;
+      display: none;
+      width: 174px;
+      padding: 7px;
+      border: 1px solid #98a2b3;
+      border-radius: 7px;
+      background: white;
+      box-shadow: 0 14px 32px rgba(15, 23, 42, .20);
+    }
+    .download-menu.open { display: grid; gap: 3px; }
+    .download-menu button {
+      width: 100%;
+      min-height: 29px;
+      border: 0;
+      border-bottom: 1px solid #eef1f5;
+      background: white;
+      padding: 5px 7px;
+      text-align: left;
+      color: #1f2937;
+      font-family: inherit;
+      font-size: 12px;
+      font-weight: 800;
+      cursor: pointer;
+    }
+    .download-menu button:last-child { border-bottom: 0; }
+    .download-menu button:hover { background: #eef6ff; }
     .ledger-wrap {
       border: 1px solid #d7dce5;
       border-radius: 8px;
@@ -2290,7 +2324,15 @@ HTML = r"""<!doctype html>
               <option value="5000">5,000개씩 보기</option>
             </select>
             <span class="ledger-count" id="ledgerCountLabel">표시 0건</span>
-            <button class="btn blue" id="ledgerDownloadExcel" type="button">엑셀 다운로드</button>
+            <div class="download-menu-wrap">
+              <button class="btn blue" id="ledgerDownloadMenuButton" type="button">다운로드 선택</button>
+              <div class="download-menu" id="ledgerDownloadMenu">
+                <button type="button" data-ledger-download="all">전체 다운로드</button>
+                <button type="button" data-ledger-download="year">년별 다운로드</button>
+                <button type="button" data-ledger-download="month">월별 다운로드</button>
+                <button type="button" data-ledger-download="selected">선택 다운로드</button>
+              </div>
+            </div>
             <button class="btn primary" id="ledgerAddCs" type="button">CS 추가</button>
           </div>
           <input class="hidden-file-input" id="ledgerImportInput" name="ledger_import" type="file" accept=".xlsx,.xlsm" />
@@ -2342,11 +2384,14 @@ HTML = r"""<!doctype html>
               <option value="2000">2,000개씩 보기</option>
               <option value="5000">5,000개씩 보기</option>
             </select>
-            <div class="management-download-group">
-              <button class="btn blue" id="managementDownloadSelected" type="button">선택 다운로드</button>
-              <button class="btn blue" id="managementDownloadMonth" type="button">월별 다운로드</button>
-              <button class="btn blue" id="managementDownloadYear" type="button">년별 다운로드</button>
-              <button class="btn blue" id="managementDownloadAll" type="button">전체 다운로드</button>
+            <div class="download-menu-wrap">
+              <button class="btn blue" id="managementDownloadMenuButton" type="button">다운로드 선택</button>
+              <div class="download-menu" id="managementDownloadMenu">
+                <button type="button" data-management-download="all">전체 다운로드</button>
+                <button type="button" data-management-download="year">년별 다운로드</button>
+                <button type="button" data-management-download="month">월별 다운로드</button>
+                <button type="button" data-management-download="selected">선택 다운로드</button>
+              </div>
             </div>
           </div>
           <input class="hidden-file-input" id="managementImportInput" name="management_import" type="file" accept=".xlsx,.xlsm" />
@@ -2433,8 +2478,8 @@ HTML = r"""<!doctype html>
       setHidden(ledgerSaveAll, !can("ledger_edit"));
       setHidden(ledgerAddCs, !can("ledger_edit"));
       setHidden(saveCsCaseButton, !can("ledger_edit"));
-      setHidden(ledgerDownloadExcel, !can("excel_download"));
-      managementDownloadButtons.forEach((button) => setHidden(button, !can("excel_download")));
+      setHidden(ledgerDownloadMenuButton, !can("excel_download"));
+      setHidden(managementDownloadMenuButton, !can("excel_download"));
       setHidden(document.querySelector("label[for='vendorContactsFileInput']"), !can("excel_upload"));
       setHidden(saveVendorContactButton, !can("mail_send"));
       document.querySelectorAll('[data-open="cs"]').forEach((button) => setHidden(button, !can("mail_send")));
@@ -2495,7 +2540,8 @@ HTML = r"""<!doctype html>
     const ledgerMonthFilter = document.querySelector("#ledgerMonthFilter");
     const ledgerRefresh = document.querySelector("#ledgerRefresh");
     const ledgerPageSize = document.querySelector("#ledgerPageSize");
-    const ledgerDownloadExcel = document.querySelector("#ledgerDownloadExcel");
+    const ledgerDownloadMenuButton = document.querySelector("#ledgerDownloadMenuButton");
+    const ledgerDownloadMenu = document.querySelector("#ledgerDownloadMenu");
     const ledgerCountLabel = document.querySelector("#ledgerCountLabel");
     const ledgerAddCs = document.querySelector("#ledgerAddCs");
     const ledgerBody = document.querySelector("#ledgerBody");
@@ -2507,16 +2553,8 @@ HTML = r"""<!doctype html>
     const managementMonthFilter = document.querySelector("#managementMonthFilter");
     const managementRefresh = document.querySelector("#managementRefresh");
     const managementPageSize = document.querySelector("#managementPageSize");
-    const managementDownloadSelected = document.querySelector("#managementDownloadSelected");
-    const managementDownloadMonth = document.querySelector("#managementDownloadMonth");
-    const managementDownloadYear = document.querySelector("#managementDownloadYear");
-    const managementDownloadAll = document.querySelector("#managementDownloadAll");
-    const managementDownloadButtons = [
-      managementDownloadSelected,
-      managementDownloadMonth,
-      managementDownloadYear,
-      managementDownloadAll,
-    ].filter(Boolean);
+    const managementDownloadMenuButton = document.querySelector("#managementDownloadMenuButton");
+    const managementDownloadMenu = document.querySelector("#managementDownloadMenu");
     const managementImportInput = document.querySelector("#managementImportInput");
     const managementImportDropMain = null;
     const managementImportOpen = document.querySelector("#managementImportOpen");
@@ -4585,6 +4623,65 @@ HTML = r"""<!doctype html>
       }
     }
 
+    async function downloadLedgerExcel(scope, button) {
+      const payload = { scope };
+      let fallbackName = "CS처리대장.xlsx";
+      if (scope === "selected") {
+        payload.rows = collectLedgerExportRows();
+        if (!payload.rows.length) {
+          notice.textContent = "다운로드할 행을 체크해주세요.";
+          return;
+        }
+        fallbackName = "CS처리대장_선택.xlsx";
+      } else if (scope === "month") {
+        const year = ledgerYearFilter.value;
+        const month = ledgerMonthFilter.value;
+        if (!year || !month) {
+          notice.textContent = "월별 다운로드는 년도와 월을 선택해주세요.";
+          return;
+        }
+        payload.year = year;
+        payload.month = month;
+        fallbackName = `CS처리대장_${year}년_${Number(month)}월.xlsx`;
+      } else if (scope === "year") {
+        const year = ledgerYearFilter.value;
+        if (!year) {
+          notice.textContent = "년별 다운로드는 년도를 선택해주세요.";
+          return;
+        }
+        payload.year = year;
+        fallbackName = `CS처리대장_${year}년.xlsx`;
+      } else {
+        fallbackName = "CS처리대장_전체.xlsx";
+      }
+      try {
+        button.disabled = true;
+        const response = await fetch("/api/cs-cases-export", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        if (!response.ok) {
+          const data = await response.json();
+          throw new Error(data.error || "CS 처리대장 엑셀 다운로드에 실패했습니다.");
+        }
+        const blob = await response.blob();
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = filenameFromResponse(response, fallbackName);
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        URL.revokeObjectURL(url);
+        notice.textContent = "CS 처리대장 엑셀 다운로드가 시작되었습니다.";
+      } catch (error) {
+        notice.textContent = error.message;
+      } finally {
+        button.disabled = false;
+      }
+    }
+
     async function saveCurrentCsCase() {
       refreshCsBody();
       const payload = collectCsPayload();
@@ -5122,12 +5219,34 @@ HTML = r"""<!doctype html>
         });
       });
     }
-    managementDownloadSelected.addEventListener("click", () => downloadManagementExcel("selected", managementDownloadSelected));
-    managementDownloadMonth.addEventListener("click", () => downloadManagementExcel("month", managementDownloadMonth));
-    managementDownloadYear.addEventListener("click", () => downloadManagementExcel("year", managementDownloadYear));
-    managementDownloadAll.addEventListener("click", () => downloadManagementExcel("all", managementDownloadAll));
-    ledgerDownloadExcel.addEventListener("click", () => {
-      downloadExcel("/api/cs-cases-export", collectLedgerExportRows(), "CS처리대장.xlsx", ledgerDownloadExcel);
+    function closeDownloadMenus() {
+      ledgerDownloadMenu?.classList.remove("open");
+      managementDownloadMenu?.classList.remove("open");
+    }
+    ledgerDownloadMenuButton.addEventListener("click", (event) => {
+      event.stopPropagation();
+      managementDownloadMenu.classList.remove("open");
+      ledgerDownloadMenu.classList.toggle("open");
+    });
+    managementDownloadMenuButton.addEventListener("click", (event) => {
+      event.stopPropagation();
+      ledgerDownloadMenu.classList.remove("open");
+      managementDownloadMenu.classList.toggle("open");
+    });
+    ledgerDownloadMenu.addEventListener("click", (event) => {
+      const option = event.target.closest("[data-ledger-download]");
+      if (!option) return;
+      closeDownloadMenus();
+      downloadLedgerExcel(option.dataset.ledgerDownload, ledgerDownloadMenuButton);
+    });
+    managementDownloadMenu.addEventListener("click", (event) => {
+      const option = event.target.closest("[data-management-download]");
+      if (!option) return;
+      closeDownloadMenus();
+      downloadManagementExcel(option.dataset.managementDownload, managementDownloadMenuButton);
+    });
+    document.addEventListener("click", (event) => {
+      if (!event.target.closest(".download-menu-wrap")) closeDownloadMenus();
     });
     managementBody.addEventListener("input", (event) => {
       if (event.target.closest("[data-management-field]")) markRowDirty(event.target.closest("tr"));
@@ -7936,6 +8055,31 @@ def management_export_rows_from_payload(payload: dict) -> tuple[list[dict], str]
     return rows if isinstance(rows, list) else [], "통합관리대장"
 
 
+def ledger_export_rows_from_payload(payload: dict) -> tuple[list[dict], str]:
+    scope = clean_payload_text(payload, "scope") or "selected"
+    if scope == "selected":
+        rows = payload.get("rows", [])
+        return rows if isinstance(rows, list) else [], "CS처리대장_선택"
+    if scope == "month":
+        year = clean_payload_text(payload, "year")
+        month = clean_payload_text(payload, "month").zfill(2)
+        if not re.fullmatch(r"\d{4}", year) or not re.fullmatch(r"\d{2}", month) or not (1 <= int(month) <= 12):
+            raise ValueError("월별 다운로드는 년도와 월을 선택해주세요.")
+        rows = list_cs_cases(limit=50000, year=year, month=month)
+        return rows, f"CS처리대장_{year}년_{int(month)}월"
+    if scope == "year":
+        year = clean_payload_text(payload, "year")
+        if not re.fullmatch(r"\d{4}", year):
+            raise ValueError("년별 다운로드는 년도를 선택해주세요.")
+        rows = list_cs_cases(limit=50000, year=year)
+        return rows, f"CS처리대장_{year}년"
+    if scope == "all":
+        rows = list_cs_cases(limit=50000)
+        return rows, "CS처리대장_전체"
+    rows = payload.get("rows", [])
+    return rows if isinstance(rows, list) else [], "CS처리대장"
+
+
 def find_header(headers: list[str], names: set[str]) -> int | None:
     for idx, header in enumerate(headers):
         if header in names:
@@ -8917,11 +9061,11 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                     return
                 length = int(self.headers.get("Content-Length", "0"))
                 payload = json.loads(self.rfile.read(length).decode("utf-8"))
-                rows = payload.get("rows", [])
-                if not isinstance(rows, list) or not rows:
+                rows, filename_stem = ledger_export_rows_from_payload(payload)
+                if not rows:
                     raise ValueError("엑셀로 다운로드할 CS 처리대장 데이터가 없습니다.")
                 data = workbook_bytes_from_rows(rows, LEDGER_EXPORT_COLUMNS, "CS처리대장")
-                filename = quote(f"CS처리대장_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx")
+                filename = quote(f"{filename_stem}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx")
                 self.send_response(200)
                 self.send_header("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
                 self.send_header("Content-Disposition", f"attachment; filename*=UTF-8''{filename}")
