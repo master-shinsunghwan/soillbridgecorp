@@ -62,6 +62,23 @@ DEFAULT_USERS = (
     ("admin", "관리자", "admin", "admin1234"),
     ("user", "사용자", "user", "user1234"),
 )
+PERMISSION_DEFINITIONS = (
+    ("ledger_delete", "대장 삭제", "통합관리대장/CS처리대장 선택 삭제"),
+    ("notice_manage", "공지사항 관리", "공지사항 작성/수정/삭제"),
+    ("ledger_edit", "대장 수정", "통합관리대장/CS처리대장 내용 저장"),
+    ("excel_upload", "엑셀 업로드", "업로드/대량 등록 기능 사용"),
+    ("excel_download", "엑셀 다운로드", "대장 및 변환 결과 다운로드"),
+    ("cs_receive", "CS접수", "통합관리대장에서 CS 처리대장 접수"),
+    ("mail_send", "메일 발송", "업체 CS 메일 발송"),
+    ("user_admin", "사용자 관리", "계정 추가/수정/권한 변경"),
+    ("leave_view", "연차 조회", "연차 내역 조회"),
+    ("leave_manage", "연차 관리", "연차 등록/수정/삭제"),
+)
+ALL_PERMISSIONS = tuple(key for key, _, _ in PERMISSION_DEFINITIONS)
+DEFAULT_ROLE_PERMISSIONS = {
+    "admin": ALL_PERMISSIONS,
+    "user": ("ledger_edit", "excel_download", "cs_receive", "leave_view"),
+}
 LUCIDE_FALLBACK_JS = """
 export function createIcons() {}
 export const BriefcaseBusiness = {};
@@ -676,6 +693,38 @@ HTML = r"""<!doctype html>
       color: #344054;
     }
     .admin-check input { width: 16px; height: 16px; }
+    .permission-grid {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 8px;
+      padding: 12px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #f8fafc;
+    }
+    .permission-item {
+      min-height: 42px;
+      display: flex;
+      align-items: flex-start;
+      gap: 7px;
+      padding: 8px;
+      border: 1px solid #e5e7eb;
+      border-radius: 7px;
+      background: white;
+      font-size: 12px;
+      font-weight: 850;
+      color: #344054;
+    }
+    .permission-item input { width: 15px; height: 15px; margin-top: 1px; }
+    .permission-item small {
+      display: block;
+      margin-top: 3px;
+      color: #667085;
+      font-size: 11px;
+      font-weight: 650;
+      line-height: 1.35;
+      white-space: normal;
+    }
     .admin-table-wrap {
       overflow: auto;
       border: 1px solid var(--line);
@@ -713,8 +762,10 @@ HTML = r"""<!doctype html>
       cursor: pointer;
     }
     .admin-message { min-height: 20px; color: var(--muted); font-size: 13px; font-weight: 750; }
+    .permission-hidden { display: none !important; }
     @media (max-width: 1100px) {
       .admin-form { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .permission-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     }
     .vehicle-fields { display: none; }
     .cs-fields { display: none; }
@@ -1786,6 +1837,41 @@ HTML = r"""<!doctype html>
     if (new URLSearchParams(window.location.search).get("standalone") === "1") {
       document.body.classList.add("standalone");
     }
+    const currentUserPermissions = new Set(__USER_PERMISSIONS__);
+    const permissionLabels = __PERMISSION_LABELS__;
+
+    function can(permission) {
+      return currentUserPermissions.has(permission);
+    }
+
+    function permissionLabel(permission) {
+      return permissionLabels[permission] || permission;
+    }
+
+    function setHidden(element, hidden) {
+      if (element) element.classList.toggle("permission-hidden", Boolean(hidden));
+    }
+
+    function applyStaticPermissions() {
+      setHidden(document.querySelector("#noticeInputOpen"), !can("notice_manage"));
+      setHidden(managementDeleteSelected, !can("ledger_delete"));
+      setHidden(ledgerDeleteSelected, !can("ledger_delete"));
+      setHidden(managementSaveAll, !can("ledger_edit"));
+      setHidden(ledgerSaveAll, !can("ledger_edit"));
+      setHidden(ledgerAddCs, !can("ledger_edit"));
+      setHidden(saveCsCaseButton, !can("ledger_edit"));
+      setHidden(document.querySelector("label[for='ledgerImportInput']"), !can("excel_upload"));
+      setHidden(document.querySelector("label[for='managementImportInput']"), !can("excel_upload"));
+      setHidden(ledgerDownloadExcel, !can("excel_download"));
+      setHidden(managementDownloadExcel, !can("excel_download"));
+      setHidden(document.querySelector("label[for='vendorContactsFileInput']"), !can("excel_upload"));
+      setHidden(saveVendorContactButton, !can("mail_send"));
+      document.querySelectorAll('[data-open="cs"]').forEach((button) => setHidden(button, !can("mail_send")));
+      if (!can("notice_manage")) {
+        setHidden(noticeSaveButton, true);
+        setHidden(noticeClearButton, true);
+      }
+    }
 
     const modal = document.querySelector("#modal");
     const modalTitle = document.querySelector("#modalTitle");
@@ -1896,6 +1982,7 @@ HTML = r"""<!doctype html>
     const userAdminSave = document.querySelector("#userAdminSave");
     const userAdminBody = document.querySelector("#userAdminBody");
     const userAdminMessage = document.querySelector("#userAdminMessage");
+    const userAdminPermissionChecks = Array.from(document.querySelectorAll("[data-permission-check]"));
     let currentMode = "dashboard";
     let vendorContacts = [];
     let ledgerCases = [];
@@ -1912,6 +1999,7 @@ HTML = r"""<!doctype html>
     if (ledgerFilterPopover) document.body.appendChild(ledgerFilterPopover);
     fillPeriodSelects(ledgerYearFilter, ledgerMonthFilter);
     fillPeriodSelects(managementYearFilter, managementMonthFilter);
+    applyStaticPermissions();
     loadNoticeTemplate();
 
     function addProductRow(productName = "", quantity = "", packQuantity = "") {
@@ -1974,13 +2062,25 @@ HTML = r"""<!doctype html>
       userAdminRole.value = "user";
       userAdminPassword.value = "";
       userAdminActive.checked = true;
+      userAdminPermissionChecks.forEach((checkbox) => {
+        checkbox.checked = ["ledger_edit", "excel_download", "cs_receive", "leave_view"].includes(checkbox.value);
+      });
       userAdminMessage.textContent = "신규 사용자는 아이디와 비밀번호를 입력한 뒤 저장하세요.";
+    }
+
+    function syncPermissionChecksForRole() {
+      if (!userAdminRole) return;
+      if (userAdminRole.value === "admin") {
+        userAdminPermissionChecks.forEach((checkbox) => {
+          checkbox.checked = true;
+        });
+      }
     }
 
     function renderUserAccounts() {
       if (!userAdminBody) return;
       if (!userAccounts.length) {
-        userAdminBody.innerHTML = `<tr><td colspan="6">등록된 사용자가 없습니다.</td></tr>`;
+        userAdminBody.innerHTML = `<tr><td colspan="7">등록된 사용자가 없습니다.</td></tr>`;
         return;
       }
       userAdminBody.innerHTML = userAccounts.map((user) => `
@@ -1988,6 +2088,7 @@ HTML = r"""<!doctype html>
           <td>${escapeHtml(user.username)}</td>
           <td>${escapeHtml(user.display_name)}</td>
           <td>${roleText(user.role)}</td>
+          <td>${(user.permissions || []).map((permission) => permissionLabel(permission)).join(", ")}</td>
           <td>${user.active ? "사용" : "중지"}</td>
           <td>${escapeHtml(user.created_at || "")}</td>
           <td><button class="admin-action" type="button" data-user-edit="${user.id}">수정</button></td>
@@ -2005,6 +2106,10 @@ HTML = r"""<!doctype html>
       userAdminRole.value = user.role || "user";
       userAdminPassword.value = "";
       userAdminActive.checked = Boolean(user.active);
+      const permissions = new Set(user.permissions || []);
+      userAdminPermissionChecks.forEach((checkbox) => {
+        checkbox.checked = permissions.has(checkbox.value);
+      });
       userAdminMessage.textContent = `${user.username} 계정 수정 중입니다. 비밀번호는 변경할 때만 입력하세요.`;
       userAdminUsername.focus();
     }
@@ -2033,6 +2138,7 @@ HTML = r"""<!doctype html>
         role: userAdminRole.value,
         password: userAdminPassword.value,
         active: userAdminActive.checked,
+        permissions: userAdminPermissionChecks.filter((checkbox) => checkbox.checked).map((checkbox) => checkbox.value),
       };
       userAdminMessage.textContent = "사용자 계정을 저장하는 중입니다.";
       userAdminSave.disabled = true;
@@ -2104,6 +2210,10 @@ HTML = r"""<!doctype html>
     }
 
     function openNoticePopup() {
+      if (!can("notice_manage")) {
+        notice.textContent = "공지사항 관리 권한이 없습니다.";
+        return;
+      }
       loadNoticeTemplate();
       noticePopup.classList.add("open");
       setTimeout(() => noticeTitleInput.focus(), 0);
@@ -2114,6 +2224,10 @@ HTML = r"""<!doctype html>
     }
 
     function saveNoticeTemplate() {
+      if (!can("notice_manage")) {
+        notice.textContent = "공지사항 관리 권한이 없습니다.";
+        return;
+      }
       const payload = noticePayload();
       localStorage.setItem("workhub_notice_template", JSON.stringify(payload));
       renderNoticePreview();
@@ -2122,6 +2236,10 @@ HTML = r"""<!doctype html>
     }
 
     function clearNoticeTemplate() {
+      if (!can("notice_manage")) {
+        notice.textContent = "공지사항 관리 권한이 없습니다.";
+        return;
+      }
       localStorage.removeItem("workhub_notice_template");
       noticeTitleInput.value = "";
       noticeOwnerInput.value = "";
@@ -2541,6 +2659,18 @@ HTML = r"""<!doctype html>
       }
     }
 
+    function applyRowPermissions(row) {
+      if (!row) return;
+      if (!can("ledger_edit")) {
+        row.querySelectorAll("[data-field], [data-management-field]").forEach((input) => {
+          input.disabled = true;
+        });
+      }
+      row.querySelectorAll(".management-cs-button").forEach((button) => {
+        setHidden(button, !can("cs_receive"));
+      });
+    }
+
     function dirtyRows(container, rowSelector) {
       return Array.from(container.querySelectorAll(`${rowSelector}[data-dirty="1"]`));
     }
@@ -2656,6 +2786,7 @@ HTML = r"""<!doctype html>
           <td>${escapeHtml(csCase.courier)}</td>
           <td>${escapeHtml(csCase.original_invoice || csCase.original_info)}</td>
         `;
+        applyRowPermissions(row);
         ledgerBody.appendChild(row);
       });
     }
@@ -2782,6 +2913,7 @@ HTML = r"""<!doctype html>
           <td class="left"><input class="management-edit wide" data-management-field="memo" value="${escapeHtml(record.memo)}" /></td>
           <td><button class="management-cs-button" type="button" ${csReceived ? "disabled" : ""}>${csReceived ? "접수완료" : "CS접수"}</button></td>
         `;
+        applyRowPermissions(row);
         managementBody.appendChild(row);
       });
     }
@@ -3536,6 +3668,7 @@ HTML = r"""<!doctype html>
     ledgerDeleteSelected.addEventListener("click", () => deleteSelectedRows("ledger"));
     if (userAdminRefresh) userAdminRefresh.addEventListener("click", loadUserAccounts);
     if (userAdminSave) userAdminSave.addEventListener("click", saveUserAccount);
+    if (userAdminRole) userAdminRole.addEventListener("change", syncPermissionChecksForRole);
     if (userAdminBody) {
       userAdminBody.addEventListener("click", (event) => {
         const editButton = event.target.closest("[data-user-edit]");
@@ -3878,6 +4011,9 @@ ADMIN_WORKSPACE_HTML = r"""
               <label class="admin-check"><input id="userAdminActive" type="checkbox" checked /> 사용</label>
               <button class="workspace-button" type="button" id="userAdminSave">저장</button>
             </div>
+            <div class="permission-grid" id="userAdminPermissions">
+              __PERMISSION_CHECKBOXES__
+            </div>
             <div class="admin-message" id="userAdminMessage"></div>
             <div class="admin-table-wrap">
               <table class="admin-table">
@@ -3886,6 +4022,7 @@ ADMIN_WORKSPACE_HTML = r"""
                     <th>아이디</th>
                     <th>표시 이름</th>
                     <th>권한</th>
+                    <th>세부권한</th>
                     <th>상태</th>
                     <th>생성일</th>
                     <th>수정</th>
@@ -3983,6 +4120,31 @@ def clean_payload_text(payload: dict, key: str) -> str:
     return str(payload.get(key, "") or "").strip()
 
 
+def default_permissions_for_role(role: str) -> list[str]:
+    return list(DEFAULT_ROLE_PERMISSIONS.get(role, DEFAULT_ROLE_PERMISSIONS["user"]))
+
+
+def normalize_permissions(value: object, role: str = "user") -> list[str]:
+    if role == "admin":
+        return list(ALL_PERMISSIONS)
+    if isinstance(value, str):
+        try:
+            value = json.loads(value) if value else []
+        except json.JSONDecodeError:
+            value = []
+    if not isinstance(value, list):
+        value = default_permissions_for_role(role)
+    allowed = {str(item) for item in value if str(item) in ALL_PERMISSIONS}
+    return [key for key in ALL_PERMISSIONS if key in allowed]
+
+
+def permissions_html() -> str:
+    return "\n".join(
+        f"""<label class="permission-item"><input type="checkbox" value="{key}" data-permission-check /> <span>{label}<small>{description}</small></span></label>"""
+        for key, label, description in PERMISSION_DEFINITIONS
+    )
+
+
 def role_label(role: str) -> str:
     return "관리자" if role == "admin" else "사용자"
 
@@ -3991,13 +4153,16 @@ def render_app_html(user: dict[str, str]) -> str:
     display_name = user.get("display_name") or user.get("username") or "사용자"
     role = role_label(user.get("role", "user"))
     display = display_name if display_name == role else f"{display_name} · {role}"
-    admin_nav = ADMIN_NAV_HTML if user.get("role") == "admin" else ""
-    admin_workspace = ADMIN_WORKSPACE_HTML if user.get("role") == "admin" else ""
+    permissions = normalize_permissions(user.get("permissions", []), user.get("role", "user"))
+    admin_nav = ADMIN_NAV_HTML if "user_admin" in permissions else ""
+    admin_workspace = ADMIN_WORKSPACE_HTML.replace("__PERMISSION_CHECKBOXES__", permissions_html()) if "user_admin" in permissions else ""
     return (
         HTML
         .replace("__USER_DISPLAY__", html_escape(display))
         .replace("__ADMIN_NAV__", admin_nav)
         .replace("__ADMIN_WORKSPACE__", admin_workspace)
+        .replace("__USER_PERMISSIONS__", json.dumps(permissions, ensure_ascii=False))
+        .replace("__PERMISSION_LABELS__", json.dumps({key: label for key, label, _ in PERMISSION_DEFINITIONS}, ensure_ascii=False))
     )
 
 
@@ -4045,6 +4210,7 @@ def init_db() -> None:
                 username TEXT NOT NULL UNIQUE,
                 display_name TEXT NOT NULL,
                 role TEXT NOT NULL DEFAULT 'user',
+                permissions TEXT,
                 password_hash TEXT NOT NULL,
                 active INTEGER NOT NULL DEFAULT 1,
                 created_at TEXT NOT NULL,
@@ -4052,6 +4218,11 @@ def init_db() -> None:
             )
             """
         )
+        user_columns = {
+            row["name"] for row in connection.execute("PRAGMA table_info(users)").fetchall()
+        }
+        if "permissions" not in user_columns:
+            connection.execute("ALTER TABLE users ADD COLUMN permissions TEXT")
         connection.execute(
             """
             CREATE TABLE IF NOT EXISTS login_sessions (
@@ -4064,15 +4235,37 @@ def init_db() -> None:
         )
         now = now_text()
         for username, display_name, role, default_password in DEFAULT_USERS:
-            exists = connection.execute("SELECT id FROM users WHERE username = ?", (username,)).fetchone()
+            exists = connection.execute("SELECT id, permissions FROM users WHERE username = ?", (username,)).fetchone()
             if not exists:
                 connection.execute(
                     """
-                    INSERT INTO users (username, display_name, role, password_hash, active, created_at, updated_at)
-                    VALUES (?, ?, ?, ?, 1, ?, ?)
+                    INSERT INTO users (username, display_name, role, permissions, password_hash, active, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, 1, ?, ?)
                     """,
-                    (username, display_name, role, password_hash(default_password), now, now),
+                    (
+                        username,
+                        display_name,
+                        role,
+                        json.dumps(default_permissions_for_role(role), ensure_ascii=False),
+                        password_hash(default_password),
+                        now,
+                        now,
+                    ),
                 )
+            elif not exists["permissions"]:
+                connection.execute(
+                    "UPDATE users SET permissions = ?, updated_at = ? WHERE username = ?",
+                    (json.dumps(default_permissions_for_role(role), ensure_ascii=False), now, username),
+                )
+        for row in connection.execute("SELECT username, role FROM users WHERE permissions IS NULL OR permissions = ''").fetchall():
+            connection.execute(
+                "UPDATE users SET permissions = ?, updated_at = ? WHERE username = ?",
+                (
+                    json.dumps(default_permissions_for_role(row["role"]), ensure_ascii=False),
+                    now,
+                    row["username"],
+                ),
+            )
         connection.execute("DELETE FROM login_sessions WHERE expires_at < ?", (time.time(),))
         connection.execute(
             """
@@ -4190,7 +4383,7 @@ def authenticate_user(username: str, password: str) -> dict[str, str] | None:
     try:
         row = connection.execute(
             """
-            SELECT username, display_name, role, password_hash
+            SELECT username, display_name, role, permissions, password_hash
               FROM users
              WHERE username = ? AND active = 1
             """,
@@ -4202,6 +4395,7 @@ def authenticate_user(username: str, password: str) -> dict[str, str] | None:
             "username": row["username"],
             "display_name": row["display_name"],
             "role": row["role"],
+            "permissions": normalize_permissions(row["permissions"], row["role"]),
         }
     finally:
         connection.close()
@@ -4234,7 +4428,7 @@ def current_user_from_token(token: str) -> dict[str, str] | None:
     try:
         row = connection.execute(
             """
-            SELECT users.username, users.display_name, users.role, login_sessions.expires_at
+            SELECT users.username, users.display_name, users.role, users.permissions, login_sessions.expires_at
               FROM login_sessions
               JOIN users ON users.username = login_sessions.username
              WHERE login_sessions.token_hash = ?
@@ -4252,6 +4446,7 @@ def current_user_from_token(token: str) -> dict[str, str] | None:
             "username": row["username"],
             "display_name": row["display_name"],
             "role": row["role"],
+            "permissions": normalize_permissions(row["permissions"], row["role"]),
         }
     finally:
         connection.close()
@@ -4275,12 +4470,17 @@ def list_users() -> list[dict[str, str | int]]:
     try:
         rows = connection.execute(
             """
-            SELECT id, username, display_name, role, active, created_at, updated_at
+            SELECT id, username, display_name, role, permissions, active, created_at, updated_at
               FROM users
              ORDER BY role = 'admin' DESC, username COLLATE NOCASE
             """
         ).fetchall()
-        return [dict(row) for row in rows]
+        users = []
+        for row in rows:
+            item = dict(row)
+            item["permissions"] = normalize_permissions(item.get("permissions"), str(item.get("role", "user")))
+            users.append(item)
+        return users
     finally:
         connection.close()
 
@@ -4293,6 +4493,7 @@ def save_user_account(payload: dict, actor: dict[str, str]) -> int:
     role = clean_payload_text(payload, "role") or "user"
     password = str(payload.get("password", "") or "")
     active = 1 if payload.get("active", True) else 0
+    permissions = normalize_permissions(payload.get("permissions", []), role)
     if role not in {"admin", "user"}:
         raise ValueError("권한은 관리자 또는 사용자만 선택할 수 있습니다.")
     if not re.fullmatch(r"[A-Za-z0-9_.-]{3,32}", username):
@@ -4314,10 +4515,11 @@ def save_user_account(payload: dict, actor: dict[str, str]) -> int:
                 "username = ?",
                 "display_name = ?",
                 "role = ?",
+                "permissions = ?",
                 "active = ?",
                 "updated_at = ?",
             ]
-            values: list[object] = [username, display_name, role, active, now]
+            values: list[object] = [username, display_name, role, json.dumps(permissions, ensure_ascii=False), active, now]
             if password:
                 columns.append("password_hash = ?")
                 values.append(password_hash(password))
@@ -4327,10 +4529,10 @@ def save_user_account(payload: dict, actor: dict[str, str]) -> int:
         else:
             cursor = connection.execute(
                 """
-                INSERT INTO users (username, display_name, role, password_hash, active, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO users (username, display_name, role, permissions, password_hash, active, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 """,
-                (username, display_name, role, password_hash(password), active, now, now),
+                (username, display_name, role, json.dumps(permissions, ensure_ascii=False), password_hash(password), active, now, now),
             )
             saved_id = int(cursor.lastrowid)
         connection.commit()
@@ -4339,6 +4541,10 @@ def save_user_account(payload: dict, actor: dict[str, str]) -> int:
         raise ValueError("이미 사용 중인 아이디입니다.") from exc
     finally:
         connection.close()
+
+
+def user_has_permission(user: dict[str, str], permission: str) -> bool:
+    return permission in normalize_permissions(user.get("permissions", []), user.get("role", "user"))
 
 
 def extract_invoice_number(value: str) -> str:
@@ -5558,6 +5764,12 @@ class WorkhubHandler(BaseHTTPRequestHandler):
             f"{SESSION_COOKIE_NAME}=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax",
         )
 
+    def require_permission(self, user: dict[str, str], permission: str, label: str) -> bool:
+        if user_has_permission(user, permission):
+            return True
+        self.send_json({"error": f"{label} 권한이 없습니다."}, status=403)
+        return False
+
     def do_GET(self) -> None:
         if self.path.startswith("/lucide/"):
             relative = unquote(self.path.removeprefix("/lucide/"))
@@ -5598,17 +5810,20 @@ class WorkhubHandler(BaseHTTPRequestHandler):
             return
 
         if self.path == "/api/users":
-            if user.get("role") != "admin":
-                self.send_json({"error": "관리자만 사용할 수 있습니다."}, status=403)
+            if not self.require_permission(user, "user_admin", "사용자 관리"):
                 return
             self.send_json({"users": list_users()})
             return
 
         if self.path == "/api/mail-settings":
+            if not self.require_permission(user, "mail_send", "메일 발송"):
+                return
             self.send_json(load_mail_settings(include_password=False))
             return
 
         if self.path == "/api/vendor-contacts":
+            if not self.require_permission(user, "mail_send", "메일 발송"):
+                return
             self.send_json({"contacts": load_vendor_contacts()})
             return
 
@@ -5668,8 +5883,7 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                 return
 
             if self.path == "/api/users-save":
-                if user.get("role") != "admin":
-                    self.send_json({"error": "관리자만 사용할 수 있습니다."}, status=403)
+                if not self.require_permission(user, "user_admin", "사용자 관리"):
                     return
                 length = int(self.headers.get("Content-Length", "0"))
                 payload = json.loads(self.rfile.read(length).decode("utf-8"))
@@ -5678,6 +5892,8 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                 return
 
             if self.path == "/api/cs-mail":
+                if not self.require_permission(user, "mail_send", "메일 발송"):
+                    return
                 length = int(self.headers.get("Content-Length", "0"))
                 payload = json.loads(self.rfile.read(length).decode("utf-8"))
                 send_cs_mail(payload)
@@ -5686,6 +5902,8 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                 return
 
             if self.path == "/api/cs-case":
+                if not self.require_permission(user, "ledger_edit", "대장 수정"):
+                    return
                 length = int(self.headers.get("Content-Length", "0"))
                 payload = json.loads(self.rfile.read(length).decode("utf-8"))
                 case_id = save_cs_case(payload, status=clean_payload_text(payload, "status") or "접수")
@@ -5693,6 +5911,8 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                 return
 
             if self.path == "/api/cs-case-update":
+                if not self.require_permission(user, "ledger_edit", "대장 수정"):
+                    return
                 length = int(self.headers.get("Content-Length", "0"))
                 payload = json.loads(self.rfile.read(length).decode("utf-8"))
                 case_id = int(payload.get("id", 0))
@@ -5703,6 +5923,8 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                 return
 
             if self.path == "/api/cs-cases-delete":
+                if not self.require_permission(user, "ledger_delete", "대장 삭제"):
+                    return
                 length = int(self.headers.get("Content-Length", "0"))
                 payload = json.loads(self.rfile.read(length).decode("utf-8"))
                 case_ids = [int(value) for value in payload.get("ids", []) if str(value).isdigit()]
@@ -5713,6 +5935,8 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                 return
 
             if self.path == "/api/management-record-update":
+                if not self.require_permission(user, "ledger_edit", "대장 수정"):
+                    return
                 length = int(self.headers.get("Content-Length", "0"))
                 payload = json.loads(self.rfile.read(length).decode("utf-8"))
                 record_id = int(payload.get("id", 0))
@@ -5723,6 +5947,8 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                 return
 
             if self.path == "/api/management-records-delete":
+                if not self.require_permission(user, "ledger_delete", "대장 삭제"):
+                    return
                 length = int(self.headers.get("Content-Length", "0"))
                 payload = json.loads(self.rfile.read(length).decode("utf-8"))
                 record_ids = [int(value) for value in payload.get("ids", []) if str(value).isdigit()]
@@ -5733,6 +5959,8 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                 return
 
             if self.path == "/api/management-to-cs":
+                if not self.require_permission(user, "cs_receive", "CS접수"):
+                    return
                 length = int(self.headers.get("Content-Length", "0"))
                 payload = json.loads(self.rfile.read(length).decode("utf-8"))
                 record_id = int(payload.get("id", 0))
@@ -5743,6 +5971,8 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                 return
 
             if self.path == "/api/management-export":
+                if not self.require_permission(user, "excel_download", "엑셀 다운로드"):
+                    return
                 length = int(self.headers.get("Content-Length", "0"))
                 payload = json.loads(self.rfile.read(length).decode("utf-8"))
                 rows = payload.get("rows", [])
@@ -5759,6 +5989,8 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                 return
 
             if self.path == "/api/cs-cases-export":
+                if not self.require_permission(user, "excel_download", "엑셀 다운로드"):
+                    return
                 length = int(self.headers.get("Content-Length", "0"))
                 payload = json.loads(self.rfile.read(length).decode("utf-8"))
                 rows = payload.get("rows", [])
@@ -5775,6 +6007,8 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                 return
 
             if self.path == "/api/vendor-contact":
+                if not self.require_permission(user, "mail_send", "메일 발송"):
+                    return
                 length = int(self.headers.get("Content-Length", "0"))
                 payload = json.loads(self.rfile.read(length).decode("utf-8"))
                 contacts = save_vendor_contact(
@@ -5785,6 +6019,8 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                 return
 
             if self.path == "/api/vehicle-receipt":
+                if not self.require_permission(user, "excel_download", "엑셀 다운로드"):
+                    return
                 length = int(self.headers.get("Content-Length", "0"))
                 payload = json.loads(self.rfile.read(length).decode("utf-8"))
                 output_path = generate_vehicle_receipt(
@@ -5817,6 +6053,8 @@ class WorkhubHandler(BaseHTTPRequestHandler):
             fields = parse_multipart(self.headers, self.rfile)
 
             if self.path == "/api/vendor-contacts-import":
+                if not self.require_permission(user, "excel_upload", "엑셀 업로드"):
+                    return
                 upload_path = save_uploaded_file(fields, "file")
                 contacts, saved_count = import_vendor_contacts_from_workbook(upload_path)
                 self.send_json({
@@ -5827,6 +6065,8 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                 return
 
             if self.path == "/api/cs-cases-import":
+                if not self.require_permission(user, "excel_upload", "엑셀 업로드"):
+                    return
                 upload_path = save_uploaded_file(fields, "file")
                 inserted, skipped = import_cs_cases_from_workbook(upload_path)
                 self.send_json({
@@ -5837,6 +6077,8 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                 return
 
             if self.path == "/api/management-import":
+                if not self.require_permission(user, "excel_upload", "엑셀 업로드"):
+                    return
                 upload_path = save_uploaded_file(fields, "file")
                 inserted, skipped = import_management_workbook(upload_path)
                 self.send_json({
@@ -5847,6 +6089,8 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                 return
 
             if self.path == "/api/delivery-summary":
+                if not self.require_permission(user, "excel_upload", "엑셀 업로드"):
+                    return
                 upload_path = save_uploaded_file(fields)
                 sort_mode = fields.get("sort", "name")
                 if sort_mode not in {"name", "count", "first"}:
@@ -5857,6 +6101,10 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                 return
 
             if self.path == "/api/invoice-export":
+                if not self.require_permission(user, "excel_upload", "엑셀 업로드"):
+                    return
+                if not self.require_permission(user, "excel_download", "엑셀 다운로드"):
+                    return
                 upload_path = save_uploaded_file(fields)
                 preview_rows = extract_invoice_rows(upload_path)
                 output_path = export_invoice_numbers(upload_path, DOWNLOAD_DIR)
@@ -5878,6 +6126,10 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                 return
 
             if self.path == "/api/lotte-order-form":
+                if not self.require_permission(user, "excel_upload", "엑셀 업로드"):
+                    return
+                if not self.require_permission(user, "excel_download", "엑셀 다운로드"):
+                    return
                 source_path = save_uploaded_file(fields, "file")
                 if not LOTTE_TEMPLATE.exists():
                     raise FileNotFoundError(f"롯데택배 발주서 양식을 찾지 못했습니다: {LOTTE_TEMPLATE}")
