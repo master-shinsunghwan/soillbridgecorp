@@ -2318,6 +2318,7 @@ HTML = r"""<!doctype html>
     let vendorContacts = [];
     let ledgerCases = [];
     let managementRecords = [];
+    let managementPeriods = [];
     let userAccounts = [];
     let activeLedgerFilterField = "";
     let activeManagementFilterField = "";
@@ -2329,8 +2330,7 @@ HTML = r"""<!doctype html>
     if (ledgerWorkspaceMount && ledgerFields) ledgerWorkspaceMount.appendChild(ledgerFields);
     if (ledgerFilterPopover) document.body.appendChild(ledgerFilterPopover);
     fillPeriodSelects(ledgerYearFilter, ledgerMonthFilter);
-    fillPeriodSelects(managementYearFilter, managementMonthFilter);
-    renderManagementMonthTabs();
+    renderManagementPeriodControls();
     applyStaticPermissions();
     loadNoticeTemplate();
 
@@ -2381,15 +2381,49 @@ HTML = r"""<!doctype html>
       if (monthSelect.value && !yearSelect.value) yearSelect.value = String(new Date().getFullYear());
     }
 
+    function managementPeriodYears() {
+      return Array.from(new Set(managementPeriods.map((period) => String(period.year || "")).filter(Boolean)))
+        .sort((left, right) => right.localeCompare(left));
+    }
+
+    function managementMonthsForYear(year) {
+      return managementPeriods
+        .filter((period) => String(period.year || "") === String(year || ""))
+        .map((period) => String(period.month || "").padStart(2, "0"))
+        .filter(Boolean)
+        .sort();
+    }
+
+    function renderManagementPeriodControls() {
+      if (!managementYearFilter || !managementMonthFilter) return;
+      const years = managementPeriodYears();
+      const previousYear = managementYearFilter.value;
+      const previousMonth = managementMonthFilter.value;
+      managementYearFilter.innerHTML = `<option value="">년도 선택</option>${years.map((year) => (
+        `<option value="${escapeHtml(year)}">${escapeHtml(year)}년</option>`
+      )).join("")}`;
+      if (previousYear && years.includes(previousYear)) managementYearFilter.value = previousYear;
+      else managementYearFilter.value = "";
+
+      const months = managementYearFilter.value ? managementMonthsForYear(managementYearFilter.value) : [];
+      managementMonthFilter.innerHTML = `<option value="">월별로 보기</option>${months.map((month) => (
+        `<option value="${escapeHtml(month)}">${Number(month)}월</option>`
+      )).join("")}`;
+      if (previousMonth && months.includes(previousMonth)) managementMonthFilter.value = previousMonth;
+      else managementMonthFilter.value = "";
+
+      renderManagementMonthTabs();
+    }
+
     function renderManagementMonthTabs() {
       if (!managementMonthTabs) return;
       const activeMonth = managementMonthFilter.value || "";
-      const activeYear = managementYearFilter.value || String(new Date().getFullYear());
-      managementMonthTabs.innerHTML = Array.from({ length: 12 }, (_, index) => {
-        const month = String(index + 1).padStart(2, "0");
+      const activeYear = managementYearFilter.value || managementPeriodYears()[0] || "";
+      const months = activeYear ? managementMonthsForYear(activeYear) : [];
+      managementMonthTabs.innerHTML = months.length ? months.map((month) => {
         const active = month === activeMonth ? " active" : "";
-        return `<button class="management-month-tab${active}" type="button" data-management-month="${month}">${activeYear}년 ${index + 1}월</button>`;
-      }).join("");
+        return `<button class="management-month-tab${active}" type="button" data-management-year="${escapeHtml(activeYear)}" data-management-month="${escapeHtml(month)}">${escapeHtml(activeYear)}년 ${Number(month)}월</button>`;
+      }).join("") : `<button class="management-month-tab" type="button" disabled>생성된 월 없음</button>`;
     }
 
     function roleText(role) {
@@ -3672,6 +3706,25 @@ HTML = r"""<!doctype html>
       }
     }
 
+    async function loadManagementPeriods() {
+      if (!managementYearFilter || !managementMonthFilter) return;
+      try {
+        const response = await fetch("/api/management-periods");
+        if (!response.ok) return;
+        const data = await response.json();
+        managementPeriods = data.periods || [];
+        renderManagementPeriodControls();
+      } catch {
+        managementPeriods = [];
+        renderManagementPeriodControls();
+      }
+    }
+
+    async function loadManagementWorkspaceData() {
+      await loadManagementPeriods();
+      await loadManagementRecords();
+    }
+
     async function uploadManagementWorkbook() {
       const file = managementImportInput.files[0];
       if (!file) return;
@@ -3687,7 +3740,7 @@ HTML = r"""<!doctype html>
         const data = await response.json();
         if (!response.ok) throw new Error(data.error || "통합관리대장 업로드에 실패했습니다.");
         notice.textContent = data.message || "통합관리대장 데이터를 업로드했습니다.";
-        await loadManagementRecords();
+        await loadManagementWorkspaceData();
       } catch (error) {
         notice.textContent = error.message;
       } finally {
@@ -3903,7 +3956,7 @@ HTML = r"""<!doctype html>
         const data = await response.json();
         if (!response.ok) throw new Error(data.error || "선택 주문 삭제에 실패했습니다.");
         notice.textContent = data.message || `${label} 선택 주문 ${ids.length}건을 삭제했습니다.`;
-        if (isManagement) await loadManagementRecords();
+        if (isManagement) await loadManagementWorkspaceData();
         else await loadLedgerCases();
       } catch (error) {
         notice.textContent = error.message;
@@ -4237,7 +4290,7 @@ HTML = r"""<!doctype html>
         managementImportDropMain.textContent = "업로드";
         Object.keys(managementFilters).forEach((key) => delete managementFilters[key]);
         closeLedgerFilter();
-        loadManagementRecords();
+        loadManagementWorkspaceData();
       }
 
       const fileDrop = document.querySelector("label[for='fileInput']");
@@ -4295,7 +4348,7 @@ HTML = r"""<!doctype html>
         managementImportInput.value = "";
         managementImportDropMain.textContent = "업로드";
         closeLedgerFilter();
-        loadManagementRecords();
+        loadManagementWorkspaceData();
       } else if (showLedger) {
         setPageTitle("CS 처리대장");
         ledgerSearchInput.value = "";
@@ -4528,7 +4581,7 @@ HTML = r"""<!doctype html>
     ledgerPageSize.addEventListener("change", loadLedgerCases);
     ledgerYearFilter.addEventListener("change", loadLedgerCases);
     managementYearFilter.addEventListener("change", () => {
-      renderManagementMonthTabs();
+      renderManagementPeriodControls();
       loadManagementRecords();
     });
     ledgerMonthFilter.addEventListener("change", () => {
@@ -4544,9 +4597,9 @@ HTML = r"""<!doctype html>
       managementMonthTabs.addEventListener("click", (event) => {
         const button = event.target.closest("[data-management-month]");
         if (!button) return;
-        if (!managementYearFilter.value) managementYearFilter.value = String(new Date().getFullYear());
+        if (button.dataset.managementYear) managementYearFilter.value = button.dataset.managementYear;
         managementMonthFilter.value = button.dataset.managementMonth || "";
-        renderManagementMonthTabs();
+        renderManagementPeriodControls();
         loadManagementRecords();
       });
     }
@@ -6882,6 +6935,32 @@ def list_management_records_by_ids(record_ids: list[int]) -> list[dict[str, str 
     return [dict(row) for row in rows]
 
 
+def list_management_periods() -> list[dict[str, str | int]]:
+    init_db()
+    connection = connect_db()
+    try:
+        rows = connection.execute(
+            """
+            SELECT order_date, ship_date
+              FROM management_records
+             WHERE COALESCE(order_date, '') <> '' OR COALESCE(ship_date, '') <> ''
+            """
+        ).fetchall()
+    finally:
+        connection.close()
+
+    counts: dict[tuple[str, str], int] = {}
+    for row in rows:
+        year_month = extract_year_month(row["order_date"], row["ship_date"])
+        if not year_month:
+            continue
+        counts[year_month] = counts.get(year_month, 0) + 1
+    return [
+        {"year": year, "month": month, "count": count}
+        for (year, month), count in sorted(counts.items(), key=lambda item: (item[0][0], item[0][1]), reverse=True)
+    ]
+
+
 MANAGEMENT_EDIT_COLUMNS = [
     "purchase_vendor",
     "sales_vendor",
@@ -7942,6 +8021,10 @@ class WorkhubHandler(BaseHTTPRequestHandler):
             except ValueError:
                 limit = 100
             self.send_json({"records": list_management_records(query=query, limit=limit, year=year, month=month)})
+            return
+
+        if self.path == "/api/management-periods":
+            self.send_json({"periods": list_management_periods()})
             return
 
         self.send_error(404)
