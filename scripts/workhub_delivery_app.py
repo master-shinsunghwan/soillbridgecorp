@@ -19,6 +19,7 @@ from io import BytesIO
 from datetime import date, datetime
 from email.message import EmailMessage
 from email.utils import formataddr
+from html import escape as html_escape
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, quote, unquote, urlsplit
@@ -55,6 +56,12 @@ NAVER_SMTP_PORT = 465
 SECRET_KEY_PATH = CONFIG_DIR / "secret.key"
 TOKEN_PREFIX_DPAPI = "dpapi:"
 TOKEN_PREFIX_KEY = "key1:"
+SESSION_COOKIE_NAME = "workhub_session"
+SESSION_SECONDS = 60 * 60 * 16
+DEFAULT_USERS = (
+    ("admin", "관리자", "admin", "admin1234"),
+    ("user", "사용자", "user", "user1234"),
+)
 LUCIDE_FALLBACK_JS = """
 export function createIcons() {}
 export const BriefcaseBusiness = {};
@@ -313,6 +320,20 @@ HTML = r"""<!doctype html>
       font-size: 13px;
       font-weight: 850;
       white-space: nowrap;
+    }
+    .logout-button {
+      height: 40px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0 12px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: white;
+      color: #475467;
+      font-size: 13px;
+      font-weight: 850;
+      text-decoration: none;
     }
     .avatar {
       width: 27px;
@@ -1211,7 +1232,8 @@ HTML = r"""<!doctype html>
         <div class="top-tools">
           <button class="icon-button" type="button"><i data-lucide="bell"></i></button>
           <button class="icon-button" type="button"><i data-lucide="refresh-cw"></i></button>
-          <div class="user-chip"><span class="avatar"></span><span>관리자</span></div>
+          <div class="user-chip"><span class="avatar"></span><span>__USER_DISPLAY__</span></div>
+          <a class="logout-button" href="/logout">로그아웃</a>
         </div>
       </header>
 
@@ -3482,6 +3504,141 @@ HTML = r"""<!doctype html>
 </html>
 """
 
+LOGIN_HTML = r"""<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>(주)소일브릿지 업무자동화 로그인</title>
+  <style>
+    :root {
+      --bg: #f5f7fb;
+      --panel: #ffffff;
+      --line: #d8dee9;
+      --text: #111827;
+      --muted: #667085;
+      --blue: #2563eb;
+      --green: #079455;
+      font-family: Pretendard, Inter, "Noto Sans KR", "Malgun Gothic", Arial, sans-serif;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      background:
+        radial-gradient(circle at 20% 20%, rgba(37, 99, 235, .13), transparent 28%),
+        radial-gradient(circle at 80% 10%, rgba(7, 148, 85, .12), transparent 25%),
+        var(--bg);
+      color: var(--text);
+    }
+    .login-shell {
+      width: min(420px, calc(100vw - 32px));
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      box-shadow: 0 22px 60px rgba(15, 23, 42, .16);
+      padding: 34px 32px 30px;
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 26px;
+    }
+    .brand-mark {
+      width: 44px;
+      height: 44px;
+      border-radius: 12px;
+      display: grid;
+      place-items: center;
+      background: linear-gradient(145deg, #2563eb, #079455);
+      color: white;
+      font-weight: 900;
+    }
+    .brand-title { font-size: 20px; font-weight: 900; line-height: 1.32; }
+    .brand-sub { margin-top: 4px; color: var(--muted); font-size: 13px; font-weight: 700; }
+    h1 { margin: 0 0 8px; font-size: 26px; }
+    .lead { margin: 0 0 24px; color: var(--muted); font-size: 14px; line-height: 1.55; }
+    label { display: block; margin: 14px 0 7px; font-size: 13px; font-weight: 850; color: #344054; }
+    input {
+      width: 100%;
+      height: 44px;
+      border: 1px solid #cfd6e2;
+      border-radius: 9px;
+      padding: 0 13px;
+      font-size: 15px;
+      font-weight: 700;
+      outline: none;
+    }
+    input:focus {
+      border-color: var(--blue);
+      box-shadow: 0 0 0 3px rgba(37, 99, 235, .13);
+    }
+    .error {
+      display: __ERROR_DISPLAY__;
+      margin: 0 0 14px;
+      padding: 11px 12px;
+      border-radius: 8px;
+      background: #fee2e2;
+      color: #b42318;
+      font-size: 13px;
+      font-weight: 850;
+    }
+    button {
+      width: 100%;
+      height: 46px;
+      margin-top: 22px;
+      border: 0;
+      border-radius: 9px;
+      background: linear-gradient(135deg, #2563eb, #079455);
+      color: white;
+      font-size: 15px;
+      font-weight: 900;
+      cursor: pointer;
+    }
+    .hint {
+      margin-top: 18px;
+      padding: 12px;
+      border-radius: 8px;
+      background: #f8fafc;
+      border: 1px solid #e5e7eb;
+      color: #475467;
+      font-size: 12px;
+      line-height: 1.55;
+    }
+    .hint strong { color: #111827; }
+  </style>
+</head>
+<body>
+  <main class="login-shell">
+    <div class="brand">
+      <div class="brand-mark">SB</div>
+      <div>
+        <div class="brand-title">(주)소일브릿지<br>업무자동화</div>
+        <div class="brand-sub">관리자 / 사용자 로그인</div>
+      </div>
+    </div>
+    <h1>로그인</h1>
+    <p class="lead">업무 화면을 사용하려면 계정으로 로그인해주세요.</p>
+    <div class="error">아이디 또는 비밀번호가 올바르지 않습니다.</div>
+    <form method="post" action="/login">
+      <label for="username">아이디</label>
+      <input id="username" name="username" type="text" autocomplete="username" autofocus />
+      <label for="password">비밀번호</label>
+      <input id="password" name="password" type="password" autocomplete="current-password" />
+      <button type="submit">로그인</button>
+    </form>
+    <div class="hint">
+      기본 계정: <strong>admin / admin1234</strong><br>
+      사용자 계정: <strong>user / user1234</strong>
+    </div>
+  </main>
+</body>
+</html>
+"""
+
 
 def safe_filename(filename: str) -> str:
     filename = Path(filename).name
@@ -3566,6 +3723,43 @@ def clean_payload_text(payload: dict, key: str) -> str:
     return str(payload.get(key, "") or "").strip()
 
 
+def role_label(role: str) -> str:
+    return "관리자" if role == "admin" else "사용자"
+
+
+def render_app_html(user: dict[str, str]) -> str:
+    display_name = user.get("display_name") or user.get("username") or "사용자"
+    display = f"{display_name} · {role_label(user.get('role', 'user'))}"
+    return HTML.replace("__USER_DISPLAY__", html_escape(display))
+
+
+def render_login_html(show_error: bool = False) -> str:
+    return LOGIN_HTML.replace("__ERROR_DISPLAY__", "block" if show_error else "none")
+
+
+def password_hash(password: str, salt: str | None = None) -> str:
+    salt = salt or secrets.token_hex(16)
+    iterations = 260000
+    digest = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt.encode("utf-8"), iterations)
+    return f"pbkdf2_sha256${iterations}${salt}${digest.hex()}"
+
+
+def verify_password(password: str, stored_hash: str) -> bool:
+    try:
+        algorithm, iterations_text, salt, expected = stored_hash.split("$", 3)
+        if algorithm != "pbkdf2_sha256":
+            return False
+        iterations = int(iterations_text)
+        digest = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt.encode("utf-8"), iterations)
+        return hmac.compare_digest(digest.hex(), expected)
+    except ValueError:
+        return False
+
+
+def token_digest(token: str) -> str:
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
 def connect_db() -> sqlite3.Connection:
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
     connection = sqlite3.connect(DB_PATH)
@@ -3576,6 +3770,42 @@ def connect_db() -> sqlite3.Connection:
 def init_db() -> None:
     connection = connect_db()
     try:
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                username TEXT NOT NULL UNIQUE,
+                display_name TEXT NOT NULL,
+                role TEXT NOT NULL DEFAULT 'user',
+                password_hash TEXT NOT NULL,
+                active INTEGER NOT NULL DEFAULT 1,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+            """
+        )
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS login_sessions (
+                token_hash TEXT PRIMARY KEY,
+                username TEXT NOT NULL,
+                created_at REAL NOT NULL,
+                expires_at REAL NOT NULL
+            )
+            """
+        )
+        now = now_text()
+        for username, display_name, role, default_password in DEFAULT_USERS:
+            exists = connection.execute("SELECT id FROM users WHERE username = ?", (username,)).fetchone()
+            if not exists:
+                connection.execute(
+                    """
+                    INSERT INTO users (username, display_name, role, password_hash, active, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, 1, ?, ?)
+                    """,
+                    (username, display_name, role, password_hash(default_password), now, now),
+                )
+        connection.execute("DELETE FROM login_sessions WHERE expires_at < ?", (time.time(),))
         connection.execute(
             """
             CREATE TABLE IF NOT EXISTS cs_cases (
@@ -3678,6 +3908,94 @@ def init_db() -> None:
         connection.execute("CREATE INDEX IF NOT EXISTS idx_management_receiver_phone ON management_records(receiver_phone)")
         connection.execute("CREATE INDEX IF NOT EXISTS idx_management_order_date ON management_records(order_date)")
         connection.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_management_source ON management_records(source_file, source_sheet, source_row)")
+        connection.commit()
+    finally:
+        connection.close()
+
+
+def authenticate_user(username: str, password: str) -> dict[str, str] | None:
+    init_db()
+    normalized = username.strip()
+    if not normalized or not password:
+        return None
+    connection = connect_db()
+    try:
+        row = connection.execute(
+            """
+            SELECT username, display_name, role, password_hash
+              FROM users
+             WHERE username = ? AND active = 1
+            """,
+            (normalized,),
+        ).fetchone()
+        if not row or not verify_password(password, row["password_hash"]):
+            return None
+        return {
+            "username": row["username"],
+            "display_name": row["display_name"],
+            "role": row["role"],
+        }
+    finally:
+        connection.close()
+
+
+def create_login_session(username: str) -> str:
+    init_db()
+    token = secrets.token_urlsafe(32)
+    now = time.time()
+    connection = connect_db()
+    try:
+        connection.execute(
+            """
+            INSERT INTO login_sessions (token_hash, username, created_at, expires_at)
+            VALUES (?, ?, ?, ?)
+            """,
+            (token_digest(token), username, now, now + SESSION_SECONDS),
+        )
+        connection.commit()
+        return token
+    finally:
+        connection.close()
+
+
+def current_user_from_token(token: str) -> dict[str, str] | None:
+    if not token:
+        return None
+    init_db()
+    connection = connect_db()
+    try:
+        row = connection.execute(
+            """
+            SELECT users.username, users.display_name, users.role, login_sessions.expires_at
+              FROM login_sessions
+              JOIN users ON users.username = login_sessions.username
+             WHERE login_sessions.token_hash = ?
+               AND users.active = 1
+            """,
+            (token_digest(token),),
+        ).fetchone()
+        if not row:
+            return None
+        if float(row["expires_at"]) < time.time():
+            connection.execute("DELETE FROM login_sessions WHERE token_hash = ?", (token_digest(token),))
+            connection.commit()
+            return None
+        return {
+            "username": row["username"],
+            "display_name": row["display_name"],
+            "role": row["role"],
+        }
+    finally:
+        connection.close()
+
+
+def delete_login_session(token: str) -> None:
+    if not token:
+        return
+    init_db()
+    connection = connect_db()
+    try:
+        connection.execute("DELETE FROM login_sessions WHERE token_hash = ?", (token_digest(token),))
         connection.commit()
     finally:
         connection.close()
@@ -4869,9 +5187,74 @@ def send_cs_mail(payload: dict) -> None:
 
 
 class WorkhubHandler(BaseHTTPRequestHandler):
+    def cookie_value(self, name: str) -> str:
+        cookies = self.headers.get("Cookie", "")
+        for part in cookies.split(";"):
+            if "=" not in part:
+                continue
+            key, value = part.strip().split("=", 1)
+            if key == name:
+                return unquote(value)
+        return ""
+
+    def current_user(self) -> dict[str, str] | None:
+        return current_user_from_token(self.cookie_value(SESSION_COOKIE_NAME))
+
+    def send_redirect(self, location: str, status: int = 303) -> None:
+        self.send_response(status)
+        self.send_header("Location", location)
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+
+    def set_session_cookie(self, token: str) -> None:
+        self.send_header(
+            "Set-Cookie",
+            f"{SESSION_COOKIE_NAME}={quote(token)}; Path=/; Max-Age={SESSION_SECONDS}; HttpOnly; SameSite=Lax",
+        )
+
+    def clear_session_cookie(self) -> None:
+        self.send_header(
+            "Set-Cookie",
+            f"{SESSION_COOKIE_NAME}=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax",
+        )
+
     def do_GET(self) -> None:
+        if self.path.startswith("/lucide/"):
+            relative = unquote(self.path.removeprefix("/lucide/"))
+            target = (LUCIDE_DIR / relative).resolve()
+            if LUCIDE_DIR.resolve() in target.parents and target.is_file():
+                content_type = mimetypes.guess_type(str(target))[0] or "application/octet-stream"
+                self.send_bytes(target.read_bytes(), content_type)
+                return
+            if relative == "dist/esm/lucide.js":
+                self.send_bytes(LUCIDE_FALLBACK_JS.encode("utf-8"), "application/javascript; charset=utf-8")
+                return
+
+        if self.path.startswith("/login"):
+            parsed = urlsplit(self.path)
+            params = parse_qs(parsed.query)
+            self.send_bytes(render_login_html(show_error=params.get("error", [""])[0] == "1").encode("utf-8"), "text/html; charset=utf-8")
+            return
+
+        if self.path == "/logout":
+            delete_login_session(self.cookie_value(SESSION_COOKIE_NAME))
+            self.send_response(303)
+            self.clear_session_cookie()
+            self.send_header("Location", "/login")
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            return
+
+        user = self.current_user()
+        if not user:
+            if self.path.startswith("/api/"):
+                self.send_json({"error": "로그인이 필요합니다."}, status=401)
+                return
+            self.send_redirect("/login")
+            return
+
         if self.path == "/" or self.path.startswith("/?"):
-            self.send_bytes(HTML.encode("utf-8"), "text/html; charset=utf-8")
+            self.send_bytes(render_app_html(user).encode("utf-8"), "text/html; charset=utf-8")
             return
 
         if self.path == "/api/mail-settings":
@@ -4909,21 +5292,34 @@ class WorkhubHandler(BaseHTTPRequestHandler):
             self.send_json({"records": list_management_records(query=query, limit=limit, year=year, month=month)})
             return
 
-        if self.path.startswith("/lucide/"):
-            relative = unquote(self.path.removeprefix("/lucide/"))
-            target = (LUCIDE_DIR / relative).resolve()
-            if LUCIDE_DIR.resolve() in target.parents and target.is_file():
-                content_type = mimetypes.guess_type(str(target))[0] or "application/octet-stream"
-                self.send_bytes(target.read_bytes(), content_type)
-                return
-            if relative == "dist/esm/lucide.js":
-                self.send_bytes(LUCIDE_FALLBACK_JS.encode("utf-8"), "application/javascript; charset=utf-8")
-                return
-
         self.send_error(404)
 
     def do_POST(self) -> None:
         try:
+            if self.path == "/login":
+                length = int(self.headers.get("Content-Length", "0"))
+                raw_body = self.rfile.read(length).decode("utf-8")
+                payload = parse_qs(raw_body)
+                user = authenticate_user(
+                    payload.get("username", [""])[0],
+                    payload.get("password", [""])[0],
+                )
+                if not user:
+                    self.send_redirect("/login?error=1")
+                    return
+                token = create_login_session(user["username"])
+                self.send_response(303)
+                self.set_session_cookie(token)
+                self.send_header("Location", "/")
+                self.send_header("Cache-Control", "no-store")
+                self.end_headers()
+                return
+
+            user = self.current_user()
+            if not user:
+                self.send_json({"error": "로그인이 필요합니다."}, status=401)
+                return
+
             if self.path == "/api/cs-mail":
                 length = int(self.headers.get("Content-Length", "0"))
                 payload = json.loads(self.rfile.read(length).decode("utf-8"))
@@ -5171,6 +5567,7 @@ class WorkhubHandler(BaseHTTPRequestHandler):
 
 def run(host: str = "127.0.0.1", port: int = 8765) -> None:
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    init_db()
     server = ThreadingHTTPServer((host, port), WorkhubHandler)
     print(f"(주)소일브릿지 발주 업무자동화 앱 실행 중: http://{host}:{port}")
     server.serve_forever()
