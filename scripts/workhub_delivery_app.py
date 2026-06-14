@@ -646,6 +646,21 @@ HTML = r"""<!doctype html>
       font-size: 14px;
       margin-bottom: 3px;
     }
+    .message-placeholder {
+      display: none;
+      padding: 28px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: #f8fafc;
+      color: var(--muted);
+      line-height: 1.7;
+    }
+    .message-placeholder strong {
+      display: block;
+      color: var(--ink);
+      font-size: 18px;
+      margin-bottom: 8px;
+    }
     .notice-popup-backdrop {
       position: fixed;
       inset: 0;
@@ -1928,7 +1943,18 @@ HTML = r"""<!doctype html>
       </div>
       <button class="nav-item" type="button" data-open="management"><i data-lucide="database"></i> <span>통합관리대장 관리</span></button>
       <button class="nav-item" type="button" data-open="ledger"><i data-lucide="clipboard-check"></i> <span>CS 처리대장</span></button>
-      <button class="nav-item" type="button" data-open="cs"><i data-lucide="mail"></i> <span>업체 메일</span></button>
+      <div class="nav-group" id="distributionMailNavGroup">
+        <button class="nav-item" id="distributionMailNavToggle" type="button">
+          <span class="nav-label"><i data-lucide="mail"></i> <span>유통사 업무관련 메일 발송</span></span>
+          <i class="nav-chevron" data-lucide="chevron-right"></i>
+        </button>
+        <div class="nav-submenu">
+          <button class="nav-subitem" type="button" data-mail-popup="supplier">공급사 관리</button>
+          <button class="nav-subitem" type="button" data-mail-popup="seller">판매사 관리</button>
+          <button class="nav-subitem" type="button" data-mail-popup="cs">CS 요청</button>
+          <button class="nav-subitem" type="button" data-mail-popup="stock">입고 및 품절 관리</button>
+        </div>
+      </div>
       __LEAVE_NAV__
       __ADMIN_TOOLS_NAV__
       <div class="nav-section">TOOLS</div>
@@ -2212,6 +2238,10 @@ HTML = r"""<!doctype html>
             <option value="count">건수 많은 순</option>
             <option value="first">엑셀 순서</option>
           </select>
+        </div>
+        <div class="message-placeholder" id="messagePlaceholder">
+          <strong id="messagePlaceholderTitle">메시지 창</strong>
+          <span id="messagePlaceholderBody">해당 업무 메시지 UI는 다음 단계에서 생성합니다.</span>
         </div>
         <div class="vehicle-fields" id="vehicleFields">
           <div class="text-field">
@@ -2517,6 +2547,7 @@ HTML = r"""<!doctype html>
       setHidden(managementDownloadMenuButton, !can("excel_download"));
       setHidden(document.querySelector("label[for='vendorContactsFileInput']"), !can("excel_upload"));
       setHidden(saveVendorContactButton, !can("mail_send"));
+      setHidden(document.querySelector("#distributionMailNavGroup"), !can("mail_send"));
       document.querySelectorAll('[data-open="cs"]').forEach((button) => setHidden(button, !can("mail_send")));
       setHidden(importShipmentInputOpen, !can("import_shipment_manage"));
       if (!can("notice_manage")) {
@@ -2536,6 +2567,9 @@ HTML = r"""<!doctype html>
     const templateUpload = document.querySelector("#templateUpload");
     const templateDropMain = document.querySelector("#templateDropMain");
     const deliveryOptions = document.querySelector("#deliveryOptions");
+    const messagePlaceholder = document.querySelector("#messagePlaceholder");
+    const messagePlaceholderTitle = document.querySelector("#messagePlaceholderTitle");
+    const messagePlaceholderBody = document.querySelector("#messagePlaceholderBody");
     const vehicleFields = document.querySelector("#vehicleFields");
     const csFields = document.querySelector("#csFields");
     const ledgerFields = document.querySelector("#ledgerFields");
@@ -4759,6 +4793,21 @@ HTML = r"""<!doctype html>
       return asciiMatch ? asciiMatch[1] : fallback;
     }
 
+    const mailPopupTitles = {
+      supplier: "공급사 관리",
+      seller: "판매사 관리",
+      cs: "CS 요청",
+      stock: "입고 및 품절 관리",
+    };
+
+    function openMailMessagePopup(type) {
+      const title = mailPopupTitles[type] || "유통사 업무관련 메일 발송";
+      openModal(`mail-${type}`);
+      modalTitle.textContent = title;
+      messagePlaceholderTitle.textContent = title;
+      messagePlaceholderBody.textContent = "해당 메시지 작성 화면은 다음 단계에서 생성합니다.";
+    }
+
     function openModal(mode) {
       currentMode = mode;
       closeLedgerCsPopup();
@@ -4800,6 +4849,7 @@ HTML = r"""<!doctype html>
       notice.textContent = "";
       dropMain.textContent = "파일을 선택하거나 여기에 올려주세요.";
       templateDropMain.textContent = "롯데택배 발주서 양식을 선택해주세요.";
+      messagePlaceholder.style.display = "none";
       if (mode === "delivery") {
         modalTitle.textContent = "택배건 요약";
         fileLabel.textContent = "주소일브릿지 엑셀 선택";
@@ -4811,6 +4861,7 @@ HTML = r"""<!doctype html>
         csFields.style.display = "none";
         ledgerFields.style.display = "none";
         managementFields.style.display = "none";
+        messagePlaceholder.style.display = "none";
         fileInput.required = false;
         templateInput.required = false;
         dropSub.textContent = "주소일브릿지 엑셀을 업로드하면 전달용 텍스트를 만듭니다.";
@@ -4825,6 +4876,7 @@ HTML = r"""<!doctype html>
         csFields.style.display = "none";
         ledgerFields.style.display = "none";
         managementFields.style.display = "none";
+        messagePlaceholder.style.display = "none";
         fileInput.required = false;
         templateInput.required = false;
         dropSub.textContent = "출고송장 엑셀을 업로드하면 수하인별 송장번호 엑셀을 다운로드합니다.";
@@ -4839,6 +4891,7 @@ HTML = r"""<!doctype html>
         csFields.style.display = "none";
         ledgerFields.style.display = "none";
         managementFields.style.display = "none";
+        messagePlaceholder.style.display = "none";
         fileInput.required = false;
         templateInput.required = false;
         dropSub.textContent = "주소일브릿지 원본을 업로드하면 지정된 롯데택배 발주서 양식으로 출력합니다.";
@@ -4853,6 +4906,7 @@ HTML = r"""<!doctype html>
         csFields.style.display = "none";
         ledgerFields.style.display = "none";
         managementFields.style.display = "none";
+        messagePlaceholder.style.display = "none";
         fileInput.required = false;
         templateInput.required = false;
       } else if (mode === "cs") {
@@ -4865,11 +4919,24 @@ HTML = r"""<!doctype html>
         csFields.style.display = "block";
         ledgerFields.style.display = "none";
         managementFields.style.display = "none";
+        messagePlaceholder.style.display = "none";
         fileInput.required = false;
         templateInput.required = false;
         loadMailSettings();
         loadVendorContacts();
         loadCsCases();
+      } else if (mode.startsWith("mail-")) {
+        submitButton.textContent = "닫기";
+        submitButton.className = "btn";
+        deliveryOptions.style.display = "none";
+        templateUpload.style.display = "none";
+        vehicleFields.style.display = "none";
+        csFields.style.display = "none";
+        ledgerFields.style.display = "none";
+        managementFields.style.display = "none";
+        messagePlaceholder.style.display = "block";
+        fileInput.required = false;
+        templateInput.required = false;
       } else if (mode === "ledger") {
         modalTitle.textContent = "CS 처리대장";
         submitButton.textContent = "닫기";
@@ -4880,6 +4947,7 @@ HTML = r"""<!doctype html>
         csFields.style.display = "none";
         ledgerFields.style.display = "block";
         managementFields.style.display = "none";
+        messagePlaceholder.style.display = "none";
         fileInput.required = false;
         templateInput.required = false;
         ledgerSearchInput.value = "";
@@ -4900,6 +4968,7 @@ HTML = r"""<!doctype html>
         csFields.style.display = "none";
         ledgerFields.style.display = "none";
         managementFields.style.display = "block";
+        messagePlaceholder.style.display = "none";
         fileInput.required = false;
         templateInput.required = false;
         managementSearchInput.value = "";
@@ -4913,8 +4982,8 @@ HTML = r"""<!doctype html>
       }
 
       const fileDrop = document.querySelector("label[for='fileInput']");
-      fileDrop.style.display = mode === "vehicle" || mode === "cs" || mode === "ledger" || mode === "management" ? "none" : "grid";
-      fileLabel.style.display = mode === "vehicle" || mode === "cs" || mode === "ledger" || mode === "management" ? "none" : "block";
+      fileDrop.style.display = mode === "vehicle" || mode === "cs" || mode === "ledger" || mode === "management" || mode.startsWith("mail-") ? "none" : "grid";
+      fileLabel.style.display = mode === "vehicle" || mode === "cs" || mode === "ledger" || mode === "management" || mode.startsWith("mail-") ? "none" : "block";
     }
 
     function closeModal() {
@@ -5031,6 +5100,12 @@ HTML = r"""<!doctype html>
     });
     document.querySelector("#orderNavToggle").addEventListener("click", () => {
       document.querySelector("#orderNavGroup").classList.toggle("open");
+    });
+    document.querySelector("#distributionMailNavToggle")?.addEventListener("click", () => {
+      document.querySelector("#distributionMailNavGroup")?.classList.toggle("open");
+    });
+    document.querySelectorAll("[data-mail-popup]").forEach((button) => {
+      button.addEventListener("click", () => openMailMessagePopup(button.dataset.mailPopup));
     });
     document.querySelector("#adminNavToggle")?.addEventListener("click", () => {
       document.querySelector("#adminNavGroup")?.classList.toggle("open");
@@ -5224,7 +5299,6 @@ HTML = r"""<!doctype html>
     ledgerYearFilter?.addEventListener("change", loadLedgerCases);
     managementYearFilter.addEventListener("change", () => {
       renderManagementPeriodControls();
-      loadManagementRecords();
     });
     ledgerMonthFilter?.addEventListener("change", () => {
       ensureYearForMonth(ledgerYearFilter, ledgerMonthFilter);
@@ -5234,7 +5308,6 @@ HTML = r"""<!doctype html>
       const period = selectedManagementPeriod();
       managementYearFilter.value = period.year || "";
       renderManagementMonthTabs();
-      loadManagementRecords();
     });
     if (managementMonthTabs) {
       managementMonthTabs.addEventListener("click", (event) => {
@@ -5330,7 +5403,7 @@ HTML = r"""<!doctype html>
       notice.textContent = "처리 중입니다.";
       submitButton.disabled = true;
       try {
-        if (currentMode === "ledger" || currentMode === "management") {
+        if (currentMode === "ledger" || currentMode === "management" || currentMode.startsWith("mail-")) {
           closeModal();
         } else if (currentMode === "cs") {
           refreshCsBody();
