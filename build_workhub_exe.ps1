@@ -60,16 +60,16 @@ $Usage = @"
 Workhub 사용 방법
 
 1. Workhub.exe를 실행합니다.
-2. 브라우저가 자동으로 열리면 (주)소일브릿지 발주 업무자동화를 사용합니다.
+2. 독립 프로그램 창이 열리면 (주)소일브릿지 발주 업무자동화를 사용합니다.
 3. 다른 PC에서도 Python 설치 없이 Workhub.exe만 실행하면 됩니다.
 
 참고
 - 첫 실행은 내부 파일을 준비하느라 몇 초 걸릴 수 있습니다.
-- 결과 파일은 브라우저에서 다운로드됩니다.
+- 결과 파일은 프로그램 창에서 다운로드됩니다.
 - 포함 기능: 개별 택배건 정리, 송장번호 추출, 롯데택배 발주서 변환, 차량인수증 생성, 업체 CS 요청, CS 처리대장
 - 프로그램을 완전히 종료하려면 작업 관리자에서 Workhub.exe를 종료하거나, 함께 들어있는 "Workhub 종료.cmd"를 실행하세요.
 "@
-Set-Content -LiteralPath (Join-Path $PackageDir "사용방법.txt") -Value $Usage -Encoding UTF8
+Set-Content -LiteralPath (Join-Path $PackageDir "README.txt") -Value $Usage -Encoding UTF8
 
 $StopCmd = @"
 @echo off
@@ -77,15 +77,15 @@ taskkill /IM Workhub.exe /F >nul 2>nul
 echo Workhub has been closed.
 pause
 "@
-Set-Content -LiteralPath (Join-Path $PackageDir "Workhub 종료.cmd") -Value $StopCmd -Encoding ASCII
+Set-Content -LiteralPath (Join-Path $PackageDir "Workhub_Stop.cmd") -Value $StopCmd -Encoding ASCII
 
 $Stamp = Get-Date -Format "yyyyMMdd_HHmm"
-$ZipPath = Join-Path (Join-Path $Root "output") "Workhub_PC_설치형_$Stamp.zip"
+$ZipPath = Join-Path (Join-Path $Root "output") "Workhub_PC_Desktop_$Stamp.zip"
 New-Item -ItemType Directory -Force -Path (Join-Path $Root "output") | Out-Null
 Compress-Archive -LiteralPath `
   (Join-Path $PackageDir "Workhub.exe"), `
-  (Join-Path $PackageDir "Workhub 종료.cmd"), `
-  (Join-Path $PackageDir "사용방법.txt") `
+  (Join-Path $PackageDir "Workhub_Stop.cmd"), `
+  (Join-Path $PackageDir "README.txt") `
   -DestinationPath $ZipPath `
   -Force
 

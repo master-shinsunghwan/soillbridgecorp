@@ -24,6 +24,7 @@ $RequiredScripts = @(
   "lotte_order_form_converter.py",
   "vehicle_receipt_generator.py",
   "workhub_delivery_app.py",
+  "workhub_desktop_launcher.py",
   "run_workhub_delivery_app.ps1",
   "workhub_delivery_app_README.md"
 )
@@ -40,6 +41,8 @@ foreach ($ScriptName in $RequiredScripts) {
   }
   Copy-Item -LiteralPath $Source -Destination (Join-Path $InstallScripts $ScriptName) -Force
 }
+
+& $Python -m pip install -r (Join-Path $SourceRoot "requirements.txt") -q
 
 $TemplateSource = Join-Path (Join-Path $SourceRoot "templates") "vehicle_receipt_template.xlsx"
 if (-not (Test-Path -LiteralPath $TemplateSource)) {
@@ -58,7 +61,7 @@ if (Test-Path -LiteralPath $LucideSource) {
 $LauncherContent = @"
 @echo off
 setlocal
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\run_workhub_delivery_app.ps1"
+"$Python" "%~dp0scripts\workhub_desktop_launcher.py"
 endlocal
 "@
 Set-Content -LiteralPath $Launcher -Value $LauncherContent -Encoding ASCII
