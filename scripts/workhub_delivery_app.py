@@ -1717,6 +1717,83 @@ HTML = r"""<!doctype html>
       flex: 0 0 auto;
     }
 
+    /* Compact typography pass: keep controls usable while reducing visual bulk. */
+    .brand-label { font-size: 16px; }
+    .nav-item, .nav-section, .app-add { font-size: 13px; }
+    .nav-subitem { font-size: 12px; }
+    .title { font-size: 22px; }
+    .top-button,
+    .top-search,
+    .user-chip,
+    .logout-button { font-size: 12px; }
+    .notice-board-title { font-size: 15px; }
+    .notice-board-body,
+    .import-empty,
+    .notice-preview,
+    .backup-note,
+    .system-note,
+    .system-message,
+    .backup-message,
+    .leave-message,
+    .admin-message { font-size: 12px; }
+    .dashboard-title { font-size: 15px; }
+    .action-title { font-size: 14px; }
+    .action-sub { min-height: 34px; font-size: 11px; }
+    .modal-title { font-size: 22px; }
+    .field-label { font-size: 15px; }
+    .drop-main { font-size: 15px; }
+    .drop-sub { font-size: 12px; }
+    select,
+    textarea,
+    .text-field input,
+    .text-field select,
+    .text-field textarea { font-size: 13px; }
+    .btn { font-size: 14px; }
+    .notice { font-size: 12px; }
+    .notice-template input,
+    .notice-template textarea,
+    .admin-form input,
+    .admin-form select,
+    .admin-check,
+    .leave-form input,
+    .leave-form select,
+    .leave-form textarea,
+    .backup-summary-card span,
+    .system-summary-card span,
+    .leave-summary-card span { font-size: 12px; }
+    .permission-item,
+    .admin-table,
+    .leave-table,
+    .system-table,
+    .import-table { font-size: 12px; }
+    .backup-summary-card strong { font-size: 16px; }
+    .leave-summary-card strong { font-size: 25px; }
+    .leave-card-title { font-size: 15px; }
+    .ledger-cs-popup-title { font-size: 18px; }
+    .product-row input,
+    .checkbox-field,
+    .cs-case-head { font-size: 13px; }
+    .cs-case-item { font-size: 12px; }
+    .cs-case-meta { font-size: 11px; }
+    .ledger-toolbar input,
+    .ledger-toolbar select,
+    .ledger-toolbar .btn,
+    .ledger-count,
+    .management-month-tab { font-size: 11px; }
+    .ledger-table { font-size: 11px; }
+    .ledger-filter-trigger,
+    .ledger-table td,
+    .ledger-edit,
+    .ledger-status-select,
+    .ledger-save,
+    .management-edit,
+    .management-cs-button { font-size: 10px; }
+    .ledger-filter-title,
+    .ledger-filter-search { font-size: 12px; }
+    .ledger-filter-option,
+    .workspace-button { font-size: 11px; }
+    .workspace-title { font-size: 16px; }
+
     @media (max-width: 1180px) {
       .app { grid-template-columns: 76px minmax(0, 1fr); }
       .brand { justify-content: center; padding: 0; }
