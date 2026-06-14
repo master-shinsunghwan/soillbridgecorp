@@ -7,6 +7,7 @@ import re
 import smtplib
 import ssl
 import sqlite3
+import subprocess
 import sys
 import time
 import threading
@@ -65,6 +66,7 @@ SESSION_SECONDS = 60 * 60 * 16
 BACKUP_RETENTION_DAYS = 90
 AUTO_BACKUP_HOUR = 3
 _BACKUP_SCHEDULER_STARTED = False
+_SYSTEM_UPDATE_LOCK = threading.Lock()
 DEFAULT_USERS = (
     ("admin", "관리자", "admin", "admin1234"),
     ("user", "사용자", "user", "user1234"),
@@ -79,6 +81,7 @@ PERMISSION_DEFINITIONS = (
     ("mail_send", "메일 발송", "업체 CS 메일 발송"),
     ("user_admin", "사용자 관리", "계정 추가/수정/권한 변경"),
     ("backup_manage", "백업 관리", "수동/자동 백업 파일 관리"),
+    ("system_update", "시스템 업데이트", "GitHub 업데이트 확인/적용"),
     ("leave_view", "연차 조회", "연차 내역 조회"),
     ("leave_approve", "연차 승인", "연차 신청 승인/반려"),
     ("leave_manage", "연차 관리", "연차 등록/수정/삭제"),
@@ -940,12 +943,68 @@ HTML = r"""<!doctype html>
     }
     .backup-restore-row input { display: none; }
     #backupRestoreInput { display: none; }
+    .system-panel { display: grid; gap: 14px; }
+    .system-summary-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+    .system-summary-card {
+      min-height: 92px;
+      padding: 16px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: white;
+      box-shadow: var(--shadow);
+    }
+    .system-summary-card span { display: block; color: var(--muted); font-size: 13px; font-weight: 850; }
+    .system-summary-card strong {
+      display: block;
+      margin-top: 8px;
+      font-size: 17px;
+      line-height: 1.35;
+      word-break: break-all;
+    }
+    .system-card {
+      padding: 16px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: white;
+      box-shadow: var(--shadow);
+    }
+    .system-note {
+      margin: 0 0 12px;
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 750;
+      line-height: 1.6;
+    }
+    .system-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+    .system-table th {
+      height: 34px;
+      padding: 0 10px;
+      background: #eef6ff;
+      border-bottom: 1px solid var(--line);
+      text-align: left;
+      font-weight: 900;
+      white-space: nowrap;
+    }
+    .system-table td {
+      min-height: 40px;
+      padding: 8px 10px;
+      border-bottom: 1px solid #edf1f7;
+      vertical-align: top;
+      white-space: nowrap;
+    }
+    .system-table tr:last-child td { border-bottom: 0; }
+    .system-message { min-height: 20px; color: var(--muted); font-size: 13px; font-weight: 750; }
     @media (max-width: 1100px) {
       .admin-form { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       .permission-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       .leave-grid.two,
       .leave-summary-grid,
-      .backup-summary-grid { grid-template-columns: 1fr; }
+      .backup-summary-grid,
+      .system-summary-grid { grid-template-columns: 1fr; }
     }
     .vehicle-fields { display: none; }
     .cs-fields { display: none; }
@@ -1532,6 +1591,7 @@ HTML = r"""<!doctype html>
       __LEAVE_NAV__
       __ADMIN_NAV__
       __BACKUP_NAV__
+      __SYSTEM_NAV__
       <div class="nav-section">TOOLS</div>
       <button class="nav-item" type="button" data-open="invoice"><i data-lucide="file-spreadsheet"></i> <span>송장 추출</span></button>
       <button class="nav-item" type="button" data-open="vehicle"><i data-lucide="truck"></i> <span>차량인수증</span></button>
@@ -1686,6 +1746,7 @@ HTML = r"""<!doctype html>
       __LEAVE_WORKSPACE__
       __ADMIN_WORKSPACE__
       __BACKUP_WORKSPACE__
+      __SYSTEM_WORKSPACE__
     </main>
   </div>
 
@@ -2199,6 +2260,16 @@ HTML = r"""<!doctype html>
     const backupPath = document.querySelector("#backupPath");
     const backupBody = document.querySelector("#backupBody");
     const backupMessage = document.querySelector("#backupMessage");
+    const systemUpdateWorkspace = document.querySelector("#systemUpdateWorkspace");
+    const systemUpdateRefresh = document.querySelector("#systemUpdateRefresh");
+    const systemUpdateCheck = document.querySelector("#systemUpdateCheck");
+    const systemUpdateApply = document.querySelector("#systemUpdateApply");
+    const systemUpdateSource = document.querySelector("#systemUpdateSource");
+    const systemUpdateBranch = document.querySelector("#systemUpdateBranch");
+    const systemUpdateCurrent = document.querySelector("#systemUpdateCurrent");
+    const systemUpdateState = document.querySelector("#systemUpdateState");
+    const systemUpdateMessage = document.querySelector("#systemUpdateMessage");
+    const systemUpdateHistoryBody = document.querySelector("#systemUpdateHistoryBody");
     let currentMode = "dashboard";
     let vendorContacts = [];
     let ledgerCases = [];
@@ -2505,6 +2576,84 @@ HTML = r"""<!doctype html>
         backupMessage.textContent = error.message;
       } finally {
         backupRestoreInput.value = "";
+      }
+    }
+
+    function renderSystemUpdate(data) {
+      if (!systemUpdateWorkspace) return;
+      const status = data.status || {};
+      systemUpdateSource.textContent = status.source_dir || "Git 저장소 연결 없음";
+      systemUpdateBranch.textContent = status.branch || "-";
+      systemUpdateCurrent.textContent = status.current_short || "-";
+      if (!status.available) {
+        systemUpdateState.textContent = status.message || "Git 저장소 연결 없음";
+      } else if (status.behind > 0) {
+        systemUpdateState.textContent = `${status.behind}개 업데이트 가능`;
+      } else {
+        systemUpdateState.textContent = "최신 상태";
+      }
+      systemUpdateMessage.textContent = status.message || "";
+      const history = data.history || [];
+      systemUpdateHistoryBody.innerHTML = history.length
+        ? history.map((row) => `
+          <tr>
+            <td>${escapeHtml(row.created_at || "")}</td>
+            <td>${escapeHtml(row.action || "")}</td>
+            <td>${escapeHtml(row.status || "")}</td>
+            <td>${escapeHtml(row.before_commit || "")}</td>
+            <td>${escapeHtml(row.after_commit || "")}</td>
+            <td>${escapeHtml(row.backup_name || "")}</td>
+            <td>${escapeHtml(row.message || "")}</td>
+          </tr>
+        `).join("")
+        : `<tr><td colspan="7">업데이트 이력이 없습니다.</td></tr>`;
+      if (systemUpdateApply) systemUpdateApply.disabled = !status.available || Boolean(status.dirty);
+      if (systemUpdateCheck) systemUpdateCheck.disabled = !status.available;
+    }
+
+    async function loadSystemUpdateStatus() {
+      if (!systemUpdateWorkspace) return;
+      systemUpdateMessage.textContent = "업데이트 정보를 불러오는 중입니다.";
+      try {
+        const response = await fetch("/api/system-update");
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "업데이트 정보를 불러오지 못했습니다.");
+        renderSystemUpdate(data);
+      } catch (error) {
+        systemUpdateMessage.textContent = error.message;
+      }
+    }
+
+    async function checkSystemUpdate() {
+      if (!systemUpdateCheck) return;
+      systemUpdateCheck.disabled = true;
+      systemUpdateMessage.textContent = "GitHub 업데이트를 확인하는 중입니다.";
+      try {
+        const response = await fetch("/api/system-update-check", { method: "POST" });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "업데이트 확인에 실패했습니다.");
+        renderSystemUpdate(data);
+      } catch (error) {
+        systemUpdateMessage.textContent = error.message;
+      } finally {
+        systemUpdateCheck.disabled = false;
+      }
+    }
+
+    async function applySystemUpdate() {
+      if (!confirm("업데이트 적용 전 현재 데이터를 자동 백업합니다.\nGitHub 최신 코드를 적용할까요?")) return;
+      systemUpdateApply.disabled = true;
+      systemUpdateMessage.textContent = "업데이트 적용 중입니다. 창을 닫지 마세요.";
+      try {
+        const response = await fetch("/api/system-update-apply", { method: "POST" });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "업데이트 적용에 실패했습니다.");
+        renderSystemUpdate(data);
+        systemUpdateMessage.textContent = `${data.message || "업데이트 적용이 완료되었습니다."} 프로그램/나스 서비스를 다시 시작해주세요.`;
+      } catch (error) {
+        systemUpdateMessage.textContent = error.message;
+      } finally {
+        systemUpdateApply.disabled = false;
       }
     }
 
@@ -4006,18 +4155,21 @@ HTML = r"""<!doctype html>
       if (mode === "userAdmin" && !userAdminWorkspace) mode = "dashboard";
       if (mode === "leave" && !leaveWorkspace) mode = "dashboard";
       if (mode === "backup" && !backupWorkspace) mode = "dashboard";
+      if (mode === "systemUpdate" && !systemUpdateWorkspace) mode = "dashboard";
       currentMode = mode;
       const showManagement = mode === "management";
       const showLedger = mode === "ledger";
       const showLeave = mode === "leave";
       const showUserAdmin = mode === "userAdmin" && Boolean(userAdminWorkspace);
       const showBackup = mode === "backup" && Boolean(backupWorkspace);
+      const showSystemUpdate = mode === "systemUpdate" && Boolean(systemUpdateWorkspace);
       dashboardContent.style.display = mode === "dashboard" ? "" : "none";
       managementWorkspace.classList.toggle("active", showManagement);
       ledgerWorkspace.classList.toggle("active", showLedger);
       if (leaveWorkspace) leaveWorkspace.classList.toggle("active", showLeave);
       if (userAdminWorkspace) userAdminWorkspace.classList.toggle("active", showUserAdmin);
       if (backupWorkspace) backupWorkspace.classList.toggle("active", showBackup);
+      if (systemUpdateWorkspace) systemUpdateWorkspace.classList.toggle("active", showSystemUpdate);
       setActiveNav(mode);
       if (showManagement) {
         setPageTitle("통합관리대장 관리");
@@ -4048,6 +4200,10 @@ HTML = r"""<!doctype html>
         setPageTitle("백업 관리");
         closeLedgerFilter();
         loadBackups();
+      } else if (showSystemUpdate) {
+        setPageTitle("업데이트 관리");
+        closeLedgerFilter();
+        loadSystemUpdateStatus();
       } else {
         currentMode = "dashboard";
         setPageTitle("금일 공지사항");
@@ -4065,7 +4221,7 @@ HTML = r"""<!doctype html>
     document.querySelectorAll("[data-open]").forEach((button) => {
       button.addEventListener("click", () => {
         const mode = button.dataset.open;
-        if (mode === "management" || mode === "ledger" || mode === "userAdmin" || mode === "leave" || mode === "backup") {
+        if (mode === "management" || mode === "ledger" || mode === "userAdmin" || mode === "leave" || mode === "backup" || mode === "systemUpdate") {
           showWorkspace(mode);
           return;
         }
@@ -4216,6 +4372,9 @@ HTML = r"""<!doctype html>
     if (backupRefresh) backupRefresh.addEventListener("click", loadBackups);
     if (backupCreate) backupCreate.addEventListener("click", createBackupNow);
     if (backupRestoreInput) backupRestoreInput.addEventListener("change", restoreBackupFromUpload);
+    if (systemUpdateRefresh) systemUpdateRefresh.addEventListener("click", loadSystemUpdateStatus);
+    if (systemUpdateCheck) systemUpdateCheck.addEventListener("click", checkSystemUpdate);
+    if (systemUpdateApply) systemUpdateApply.addEventListener("click", applySystemUpdate);
     if (backupBody) {
       backupBody.addEventListener("click", (event) => {
         const restoreButton = event.target.closest("[data-backup-restore]");
@@ -4408,7 +4567,7 @@ HTML = r"""<!doctype html>
     });
 
     const initialView = new URLSearchParams(window.location.search).get("view");
-    showWorkspace(["management", "ledger", "leave", "userAdmin", "backup"].includes(initialView) ? initialView : "dashboard");
+    showWorkspace(["management", "ledger", "leave", "userAdmin", "backup", "systemUpdate"].includes(initialView) ? initialView : "dashboard");
   </script>
 </body>
 </html>
@@ -4555,6 +4714,10 @@ ADMIN_NAV_HTML = r"""
 
 BACKUP_NAV_HTML = r"""
       <button class="nav-item" type="button" data-open="backup"><i data-lucide="database"></i> <span>백업 관리</span></button>
+"""
+
+SYSTEM_NAV_HTML = r"""
+      <button class="nav-item" type="button" data-open="systemUpdate"><i data-lucide="refresh-cw"></i> <span>업데이트 관리</span></button>
 """
 
 LEAVE_NAV_HTML = r"""
@@ -4771,6 +4934,61 @@ BACKUP_WORKSPACE_HTML = r"""
       </section>
 """
 
+SYSTEM_WORKSPACE_HTML = r"""
+      <section class="workspace-view" id="systemUpdateWorkspace">
+        <div class="workspace-head">
+          <div class="workspace-title">업데이트 관리</div>
+          <div class="workspace-actions">
+            <button class="workspace-button" type="button" id="systemUpdateRefresh">새로고침</button>
+            <button class="workspace-button" type="button" id="systemUpdateCheck">업데이트 확인</button>
+            <button class="workspace-button" type="button" id="systemUpdateApply">업데이트 적용</button>
+          </div>
+        </div>
+        <div class="workspace-mount">
+          <div class="system-panel">
+            <div class="system-summary-grid">
+              <article class="system-summary-card">
+                <span>실행 위치</span>
+                <strong id="systemUpdateSource">-</strong>
+              </article>
+              <article class="system-summary-card">
+                <span>브랜치</span>
+                <strong id="systemUpdateBranch">-</strong>
+              </article>
+              <article class="system-summary-card">
+                <span>현재 버전</span>
+                <strong id="systemUpdateCurrent">-</strong>
+              </article>
+              <article class="system-summary-card">
+                <span>업데이트 상태</span>
+                <strong id="systemUpdateState">-</strong>
+              </article>
+            </div>
+            <div class="system-card">
+              <p class="system-note">
+                업데이트 적용 시 현재 업무 데이터가 자동 백업된 뒤 GitHub 최신 코드가 적용됩니다. 적용 후에는 프로그램/나스 서비스를 다시 시작해주세요.
+              </p>
+              <div class="system-message" id="systemUpdateMessage"></div>
+              <table class="system-table">
+                <thead>
+                  <tr>
+                    <th>일시</th>
+                    <th>작업</th>
+                    <th>결과</th>
+                    <th>이전 버전</th>
+                    <th>적용 버전</th>
+                    <th>백업</th>
+                    <th>메시지</th>
+                  </tr>
+                </thead>
+                <tbody id="systemUpdateHistoryBody"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </section>
+"""
+
 
 def safe_filename(filename: str) -> str:
     filename = Path(filename).name
@@ -4911,6 +5129,8 @@ def render_app_html(user: dict[str, str]) -> str:
     admin_workspace = ADMIN_WORKSPACE_HTML.replace("__PERMISSION_CHECKBOXES__", permissions_html()) if "user_admin" in permissions else ""
     backup_nav = BACKUP_NAV_HTML if "backup_manage" in permissions else ""
     backup_workspace = BACKUP_WORKSPACE_HTML if "backup_manage" in permissions else ""
+    system_nav = SYSTEM_NAV_HTML if "system_update" in permissions else ""
+    system_workspace = SYSTEM_WORKSPACE_HTML if "system_update" in permissions else ""
     return (
         HTML
         .replace("__USER_DISPLAY__", html_escape(display))
@@ -4920,6 +5140,8 @@ def render_app_html(user: dict[str, str]) -> str:
         .replace("__ADMIN_WORKSPACE__", admin_workspace)
         .replace("__BACKUP_NAV__", backup_nav)
         .replace("__BACKUP_WORKSPACE__", backup_workspace)
+        .replace("__SYSTEM_NAV__", system_nav)
+        .replace("__SYSTEM_WORKSPACE__", system_workspace)
         .replace("__USER_PERMISSIONS__", json.dumps(permissions, ensure_ascii=False))
         .replace("__PERMISSION_LABELS__", json.dumps({key: label for key, label, _ in PERMISSION_DEFINITIONS}, ensure_ascii=False))
     )
@@ -5040,6 +5262,20 @@ def init_db() -> None:
                 username TEXT NOT NULL,
                 created_at REAL NOT NULL,
                 expires_at REAL NOT NULL
+            )
+            """
+        )
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS system_update_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                action TEXT NOT NULL,
+                before_commit TEXT,
+                after_commit TEXT,
+                status TEXT NOT NULL,
+                message TEXT,
+                backup_name TEXT,
+                created_at TEXT NOT NULL
             )
             """
         )
@@ -5602,6 +5838,184 @@ def start_backup_scheduler() -> None:
     _BACKUP_SCHEDULER_STARTED = True
     thread = threading.Thread(target=backup_scheduler_loop, name="workhub-backup-scheduler", daemon=True)
     thread.start()
+
+
+def git_source_dir() -> Path | None:
+    candidates: list[Path] = []
+    env_source = os.environ.get("WORKHUB_SOURCE_DIR")
+    if env_source:
+        candidates.append(Path(env_source))
+    candidates.extend([ROOT, RUNTIME_ROOT, Path.cwd()])
+    for candidate in candidates:
+        try:
+            path = candidate.resolve()
+        except OSError:
+            continue
+        if (path / ".git").exists():
+            return path
+    return None
+
+
+def run_git(args: list[str], source_dir: Path, timeout: int = 30) -> tuple[int, str, str]:
+    try:
+        completed = subprocess.run(
+            ["git", "-C", str(source_dir), *args],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=timeout,
+            check=False,
+        )
+        return completed.returncode, completed.stdout.strip(), completed.stderr.strip()
+    except FileNotFoundError:
+        return 127, "", "git 명령을 찾지 못했습니다."
+    except subprocess.TimeoutExpired:
+        return 124, "", "git 명령 시간이 초과되었습니다."
+
+
+def git_output(args: list[str], source_dir: Path, default: str = "") -> str:
+    code, stdout, _ = run_git(args, source_dir)
+    return stdout if code == 0 else default
+
+
+def system_update_status(fetch: bool = False) -> dict[str, object]:
+    source_dir = git_source_dir()
+    if not source_dir:
+        return {
+            "available": False,
+            "source_dir": "",
+            "branch": "",
+            "current_commit": "",
+            "current_short": "",
+            "upstream_commit": "",
+            "remote_url": "",
+            "ahead": 0,
+            "behind": 0,
+            "dirty": False,
+            "message": "현재 실행 위치가 Git 저장소가 아닙니다. 나스 배포 시 GitHub 저장소 폴더에서 실행하면 업데이트 기능을 사용할 수 있습니다.",
+        }
+    if fetch:
+        run_git(["fetch", "--all", "--prune"], source_dir, timeout=60)
+    current_commit = git_output(["rev-parse", "HEAD"], source_dir)
+    current_short = git_output(["rev-parse", "--short", "HEAD"], source_dir)
+    branch = git_output(["rev-parse", "--abbrev-ref", "HEAD"], source_dir)
+    upstream = git_output(["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"], source_dir)
+    upstream_commit = git_output(["rev-parse", "@{u}"], source_dir) if upstream else ""
+    ahead = 0
+    behind = 0
+    if upstream:
+        counts = git_output(["rev-list", "--left-right", "--count", "HEAD...@{u}"], source_dir)
+        parts = counts.split()
+        if len(parts) == 2 and all(part.isdigit() for part in parts):
+            ahead = int(parts[0])
+            behind = int(parts[1])
+    dirty = bool(git_output(["status", "--porcelain"], source_dir))
+    message = ""
+    if not upstream:
+        message = "원격 추적 브랜치가 설정되어 있지 않습니다."
+    elif dirty:
+        message = "저장되지 않은 코드 변경이 있어 자동 업데이트를 적용하지 않습니다."
+    elif behind > 0:
+        message = f"GitHub에 적용 가능한 업데이트 {behind}개가 있습니다."
+    else:
+        message = "최신 상태입니다."
+    return {
+        "available": bool(upstream),
+        "source_dir": str(source_dir),
+        "branch": branch,
+        "current_commit": current_commit,
+        "current_short": current_short,
+        "upstream": upstream,
+        "upstream_commit": upstream_commit,
+        "remote_url": git_output(["config", "--get", "remote.origin.url"], source_dir),
+        "ahead": ahead,
+        "behind": behind,
+        "dirty": dirty,
+        "message": message,
+    }
+
+
+def list_system_update_history(limit: int = 30) -> list[dict[str, str | int]]:
+    init_db()
+    connection = connect_db()
+    try:
+        rows = connection.execute(
+            """
+            SELECT id, action, before_commit, after_commit, status, message, backup_name, created_at
+              FROM system_update_history
+             ORDER BY id DESC
+             LIMIT ?
+            """,
+            (limit,),
+        ).fetchall()
+        return [dict(row) for row in rows]
+    finally:
+        connection.close()
+
+
+def record_system_update(action: str, before_commit: str, after_commit: str, status: str, message: str, backup_name: str = "") -> None:
+    init_db()
+    connection = connect_db()
+    try:
+        connection.execute(
+            """
+            INSERT INTO system_update_history
+                (action, before_commit, after_commit, status, message, backup_name, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (action, before_commit, after_commit, status, message, backup_name, now_text()),
+        )
+        connection.commit()
+    finally:
+        connection.close()
+
+
+def system_update_payload(fetch: bool = False) -> dict[str, object]:
+    return {
+        "status": system_update_status(fetch=fetch),
+        "history": list_system_update_history(),
+    }
+
+
+def apply_system_update() -> dict[str, object]:
+    if not _SYSTEM_UPDATE_LOCK.acquire(blocking=False):
+        raise ValueError("이미 업데이트가 진행 중입니다.")
+    backup_name = ""
+    before_commit = ""
+    after_commit = ""
+    try:
+        status = system_update_status(fetch=True)
+        before_commit = str(status.get("current_short") or status.get("current_commit") or "")
+        if not status.get("available"):
+            raise ValueError(str(status.get("message") or "업데이트 기능을 사용할 수 없습니다."))
+        if status.get("dirty"):
+            raise ValueError("저장되지 않은 코드 변경이 있어 업데이트를 중단했습니다.")
+        if int(status.get("behind") or 0) <= 0:
+            record_system_update("apply", before_commit, before_commit, "skip", "이미 최신 상태입니다.", "")
+            payload = system_update_payload(fetch=False)
+            payload["message"] = "이미 최신 상태입니다."
+            return payload
+
+        backup = create_workhub_backup("pre-update")
+        backup_name = str(backup["name"])
+        source_dir = Path(str(status["source_dir"]))
+        code, stdout, stderr = run_git(["pull", "--ff-only"], source_dir, timeout=120)
+        if code != 0:
+            message = stderr or stdout or "git pull 실패"
+            record_system_update("apply", before_commit, before_commit, "fail", message, backup_name)
+            raise ValueError(message)
+        new_status = system_update_status(fetch=False)
+        after_commit = str(new_status.get("current_short") or new_status.get("current_commit") or "")
+        message = stdout or "업데이트 적용 완료"
+        record_system_update("apply", before_commit, after_commit, "success", message, backup_name)
+        payload = system_update_payload(fetch=False)
+        payload["message"] = "업데이트 적용이 완료되었습니다."
+        payload["backup_name"] = backup_name
+        payload["restart_required"] = True
+        return payload
+    finally:
+        _SYSTEM_UPDATE_LOCK.release()
 
 
 def get_leave_type_id(code: str = "annual") -> int:
@@ -7259,6 +7673,12 @@ class WorkhubHandler(BaseHTTPRequestHandler):
             })
             return
 
+        if self.path == "/api/system-update":
+            if not self.require_permission(user, "system_update", "시스템 업데이트"):
+                return
+            self.send_json(system_update_payload(fetch=False))
+            return
+
         if self.path.startswith("/api/backup-download"):
             if not self.require_permission(user, "backup_manage", "백업 관리"):
                 return
@@ -7371,6 +7791,18 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                     return
                 backup = create_workhub_backup("manual")
                 self.send_json({"message": "백업 파일을 생성했습니다.", "backup": backup})
+                return
+
+            if self.path == "/api/system-update-check":
+                if not self.require_permission(user, "system_update", "시스템 업데이트"):
+                    return
+                self.send_json(system_update_payload(fetch=True))
+                return
+
+            if self.path == "/api/system-update-apply":
+                if not self.require_permission(user, "system_update", "시스템 업데이트"):
+                    return
+                self.send_json(apply_system_update())
                 return
 
             if self.path == "/api/backup-delete":
