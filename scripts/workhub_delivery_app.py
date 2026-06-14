@@ -2031,7 +2031,7 @@ HTML = r"""<!doctype html>
         <div class="management-fields" id="managementFields">
           <div class="ledger-toolbar">
             <input id="managementSearchInput" type="text" placeholder="거래처, 수령자, 상품명, 주소, 송장번호 검색" />
-            <select id="managementYearFilter">
+            <select id="managementYearFilter" hidden>
               <option value="">년도 선택</option>
             </select>
             <select id="managementMonthFilter">
@@ -2394,31 +2394,56 @@ HTML = r"""<!doctype html>
         .sort();
     }
 
+    function selectedManagementPeriod() {
+      const selectedOption = managementMonthFilter?.selectedOptions?.[0];
+      const optionYear = selectedOption?.dataset?.year || "";
+      const optionMonth = selectedOption?.dataset?.month || "";
+      if (optionYear && optionMonth) return { year: optionYear, month: optionMonth };
+      const value = managementMonthFilter?.value || "";
+      if (!value) return { year: "", month: "" };
+      const match = value.match(/^(\d{4})-(\d{2})$/);
+      if (match) return { year: match[1], month: match[2] };
+      return { year: managementYearFilter?.value || "", month: "" };
+    }
+
+    function setManagementPeriod(year, month) {
+      const normalizedYear = String(year || "");
+      const normalizedMonth = String(month || "").padStart(2, "0");
+      managementYearFilter.value = normalizedYear;
+      managementMonthFilter.value = normalizedYear && normalizedMonth ? `${normalizedYear}-${normalizedMonth}` : "";
+    }
+
     function renderManagementPeriodControls() {
       if (!managementYearFilter || !managementMonthFilter) return;
       const years = managementPeriodYears();
-      const previousYear = managementYearFilter.value;
-      const previousMonth = managementMonthFilter.value;
+      const previousPeriod = selectedManagementPeriod();
       managementYearFilter.innerHTML = `<option value="">년도 선택</option>${years.map((year) => (
         `<option value="${escapeHtml(year)}">${escapeHtml(year)}년</option>`
       )).join("")}`;
-      if (previousYear && years.includes(previousYear)) managementYearFilter.value = previousYear;
+      if (previousPeriod.year && years.includes(previousPeriod.year)) managementYearFilter.value = previousPeriod.year;
       else managementYearFilter.value = "";
 
-      const months = managementYearFilter.value ? managementMonthsForYear(managementYearFilter.value) : [];
-      managementMonthFilter.innerHTML = `<option value="">월별로 보기</option>${months.map((month) => (
-        `<option value="${escapeHtml(month)}">${Number(month)}월</option>`
-      )).join("")}`;
-      if (previousMonth && months.includes(previousMonth)) managementMonthFilter.value = previousMonth;
-      else managementMonthFilter.value = "";
+      const periodOptions = managementPeriods.map((period) => {
+        const year = String(period.year || "");
+        const month = String(period.month || "").padStart(2, "0");
+        return `<option value="${escapeHtml(`${year}-${month}`)}" data-year="${escapeHtml(year)}" data-month="${escapeHtml(month)}">${escapeHtml(year)}년 ${Number(month)}월</option>`;
+      }).join("");
+      managementMonthFilter.innerHTML = `<option value="">월별로 보기</option>${periodOptions}`;
+      if (previousPeriod.year && previousPeriod.month) {
+        const value = `${previousPeriod.year}-${previousPeriod.month}`;
+        managementMonthFilter.value = Array.from(managementMonthFilter.options).some((option) => option.value === value) ? value : "";
+      } else {
+        managementMonthFilter.value = "";
+      }
 
       renderManagementMonthTabs();
     }
 
     function renderManagementMonthTabs() {
       if (!managementMonthTabs) return;
-      const activeMonth = managementMonthFilter.value || "";
-      const activeYear = managementYearFilter.value || managementPeriodYears()[0] || "";
+      const activePeriod = selectedManagementPeriod();
+      const activeMonth = activePeriod.month || "";
+      const activeYear = activePeriod.year || managementPeriodYears()[0] || "";
       const months = activeYear ? managementMonthsForYear(activeYear) : [];
       managementMonthTabs.innerHTML = months.length ? months.map((month) => {
         const active = month === activeMonth ? " active" : "";
@@ -3689,9 +3714,10 @@ HTML = r"""<!doctype html>
     async function loadManagementRecords() {
       const query = managementSearchInput.value.trim();
       const params = new URLSearchParams({ limit: managementPageSize.value || "500" });
+      const period = selectedManagementPeriod();
       if (query) params.set("q", query);
-      if (managementYearFilter.value) params.set("year", managementYearFilter.value);
-      if (managementMonthFilter.value) params.set("month", managementMonthFilter.value);
+      if (period.year) params.set("year", period.year);
+      if (period.month) params.set("month", period.month);
       renderManagementMonthTabs();
       try {
         const response = await fetch(`/api/management-records?${params.toString()}`);
@@ -4048,20 +4074,21 @@ HTML = r"""<!doctype html>
         }
         fallbackName = "통합관리대장_선택.xlsx";
       } else if (scope === "month") {
-        ensureYearForMonth(managementYearFilter, managementMonthFilter);
-        if (!managementYearFilter.value || !managementMonthFilter.value) {
+        const period = selectedManagementPeriod();
+        if (!period.year || !period.month) {
           notice.textContent = "월별 다운로드는 년도와 월을 선택해주세요.";
           return;
         }
-        payload.year = managementYearFilter.value;
-        payload.month = managementMonthFilter.value;
+        payload.year = period.year;
+        payload.month = period.month;
         fallbackName = `통합관리대장_${payload.year}년_${Number(payload.month)}월.xlsx`;
       } else if (scope === "year") {
-        if (!managementYearFilter.value) {
+        const period = selectedManagementPeriod();
+        if (!period.year) {
           notice.textContent = "년별 다운로드는 년도를 선택해주세요.";
           return;
         }
-        payload.year = managementYearFilter.value;
+        payload.year = period.year;
         fallbackName = `통합관리대장_${payload.year}년.xlsx`;
       } else {
         fallbackName = "통합관리대장_전체.xlsx";
@@ -4286,6 +4313,7 @@ HTML = r"""<!doctype html>
         managementSearchInput.value = "";
         managementYearFilter.value = "";
         managementMonthFilter.value = "";
+        managementPageSize.value = "500";
         managementImportInput.value = "";
         managementImportDropMain.textContent = "업로드";
         Object.keys(managementFilters).forEach((key) => delete managementFilters[key]);
@@ -4345,6 +4373,9 @@ HTML = r"""<!doctype html>
       if (showManagement) {
         setPageTitle("통합관리대장 관리");
         managementSearchInput.value = "";
+        managementYearFilter.value = "";
+        managementMonthFilter.value = "";
+        managementPageSize.value = "500";
         managementImportInput.value = "";
         managementImportDropMain.textContent = "업로드";
         closeLedgerFilter();
@@ -4589,7 +4620,8 @@ HTML = r"""<!doctype html>
       loadLedgerCases();
     });
     managementMonthFilter.addEventListener("change", () => {
-      ensureYearForMonth(managementYearFilter, managementMonthFilter);
+      const period = selectedManagementPeriod();
+      managementYearFilter.value = period.year || "";
       renderManagementMonthTabs();
       loadManagementRecords();
     });
@@ -4597,8 +4629,7 @@ HTML = r"""<!doctype html>
       managementMonthTabs.addEventListener("click", (event) => {
         const button = event.target.closest("[data-management-month]");
         if (!button) return;
-        if (button.dataset.managementYear) managementYearFilter.value = button.dataset.managementYear;
-        managementMonthFilter.value = button.dataset.managementMonth || "";
+        setManagementPeriod(button.dataset.managementYear || "", button.dataset.managementMonth || "");
         renderManagementPeriodControls();
         loadManagementRecords();
       });
