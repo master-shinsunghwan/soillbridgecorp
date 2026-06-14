@@ -9,11 +9,14 @@ import ssl
 import sqlite3
 import sys
 import time
+import threading
 import base64
 import ctypes
 import hashlib
 import hmac
 import secrets
+import tempfile
+import zipfile
 from copy import copy
 from io import BytesIO
 from datetime import date, datetime
@@ -48,6 +51,7 @@ CONFIG_DIR = RUNTIME_ROOT / "config"
 DB_PATH = CONFIG_DIR / "workhub.db"
 MAIL_SETTINGS_PATH = CONFIG_DIR / "mail_settings.json"
 VENDOR_CONTACTS_PATH = CONFIG_DIR / "vendor_contacts.json"
+BACKUP_DIR = Path(os.environ.get("WORKHUB_BACKUP_DIR", str(RUNTIME_ROOT / "backups")))
 LUCIDE_DIR = ROOT / "node_modules" / "lucide"
 LOTTE_TEMPLATE = ROOT / "templates" / "lotte_order_form_template.xlsx"
 MANAGEMENT_EXPORT_TEMPLATE = ROOT / "templates" / "management_ledger_export_template.xlsx"
@@ -58,6 +62,9 @@ TOKEN_PREFIX_DPAPI = "dpapi:"
 TOKEN_PREFIX_KEY = "key1:"
 SESSION_COOKIE_NAME = "workhub_session"
 SESSION_SECONDS = 60 * 60 * 16
+BACKUP_RETENTION_DAYS = 90
+AUTO_BACKUP_HOUR = 3
+_BACKUP_SCHEDULER_STARTED = False
 DEFAULT_USERS = (
     ("admin", "관리자", "admin", "admin1234"),
     ("user", "사용자", "user", "user1234"),
@@ -71,6 +78,7 @@ PERMISSION_DEFINITIONS = (
     ("cs_receive", "CS접수", "통합관리대장에서 CS 처리대장 접수"),
     ("mail_send", "메일 발송", "업체 CS 메일 발송"),
     ("user_admin", "사용자 관리", "계정 추가/수정/권한 변경"),
+    ("backup_manage", "백업 관리", "수동/자동 백업 파일 관리"),
     ("leave_view", "연차 조회", "연차 내역 조회"),
     ("leave_approve", "연차 승인", "연차 신청 승인/반려"),
     ("leave_manage", "연차 관리", "연차 등록/수정/삭제"),
@@ -105,6 +113,7 @@ export const Download = {};
 export const Truck = {};
 export const Mail = {};
 export const Upload = {};
+export const Database = {};
 export const CalendarDays = {};
 export const X = {};
 """.strip()
@@ -855,11 +864,79 @@ HTML = r"""<!doctype html>
     .leave-action.approve { border-color: #0b8f55; color: #067647; }
     .leave-action.reject { border-color: #f4a7a7; color: #b42318; }
     .leave-message { min-height: 20px; color: var(--muted); font-size: 13px; font-weight: 750; }
+    .backup-panel { display: grid; gap: 14px; }
+    .backup-summary-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+    .backup-summary-card {
+      min-height: 86px;
+      padding: 16px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: white;
+      box-shadow: var(--shadow);
+    }
+    .backup-summary-card span { display: block; color: var(--muted); font-size: 13px; font-weight: 850; }
+    .backup-summary-card strong {
+      display: block;
+      margin-top: 8px;
+      font-size: 18px;
+      line-height: 1.35;
+      word-break: break-all;
+    }
+    .backup-card {
+      padding: 16px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: white;
+      box-shadow: var(--shadow);
+    }
+    .backup-note {
+      margin: 0 0 12px;
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 750;
+      line-height: 1.6;
+    }
+    .backup-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+    .backup-table th {
+      height: 34px;
+      padding: 0 10px;
+      background: #eef6ff;
+      border-bottom: 1px solid var(--line);
+      text-align: left;
+      font-weight: 900;
+      white-space: nowrap;
+    }
+    .backup-table td {
+      height: 40px;
+      padding: 6px 10px;
+      border-bottom: 1px solid #edf1f7;
+      vertical-align: middle;
+      white-space: nowrap;
+    }
+    .backup-table tr:last-child td { border-bottom: 0; }
+    .backup-actions { display: flex; gap: 6px; }
+    .backup-action {
+      height: 30px;
+      padding: 0 10px;
+      border: 1px solid #cfd6e2;
+      border-radius: 7px;
+      background: white;
+      font-size: 12px;
+      font-weight: 850;
+      cursor: pointer;
+    }
+    .backup-action.danger { border-color: #f4a7a7; color: #b42318; }
+    .backup-message { min-height: 20px; color: var(--muted); font-size: 13px; font-weight: 750; }
     @media (max-width: 1100px) {
       .admin-form { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       .permission-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       .leave-grid.two,
-      .leave-summary-grid { grid-template-columns: 1fr; }
+      .leave-summary-grid,
+      .backup-summary-grid { grid-template-columns: 1fr; }
     }
     .vehicle-fields { display: none; }
     .cs-fields { display: none; }
@@ -1445,6 +1522,7 @@ HTML = r"""<!doctype html>
       <button class="nav-item" type="button" data-open="cs"><i data-lucide="mail"></i> <span>업체 메일</span></button>
       __LEAVE_NAV__
       __ADMIN_NAV__
+      __BACKUP_NAV__
       <div class="nav-section">TOOLS</div>
       <button class="nav-item" type="button" data-open="invoice"><i data-lucide="file-spreadsheet"></i> <span>송장 추출</span></button>
       <button class="nav-item" type="button" data-open="vehicle"><i data-lucide="truck"></i> <span>차량인수증</span></button>
@@ -1598,6 +1676,7 @@ HTML = r"""<!doctype html>
       </section>
       __LEAVE_WORKSPACE__
       __ADMIN_WORKSPACE__
+      __BACKUP_WORKSPACE__
     </main>
   </div>
 
@@ -2067,6 +2146,7 @@ HTML = r"""<!doctype html>
     const ledgerWorkspace = document.querySelector("#ledgerWorkspace");
     const leaveWorkspace = document.querySelector("#leaveWorkspace");
     const userAdminWorkspace = document.querySelector("#userAdminWorkspace");
+    const backupWorkspace = document.querySelector("#backupWorkspace");
     const managementWorkspaceMount = document.querySelector("#managementWorkspaceMount");
     const ledgerWorkspaceMount = document.querySelector("#ledgerWorkspaceMount");
     const userAdminRefresh = document.querySelector("#userAdminRefresh");
@@ -2104,6 +2184,11 @@ HTML = r"""<!doctype html>
     const leaveUsageSave = document.querySelector("#leaveUsageSave");
     const leaveAdminBalanceBody = document.querySelector("#leaveAdminBalanceBody");
     const leaveTabs = Array.from(document.querySelectorAll("[data-leave-tab]"));
+    const backupRefresh = document.querySelector("#backupRefresh");
+    const backupCreate = document.querySelector("#backupCreate");
+    const backupPath = document.querySelector("#backupPath");
+    const backupBody = document.querySelector("#backupBody");
+    const backupMessage = document.querySelector("#backupMessage");
     let currentMode = "dashboard";
     let vendorContacts = [];
     let ledgerCases = [];
@@ -2279,6 +2364,90 @@ HTML = r"""<!doctype html>
         userAdminMessage.textContent = error.message;
       } finally {
         userAdminSave.disabled = false;
+      }
+    }
+
+    function backupSizeText(size) {
+      const number = Number(size || 0);
+      if (number >= 1024 * 1024) return `${(number / 1024 / 1024).toFixed(1)} MB`;
+      if (number >= 1024) return `${(number / 1024).toFixed(1)} KB`;
+      return `${number} B`;
+    }
+
+    function renderBackups(data) {
+      if (!backupBody) return;
+      backupPath.textContent = data.backup_dir || "-";
+      const backups = data.backups || [];
+      if (!backups.length) {
+        backupBody.innerHTML = `<tr><td colspan="4">생성된 백업 파일이 없습니다.</td></tr>`;
+        return;
+      }
+      backupBody.innerHTML = backups.map((backup) => `
+        <tr>
+          <td>${escapeHtml(backup.name)}</td>
+          <td>${escapeHtml(backup.created_at || "")}</td>
+          <td>${backupSizeText(backup.size)}</td>
+          <td>
+            <div class="backup-actions">
+              <button class="backup-action" type="button" data-backup-download="${escapeHtml(backup.name)}">다운로드</button>
+              <button class="backup-action danger" type="button" data-backup-delete="${escapeHtml(backup.name)}">삭제</button>
+            </div>
+          </td>
+        </tr>
+      `).join("");
+    }
+
+    async function loadBackups() {
+      if (!backupWorkspace) return;
+      backupMessage.textContent = "백업 목록을 불러오는 중입니다.";
+      try {
+        const response = await fetch("/api/backups");
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "백업 목록을 불러오지 못했습니다.");
+        renderBackups(data);
+        backupMessage.textContent = data.last_backup ? `마지막 백업: ${data.last_backup}` : "아직 백업이 없습니다.";
+      } catch (error) {
+        backupMessage.textContent = error.message;
+      }
+    }
+
+    async function createBackupNow() {
+      if (!backupCreate) return;
+      backupCreate.disabled = true;
+      backupMessage.textContent = "백업 파일을 생성하는 중입니다.";
+      try {
+        const response = await fetch("/api/backup-create", { method: "POST" });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "백업 생성에 실패했습니다.");
+        backupMessage.textContent = data.message || "백업 파일을 생성했습니다.";
+        await loadBackups();
+      } catch (error) {
+        backupMessage.textContent = error.message;
+      } finally {
+        backupCreate.disabled = false;
+      }
+    }
+
+    function downloadBackup(name) {
+      const url = `/api/backup-download?name=${encodeURIComponent(name)}`;
+      window.location.href = url;
+    }
+
+    async function deleteBackup(name) {
+      if (!confirm(`${name} 백업 파일을 삭제할까요?`)) return;
+      backupMessage.textContent = "백업 파일을 삭제하는 중입니다.";
+      try {
+        const response = await fetch("/api/backup-delete", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name }),
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "백업 삭제에 실패했습니다.");
+        backupMessage.textContent = data.message || "백업 파일을 삭제했습니다.";
+        await loadBackups();
+      } catch (error) {
+        backupMessage.textContent = error.message;
       }
     }
 
@@ -3779,16 +3948,19 @@ HTML = r"""<!doctype html>
       closeModal();
       if (mode === "userAdmin" && !userAdminWorkspace) mode = "dashboard";
       if (mode === "leave" && !leaveWorkspace) mode = "dashboard";
+      if (mode === "backup" && !backupWorkspace) mode = "dashboard";
       currentMode = mode;
       const showManagement = mode === "management";
       const showLedger = mode === "ledger";
       const showLeave = mode === "leave";
       const showUserAdmin = mode === "userAdmin" && Boolean(userAdminWorkspace);
+      const showBackup = mode === "backup" && Boolean(backupWorkspace);
       dashboardContent.style.display = mode === "dashboard" ? "" : "none";
       managementWorkspace.classList.toggle("active", showManagement);
       ledgerWorkspace.classList.toggle("active", showLedger);
       if (leaveWorkspace) leaveWorkspace.classList.toggle("active", showLeave);
       if (userAdminWorkspace) userAdminWorkspace.classList.toggle("active", showUserAdmin);
+      if (backupWorkspace) backupWorkspace.classList.toggle("active", showBackup);
       setActiveNav(mode);
       if (showManagement) {
         setPageTitle("통합관리대장 관리");
@@ -3815,6 +3987,10 @@ HTML = r"""<!doctype html>
         closeLedgerFilter();
         resetUserAdminForm();
         loadUserAccounts();
+      } else if (showBackup) {
+        setPageTitle("백업 관리");
+        closeLedgerFilter();
+        loadBackups();
       } else {
         currentMode = "dashboard";
         setPageTitle("금일 공지사항");
@@ -3832,7 +4008,7 @@ HTML = r"""<!doctype html>
     document.querySelectorAll("[data-open]").forEach((button) => {
       button.addEventListener("click", () => {
         const mode = button.dataset.open;
-        if (mode === "management" || mode === "ledger" || mode === "userAdmin" || mode === "leave") {
+        if (mode === "management" || mode === "ledger" || mode === "userAdmin" || mode === "leave" || mode === "backup") {
           showWorkspace(mode);
           return;
         }
@@ -3980,6 +4156,16 @@ HTML = r"""<!doctype html>
     if (userAdminRefresh) userAdminRefresh.addEventListener("click", loadUserAccounts);
     if (userAdminSave) userAdminSave.addEventListener("click", saveUserAccount);
     if (userAdminRole) userAdminRole.addEventListener("change", syncPermissionChecksForRole);
+    if (backupRefresh) backupRefresh.addEventListener("click", loadBackups);
+    if (backupCreate) backupCreate.addEventListener("click", createBackupNow);
+    if (backupBody) {
+      backupBody.addEventListener("click", (event) => {
+        const downloadButton = event.target.closest("[data-backup-download]");
+        const deleteButton = event.target.closest("[data-backup-delete]");
+        if (downloadButton) downloadBackup(downloadButton.dataset.backupDownload);
+        if (deleteButton) deleteBackup(deleteButton.dataset.backupDelete);
+      });
+    }
     if (userAdminBody) {
       userAdminBody.addEventListener("click", (event) => {
         const editButton = event.target.closest("[data-user-edit]");
@@ -4162,7 +4348,7 @@ HTML = r"""<!doctype html>
     });
 
     const initialView = new URLSearchParams(window.location.search).get("view");
-    showWorkspace(["management", "ledger", "leave", "userAdmin"].includes(initialView) ? initialView : "dashboard");
+    showWorkspace(["management", "ledger", "leave", "userAdmin", "backup"].includes(initialView) ? initialView : "dashboard");
   </script>
 </body>
 </html>
@@ -4305,6 +4491,10 @@ LOGIN_HTML = r"""<!doctype html>
 
 ADMIN_NAV_HTML = r"""
       <button class="nav-item" type="button" data-open="userAdmin"><i data-lucide="info"></i> <span>사용자 관리</span></button>
+"""
+
+BACKUP_NAV_HTML = r"""
+      <button class="nav-item" type="button" data-open="backup"><i data-lucide="database"></i> <span>백업 관리</span></button>
 """
 
 LEAVE_NAV_HTML = r"""
@@ -4471,6 +4661,53 @@ ADMIN_WORKSPACE_HTML = r"""
       </section>
 """
 
+BACKUP_WORKSPACE_HTML = r"""
+      <section class="workspace-view" id="backupWorkspace">
+        <div class="workspace-head">
+          <div class="workspace-title">백업 관리</div>
+          <div class="workspace-actions">
+            <button class="workspace-button" type="button" id="backupRefresh">새로고침</button>
+            <button class="workspace-button" type="button" id="backupCreate">지금 백업하기</button>
+          </div>
+        </div>
+        <div class="workspace-mount">
+          <div class="backup-panel">
+            <div class="backup-summary-grid">
+              <article class="backup-summary-card">
+                <span>자동 백업</span>
+                <strong>매일 03:00</strong>
+              </article>
+              <article class="backup-summary-card">
+                <span>보관 기준</span>
+                <strong>최근 90일</strong>
+              </article>
+              <article class="backup-summary-card">
+                <span>백업 위치</span>
+                <strong id="backupPath">-</strong>
+              </article>
+            </div>
+            <div class="backup-card">
+              <p class="backup-note">
+                백업에는 업무 DB, 메일 설정, 업체 주소록, 암호화 키가 포함됩니다. 나스에서는 이 백업 폴더를 Synology Hyper Backup 대상으로 잡으면 됩니다.
+              </p>
+              <div class="backup-message" id="backupMessage"></div>
+              <table class="backup-table">
+                <thead>
+                  <tr>
+                    <th>백업 파일</th>
+                    <th>생성일</th>
+                    <th>크기</th>
+                    <th>관리</th>
+                  </tr>
+                </thead>
+                <tbody id="backupBody"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </section>
+"""
+
 
 def safe_filename(filename: str) -> str:
     filename = Path(filename).name
@@ -4594,6 +4831,8 @@ def render_app_html(user: dict[str, str]) -> str:
     leave_workspace = LEAVE_WORKSPACE_HTML if leave_enabled else ""
     admin_nav = ADMIN_NAV_HTML if "user_admin" in permissions else ""
     admin_workspace = ADMIN_WORKSPACE_HTML.replace("__PERMISSION_CHECKBOXES__", permissions_html()) if "user_admin" in permissions else ""
+    backup_nav = BACKUP_NAV_HTML if "backup_manage" in permissions else ""
+    backup_workspace = BACKUP_WORKSPACE_HTML if "backup_manage" in permissions else ""
     return (
         HTML
         .replace("__USER_DISPLAY__", html_escape(display))
@@ -4601,6 +4840,8 @@ def render_app_html(user: dict[str, str]) -> str:
         .replace("__LEAVE_WORKSPACE__", leave_workspace)
         .replace("__ADMIN_NAV__", admin_nav)
         .replace("__ADMIN_WORKSPACE__", admin_workspace)
+        .replace("__BACKUP_NAV__", backup_nav)
+        .replace("__BACKUP_WORKSPACE__", backup_workspace)
         .replace("__USER_PERMISSIONS__", json.dumps(permissions, ensure_ascii=False))
         .replace("__PERMISSION_LABELS__", json.dumps({key: label for key, label, _ in PERMISSION_DEFINITIONS}, ensure_ascii=False))
     )
@@ -5111,6 +5352,117 @@ def save_user_account(payload: dict, actor: dict[str, str]) -> int:
 
 def user_has_permission(user: dict[str, str], permission: str) -> bool:
     return permission in normalize_permissions(user.get("permissions", []), user.get("role", "user"))
+
+
+def valid_backup_name(name: str) -> bool:
+    return bool(re.fullmatch(r"workhub_backup_\d{8}_\d{6}\.zip", name))
+
+
+def backup_path_from_name(name: str) -> Path:
+    name = Path(name).name
+    if not valid_backup_name(name):
+        raise ValueError("백업 파일명이 올바르지 않습니다.")
+    path = (BACKUP_DIR / name).resolve()
+    if BACKUP_DIR.resolve() not in path.parents:
+        raise ValueError("백업 파일 경로가 올바르지 않습니다.")
+    return path
+
+
+def backup_file_info(path: Path) -> dict[str, str | int]:
+    stat = path.stat()
+    return {
+        "name": path.name,
+        "size": stat.st_size,
+        "created_at": datetime.fromtimestamp(stat.st_mtime).strftime("%Y-%m-%d %H:%M:%S"),
+    }
+
+
+def list_backup_files() -> list[dict[str, str | int]]:
+    BACKUP_DIR.mkdir(parents=True, exist_ok=True)
+    files = [path for path in BACKUP_DIR.glob("workhub_backup_*.zip") if path.is_file() and valid_backup_name(path.name)]
+    files.sort(key=lambda path: path.stat().st_mtime, reverse=True)
+    return [backup_file_info(path) for path in files]
+
+
+def cleanup_backup_retention() -> None:
+    BACKUP_DIR.mkdir(parents=True, exist_ok=True)
+    cutoff = time.time() - (BACKUP_RETENTION_DAYS * 24 * 60 * 60)
+    for path in BACKUP_DIR.glob("workhub_backup_*.zip"):
+        if path.is_file() and valid_backup_name(path.name) and path.stat().st_mtime < cutoff:
+            path.unlink(missing_ok=True)
+
+
+def safe_sqlite_copy(target_db: Path) -> None:
+    init_db()
+    source = connect_db()
+    target = sqlite3.connect(target_db)
+    try:
+        source.backup(target)
+        target.commit()
+    finally:
+        target.close()
+        source.close()
+
+
+def create_workhub_backup(reason: str = "manual") -> dict[str, str | int]:
+    BACKUP_DIR.mkdir(parents=True, exist_ok=True)
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    output_path = BACKUP_DIR / f"workhub_backup_{timestamp}.zip"
+    with tempfile.TemporaryDirectory(prefix="workhub_backup_", dir=BACKUP_DIR) as temp_dir:
+        temp_db = Path(temp_dir) / "workhub.db"
+        safe_sqlite_copy(temp_db)
+        with zipfile.ZipFile(output_path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+            archive.write(temp_db, "config/workhub.db")
+            for path in (MAIL_SETTINGS_PATH, VENDOR_CONTACTS_PATH, SECRET_KEY_PATH):
+                if path.exists() and path.is_file():
+                    archive.write(path, f"config/{path.name}")
+            archive.writestr(
+                "manifest.json",
+                json.dumps(
+                    {
+                        "created_at": now_text(),
+                        "reason": reason,
+                        "data_dir": str(RUNTIME_ROOT),
+                        "backup_retention_days": BACKUP_RETENTION_DAYS,
+                        "included": [
+                            "config/workhub.db",
+                            "config/mail_settings.json",
+                            "config/vendor_contacts.json",
+                            "config/secret.key",
+                        ],
+                    },
+                    ensure_ascii=False,
+                    indent=2,
+                ),
+            )
+    cleanup_backup_retention()
+    return backup_file_info(output_path)
+
+
+def has_backup_for_date(date_token: str) -> bool:
+    BACKUP_DIR.mkdir(parents=True, exist_ok=True)
+    return any(BACKUP_DIR.glob(f"workhub_backup_{date_token}_*.zip"))
+
+
+def backup_scheduler_loop() -> None:
+    while True:
+        try:
+            now = datetime.now()
+            if now.hour >= AUTO_BACKUP_HOUR and not has_backup_for_date(now.strftime("%Y%m%d")):
+                created = create_workhub_backup("auto")
+                print(f"자동 백업 완료: {created['name']}")
+        except Exception as exc:  # noqa: BLE001
+            print(f"자동 백업 실패: {exc}")
+        time.sleep(5 * 60)
+
+
+def start_backup_scheduler() -> None:
+    global _BACKUP_SCHEDULER_STARTED
+    if _BACKUP_SCHEDULER_STARTED:
+        return
+    _BACKUP_SCHEDULER_STARTED = True
+    thread = threading.Thread(target=backup_scheduler_loop, name="workhub-backup-scheduler", daemon=True)
+    thread.start()
 
 
 def get_leave_type_id(code: str = "annual") -> int:
@@ -6755,6 +7107,43 @@ class WorkhubHandler(BaseHTTPRequestHandler):
             self.send_json({"users": list_users()})
             return
 
+        if self.path == "/api/backups":
+            if not self.require_permission(user, "backup_manage", "백업 관리"):
+                return
+            backups = list_backup_files()
+            self.send_json({
+                "backup_dir": str(BACKUP_DIR),
+                "backups": backups,
+                "last_backup": backups[0]["created_at"] if backups else "",
+                "retention_days": BACKUP_RETENTION_DAYS,
+                "auto_backup_hour": AUTO_BACKUP_HOUR,
+            })
+            return
+
+        if self.path.startswith("/api/backup-download"):
+            if not self.require_permission(user, "backup_manage", "백업 관리"):
+                return
+            parsed = urlsplit(self.path)
+            params = parse_qs(parsed.query)
+            try:
+                path = backup_path_from_name(params.get("name", [""])[0])
+                if not path.exists():
+                    raise FileNotFoundError("백업 파일을 찾지 못했습니다.")
+            except Exception as exc:  # noqa: BLE001
+                self.send_json({"error": str(exc)}, status=400)
+                return
+            data = path.read_bytes()
+            filename = quote(path.name)
+            self.send_response(200)
+            self.send_header("Content-Type", "application/zip")
+            self.send_header("Content-Disposition", f"attachment; filename*=UTF-8''{filename}")
+            self.send_header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
+            self.send_header("Pragma", "no-cache")
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+            return
+
         if self.path == "/api/leaves":
             if not any(user_has_permission(user, permission) for permission in ("leave_view", "leave_approve", "leave_manage")):
                 self.send_json({"error": "연차 조회 권한이 없습니다."}, status=403)
@@ -6836,6 +7225,25 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                 payload = json.loads(self.rfile.read(length).decode("utf-8"))
                 user_id = save_user_account(payload, user)
                 self.send_json({"message": "사용자 계정을 저장했습니다.", "user_id": user_id, "users": list_users()})
+                return
+
+            if self.path == "/api/backup-create":
+                if not self.require_permission(user, "backup_manage", "백업 관리"):
+                    return
+                backup = create_workhub_backup("manual")
+                self.send_json({"message": "백업 파일을 생성했습니다.", "backup": backup})
+                return
+
+            if self.path == "/api/backup-delete":
+                if not self.require_permission(user, "backup_manage", "백업 관리"):
+                    return
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(length).decode("utf-8"))
+                path = backup_path_from_name(clean_payload_text(payload, "name"))
+                if not path.exists():
+                    raise FileNotFoundError("삭제할 백업 파일을 찾지 못했습니다.")
+                path.unlink()
+                self.send_json({"message": "백업 파일을 삭제했습니다.", "name": path.name})
                 return
 
             if self.path == "/api/leave-request":
@@ -7161,6 +7569,7 @@ class WorkhubHandler(BaseHTTPRequestHandler):
 def run(host: str = "127.0.0.1", port: int = 8765) -> None:
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     init_db()
+    start_backup_scheduler()
     server = ThreadingHTTPServer((host, port), WorkhubHandler)
     print(f"(주)소일브릿지 발주 업무자동화 앱 실행 중: http://{host}:{port}")
     server.serve_forever()
