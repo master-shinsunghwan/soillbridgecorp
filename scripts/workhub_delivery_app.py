@@ -2035,7 +2035,7 @@ HTML = r"""<!doctype html>
               <option value="">년도 선택</option>
             </select>
             <select id="managementMonthFilter">
-              <option value="">월별로 보기</option>
+              <option value="">전체 선택</option>
             </select>
             <button class="btn blue" id="managementRefresh" type="button">조회</button>
             <select id="managementPageSize">
@@ -2061,7 +2061,7 @@ HTML = r"""<!doctype html>
             <table class="ledger-table">
               <thead>
                 <tr>
-                  <th>선택</th>
+                  <th><input class="ledger-check" id="managementSelectAll" type="checkbox" title="전체 선택" /></th>
                   <th class="has-filter"><span class="ledger-th-title">주문일자</span><button class="ledger-filter-trigger" type="button" data-management-filter-button="order_date" data-label="주문일자">▼</button></th>
                   <th class="has-filter"><span class="ledger-th-title">출고일</span><button class="ledger-filter-trigger" type="button" data-management-filter-button="ship_date" data-label="출고일">▼</button></th>
                   <th class="has-filter"><span class="ledger-th-title">매입거래처</span><button class="ledger-filter-trigger" type="button" data-management-filter-button="purchase_vendor" data-label="매입거래처">▼</button></th>
@@ -2228,6 +2228,7 @@ HTML = r"""<!doctype html>
     const managementImportDropMain = document.querySelector("#managementImportDropMain");
     const managementBody = document.querySelector("#managementBody");
     const managementMonthTabs = document.querySelector("#managementMonthTabs");
+    const managementSelectAll = document.querySelector("#managementSelectAll");
     const managementSaveAll = document.querySelector("#managementSaveAll");
     const ledgerSaveAll = document.querySelector("#ledgerSaveAll");
     const managementDeleteSelected = document.querySelector("#managementDeleteSelected");
@@ -2428,7 +2429,7 @@ HTML = r"""<!doctype html>
         const month = String(period.month || "").padStart(2, "0");
         return `<option value="${escapeHtml(`${year}-${month}`)}" data-year="${escapeHtml(year)}" data-month="${escapeHtml(month)}">${escapeHtml(year)}년 ${Number(month)}월</option>`;
       }).join("");
-      managementMonthFilter.innerHTML = `<option value="">월별로 보기</option>${periodOptions}`;
+      managementMonthFilter.innerHTML = `<option value="">전체 선택</option>${periodOptions}`;
       if (previousPeriod.year && previousPeriod.month) {
         const value = `${previousPeriod.year}-${previousPeriod.month}`;
         managementMonthFilter.value = Array.from(managementMonthFilter.options).some((option) => option.value === value) ? value : "";
@@ -3641,6 +3642,7 @@ HTML = r"""<!doctype html>
 
     function renderManagement(records) {
       managementBody.innerHTML = "";
+      if (managementSelectAll) managementSelectAll.checked = false;
       if (!records || records.length === 0) {
         const row = document.createElement("tr");
         row.innerHTML = `<td colspan="18">조회된 통합관리대장 데이터가 없습니다.</td>`;
@@ -4634,6 +4636,13 @@ HTML = r"""<!doctype html>
         loadManagementRecords();
       });
     }
+    if (managementSelectAll) {
+      managementSelectAll.addEventListener("change", () => {
+        managementBody.querySelectorAll("tr[data-record-id] [data-row-check]").forEach((checkbox) => {
+          checkbox.checked = managementSelectAll.checked;
+        });
+      });
+    }
     managementDownloadSelected.addEventListener("click", () => downloadManagementExcel("selected", managementDownloadSelected));
     managementDownloadMonth.addEventListener("click", () => downloadManagementExcel("month", managementDownloadMonth));
     managementDownloadYear.addEventListener("click", () => downloadManagementExcel("year", managementDownloadYear));
@@ -4645,6 +4654,10 @@ HTML = r"""<!doctype html>
       if (event.target.closest("[data-management-field]")) markRowDirty(event.target.closest("tr"));
     });
     managementBody.addEventListener("click", (event) => {
+      if (event.target.closest("[data-row-check]") && managementSelectAll) {
+        const checks = Array.from(managementBody.querySelectorAll("tr[data-record-id] [data-row-check]"));
+        managementSelectAll.checked = checks.length > 0 && checks.every((checkbox) => checkbox.checked);
+      }
       const csButton = event.target.closest(".management-cs-button");
       if (csButton) receiveManagementCs(csButton);
     });
