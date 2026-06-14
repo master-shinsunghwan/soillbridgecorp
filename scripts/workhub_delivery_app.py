@@ -120,6 +120,7 @@ export const Upload = {};
 export const Database = {};
 export const CalendarDays = {};
 export const X = {};
+export const Settings = {};
 """.strip()
 
 
@@ -342,6 +343,15 @@ HTML = r"""<!doctype html>
       font-size: 12px;
       font-weight: 900;
       cursor: pointer;
+    }
+    .hidden-file-input {
+      position: fixed;
+      left: -9999px;
+      top: -9999px;
+      width: 1px;
+      height: 1px;
+      opacity: 0;
+      pointer-events: none;
     }
     .nav-item, .nav-section, .app-add {
       display: flex; align-items: center; gap: 13px;
@@ -1765,9 +1775,7 @@ HTML = r"""<!doctype html>
       <button class="nav-item" type="button" data-open="ledger"><i data-lucide="clipboard-check"></i> <span>CS 처리대장</span></button>
       <button class="nav-item" type="button" data-open="cs"><i data-lucide="mail"></i> <span>업체 메일</span></button>
       __LEAVE_NAV__
-      __ADMIN_NAV__
-      __BACKUP_NAV__
-      __SYSTEM_NAV__
+      __ADMIN_TOOLS_NAV__
       <div class="nav-section">TOOLS</div>
       <button class="nav-item" type="button" data-open="invoice"><i data-lucide="file-spreadsheet"></i> <span>송장 추출</span></button>
       <button class="nav-item" type="button" data-open="vehicle"><i data-lucide="truck"></i> <span>차량인수증</span></button>
@@ -2207,12 +2215,8 @@ HTML = r"""<!doctype html>
             <span class="ledger-count" id="ledgerCountLabel">표시 0건</span>
             <button class="btn blue" id="ledgerDownloadExcel" type="button">엑셀 다운로드</button>
             <button class="btn primary" id="ledgerAddCs" type="button">CS 추가</button>
-            <label class="ledger-import-button" for="ledgerImportInput">
-              <i data-lucide="upload"></i>
-              <span id="ledgerImportDropMain">업로드</span>
-              <input id="ledgerImportInput" name="ledger_import" type="file" accept=".xlsx,.xlsm" />
-            </label>
           </div>
+          <input class="hidden-file-input" id="ledgerImportInput" name="ledger_import" type="file" accept=".xlsx,.xlsm" />
           <div class="ledger-wrap">
             <table class="ledger-table">
               <thead>
@@ -2267,12 +2271,8 @@ HTML = r"""<!doctype html>
               <button class="btn blue" id="managementDownloadYear" type="button">년별 다운로드</button>
               <button class="btn blue" id="managementDownloadAll" type="button">전체 다운로드</button>
             </div>
-            <label class="ledger-import-button" for="managementImportInput">
-              <i data-lucide="upload"></i>
-              <span id="managementImportDropMain">업로드</span>
-              <input id="managementImportInput" name="management_import" type="file" accept=".xlsx,.xlsm" />
-            </label>
           </div>
+          <input class="hidden-file-input" id="managementImportInput" name="management_import" type="file" accept=".xlsx,.xlsm" />
           <div class="ledger-wrap management-wrap">
             <table class="ledger-table">
               <thead>
@@ -2328,8 +2328,8 @@ HTML = r"""<!doctype html>
   </div>
 
   <script type="module">
-    import { createIcons, BriefcaseBusiness, Home, MessageCircle, Info, ChevronDown, ChevronRight, PlusSquare, RefreshCw, Ellipsis, Headphones, Package, ClipboardCheck, CircleDollarSign, FileText, FileSpreadsheet, ClipboardList, BarChart3, CopyCheck, Bell, Download, Truck, Mail, Upload, Database, CalendarDays, X } from "/lucide/dist/esm/lucide.js";
-    createIcons({ icons: { BriefcaseBusiness, Home, MessageCircle, Info, ChevronDown, ChevronRight, PlusSquare, RefreshCw, Ellipsis, Headphones, Package, ClipboardCheck, CircleDollarSign, FileText, FileSpreadsheet, ClipboardList, BarChart3, CopyCheck, Bell, Download, Truck, Mail, Upload, Database, CalendarDays, X } });
+    import { createIcons, BriefcaseBusiness, Home, MessageCircle, Info, ChevronDown, ChevronRight, PlusSquare, RefreshCw, Ellipsis, Headphones, Package, ClipboardCheck, CircleDollarSign, FileText, FileSpreadsheet, ClipboardList, BarChart3, CopyCheck, Bell, Download, Truck, Mail, Upload, Database, CalendarDays, X, Settings } from "/lucide/dist/esm/lucide.js";
+    createIcons({ icons: { BriefcaseBusiness, Home, MessageCircle, Info, ChevronDown, ChevronRight, PlusSquare, RefreshCw, Ellipsis, Headphones, Package, ClipboardCheck, CircleDollarSign, FileText, FileSpreadsheet, ClipboardList, BarChart3, CopyCheck, Bell, Download, Truck, Mail, Upload, Database, CalendarDays, X, Settings } });
     if (new URLSearchParams(window.location.search).get("standalone") === "1") {
       document.body.classList.add("standalone");
     }
@@ -2356,8 +2356,6 @@ HTML = r"""<!doctype html>
       setHidden(ledgerSaveAll, !can("ledger_edit"));
       setHidden(ledgerAddCs, !can("ledger_edit"));
       setHidden(saveCsCaseButton, !can("ledger_edit"));
-      setHidden(document.querySelector("label[for='ledgerImportInput']"), !can("excel_upload"));
-      setHidden(document.querySelector("label[for='managementImportInput']"), !can("excel_upload"));
       setHidden(ledgerDownloadExcel, !can("excel_download"));
       managementDownloadButtons.forEach((button) => setHidden(button, !can("excel_download")));
       setHidden(document.querySelector("label[for='vendorContactsFileInput']"), !can("excel_upload"));
@@ -2425,7 +2423,8 @@ HTML = r"""<!doctype html>
     const ledgerAddCs = document.querySelector("#ledgerAddCs");
     const ledgerBody = document.querySelector("#ledgerBody");
     const ledgerImportInput = document.querySelector("#ledgerImportInput");
-    const ledgerImportDropMain = document.querySelector("#ledgerImportDropMain");
+    const ledgerImportDropMain = null;
+    const ledgerImportOpen = document.querySelector("#ledgerImportOpen");
     const managementSearchInput = document.querySelector("#managementSearchInput");
     const managementYearFilter = document.querySelector("#managementYearFilter");
     const managementMonthFilter = document.querySelector("#managementMonthFilter");
@@ -2442,7 +2441,8 @@ HTML = r"""<!doctype html>
       managementDownloadAll,
     ].filter(Boolean);
     const managementImportInput = document.querySelector("#managementImportInput");
-    const managementImportDropMain = document.querySelector("#managementImportDropMain");
+    const managementImportDropMain = null;
+    const managementImportOpen = document.querySelector("#managementImportOpen");
     const managementBody = document.querySelector("#managementBody");
     const managementMonthTabs = document.querySelector("#managementMonthTabs");
     const managementSelectAll = document.querySelector("#managementSelectAll");
@@ -3999,7 +3999,6 @@ HTML = r"""<!doctype html>
     async function uploadLedgerWorkbook() {
       const file = ledgerImportInput.files[0];
       if (!file) return;
-      ledgerImportDropMain.textContent = file.name;
       const formData = new FormData();
       formData.append("file", file);
       notice.textContent = "CS 처리대장 데이터를 DB에 업로드 중입니다.";
@@ -4011,12 +4010,15 @@ HTML = r"""<!doctype html>
         const data = await response.json();
         if (!response.ok) throw new Error(data.error || "CS 처리대장 업로드에 실패했습니다.");
         notice.textContent = data.message || "CS 처리대장 데이터를 업로드했습니다.";
-        await loadLedgerCases();
+        if (currentMode !== "ledger") {
+          showWorkspace("ledger");
+        } else {
+          await loadLedgerCases();
+        }
       } catch (error) {
         notice.textContent = error.message;
       } finally {
         ledgerImportInput.value = "";
-        ledgerImportDropMain.textContent = "업로드";
       }
     }
 
@@ -4136,7 +4138,6 @@ HTML = r"""<!doctype html>
     async function uploadManagementWorkbook() {
       const file = managementImportInput.files[0];
       if (!file) return;
-      managementImportDropMain.textContent = file.name;
       const formData = new FormData();
       formData.append("file", file);
       notice.textContent = "통합관리대장 데이터를 DB에 업로드 중입니다.";
@@ -4148,12 +4149,15 @@ HTML = r"""<!doctype html>
         const data = await response.json();
         if (!response.ok) throw new Error(data.error || "통합관리대장 업로드에 실패했습니다.");
         notice.textContent = data.message || "통합관리대장 데이터를 업로드했습니다.";
-        await loadManagementWorkspaceData();
+        if (currentMode !== "management") {
+          showWorkspace("management");
+        } else {
+          await loadManagementWorkspaceData();
+        }
       } catch (error) {
         notice.textContent = error.message;
       } finally {
         managementImportInput.value = "";
-        managementImportDropMain.textContent = "업로드";
       }
     }
 
@@ -4676,7 +4680,6 @@ HTML = r"""<!doctype html>
         ledgerYearFilter.value = "";
         ledgerMonthFilter.value = "";
         ledgerImportInput.value = "";
-        ledgerImportDropMain.textContent = "업로드";
         Object.keys(ledgerFilters).forEach((key) => delete ledgerFilters[key]);
         closeLedgerFilter();
         loadLedgerCases();
@@ -4697,7 +4700,6 @@ HTML = r"""<!doctype html>
         managementMonthFilter.value = "";
         managementPageSize.value = "500";
         managementImportInput.value = "";
-        managementImportDropMain.textContent = "업로드";
         Object.keys(managementFilters).forEach((key) => delete managementFilters[key]);
         closeLedgerFilter();
         loadManagementWorkspaceData();
@@ -4759,7 +4761,6 @@ HTML = r"""<!doctype html>
         managementMonthFilter.value = "";
         managementPageSize.value = "500";
         managementImportInput.value = "";
-        managementImportDropMain.textContent = "업로드";
         closeLedgerFilter();
         loadManagementWorkspaceData();
       } else if (showLedger) {
@@ -4767,7 +4768,6 @@ HTML = r"""<!doctype html>
         ledgerSearchInput.value = "";
         ledgerStatusFilter.value = "";
         ledgerImportInput.value = "";
-        ledgerImportDropMain.textContent = "업로드";
         Object.keys(ledgerFilters).forEach((key) => delete ledgerFilters[key]);
         closeLedgerFilter();
         loadLedgerCases();
@@ -4825,8 +4825,13 @@ HTML = r"""<!doctype html>
     document.querySelector("#orderNavToggle").addEventListener("click", () => {
       document.querySelector("#orderNavGroup").classList.toggle("open");
     });
+    document.querySelector("#adminNavToggle")?.addEventListener("click", () => {
+      document.querySelector("#adminNavGroup")?.classList.toggle("open");
+    });
     document.querySelector("#noticeInputOpen").addEventListener("click", openNoticePopup);
     importShipmentInputOpen.addEventListener("click", () => openImportShipmentPopup());
+    managementImportOpen?.addEventListener("click", () => managementImportInput.click());
+    ledgerImportOpen?.addEventListener("click", () => ledgerImportInput.click());
     noticePopupClose.addEventListener("click", closeNoticePopup);
     noticePopup.addEventListener("click", (event) => {
       if (event.target === noticePopup) closeNoticePopup();
@@ -4911,18 +4916,6 @@ HTML = r"""<!doctype html>
       vendorContactsFileInput,
       vendorContactsDropMain,
       "업체명/메일주소 엑셀을 선택해주세요."
-    );
-    setupDropzone(
-      document.querySelector("label[for='ledgerImportInput']"),
-      ledgerImportInput,
-      ledgerImportDropMain,
-      "업로드"
-    );
-    setupDropzone(
-      document.querySelector("label[for='managementImportInput']"),
-      managementImportInput,
-      managementImportDropMain,
-      "업로드"
     );
     document.querySelector("#addProductRow").addEventListener("click", () => addProductRow());
     noticeSaveButton.addEventListener("click", saveNoticeTemplate);
@@ -5347,16 +5340,20 @@ LOGIN_HTML = r"""<!doctype html>
 </html>
 """
 
-ADMIN_NAV_HTML = r"""
-      <button class="nav-item" type="button" data-open="userAdmin"><i data-lucide="info"></i> <span>권한설정</span></button>
-"""
-
-BACKUP_NAV_HTML = r"""
-      <button class="nav-item" type="button" data-open="backup"><i data-lucide="database"></i> <span>백업 관리</span></button>
-"""
-
-SYSTEM_NAV_HTML = r"""
-      <button class="nav-item" type="button" data-open="systemUpdate"><i data-lucide="refresh-cw"></i> <span>업데이트 관리</span></button>
+ADMIN_TOOLS_NAV_HTML = r"""
+      <div class="nav-group" id="adminNavGroup">
+        <button class="nav-item" id="adminNavToggle" type="button">
+          <span class="nav-label"><i data-lucide="settings"></i> <span>관리자</span></span>
+          <i class="nav-chevron" data-lucide="chevron-right"></i>
+        </button>
+        <div class="nav-submenu">
+          <button class="nav-subitem" id="managementImportOpen" type="button">통합관리대장 업로드</button>
+          <button class="nav-subitem" id="ledgerImportOpen" type="button">CS처리대장 업로드</button>
+          <button class="nav-subitem" type="button" data-open="systemUpdate">업데이트 관리</button>
+          <button class="nav-subitem" type="button" data-open="backup">백업 관리</button>
+          <button class="nav-subitem" type="button" data-open="userAdmin">권한설정</button>
+        </div>
+      </div>
 """
 
 LEAVE_NAV_HTML = r"""
@@ -5761,26 +5758,23 @@ def render_app_html(user: dict[str, str]) -> str:
     role = role_label(user.get("role", "user"))
     display = display_name if display_name == role else f"{display_name} · {role}"
     permissions = normalize_permissions(user.get("permissions", []), user.get("role", "user"))
+    is_admin = user.get("role") == "admin"
     leave_enabled = any(permission in permissions for permission in ("leave_view", "leave_approve", "leave_manage"))
     leave_title = "연차 관리 및 신청" if any(permission in permissions for permission in ("leave_approve", "leave_manage")) else "연차 신청 및 확인"
     leave_nav = LEAVE_NAV_HTML.replace("__LEAVE_TITLE__", leave_title) if leave_enabled else ""
     leave_workspace = LEAVE_WORKSPACE_HTML.replace("__LEAVE_TITLE__", leave_title) if leave_enabled else ""
-    admin_nav = ADMIN_NAV_HTML if "user_admin" in permissions else ""
-    admin_workspace = ADMIN_WORKSPACE_HTML.replace("__PERMISSION_CHECKBOXES__", permissions_html()) if "user_admin" in permissions else ""
-    backup_nav = BACKUP_NAV_HTML if "backup_manage" in permissions else ""
-    backup_workspace = BACKUP_WORKSPACE_HTML if "backup_manage" in permissions else ""
-    system_nav = SYSTEM_NAV_HTML if "system_update" in permissions else ""
-    system_workspace = SYSTEM_WORKSPACE_HTML if "system_update" in permissions else ""
+    admin_tools_nav = ADMIN_TOOLS_NAV_HTML if is_admin else ""
+    admin_workspace = ADMIN_WORKSPACE_HTML.replace("__PERMISSION_CHECKBOXES__", permissions_html()) if is_admin else ""
+    backup_workspace = BACKUP_WORKSPACE_HTML if is_admin else ""
+    system_workspace = SYSTEM_WORKSPACE_HTML if is_admin else ""
     return (
         HTML
         .replace("__USER_DISPLAY__", html_escape(display))
         .replace("__LEAVE_NAV__", leave_nav)
         .replace("__LEAVE_WORKSPACE__", leave_workspace)
-        .replace("__ADMIN_NAV__", admin_nav)
+        .replace("__ADMIN_TOOLS_NAV__", admin_tools_nav)
         .replace("__ADMIN_WORKSPACE__", admin_workspace)
-        .replace("__BACKUP_NAV__", backup_nav)
         .replace("__BACKUP_WORKSPACE__", backup_workspace)
-        .replace("__SYSTEM_NAV__", system_nav)
         .replace("__SYSTEM_WORKSPACE__", system_workspace)
         .replace("__USER_PERMISSIONS__", json.dumps(permissions, ensure_ascii=False))
         .replace("__PERMISSION_LABELS__", json.dumps({key: label for key, label, _ in PERMISSION_DEFINITIONS}, ensure_ascii=False))
@@ -8462,6 +8456,12 @@ class WorkhubHandler(BaseHTTPRequestHandler):
         self.send_json({"error": f"{label} 권한이 없습니다."}, status=403)
         return False
 
+    def require_admin(self, user: dict[str, str], label: str) -> bool:
+        if user.get("role") == "admin":
+            return True
+        self.send_json({"error": f"{label}은 관리자만 사용할 수 있습니다."}, status=403)
+        return False
+
     def do_GET(self) -> None:
         if self.path.startswith("/lucide/"):
             relative = unquote(self.path.removeprefix("/lucide/"))
@@ -8919,7 +8919,7 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                 return
 
             if self.path == "/api/cs-cases-import":
-                if not self.require_permission(user, "excel_upload", "엑셀 업로드"):
+                if not self.require_admin(user, "CS처리대장 업로드"):
                     return
                 upload_path = save_uploaded_file(fields, "file")
                 inserted, skipped = import_cs_cases_from_workbook(upload_path)
@@ -8931,7 +8931,7 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                 return
 
             if self.path == "/api/management-import":
-                if not self.require_permission(user, "excel_upload", "엑셀 업로드"):
+                if not self.require_admin(user, "통합관리대장 업로드"):
                     return
                 upload_path = save_uploaded_file(fields, "file")
                 inserted, skipped = import_management_workbook(upload_path)
