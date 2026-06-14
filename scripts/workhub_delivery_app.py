@@ -2353,12 +2353,6 @@ HTML = r"""<!doctype html>
               <option value="재발송 완료">재발송 완료</option>
               <option value="전체 처리완료">전체 처리완료</option>
             </select>
-            <select id="ledgerYearFilter">
-              <option value="">년도별로 보기</option>
-            </select>
-            <select id="ledgerMonthFilter">
-              <option value="">월별로 보기</option>
-            </select>
             <button class="btn blue" id="ledgerRefresh" type="button">조회</button>
             <select id="ledgerPageSize">
               <option value="100">100개씩 보기</option>
@@ -2367,13 +2361,10 @@ HTML = r"""<!doctype html>
               <option value="2000">2,000개씩 보기</option>
               <option value="5000">5,000개씩 보기</option>
             </select>
-            <span class="ledger-count" id="ledgerCountLabel">표시 0건</span>
             <div class="download-menu-wrap">
               <button class="btn blue" id="ledgerDownloadMenuButton" type="button">다운로드 선택</button>
               <div class="download-menu" id="ledgerDownloadMenu">
                 <button type="button" data-ledger-download="all">전체 다운로드</button>
-                <button type="button" data-ledger-download="year">년별 다운로드</button>
-                <button type="button" data-ledger-download="month">월별 다운로드</button>
                 <button type="button" data-ledger-download="selected">선택 다운로드</button>
               </div>
             </div>
@@ -2586,7 +2577,6 @@ HTML = r"""<!doctype html>
     const ledgerPageSize = document.querySelector("#ledgerPageSize");
     const ledgerDownloadMenuButton = document.querySelector("#ledgerDownloadMenuButton");
     const ledgerDownloadMenu = document.querySelector("#ledgerDownloadMenu");
-    const ledgerCountLabel = document.querySelector("#ledgerCountLabel");
     const ledgerAddCs = document.querySelector("#ledgerAddCs");
     const ledgerBody = document.querySelector("#ledgerBody");
     const ledgerImportInput = document.querySelector("#ledgerImportInput");
@@ -2729,7 +2719,7 @@ HTML = r"""<!doctype html>
     if (managementWorkspaceMount && managementFields) managementWorkspaceMount.appendChild(managementFields);
     if (ledgerWorkspaceMount && ledgerFields) ledgerWorkspaceMount.appendChild(ledgerFields);
     if (ledgerFilterPopover) document.body.appendChild(ledgerFilterPopover);
-    fillPeriodSelects(ledgerYearFilter, ledgerMonthFilter);
+    if (ledgerYearFilter && ledgerMonthFilter) fillPeriodSelects(ledgerYearFilter, ledgerMonthFilter);
     renderManagementPeriodControls();
     applyStaticPermissions();
     loadNoticeTemplate();
@@ -3887,7 +3877,6 @@ HTML = r"""<!doctype html>
         const field = button.dataset.ledgerFilterButton;
         button.classList.toggle("active", Boolean(ledgerFilters[field]));
       });
-      ledgerCountLabel.textContent = `불러온 ${ledgerCases.length}건 / 표시 ${filtered.length}건`;
       if (currentMode === "ledger") notice.textContent = `${filtered.length}건 조회되었습니다.`;
     }
 
@@ -4139,8 +4128,8 @@ HTML = r"""<!doctype html>
       const query = ledgerSearchInput.value.trim();
       const params = new URLSearchParams({ limit: ledgerPageSize.value || "100" });
       if (query) params.set("q", query);
-      if (ledgerYearFilter.value) params.set("year", ledgerYearFilter.value);
-      if (ledgerMonthFilter.value) params.set("month", ledgerMonthFilter.value);
+      if (ledgerYearFilter?.value) params.set("year", ledgerYearFilter.value);
+      if (ledgerMonthFilter?.value) params.set("month", ledgerMonthFilter.value);
       const url = `/api/cs-cases?${params.toString()}`;
       try {
         const response = await fetch(url);
@@ -4678,8 +4667,8 @@ HTML = r"""<!doctype html>
         }
         fallbackName = "CS처리대장_선택.xlsx";
       } else if (scope === "month") {
-        const year = ledgerYearFilter.value;
-        const month = ledgerMonthFilter.value;
+        const year = ledgerYearFilter?.value || "";
+        const month = ledgerMonthFilter?.value || "";
         if (!year || !month) {
           notice.textContent = "월별 다운로드는 년도와 월을 선택해주세요.";
           return;
@@ -4688,7 +4677,7 @@ HTML = r"""<!doctype html>
         payload.month = month;
         fallbackName = `CS처리대장_${year}년_${Number(month)}월.xlsx`;
       } else if (scope === "year") {
-        const year = ledgerYearFilter.value;
+        const year = ledgerYearFilter?.value || "";
         if (!year) {
           notice.textContent = "년별 다운로드는 년도를 선택해주세요.";
           return;
@@ -4895,8 +4884,8 @@ HTML = r"""<!doctype html>
         templateInput.required = false;
         ledgerSearchInput.value = "";
         ledgerStatusFilter.value = "";
-        ledgerYearFilter.value = "";
-        ledgerMonthFilter.value = "";
+        if (ledgerYearFilter) ledgerYearFilter.value = "";
+        if (ledgerMonthFilter) ledgerMonthFilter.value = "";
         ledgerImportInput.value = "";
         Object.keys(ledgerFilters).forEach((key) => delete ledgerFilters[key]);
         closeLedgerFilter();
@@ -5232,12 +5221,12 @@ HTML = r"""<!doctype html>
     }
     managementPageSize.addEventListener("change", loadManagementRecords);
     ledgerPageSize.addEventListener("change", loadLedgerCases);
-    ledgerYearFilter.addEventListener("change", loadLedgerCases);
+    ledgerYearFilter?.addEventListener("change", loadLedgerCases);
     managementYearFilter.addEventListener("change", () => {
       renderManagementPeriodControls();
       loadManagementRecords();
     });
-    ledgerMonthFilter.addEventListener("change", () => {
+    ledgerMonthFilter?.addEventListener("change", () => {
       ensureYearForMonth(ledgerYearFilter, ledgerMonthFilter);
       loadLedgerCases();
     });
