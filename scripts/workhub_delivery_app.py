@@ -152,14 +152,23 @@ HTML = r"""<!doctype html>
     }
 
     * { box-sizing: border-box; }
+    html { height: 100%; }
     body {
       margin: 0;
       color: var(--text);
       background: var(--bg);
       letter-spacing: 0;
+      height: 100%;
+      overflow: hidden;
     }
 
-    .app { min-height: 100vh; display: grid; grid-template-columns: 232px minmax(0, 1fr); }
+    .app {
+      min-height: 100vh;
+      height: 100vh;
+      display: grid;
+      grid-template-columns: 232px minmax(0, 1fr);
+      overflow: hidden;
+    }
     body.standalone .app { grid-template-columns: minmax(0, 1fr); }
     body.standalone .sidebar,
     body.standalone .top-search,
@@ -290,9 +299,17 @@ HTML = r"""<!doctype html>
     .hash { font-size: 15px; width: 22px; text-align: center; color: #d9e3ff; font-weight: 900; }
     .divider { height: 1px; background: rgba(255,255,255,.12); margin: 18px 6px; }
 
-    main { min-width: 0; }
+    main {
+      min-width: 0;
+      min-height: 0;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
     .topbar {
       height: 74px;
+      flex: 0 0 74px;
       display: grid;
       grid-template-columns: 1fr minmax(260px, 430px) auto;
       align-items: center;
@@ -373,7 +390,15 @@ HTML = r"""<!doctype html>
       background: linear-gradient(145deg, #155bc8, #08a66c);
     }
 
-    .content { padding: 0 22px 24px; display: grid; gap: 16px; }
+    .content {
+      flex: 1 1 auto;
+      min-height: 0;
+      overflow: auto;
+      padding: 0 22px 24px;
+      display: grid;
+      align-content: start;
+      gap: 16px;
+    }
     .card {
       background: var(--panel);
       border: 1px solid var(--line);
@@ -1506,7 +1531,9 @@ HTML = r"""<!doctype html>
       flex-direction: column;
       gap: 12px;
       min-height: 0;
-      height: calc(100vh - 74px);
+      flex: 1 1 auto;
+      height: auto;
+      overflow: hidden;
       padding: 0 22px 24px;
     }
     .workspace-view.active { display: flex; }
@@ -1515,6 +1542,7 @@ HTML = r"""<!doctype html>
       align-items: center;
       justify-content: space-between;
       gap: 12px;
+      flex: 0 0 auto;
       min-height: 48px;
     }
     .workspace-title {
@@ -1555,11 +1583,17 @@ HTML = r"""<!doctype html>
       flex-direction: column;
       flex: 1;
       min-height: 0;
+      overflow: hidden;
     }
     .workspace-view.active .ledger-wrap {
-      flex: 1;
+      flex: 1 1 auto;
       min-height: 0;
       max-height: none;
+      overflow: auto;
+    }
+    .workspace-view.active .ledger-toolbar,
+    .workspace-view.active .management-month-tabs {
+      flex: 0 0 auto;
     }
 
     @media (max-width: 1180px) {
