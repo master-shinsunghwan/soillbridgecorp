@@ -1741,11 +1741,12 @@ HTML = r"""<!doctype html>
       <div class="nav-section">MAIN</div>
       <div class="nav-group open" id="noticeNavGroup">
         <button class="nav-item active" id="noticeNavToggle" type="button" data-view="dashboard">
-          <span class="nav-label"><i data-lucide="home"></i> <span>공지사항</span></span>
+          <span class="nav-label"><i data-lucide="home"></i> <span>공지 및 수출입 업무</span></span>
           <i class="nav-chevron" data-lucide="chevron-right"></i>
         </button>
         <div class="nav-submenu">
           <button class="nav-subitem" id="noticeInputOpen" type="button">공지사항 입력</button>
+          <button class="nav-subitem" id="importShipmentInputOpen" type="button">수입제품 출고 진행 입력</button>
         </div>
       </div>
       <div class="nav-group" id="orderNavGroup">
@@ -1839,7 +1840,6 @@ HTML = r"""<!doctype html>
           </div>
           <div class="import-progress-actions">
             <button class="workspace-button" type="button" id="importShipmentRefresh">새로고침</button>
-            <button class="workspace-button" type="button" id="importShipmentOpen">진행 입력</button>
           </div>
           <div class="import-table-wrap">
             <table class="import-table">
@@ -2363,7 +2363,7 @@ HTML = r"""<!doctype html>
       setHidden(document.querySelector("label[for='vendorContactsFileInput']"), !can("excel_upload"));
       setHidden(saveVendorContactButton, !can("mail_send"));
       document.querySelectorAll('[data-open="cs"]').forEach((button) => setHidden(button, !can("mail_send")));
-      setHidden(importShipmentOpen, !can("import_shipment_manage"));
+      setHidden(importShipmentInputOpen, !can("import_shipment_manage"));
       if (!can("notice_manage")) {
         setHidden(noticeSaveButton, true);
         setHidden(noticeClearButton, true);
@@ -2479,7 +2479,7 @@ HTML = r"""<!doctype html>
     const importShipmentTreeToggle = document.querySelector("#importShipmentTreeToggle");
     const importShipmentSummary = document.querySelector("#importShipmentSummary");
     const importShipmentRefresh = document.querySelector("#importShipmentRefresh");
-    const importShipmentOpen = document.querySelector("#importShipmentOpen");
+    const importShipmentInputOpen = document.querySelector("#importShipmentInputOpen");
     const importShipmentPopup = document.querySelector("#importShipmentPopup");
     const importShipmentClose = document.querySelector("#importShipmentClose");
     const importShipmentSave = document.querySelector("#importShipmentSave");
@@ -4776,7 +4776,7 @@ HTML = r"""<!doctype html>
         closeLedgerFilter();
         loadLeaveData();
       } else if (showUserAdmin) {
-        setPageTitle("사용자 관리");
+        setPageTitle("권한설정");
         closeLedgerFilter();
         resetUserAdminForm();
         loadUserAccounts();
@@ -4826,6 +4826,7 @@ HTML = r"""<!doctype html>
       document.querySelector("#orderNavGroup").classList.toggle("open");
     });
     document.querySelector("#noticeInputOpen").addEventListener("click", openNoticePopup);
+    importShipmentInputOpen.addEventListener("click", () => openImportShipmentPopup());
     noticePopupClose.addEventListener("click", closeNoticePopup);
     noticePopup.addEventListener("click", (event) => {
       if (event.target === noticePopup) closeNoticePopup();
@@ -4834,7 +4835,6 @@ HTML = r"""<!doctype html>
     importShipmentTreeToggle.addEventListener("click", () => {
       importProgressCard.classList.toggle("open");
     });
-    importShipmentOpen.addEventListener("click", () => openImportShipmentPopup());
     importShipmentClose.addEventListener("click", closeImportShipmentPopup);
     importShipmentReset.addEventListener("click", () => resetImportShipmentForm());
     importShipmentSave.addEventListener("click", () => {
@@ -5348,7 +5348,7 @@ LOGIN_HTML = r"""<!doctype html>
 """
 
 ADMIN_NAV_HTML = r"""
-      <button class="nav-item" type="button" data-open="userAdmin"><i data-lucide="info"></i> <span>사용자 관리</span></button>
+      <button class="nav-item" type="button" data-open="userAdmin"><i data-lucide="info"></i> <span>권한설정</span></button>
 """
 
 BACKUP_NAV_HTML = r"""
@@ -5471,7 +5471,7 @@ LEAVE_WORKSPACE_HTML = r"""
 ADMIN_WORKSPACE_HTML = r"""
       <section class="workspace-view" id="userAdminWorkspace">
         <div class="workspace-head">
-          <div class="workspace-title">사용자 관리</div>
+          <div class="workspace-title">권한설정</div>
           <div class="workspace-actions">
             <button class="workspace-button" type="button" id="userAdminRefresh">새로고침</button>
           </div>
