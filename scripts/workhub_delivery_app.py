@@ -1827,6 +1827,50 @@ HTML = r"""<!doctype html>
     .ledger-filter-option,
     .workspace-button { font-size: 11px; }
     .workspace-title { font-size: 16px; }
+    .ledger-table th {
+      padding: 3px 5px;
+      line-height: 1.05;
+      height: 26px;
+      vertical-align: middle;
+    }
+    .ledger-table th.has-filter {
+      padding-right: 22px;
+    }
+    .ledger-th-title {
+      line-height: 1.08;
+    }
+    .ledger-filter-trigger {
+      width: 16px;
+      height: 16px;
+      right: 4px;
+      font-size: 9px;
+    }
+    .ledger-table td {
+      padding: 2px 4px;
+      line-height: 1.1;
+    }
+    .ledger-edit,
+    .ledger-status-select {
+      height: 23px;
+      min-width: 104px;
+      padding: 0 5px;
+      border-radius: 5px;
+    }
+    .ledger-status-select {
+      min-width: 112px;
+    }
+    .management-edit {
+      height: 22px;
+      min-width: 78px;
+      padding: 0 4px;
+    }
+    .management-edit.wide {
+      min-width: 220px;
+    }
+    .management-cs-button,
+    .ledger-save {
+      height: 24px;
+    }
 
     @media (max-width: 1180px) {
       .app { grid-template-columns: 76px minmax(0, 1fr); }
