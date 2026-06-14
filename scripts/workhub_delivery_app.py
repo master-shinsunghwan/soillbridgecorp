@@ -72,6 +72,7 @@ PERMISSION_DEFINITIONS = (
     ("mail_send", "메일 발송", "업체 CS 메일 발송"),
     ("user_admin", "사용자 관리", "계정 추가/수정/권한 변경"),
     ("leave_view", "연차 조회", "연차 내역 조회"),
+    ("leave_approve", "연차 승인", "연차 신청 승인/반려"),
     ("leave_manage", "연차 관리", "연차 등록/수정/삭제"),
 )
 ALL_PERMISSIONS = tuple(key for key, _, _ in PERMISSION_DEFINITIONS)
@@ -104,6 +105,7 @@ export const Download = {};
 export const Truck = {};
 export const Mail = {};
 export const Upload = {};
+export const CalendarDays = {};
 export const X = {};
 """.strip()
 
@@ -763,9 +765,101 @@ HTML = r"""<!doctype html>
     }
     .admin-message { min-height: 20px; color: var(--muted); font-size: 13px; font-weight: 750; }
     .permission-hidden { display: none !important; }
+    .leave-panel { display: grid; gap: 14px; }
+    .leave-summary-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+    .leave-summary-card {
+      min-height: 86px;
+      padding: 16px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: white;
+      box-shadow: var(--shadow);
+    }
+    .leave-summary-card span { display: block; color: var(--muted); font-size: 13px; font-weight: 850; }
+    .leave-summary-card strong { display: block; margin-top: 8px; font-size: 28px; line-height: 1; }
+    .leave-summary-card.accent strong { color: var(--green); }
+    .leave-tabs { display: flex; flex-wrap: wrap; gap: 8px; }
+    .leave-tab {
+      height: 36px;
+      padding: 0 14px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: white;
+      color: #344054;
+      font-size: 13px;
+      font-weight: 900;
+      cursor: pointer;
+    }
+    .leave-tab.active { border-color: var(--blue); color: var(--blue); background: #eff6ff; }
+    .leave-tab-panel { display: none; }
+    .leave-tab-panel.active { display: block; }
+    .leave-grid { display: grid; gap: 14px; }
+    .leave-grid.two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .leave-card {
+      min-width: 0;
+      padding: 16px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: white;
+      box-shadow: var(--shadow);
+    }
+    .leave-card.narrow { max-width: 720px; }
+    .leave-card-title { margin-bottom: 12px; font-size: 16px; font-weight: 950; }
+    .leave-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; align-items: end; }
+    .leave-form label { display: grid; gap: 6px; font-size: 12px; font-weight: 900; color: #344054; }
+    .leave-form label.wide { grid-column: 1 / -1; }
+    .leave-form input,
+    .leave-form select,
+    .leave-form textarea {
+      width: 100%;
+      min-height: 36px;
+      border: 1px solid #cfd6e2;
+      border-radius: 7px;
+      padding: 8px 10px;
+      font-size: 13px;
+      font-weight: 700;
+      background: white;
+    }
+    .leave-form textarea { min-height: 92px; resize: vertical; }
+    .leave-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+    .leave-table th {
+      height: 34px;
+      padding: 0 10px;
+      background: #eef6ff;
+      border-bottom: 1px solid var(--line);
+      text-align: left;
+      font-weight: 900;
+      white-space: nowrap;
+    }
+    .leave-table td {
+      min-height: 38px;
+      padding: 8px 10px;
+      border-bottom: 1px solid #edf1f7;
+      vertical-align: top;
+    }
+    .leave-table tr:last-child td { border-bottom: 0; }
+    .leave-action-row { display: flex; gap: 6px; }
+    .leave-action {
+      height: 30px;
+      border: 1px solid #cfd6e2;
+      border-radius: 7px;
+      background: white;
+      font-size: 12px;
+      font-weight: 850;
+      cursor: pointer;
+    }
+    .leave-action.approve { border-color: #0b8f55; color: #067647; }
+    .leave-action.reject { border-color: #f4a7a7; color: #b42318; }
+    .leave-message { min-height: 20px; color: var(--muted); font-size: 13px; font-weight: 750; }
     @media (max-width: 1100px) {
       .admin-form { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       .permission-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .leave-grid.two,
+      .leave-summary-grid { grid-template-columns: 1fr; }
     }
     .vehicle-fields { display: none; }
     .cs-fields { display: none; }
@@ -1349,6 +1443,7 @@ HTML = r"""<!doctype html>
       <button class="nav-item" type="button" data-open="management"><i data-lucide="database"></i> <span>통합관리대장 관리</span></button>
       <button class="nav-item" type="button" data-open="ledger"><i data-lucide="clipboard-check"></i> <span>CS 처리대장</span></button>
       <button class="nav-item" type="button" data-open="cs"><i data-lucide="mail"></i> <span>업체 메일</span></button>
+      __LEAVE_NAV__
       __ADMIN_NAV__
       <div class="nav-section">TOOLS</div>
       <button class="nav-item" type="button" data-open="invoice"><i data-lucide="file-spreadsheet"></i> <span>송장 추출</span></button>
@@ -1501,6 +1596,7 @@ HTML = r"""<!doctype html>
         </div>
         <div class="workspace-mount" id="ledgerWorkspaceMount"></div>
       </section>
+      __LEAVE_WORKSPACE__
       __ADMIN_WORKSPACE__
     </main>
   </div>
@@ -1832,8 +1928,8 @@ HTML = r"""<!doctype html>
   </div>
 
   <script type="module">
-    import { createIcons, BriefcaseBusiness, Home, MessageCircle, Info, ChevronDown, ChevronRight, PlusSquare, RefreshCw, Ellipsis, Headphones, Package, ClipboardCheck, CircleDollarSign, FileText, FileSpreadsheet, ClipboardList, BarChart3, CopyCheck, Bell, Download, Truck, Mail, Upload, Database, X } from "/lucide/dist/esm/lucide.js";
-    createIcons({ icons: { BriefcaseBusiness, Home, MessageCircle, Info, ChevronDown, ChevronRight, PlusSquare, RefreshCw, Ellipsis, Headphones, Package, ClipboardCheck, CircleDollarSign, FileText, FileSpreadsheet, ClipboardList, BarChart3, CopyCheck, Bell, Download, Truck, Mail, Upload, Database, X } });
+    import { createIcons, BriefcaseBusiness, Home, MessageCircle, Info, ChevronDown, ChevronRight, PlusSquare, RefreshCw, Ellipsis, Headphones, Package, ClipboardCheck, CircleDollarSign, FileText, FileSpreadsheet, ClipboardList, BarChart3, CopyCheck, Bell, Download, Truck, Mail, Upload, Database, CalendarDays, X } from "/lucide/dist/esm/lucide.js";
+    createIcons({ icons: { BriefcaseBusiness, Home, MessageCircle, Info, ChevronDown, ChevronRight, PlusSquare, RefreshCw, Ellipsis, Headphones, Package, ClipboardCheck, CircleDollarSign, FileText, FileSpreadsheet, ClipboardList, BarChart3, CopyCheck, Bell, Download, Truck, Mail, Upload, Database, CalendarDays, X } });
     if (new URLSearchParams(window.location.search).get("standalone") === "1") {
       document.body.classList.add("standalone");
     }
@@ -1969,6 +2065,7 @@ HTML = r"""<!doctype html>
     const noticePopupClose = document.querySelector("#noticePopupClose");
     const managementWorkspace = document.querySelector("#managementWorkspace");
     const ledgerWorkspace = document.querySelector("#ledgerWorkspace");
+    const leaveWorkspace = document.querySelector("#leaveWorkspace");
     const userAdminWorkspace = document.querySelector("#userAdminWorkspace");
     const managementWorkspaceMount = document.querySelector("#managementWorkspaceMount");
     const ledgerWorkspaceMount = document.querySelector("#ledgerWorkspaceMount");
@@ -1983,6 +2080,30 @@ HTML = r"""<!doctype html>
     const userAdminBody = document.querySelector("#userAdminBody");
     const userAdminMessage = document.querySelector("#userAdminMessage");
     const userAdminPermissionChecks = Array.from(document.querySelectorAll("[data-permission-check]"));
+    const leaveRefresh = document.querySelector("#leaveRefresh");
+    const leaveTotalDays = document.querySelector("#leaveTotalDays");
+    const leaveUsedDays = document.querySelector("#leaveUsedDays");
+    const leaveRemainingDays = document.querySelector("#leaveRemainingDays");
+    const leaveMessage = document.querySelector("#leaveMessage");
+    const leaveBalanceBody = document.querySelector("#leaveBalanceBody");
+    const leaveHistoryBody = document.querySelector("#leaveHistoryBody");
+    const leaveApprovalBody = document.querySelector("#leaveApprovalBody");
+    const leaveTypeSelect = document.querySelector("#leaveTypeSelect");
+    const leaveUnitSelect = document.querySelector("#leaveUnitSelect");
+    const leaveStartDate = document.querySelector("#leaveStartDate");
+    const leaveEndDate = document.querySelector("#leaveEndDate");
+    const leaveReasonInput = document.querySelector("#leaveReasonInput");
+    const leaveRequestSubmit = document.querySelector("#leaveRequestSubmit");
+    const leaveAdminUserSelect = document.querySelector("#leaveAdminUserSelect");
+    const leaveAdminTotalInput = document.querySelector("#leaveAdminTotalInput");
+    const leaveAdminUsedInput = document.querySelector("#leaveAdminUsedInput");
+    const leaveBalanceSave = document.querySelector("#leaveBalanceSave");
+    const leaveUsageUserSelect = document.querySelector("#leaveUsageUserSelect");
+    const leaveUsageDatesInput = document.querySelector("#leaveUsageDatesInput");
+    const leaveUsageNoteInput = document.querySelector("#leaveUsageNoteInput");
+    const leaveUsageSave = document.querySelector("#leaveUsageSave");
+    const leaveAdminBalanceBody = document.querySelector("#leaveAdminBalanceBody");
+    const leaveTabs = Array.from(document.querySelectorAll("[data-leave-tab]"));
     let currentMode = "dashboard";
     let vendorContacts = [];
     let ledgerCases = [];
@@ -2158,6 +2279,180 @@ HTML = r"""<!doctype html>
         userAdminMessage.textContent = error.message;
       } finally {
         userAdminSave.disabled = false;
+      }
+    }
+
+    function dayText(value) {
+      const number = Number(value || 0);
+      return `${Number.isInteger(number) ? number : number.toFixed(1)}일`;
+    }
+
+    function renderLeaveSelectOptions(select, rows, valueField = "id", labelField = "name") {
+      if (!select) return;
+      select.innerHTML = rows.map((row) => `<option value="${row[valueField]}">${escapeHtml(row[labelField])}</option>`).join("");
+    }
+
+    function setLeaveTab(tabName) {
+      leaveTabs.forEach((button) => button.classList.toggle("active", button.dataset.leaveTab === tabName));
+      ["mine", "request", "approvals", "admin"].forEach((name) => {
+        const panel = document.querySelector(`#leaveTab${name[0].toUpperCase()}${name.slice(1)}`);
+        if (panel) panel.classList.toggle("active", name === tabName);
+      });
+    }
+
+    function renderLeaveData(data) {
+      if (!leaveWorkspace) return;
+      leaveTotalDays.textContent = dayText(data.summary?.total_days);
+      leaveUsedDays.textContent = dayText(data.summary?.used_days);
+      leaveRemainingDays.textContent = dayText(data.summary?.remaining_days);
+      leaveBalanceBody.innerHTML = (data.balances || []).length
+        ? data.balances.map((row) => `
+          <tr><td>${escapeHtml(row.name)}</td><td>${dayText(row.total_days)}</td><td>${dayText(row.used_days)}</td><td><strong>${dayText(row.remaining_days)}</strong></td></tr>
+        `).join("")
+        : `<tr><td colspan="4">연차 기준이 아직 설정되지 않았습니다.</td></tr>`;
+      leaveHistoryBody.innerHTML = (data.requests || []).length
+        ? data.requests.map((row) => `
+          <tr>
+            <td>${escapeHtml(row.start_date)}${row.start_date === row.end_date ? "" : ` ~ ${escapeHtml(row.end_date)}`}</td>
+            <td>${escapeHtml(row.unit_label)}</td>
+            <td>${dayText(row.requested_days)}</td>
+            <td>${escapeHtml(row.status_label)}</td>
+            <td>${escapeHtml(row.reason)}</td>
+          </tr>
+        `).join("")
+        : `<tr><td colspan="5">연차 사용/신청 이력이 없습니다.</td></tr>`;
+      renderLeaveSelectOptions(leaveTypeSelect, data.leave_types || []);
+      const userOptions = (data.users || []).map((user) => ({
+        id: user.id,
+        name: `${user.display_name} (${user.username})`,
+      }));
+      renderLeaveSelectOptions(leaveAdminUserSelect, userOptions);
+      renderLeaveSelectOptions(leaveUsageUserSelect, userOptions);
+      leaveApprovalBody.innerHTML = (data.pending_requests || []).length
+        ? data.pending_requests.map((row) => `
+          <tr>
+            <td>${escapeHtml(row.requester)}</td>
+            <td>${escapeHtml(row.start_date)}${row.start_date === row.end_date ? "" : ` ~ ${escapeHtml(row.end_date)}`}</td>
+            <td>${escapeHtml(row.unit_label)}</td>
+            <td>${dayText(row.requested_days)}</td>
+            <td>${escapeHtml(row.reason)}</td>
+            <td>
+              <div class="leave-action-row">
+                <button class="leave-action approve" type="button" data-leave-decision="approve" data-leave-id="${row.id}">승인</button>
+                <button class="leave-action reject" type="button" data-leave-decision="reject" data-leave-id="${row.id}">반려</button>
+              </div>
+            </td>
+          </tr>
+        `).join("")
+        : `<tr><td colspan="6">승인 대기 중인 연차 신청이 없습니다.</td></tr>`;
+      leaveAdminBalanceBody.innerHTML = (data.admin_balances || []).length
+        ? data.admin_balances.map((row) => `
+          <tr><td>${escapeHtml(row.display_name)}</td><td>${escapeHtml(row.username)}</td><td>${dayText(row.total_days)}</td><td>${dayText(row.used_days)}</td><td><strong>${dayText(row.remaining_days)}</strong></td></tr>
+        `).join("")
+        : `<tr><td colspan="5">직원 연차 현황이 없습니다.</td></tr>`;
+      document.querySelector('[data-leave-tab="approvals"]')?.classList.toggle("permission-hidden", !data.can_approve);
+      document.querySelector('[data-leave-tab="admin"]')?.classList.toggle("permission-hidden", !data.can_manage);
+    }
+
+    async function loadLeaveData() {
+      if (!leaveWorkspace) return;
+      leaveMessage.textContent = "연차 정보를 불러오는 중입니다.";
+      try {
+        const response = await fetch("/api/leaves");
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "연차 정보를 불러오지 못했습니다.");
+        renderLeaveData(data);
+        leaveMessage.textContent = "";
+      } catch (error) {
+        leaveMessage.textContent = error.message;
+      }
+    }
+
+    async function submitLeaveRequest() {
+      leaveMessage.textContent = "연차 신청을 저장하는 중입니다.";
+      try {
+        const payload = {
+          leave_type_id: leaveTypeSelect.value,
+          unit: leaveUnitSelect.value,
+          start_date: leaveStartDate.value,
+          end_date: leaveEndDate.value,
+          reason: leaveReasonInput.value.trim(),
+        };
+        const response = await fetch("/api/leave-request", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "연차 신청에 실패했습니다.");
+        leaveReasonInput.value = "";
+        leaveMessage.textContent = data.message || "연차 신청이 저장되었습니다.";
+        await loadLeaveData();
+        setLeaveTab("mine");
+      } catch (error) {
+        leaveMessage.textContent = error.message;
+      }
+    }
+
+    async function decideLeaveRequest(requestId, decision) {
+      const comment = decision === "reject" ? window.prompt("반려 사유를 입력해주세요.", "반려") || "반려" : "";
+      leaveMessage.textContent = "연차 신청을 처리하는 중입니다.";
+      try {
+        const response = await fetch("/api/leave-decision", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ request_id: requestId, decision, comment }),
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "연차 신청 처리에 실패했습니다.");
+        leaveMessage.textContent = data.message || "처리되었습니다.";
+        await loadLeaveData();
+      } catch (error) {
+        leaveMessage.textContent = error.message;
+      }
+    }
+
+    async function saveLeaveBalance() {
+      leaveMessage.textContent = "직원 연차 기준을 저장하는 중입니다.";
+      try {
+        const response = await fetch("/api/leave-balance", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            user_id: leaveAdminUserSelect.value,
+            total_days: leaveAdminTotalInput.value,
+            used_days: leaveAdminUsedInput.value,
+          }),
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "연차 기준 저장에 실패했습니다.");
+        leaveMessage.textContent = data.message || "연차 기준을 저장했습니다.";
+        await loadLeaveData();
+      } catch (error) {
+        leaveMessage.textContent = error.message;
+      }
+    }
+
+    async function saveHistoricalLeaveUsage() {
+      leaveMessage.textContent = "기존 사용 연차를 등록하는 중입니다.";
+      try {
+        const response = await fetch("/api/leave-historical", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            user_id: leaveUsageUserSelect.value,
+            usage_dates: leaveUsageDatesInput.value,
+            note: leaveUsageNoteInput.value,
+          }),
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "기존 사용 연차 등록에 실패했습니다.");
+        leaveUsageDatesInput.value = "";
+        leaveUsageNoteInput.value = "";
+        leaveMessage.textContent = data.message || "기존 사용 연차를 등록했습니다.";
+        await loadLeaveData();
+      } catch (error) {
+        leaveMessage.textContent = error.message;
       }
     }
 
@@ -3474,13 +3769,16 @@ HTML = r"""<!doctype html>
     function showWorkspace(mode) {
       closeModal();
       if (mode === "userAdmin" && !userAdminWorkspace) mode = "dashboard";
+      if (mode === "leave" && !leaveWorkspace) mode = "dashboard";
       currentMode = mode;
       const showManagement = mode === "management";
       const showLedger = mode === "ledger";
+      const showLeave = mode === "leave";
       const showUserAdmin = mode === "userAdmin" && Boolean(userAdminWorkspace);
       dashboardContent.style.display = mode === "dashboard" ? "" : "none";
       managementWorkspace.classList.toggle("active", showManagement);
       ledgerWorkspace.classList.toggle("active", showLedger);
+      if (leaveWorkspace) leaveWorkspace.classList.toggle("active", showLeave);
       if (userAdminWorkspace) userAdminWorkspace.classList.toggle("active", showUserAdmin);
       setActiveNav(mode);
       if (showManagement) {
@@ -3499,6 +3797,10 @@ HTML = r"""<!doctype html>
         Object.keys(ledgerFilters).forEach((key) => delete ledgerFilters[key]);
         closeLedgerFilter();
         loadLedgerCases();
+      } else if (showLeave) {
+        setPageTitle("연차 관리");
+        closeLedgerFilter();
+        loadLeaveData();
       } else if (showUserAdmin) {
         setPageTitle("사용자 관리");
         closeLedgerFilter();
@@ -3521,7 +3823,7 @@ HTML = r"""<!doctype html>
     document.querySelectorAll("[data-open]").forEach((button) => {
       button.addEventListener("click", () => {
         const mode = button.dataset.open;
-        if (mode === "management" || mode === "ledger" || mode === "userAdmin") {
+        if (mode === "management" || mode === "ledger" || mode === "userAdmin" || mode === "leave") {
           showWorkspace(mode);
           return;
         }
@@ -3673,6 +3975,19 @@ HTML = r"""<!doctype html>
       userAdminBody.addEventListener("click", (event) => {
         const editButton = event.target.closest("[data-user-edit]");
         if (editButton) editUserAccount(editButton.dataset.userEdit);
+      });
+    }
+    leaveTabs.forEach((button) => {
+      button.addEventListener("click", () => setLeaveTab(button.dataset.leaveTab));
+    });
+    if (leaveRefresh) leaveRefresh.addEventListener("click", loadLeaveData);
+    if (leaveRequestSubmit) leaveRequestSubmit.addEventListener("click", submitLeaveRequest);
+    if (leaveBalanceSave) leaveBalanceSave.addEventListener("click", saveLeaveBalance);
+    if (leaveUsageSave) leaveUsageSave.addEventListener("click", saveHistoricalLeaveUsage);
+    if (leaveApprovalBody) {
+      leaveApprovalBody.addEventListener("click", (event) => {
+        const button = event.target.closest("[data-leave-decision]");
+        if (button) decideLeaveRequest(button.dataset.leaveId, button.dataset.leaveDecision);
       });
     }
     managementPageSize.addEventListener("change", loadManagementRecords);
@@ -3836,7 +4151,7 @@ HTML = r"""<!doctype html>
     });
 
     const initialView = new URLSearchParams(window.location.search).get("view");
-    showWorkspace(initialView === "management" || initialView === "ledger" ? initialView : "dashboard");
+    showWorkspace(["management", "ledger", "leave", "userAdmin"].includes(initialView) ? initialView : "dashboard");
   </script>
 </body>
 </html>
@@ -3979,6 +4294,115 @@ LOGIN_HTML = r"""<!doctype html>
 
 ADMIN_NAV_HTML = r"""
       <button class="nav-item" type="button" data-open="userAdmin"><i data-lucide="info"></i> <span>사용자 관리</span></button>
+"""
+
+LEAVE_NAV_HTML = r"""
+      <button class="nav-item" type="button" data-open="leave"><i data-lucide="calendar-days"></i> <span>연차 관리</span></button>
+"""
+
+LEAVE_WORKSPACE_HTML = r"""
+      <section class="workspace-view" id="leaveWorkspace">
+        <div class="workspace-head">
+          <div class="workspace-title">연차 관리</div>
+          <div class="workspace-actions">
+            <button class="workspace-button" type="button" id="leaveRefresh">새로고침</button>
+          </div>
+        </div>
+        <div class="workspace-mount">
+          <div class="leave-panel">
+            <div class="leave-summary-grid">
+              <article class="leave-summary-card">
+                <span>시작 연차</span>
+                <strong id="leaveTotalDays">0일</strong>
+              </article>
+              <article class="leave-summary-card">
+                <span>사용 연차</span>
+                <strong id="leaveUsedDays">0일</strong>
+              </article>
+              <article class="leave-summary-card accent">
+                <span>남은 연차</span>
+                <strong id="leaveRemainingDays">0일</strong>
+              </article>
+            </div>
+            <div class="leave-tabs">
+              <button class="leave-tab active" type="button" data-leave-tab="mine">내 연차</button>
+              <button class="leave-tab" type="button" data-leave-tab="request">연차 신청</button>
+              <button class="leave-tab" type="button" data-leave-tab="approvals">승인 대기</button>
+              <button class="leave-tab" type="button" data-leave-tab="admin">직원별 관리</button>
+            </div>
+            <div class="leave-message" id="leaveMessage"></div>
+            <section class="leave-tab-panel active" id="leaveTabMine">
+              <div class="leave-grid two">
+                <div class="leave-card">
+                  <div class="leave-card-title">연차 잔여 현황</div>
+                  <table class="leave-table">
+                    <thead><tr><th>유형</th><th>시작</th><th>사용</th><th>잔여</th></tr></thead>
+                    <tbody id="leaveBalanceBody"></tbody>
+                  </table>
+                </div>
+                <div class="leave-card">
+                  <div class="leave-card-title">연차 사용/신청 이력</div>
+                  <table class="leave-table">
+                    <thead><tr><th>기간</th><th>구분</th><th>수량</th><th>상태</th><th>사유</th></tr></thead>
+                    <tbody id="leaveHistoryBody"></tbody>
+                  </table>
+                </div>
+              </div>
+            </section>
+            <section class="leave-tab-panel" id="leaveTabRequest">
+              <div class="leave-card narrow">
+                <div class="leave-card-title">연차 신청</div>
+                <div class="leave-form">
+                  <label>휴가 유형<select id="leaveTypeSelect"></select></label>
+                  <label>단위<select id="leaveUnitSelect"><option value="FULL_DAY">연차</option><option value="HALF_DAY">반차</option></select></label>
+                  <label>시작일<input id="leaveStartDate" type="date" /></label>
+                  <label>종료일<input id="leaveEndDate" type="date" /></label>
+                  <label class="wide">사유<textarea id="leaveReasonInput" placeholder="연차 사유를 입력해주세요."></textarea></label>
+                  <button class="workspace-button" type="button" id="leaveRequestSubmit">신청하기</button>
+                </div>
+              </div>
+            </section>
+            <section class="leave-tab-panel" id="leaveTabApprovals">
+              <div class="leave-card">
+                <div class="leave-card-title">승인 대기</div>
+                <table class="leave-table">
+                  <thead><tr><th>신청자</th><th>기간</th><th>구분</th><th>수량</th><th>사유</th><th>처리</th></tr></thead>
+                  <tbody id="leaveApprovalBody"></tbody>
+                </table>
+              </div>
+            </section>
+            <section class="leave-tab-panel" id="leaveTabAdmin">
+              <div class="leave-grid two">
+                <div class="leave-card">
+                  <div class="leave-card-title">직원 연차 기준 설정</div>
+                  <div class="leave-form">
+                    <label>직원<select id="leaveAdminUserSelect"></select></label>
+                    <label>시작 연차<input id="leaveAdminTotalInput" type="number" min="0" step="0.5" value="10" /></label>
+                    <label>기존 사용 연차<input id="leaveAdminUsedInput" type="number" min="0" step="0.5" value="0" /></label>
+                    <button class="workspace-button" type="button" id="leaveBalanceSave">연차 기준 저장</button>
+                  </div>
+                </div>
+                <div class="leave-card">
+                  <div class="leave-card-title">기존 사용 연차 날짜별 입력</div>
+                  <div class="leave-form">
+                    <label>직원<select id="leaveUsageUserSelect"></select></label>
+                    <label class="wide">사용 일자 목록<textarea id="leaveUsageDatesInput" placeholder="2026-01-03&#10;2026-02-14 반차&#10;2026-03-05 0.5"></textarea></label>
+                    <label class="wide">메모<input id="leaveUsageNoteInput" type="text" placeholder="예: 시스템 도입 전 사용분" /></label>
+                    <button class="workspace-button" type="button" id="leaveUsageSave">사용 일자 등록</button>
+                  </div>
+                </div>
+              </div>
+              <div class="leave-card">
+                <div class="leave-card-title">직원별 연차 현황</div>
+                <table class="leave-table">
+                  <thead><tr><th>직원</th><th>아이디</th><th>시작</th><th>사용</th><th>잔여</th></tr></thead>
+                  <tbody id="leaveAdminBalanceBody"></tbody>
+                </table>
+              </div>
+            </section>
+          </div>
+        </div>
+      </section>
 """
 
 ADMIN_WORKSPACE_HTML = r"""
@@ -4154,11 +4578,16 @@ def render_app_html(user: dict[str, str]) -> str:
     role = role_label(user.get("role", "user"))
     display = display_name if display_name == role else f"{display_name} · {role}"
     permissions = normalize_permissions(user.get("permissions", []), user.get("role", "user"))
+    leave_enabled = any(permission in permissions for permission in ("leave_view", "leave_approve", "leave_manage"))
+    leave_nav = LEAVE_NAV_HTML if leave_enabled else ""
+    leave_workspace = LEAVE_WORKSPACE_HTML if leave_enabled else ""
     admin_nav = ADMIN_NAV_HTML if "user_admin" in permissions else ""
     admin_workspace = ADMIN_WORKSPACE_HTML.replace("__PERMISSION_CHECKBOXES__", permissions_html()) if "user_admin" in permissions else ""
     return (
         HTML
         .replace("__USER_DISPLAY__", html_escape(display))
+        .replace("__LEAVE_NAV__", leave_nav)
+        .replace("__LEAVE_WORKSPACE__", leave_workspace)
         .replace("__ADMIN_NAV__", admin_nav)
         .replace("__ADMIN_WORKSPACE__", admin_workspace)
         .replace("__USER_PERMISSIONS__", json.dumps(permissions, ensure_ascii=False))
@@ -4191,6 +4620,57 @@ def verify_password(password: str, stored_hash: str) -> bool:
 
 def token_digest(token: str) -> str:
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def parse_iso_date(value: object) -> date:
+    try:
+        return date.fromisoformat(str(value or "").strip())
+    except ValueError as exc:
+        raise ValueError("날짜 형식이 올바르지 않습니다.") from exc
+
+
+def is_half_step(value: float) -> bool:
+    return abs(value * 2 - round(value * 2)) < 0.000001
+
+
+def clean_leave_days(value: object, label: str) -> float:
+    try:
+        days = float(str(value).strip())
+    except ValueError as exc:
+        raise ValueError(f"{label}는 숫자로 입력해주세요.") from exc
+    if days < 0 or not is_half_step(days):
+        raise ValueError(f"{label}는 0 이상, 0.5일 단위로 입력해주세요.")
+    return round(days, 2)
+
+
+def calculate_leave_days(start: date, end: date, unit: str) -> float:
+    if start > end:
+        raise ValueError("종료일은 시작일보다 빠를 수 없습니다.")
+    if unit == "HALF_DAY":
+        if start != end:
+            raise ValueError("반차는 하루 안에서만 신청할 수 있습니다.")
+        if start.weekday() >= 5:
+            raise ValueError("주말에는 반차를 신청할 수 없습니다.")
+        return 0.5
+    days = 0
+    cursor = start
+    while cursor <= end:
+        if cursor.weekday() < 5:
+            days += 1
+        cursor = date.fromordinal(cursor.toordinal() + 1)
+    if days <= 0:
+        raise ValueError("신청 가능한 평일이 없습니다.")
+    return float(days)
+
+
+def leave_status_label(status: str) -> str:
+    return {
+        "PENDING": "승인대기",
+        "APPROVED": "승인완료",
+        "REJECTED": "반려",
+        "CANCELED": "취소",
+        "HISTORICAL": "기존사용",
+    }.get(status, status)
 
 
 def connect_db() -> sqlite3.Connection:
@@ -4369,6 +4849,79 @@ def init_db() -> None:
         connection.execute("CREATE INDEX IF NOT EXISTS idx_management_receiver_phone ON management_records(receiver_phone)")
         connection.execute("CREATE INDEX IF NOT EXISTS idx_management_order_date ON management_records(order_date)")
         connection.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_management_source ON management_records(source_file, source_sheet, source_row)")
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS leave_types (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                code TEXT NOT NULL UNIQUE,
+                name TEXT NOT NULL,
+                is_paid INTEGER NOT NULL DEFAULT 1,
+                is_active INTEGER NOT NULL DEFAULT 1,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+            """
+        )
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS leave_balances (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                leave_type_id INTEGER NOT NULL,
+                total_days REAL NOT NULL DEFAULT 0,
+                used_days REAL NOT NULL DEFAULT 0,
+                remaining_days REAL NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                UNIQUE(user_id, leave_type_id)
+            )
+            """
+        )
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS leave_requests (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                leave_type_id INTEGER NOT NULL,
+                start_date TEXT NOT NULL,
+                end_date TEXT NOT NULL,
+                unit TEXT NOT NULL,
+                requested_days REAL NOT NULL,
+                reason TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'PENDING',
+                rejected_reason TEXT,
+                decided_by INTEGER,
+                finalized_at TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+            """
+        )
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS leave_balance_ledger (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                balance_id INTEGER NOT NULL,
+                user_id INTEGER NOT NULL,
+                actor_id INTEGER,
+                delta_days REAL NOT NULL,
+                reason TEXT NOT NULL,
+                request_id INTEGER,
+                created_at TEXT NOT NULL
+            )
+            """
+        )
+        timestamp = now_text()
+        for code, name in (("annual", "연차"), ("special", "특별휴가"), ("unpaid", "무급휴가"), ("sick", "병가")):
+            connection.execute(
+                """
+                INSERT OR IGNORE INTO leave_types (code, name, is_paid, is_active, created_at, updated_at)
+                VALUES (?, ?, ?, 1, ?, ?)
+                """,
+                (code, name, 0 if code == "unpaid" else 1, timestamp, timestamp),
+            )
+        connection.execute("CREATE INDEX IF NOT EXISTS idx_leave_requests_user ON leave_requests(user_id)")
+        connection.execute("CREATE INDEX IF NOT EXISTS idx_leave_requests_status ON leave_requests(status)")
         connection.commit()
     finally:
         connection.close()
@@ -4383,7 +4936,7 @@ def authenticate_user(username: str, password: str) -> dict[str, str] | None:
     try:
         row = connection.execute(
             """
-            SELECT username, display_name, role, permissions, password_hash
+            SELECT id, username, display_name, role, permissions, password_hash
               FROM users
              WHERE username = ? AND active = 1
             """,
@@ -4392,6 +4945,7 @@ def authenticate_user(username: str, password: str) -> dict[str, str] | None:
         if not row or not verify_password(password, row["password_hash"]):
             return None
         return {
+            "id": str(row["id"]),
             "username": row["username"],
             "display_name": row["display_name"],
             "role": row["role"],
@@ -4428,7 +4982,7 @@ def current_user_from_token(token: str) -> dict[str, str] | None:
     try:
         row = connection.execute(
             """
-            SELECT users.username, users.display_name, users.role, users.permissions, login_sessions.expires_at
+            SELECT users.id, users.username, users.display_name, users.role, users.permissions, login_sessions.expires_at
               FROM login_sessions
               JOIN users ON users.username = login_sessions.username
              WHERE login_sessions.token_hash = ?
@@ -4443,6 +4997,7 @@ def current_user_from_token(token: str) -> dict[str, str] | None:
             connection.commit()
             return None
         return {
+            "id": str(row["id"]),
             "username": row["username"],
             "display_name": row["display_name"],
             "role": row["role"],
@@ -4545,6 +5100,380 @@ def save_user_account(payload: dict, actor: dict[str, str]) -> int:
 
 def user_has_permission(user: dict[str, str], permission: str) -> bool:
     return permission in normalize_permissions(user.get("permissions", []), user.get("role", "user"))
+
+
+def get_leave_type_id(code: str = "annual") -> int:
+    connection = connect_db()
+    try:
+        row = connection.execute("SELECT id FROM leave_types WHERE code = ?", (code,)).fetchone()
+        if not row:
+            raise ValueError("연차 유형을 찾지 못했습니다.")
+        return int(row["id"])
+    finally:
+        connection.close()
+
+
+def ensure_leave_balance(connection: sqlite3.Connection, user_id: int, leave_type_id: int) -> sqlite3.Row:
+    now = now_text()
+    connection.execute(
+        """
+        INSERT OR IGNORE INTO leave_balances
+            (user_id, leave_type_id, total_days, used_days, remaining_days, created_at, updated_at)
+        VALUES (?, ?, 0, 0, 0, ?, ?)
+        """,
+        (user_id, leave_type_id, now, now),
+    )
+    row = connection.execute(
+        "SELECT * FROM leave_balances WHERE user_id = ? AND leave_type_id = ?",
+        (user_id, leave_type_id),
+    ).fetchone()
+    if not row:
+        raise ValueError("연차 잔여 정보를 만들지 못했습니다.")
+    return row
+
+
+def list_leave_types() -> list[dict[str, str | int]]:
+    connection = connect_db()
+    try:
+        rows = connection.execute(
+            "SELECT id, code, name, is_paid, is_active FROM leave_types WHERE is_active = 1 ORDER BY id"
+        ).fetchall()
+        return [dict(row) for row in rows]
+    finally:
+        connection.close()
+
+
+def list_active_users_for_leave() -> list[dict[str, str | int]]:
+    connection = connect_db()
+    try:
+        rows = connection.execute(
+            """
+            SELECT id, username, display_name
+              FROM users
+             WHERE active = 1
+             ORDER BY display_name COLLATE NOCASE, username COLLATE NOCASE
+            """
+        ).fetchall()
+        return [dict(row) for row in rows]
+    finally:
+        connection.close()
+
+
+def leave_balance_rows(connection: sqlite3.Connection, user_id: int) -> list[dict[str, str | float]]:
+    annual_type_id = get_leave_type_id("annual")
+    ensure_leave_balance(connection, user_id, annual_type_id)
+    rows = connection.execute(
+        """
+        SELECT leave_types.code, leave_types.name, leave_balances.total_days,
+               leave_balances.used_days, leave_balances.remaining_days
+          FROM leave_balances
+          JOIN leave_types ON leave_types.id = leave_balances.leave_type_id
+         WHERE leave_balances.user_id = ?
+         ORDER BY leave_types.id
+        """,
+        (user_id,),
+    ).fetchall()
+    return [
+        {
+            "code": row["code"],
+            "name": row["name"],
+            "total_days": round(float(row["total_days"] or 0), 2),
+            "used_days": round(float(row["used_days"] or 0), 2),
+            "remaining_days": round(float(row["remaining_days"] or 0), 2),
+        }
+        for row in rows
+    ]
+
+
+def list_leave_requests_for_user(connection: sqlite3.Connection, user_id: int) -> list[dict[str, str | float | int]]:
+    rows = connection.execute(
+        """
+        SELECT leave_requests.*, leave_types.name AS leave_type_name, users.display_name
+          FROM leave_requests
+          JOIN leave_types ON leave_types.id = leave_requests.leave_type_id
+          JOIN users ON users.id = leave_requests.user_id
+         WHERE leave_requests.user_id = ?
+         ORDER BY leave_requests.start_date DESC, leave_requests.id DESC
+        """,
+        (user_id,),
+    ).fetchall()
+    return [leave_request_dict(row) for row in rows]
+
+
+def leave_request_dict(row: sqlite3.Row) -> dict[str, str | float | int]:
+    return {
+        "id": row["id"],
+        "user_id": row["user_id"],
+        "requester": row["display_name"] if "display_name" in row.keys() else "",
+        "leave_type_name": row["leave_type_name"] if "leave_type_name" in row.keys() else "연차",
+        "start_date": row["start_date"],
+        "end_date": row["end_date"],
+        "unit": row["unit"],
+        "unit_label": "반차" if row["unit"] == "HALF_DAY" else "연차",
+        "requested_days": round(float(row["requested_days"] or 0), 2),
+        "reason": row["reason"],
+        "status": row["status"],
+        "status_label": leave_status_label(row["status"]),
+        "rejected_reason": row["rejected_reason"] or "",
+        "created_at": row["created_at"],
+    }
+
+
+def list_pending_leave_requests(connection: sqlite3.Connection) -> list[dict[str, str | float | int]]:
+    rows = connection.execute(
+        """
+        SELECT leave_requests.*, leave_types.name AS leave_type_name, users.display_name
+          FROM leave_requests
+          JOIN leave_types ON leave_types.id = leave_requests.leave_type_id
+          JOIN users ON users.id = leave_requests.user_id
+         WHERE leave_requests.status = 'PENDING'
+         ORDER BY leave_requests.created_at ASC
+        """
+    ).fetchall()
+    return [leave_request_dict(row) for row in rows]
+
+
+def list_leave_admin_balances(connection: sqlite3.Connection) -> list[dict[str, str | float | int]]:
+    annual_type_id = get_leave_type_id("annual")
+    users = list_active_users_for_leave()
+    rows = []
+    for user in users:
+        balance = ensure_leave_balance(connection, int(user["id"]), annual_type_id)
+        rows.append({
+            "user_id": user["id"],
+            "username": user["username"],
+            "display_name": user["display_name"],
+            "total_days": round(float(balance["total_days"] or 0), 2),
+            "used_days": round(float(balance["used_days"] or 0), 2),
+            "remaining_days": round(float(balance["remaining_days"] or 0), 2),
+        })
+    return rows
+
+
+def leave_payload(user: dict[str, str]) -> dict:
+    user_id = int(user["id"])
+    connection = connect_db()
+    try:
+        balances = leave_balance_rows(connection, user_id)
+        annual = next((row for row in balances if row["code"] == "annual"), balances[0] if balances else {})
+        payload = {
+            "summary": {
+                "total_days": annual.get("total_days", 0),
+                "used_days": annual.get("used_days", 0),
+                "remaining_days": annual.get("remaining_days", 0),
+            },
+            "balances": balances,
+            "requests": list_leave_requests_for_user(connection, user_id),
+            "leave_types": list_leave_types(),
+            "can_approve": user_has_permission(user, "leave_approve") or user_has_permission(user, "leave_manage"),
+            "can_manage": user_has_permission(user, "leave_manage"),
+            "pending_requests": [],
+            "users": [],
+            "admin_balances": [],
+        }
+        if payload["can_approve"]:
+            payload["pending_requests"] = list_pending_leave_requests(connection)
+        if payload["can_manage"]:
+            payload["users"] = list_active_users_for_leave()
+            payload["admin_balances"] = list_leave_admin_balances(connection)
+        connection.commit()
+        return payload
+    finally:
+        connection.close()
+
+
+def create_leave_request(user: dict[str, str], payload: dict) -> int:
+    init_db()
+    user_id = int(user["id"])
+    leave_type_id = int(payload.get("leave_type_id") or get_leave_type_id("annual"))
+    start = parse_iso_date(payload.get("start_date"))
+    end = parse_iso_date(payload.get("end_date"))
+    unit = clean_payload_text(payload, "unit") or "FULL_DAY"
+    if unit not in {"FULL_DAY", "HALF_DAY"}:
+        raise ValueError("연차 단위가 올바르지 않습니다.")
+    requested_days = calculate_leave_days(start, end, unit)
+    reason = clean_payload_text(payload, "reason")
+    if not reason:
+        raise ValueError("연차 사유를 입력해주세요.")
+    now = now_text()
+    connection = connect_db()
+    try:
+        balance = ensure_leave_balance(connection, user_id, leave_type_id)
+        if float(balance["remaining_days"] or 0) < requested_days:
+            raise ValueError("남은 연차보다 신청 일수가 많습니다.")
+        cursor = connection.execute(
+            """
+            INSERT INTO leave_requests
+                (user_id, leave_type_id, start_date, end_date, unit, requested_days, reason,
+                 status, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, 'PENDING', ?, ?)
+            """,
+            (user_id, leave_type_id, start.isoformat(), end.isoformat(), unit, requested_days, reason, now, now),
+        )
+        connection.commit()
+        return int(cursor.lastrowid)
+    finally:
+        connection.close()
+
+
+def decide_leave_request(request_id: int, actor: dict[str, str], decision: str, comment: str = "") -> None:
+    init_db()
+    if decision not in {"approve", "reject"}:
+        raise ValueError("처리 값이 올바르지 않습니다.")
+    connection = connect_db()
+    try:
+        row = connection.execute("SELECT * FROM leave_requests WHERE id = ?", (request_id,)).fetchone()
+        if not row:
+            raise ValueError("연차 신청건을 찾지 못했습니다.")
+        if row["status"] != "PENDING":
+            raise ValueError("이미 처리된 연차 신청입니다.")
+        now = now_text()
+        if decision == "reject":
+            connection.execute(
+                """
+                UPDATE leave_requests
+                   SET status = 'REJECTED', rejected_reason = ?, decided_by = ?,
+                       finalized_at = ?, updated_at = ?
+                 WHERE id = ?
+                """,
+                (comment or "반려", int(actor["id"]), now, now, request_id),
+            )
+        else:
+            balance = ensure_leave_balance(connection, int(row["user_id"]), int(row["leave_type_id"]))
+            requested_days = float(row["requested_days"] or 0)
+            if float(balance["remaining_days"] or 0) < requested_days:
+                raise ValueError("잔여 연차가 부족해 승인할 수 없습니다.")
+            used = round(float(balance["used_days"] or 0) + requested_days, 2)
+            remaining = round(float(balance["remaining_days"] or 0) - requested_days, 2)
+            connection.execute(
+                "UPDATE leave_balances SET used_days = ?, remaining_days = ?, updated_at = ? WHERE id = ?",
+                (used, remaining, now, balance["id"]),
+            )
+            connection.execute(
+                """
+                INSERT INTO leave_balance_ledger
+                    (balance_id, user_id, actor_id, delta_days, reason, request_id, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (balance["id"], row["user_id"], int(actor["id"]), -requested_days, "연차 승인 차감", request_id, now),
+            )
+            connection.execute(
+                """
+                UPDATE leave_requests
+                   SET status = 'APPROVED', decided_by = ?, finalized_at = ?, updated_at = ?
+                 WHERE id = ?
+                """,
+                (int(actor["id"]), now, now, request_id),
+            )
+        connection.commit()
+    finally:
+        connection.close()
+
+
+def set_leave_balance(payload: dict, actor: dict[str, str]) -> None:
+    init_db()
+    user_id = int(payload.get("user_id") or 0)
+    if not user_id:
+        raise ValueError("직원을 선택해주세요.")
+    total = clean_leave_days(payload.get("total_days"), "시작 연차")
+    used = clean_leave_days(payload.get("used_days"), "기존 사용 연차")
+    if used > total:
+        raise ValueError("기존 사용 연차는 시작 연차보다 클 수 없습니다.")
+    remaining = round(total - used, 2)
+    leave_type_id = get_leave_type_id("annual")
+    now = now_text()
+    connection = connect_db()
+    try:
+        balance = ensure_leave_balance(connection, user_id, leave_type_id)
+        connection.execute(
+            """
+            UPDATE leave_balances
+               SET total_days = ?, used_days = ?, remaining_days = ?, updated_at = ?
+             WHERE id = ?
+            """,
+            (total, used, remaining, now, balance["id"]),
+        )
+        connection.execute(
+            """
+            INSERT INTO leave_balance_ledger
+                (balance_id, user_id, actor_id, delta_days, reason, request_id, created_at)
+            VALUES (?, ?, ?, ?, ?, NULL, ?)
+            """,
+            (balance["id"], user_id, int(actor["id"]), 0, f"초기 연차 설정: 시작 {total}일, 기존 사용 {used}일", now),
+        )
+        connection.commit()
+    finally:
+        connection.close()
+
+
+def parse_historical_leave_lines(text: str) -> list[tuple[date, str, float]]:
+    entries: list[tuple[date, str, float]] = []
+    seen: set[tuple[str, float]] = set()
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        match = re.match(r"^(\d{4}-\d{2}-\d{2})(?:[\s,]+(반차|0\.5|1|1\.0|연차|일))?$", line)
+        if not match:
+            raise ValueError(f"사용 일자 형식이 올바르지 않습니다: {line}")
+        used_date = parse_iso_date(match.group(1))
+        unit_text = match.group(2) or "연차"
+        unit = "HALF_DAY" if unit_text in {"반차", "0.5"} else "FULL_DAY"
+        days = 0.5 if unit == "HALF_DAY" else 1.0
+        key = (used_date.isoformat(), days)
+        if key in seen:
+            raise ValueError(f"같은 사용 일자가 중복 입력됐습니다: {used_date.isoformat()}")
+        seen.add(key)
+        entries.append((used_date, unit, days))
+    if not entries:
+        raise ValueError("사용 일자를 1개 이상 입력해주세요.")
+    return entries
+
+
+def add_historical_leave_usage(payload: dict, actor: dict[str, str]) -> int:
+    init_db()
+    user_id = int(payload.get("user_id") or 0)
+    if not user_id:
+        raise ValueError("직원을 선택해주세요.")
+    entries = parse_historical_leave_lines(str(payload.get("usage_dates", "") or ""))
+    note = clean_payload_text(payload, "note")
+    leave_type_id = get_leave_type_id("annual")
+    now = now_text()
+    connection = connect_db()
+    try:
+        balance = ensure_leave_balance(connection, user_id, leave_type_id)
+        total_days = round(sum(entry[2] for entry in entries), 2)
+        if float(balance["remaining_days"] or 0) < total_days:
+            raise ValueError("잔여 연차보다 기존 사용 연차가 많습니다.")
+        for used_date, unit, days in entries:
+            reason = f"기존 사용 연차 등록{': ' + note if note else ''}"
+            cursor = connection.execute(
+                """
+                INSERT INTO leave_requests
+                    (user_id, leave_type_id, start_date, end_date, unit, requested_days, reason,
+                     status, decided_by, finalized_at, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, 'APPROVED', ?, ?, ?, ?)
+                """,
+                (user_id, leave_type_id, used_date.isoformat(), used_date.isoformat(), unit, days, reason, int(actor["id"]), now, now, now),
+            )
+            connection.execute(
+                """
+                INSERT INTO leave_balance_ledger
+                    (balance_id, user_id, actor_id, delta_days, reason, request_id, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (balance["id"], user_id, int(actor["id"]), -days, reason, int(cursor.lastrowid), now),
+            )
+        used = round(float(balance["used_days"] or 0) + total_days, 2)
+        remaining = round(float(balance["remaining_days"] or 0) - total_days, 2)
+        connection.execute(
+            "UPDATE leave_balances SET used_days = ?, remaining_days = ?, updated_at = ? WHERE id = ?",
+            (used, remaining, now, balance["id"]),
+        )
+        connection.commit()
+        return len(entries)
+    finally:
+        connection.close()
 
 
 def extract_invoice_number(value: str) -> str:
@@ -5815,6 +6744,13 @@ class WorkhubHandler(BaseHTTPRequestHandler):
             self.send_json({"users": list_users()})
             return
 
+        if self.path == "/api/leaves":
+            if not any(user_has_permission(user, permission) for permission in ("leave_view", "leave_approve", "leave_manage")):
+                self.send_json({"error": "연차 조회 권한이 없습니다."}, status=403)
+                return
+            self.send_json(leave_payload(user))
+            return
+
         if self.path == "/api/mail-settings":
             if not self.require_permission(user, "mail_send", "메일 발송"):
                 return
@@ -5889,6 +6825,43 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                 payload = json.loads(self.rfile.read(length).decode("utf-8"))
                 user_id = save_user_account(payload, user)
                 self.send_json({"message": "사용자 계정을 저장했습니다.", "user_id": user_id, "users": list_users()})
+                return
+
+            if self.path == "/api/leave-request":
+                if not self.require_permission(user, "leave_view", "연차 조회"):
+                    return
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(length).decode("utf-8"))
+                request_id = create_leave_request(user, payload)
+                self.send_json({"message": "연차 신청이 저장되었습니다.", "request_id": request_id})
+                return
+
+            if self.path == "/api/leave-decision":
+                if not (user_has_permission(user, "leave_approve") or user_has_permission(user, "leave_manage")):
+                    self.send_json({"error": "연차 승인 권한이 없습니다."}, status=403)
+                    return
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(length).decode("utf-8"))
+                decide_leave_request(int(payload.get("request_id", 0)), user, clean_payload_text(payload, "decision"), clean_payload_text(payload, "comment"))
+                self.send_json({"message": "연차 신청을 처리했습니다."})
+                return
+
+            if self.path == "/api/leave-balance":
+                if not self.require_permission(user, "leave_manage", "연차 관리"):
+                    return
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(length).decode("utf-8"))
+                set_leave_balance(payload, user)
+                self.send_json({"message": "직원 연차 기준을 저장했습니다."})
+                return
+
+            if self.path == "/api/leave-historical":
+                if not self.require_permission(user, "leave_manage", "연차 관리"):
+                    return
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(length).decode("utf-8"))
+                count = add_historical_leave_usage(payload, user)
+                self.send_json({"message": f"기존 사용 연차 {count}건을 등록했습니다.", "count": count})
                 return
 
             if self.path == "/api/cs-mail":
