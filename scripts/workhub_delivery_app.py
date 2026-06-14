@@ -240,35 +240,75 @@ HTML = r"""<!doctype html>
       border-radius: 8px;
       box-shadow: var(--shadow);
     }
-    .import-progress-actions {
+    .import-progress-head {
+      min-height: 44px;
+      padding: 0 14px;
       display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      border-bottom: 1px solid var(--line);
+      background: #fbfcff;
+    }
+    .import-progress-title {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      border: 0;
+      background: transparent;
+      color: #111827;
+      font-family: inherit;
+      font-size: 14px;
+      font-weight: 950;
+      cursor: pointer;
+    }
+    .import-progress-title svg {
+      width: 16px;
+      height: 16px;
+      color: #475467;
+      transition: transform .16s ease;
+    }
+    .import-progress-card.open .import-progress-title svg { transform: rotate(90deg); }
+    .import-progress-summary {
+      color: #667085;
+      font-size: 12px;
+      font-weight: 800;
+      white-space: nowrap;
+    }
+    .import-progress-actions {
+      display: none;
       gap: 8px;
       align-items: center;
+      padding: 10px 14px;
+      border-bottom: 1px solid var(--line);
+      background: white;
+    }
+    .import-progress-card.open .import-progress-actions {
+      display: flex;
     }
     .import-table-wrap {
       overflow: auto;
-      border-top: 1px solid var(--line);
     }
     .import-table {
       width: 100%;
-      min-width: 1280px;
+      min-width: 980px;
       border-collapse: collapse;
-      font-size: 13px;
+      font-size: 12px;
     }
     .import-table th {
-      height: 42px;
-      padding: 0 10px;
-      border: 1px solid #111827;
-      background: #fff200;
-      color: #111827;
+      height: 34px;
+      padding: 0 8px;
+      border: 1px solid #cbd5e1;
+      background: #eef6ff;
+      color: #1f2937;
       text-align: center;
       font-weight: 950;
       white-space: nowrap;
     }
     .import-table td {
-      height: 42px;
-      padding: 6px 10px;
-      border: 1px solid #111827;
+      height: 34px;
+      padding: 5px 8px;
+      border: 1px solid #e2e8f0;
       text-align: center;
       font-weight: 700;
       white-space: nowrap;
@@ -287,10 +327,11 @@ HTML = r"""<!doctype html>
       text-align: center;
     }
     .import-row-actions {
-      display: inline-flex;
+      display: none;
       gap: 6px;
       align-items: center;
     }
+    .import-progress-card.open .import-row-actions { display: inline-flex; }
     .import-row-actions button {
       height: 28px;
       border: 1px solid #cbd5e1;
@@ -1789,12 +1830,16 @@ HTML = r"""<!doctype html>
         </section>
 
         <section class="import-progress-card" id="importProgressCard">
-          <div class="dashboard-head">
-            <div class="dashboard-title">수입제품 출고 진행 상황</div>
-            <div class="import-progress-actions">
-              <button class="workspace-button" type="button" id="importShipmentRefresh">새로고침</button>
-              <button class="workspace-button" type="button" id="importShipmentOpen">진행 입력</button>
-            </div>
+          <div class="import-progress-head">
+            <button class="import-progress-title" type="button" id="importShipmentTreeToggle">
+              <i data-lucide="chevron-right"></i>
+              <span>수입제품 출고 진행 상황</span>
+            </button>
+            <div class="import-progress-summary" id="importShipmentSummary">진행 0건</div>
+          </div>
+          <div class="import-progress-actions">
+            <button class="workspace-button" type="button" id="importShipmentRefresh">새로고침</button>
+            <button class="workspace-button" type="button" id="importShipmentOpen">진행 입력</button>
           </div>
           <div class="import-table-wrap">
             <table class="import-table">
@@ -1804,19 +1849,17 @@ HTML = r"""<!doctype html>
                   <th>입항일</th>
                   <th>선적항</th>
                   <th>도착항</th>
-                  <th>SHPR</th>
-                  <th>ITEM</th>
-                  <th>선명</th>
+                  <th>제품명</th>
+                  <th>수량</th>
                   <th>HBL NO.</th>
                   <th>SIZE</th>
                   <th>진행상황</th>
                   <th>프리타임</th>
                   <th>입고예정일</th>
-                  <th data-import-manage-col>관리</th>
                 </tr>
               </thead>
               <tbody id="importShipmentBody">
-                <tr><td colspan="13"><div class="import-empty">등록된 수입제품 출고 진행 건이 없습니다.</div></td></tr>
+                <tr><td colspan="11"><div class="import-empty">등록된 수입제품 출고 진행 건이 없습니다.</div></td></tr>
               </tbody>
             </table>
           </div>
@@ -1958,16 +2001,15 @@ HTML = r"""<!doctype html>
         </div>
         <div class="notice-template-grid">
           <input id="importArrivalPort" type="text" placeholder="도착항" />
-          <input id="importShipper" type="text" placeholder="SHPR" />
-          <input id="importItem" type="text" placeholder="ITEM" />
+          <input id="importItem" type="text" placeholder="제품명" />
+          <input id="importQuantity" type="text" placeholder="수량" />
         </div>
         <div class="notice-template-grid">
-          <input id="importVesselName" type="text" placeholder="선명" />
           <input id="importHblNo" type="text" placeholder="HBL NO." />
           <input id="importSize" type="text" placeholder="SIZE" />
+          <input id="importProgressStatus" type="text" placeholder="진행상황" />
         </div>
         <div class="notice-template-grid">
-          <input id="importProgressStatus" type="text" placeholder="진행상황" />
           <input id="importFreeTime" type="text" placeholder="프리타임 예) 7일" />
           <input id="importWarehouseDueDate" type="text" placeholder="입고예정일" />
         </div>
@@ -2322,7 +2364,6 @@ HTML = r"""<!doctype html>
       setHidden(saveVendorContactButton, !can("mail_send"));
       document.querySelectorAll('[data-open="cs"]').forEach((button) => setHidden(button, !can("mail_send")));
       setHidden(importShipmentOpen, !can("import_shipment_manage"));
-      document.querySelectorAll("[data-import-manage-col]").forEach((element) => setHidden(element, !can("import_shipment_manage")));
       if (!can("notice_manage")) {
         setHidden(noticeSaveButton, true);
         setHidden(noticeClearButton, true);
@@ -2434,6 +2475,9 @@ HTML = r"""<!doctype html>
     const noticePopup = document.querySelector("#noticePopup");
     const noticePopupClose = document.querySelector("#noticePopupClose");
     const importShipmentBody = document.querySelector("#importShipmentBody");
+    const importProgressCard = document.querySelector("#importProgressCard");
+    const importShipmentTreeToggle = document.querySelector("#importShipmentTreeToggle");
+    const importShipmentSummary = document.querySelector("#importShipmentSummary");
     const importShipmentRefresh = document.querySelector("#importShipmentRefresh");
     const importShipmentOpen = document.querySelector("#importShipmentOpen");
     const importShipmentPopup = document.querySelector("#importShipmentPopup");
@@ -2445,9 +2489,8 @@ HTML = r"""<!doctype html>
     const importArrivalDate = document.querySelector("#importArrivalDate");
     const importLoadingPort = document.querySelector("#importLoadingPort");
     const importArrivalPort = document.querySelector("#importArrivalPort");
-    const importShipper = document.querySelector("#importShipper");
     const importItem = document.querySelector("#importItem");
-    const importVesselName = document.querySelector("#importVesselName");
+    const importQuantity = document.querySelector("#importQuantity");
     const importHblNo = document.querySelector("#importHblNo");
     const importSize = document.querySelector("#importSize");
     const importProgressStatus = document.querySelector("#importProgressStatus");
@@ -3248,9 +3291,8 @@ HTML = r"""<!doctype html>
       importArrivalDate.value = record?.arrival_date || "";
       importLoadingPort.value = record?.loading_port || "";
       importArrivalPort.value = record?.arrival_port || "";
-      importShipper.value = record?.shipper || "";
       importItem.value = record?.item || "";
-      importVesselName.value = record?.vessel_name || "";
+      importQuantity.value = record?.quantity || "";
       importHblNo.value = record?.hbl_no || "";
       importSize.value = record?.size || "";
       importProgressStatus.value = record?.progress_status || "";
@@ -3265,9 +3307,10 @@ HTML = r"""<!doctype html>
         arrival_date: importArrivalDate.value.trim(),
         loading_port: importLoadingPort.value.trim(),
         arrival_port: importArrivalPort.value.trim(),
-        shipper: importShipper.value.trim(),
+        shipper: "",
         item: importItem.value.trim(),
-        vessel_name: importVesselName.value.trim(),
+        quantity: importQuantity.value.trim(),
+        vessel_name: "",
         hbl_no: importHblNo.value.trim(),
         size: importSize.value.trim(),
         progress_status: importProgressStatus.value.trim(),
@@ -3291,36 +3334,38 @@ HTML = r"""<!doctype html>
     }
 
     function renderImportShipments() {
+      const activeCount = importShipments.filter((record) => !record.completed_at).length;
+      const doneCount = importShipments.length - activeCount;
+      importShipmentSummary.textContent = `진행 ${activeCount}건 / 완료 ${doneCount}건`;
       if (!importShipments.length) {
-        importShipmentBody.innerHTML = `<tr><td colspan="13"><div class="import-empty">등록된 수입제품 출고 진행 건이 없습니다.</div></td></tr>`;
+        importShipmentBody.innerHTML = `<tr><td colspan="11"><div class="import-empty">등록된 수입제품 출고 진행 건이 없습니다.</div></td></tr>`;
         return;
       }
       importShipmentBody.innerHTML = "";
       importShipments.forEach((record) => {
         const row = document.createElement("tr");
         if (record.completed_at) row.classList.add("completed");
-        const manageCell = can("import_shipment_manage")
+        const progressCell = can("import_shipment_manage")
           ? `<td>
+              <span>${escapeHtml(record.completed_at ? "완료" : record.progress_status)}</span>
               <span class="import-row-actions">
                 <button type="button" data-import-edit="${record.id}">수정</button>
                 ${record.completed_at ? "" : `<button type="button" data-import-complete="${record.id}">완료</button>`}
               </span>
             </td>`
-          : "";
+          : `<td>${escapeHtml(record.completed_at ? "완료" : record.progress_status)}</td>`;
         row.innerHTML = `
           <td>${escapeHtml(record.departure_date)}</td>
           <td>${escapeHtml(record.arrival_date)}</td>
           <td>${escapeHtml(record.loading_port)}</td>
           <td>${escapeHtml(record.arrival_port)}</td>
-          <td>${escapeHtml(record.shipper)}</td>
           <td class="left">${escapeHtml(record.item)}</td>
-          <td>${escapeHtml(record.vessel_name)}</td>
+          <td>${escapeHtml(record.quantity)}</td>
           <td>${escapeHtml(record.hbl_no)}</td>
           <td>${escapeHtml(record.size)}</td>
-          <td>${escapeHtml(record.completed_at ? "완료" : record.progress_status)}</td>
+          ${progressCell}
           <td>${escapeHtml(record.free_time)}</td>
           <td>${escapeHtml(record.warehouse_due_date)}</td>
-          ${manageCell}
         `;
         importShipmentBody.appendChild(row);
       });
@@ -4786,6 +4831,9 @@ HTML = r"""<!doctype html>
       if (event.target === noticePopup) closeNoticePopup();
     });
     importShipmentRefresh.addEventListener("click", loadImportShipments);
+    importShipmentTreeToggle.addEventListener("click", () => {
+      importProgressCard.classList.toggle("open");
+    });
     importShipmentOpen.addEventListener("click", () => openImportShipmentPopup());
     importShipmentClose.addEventListener("click", closeImportShipmentPopup);
     importShipmentReset.addEventListener("click", () => resetImportShipmentForm());
@@ -6018,6 +6066,7 @@ def init_db() -> None:
                 arrival_port TEXT,
                 shipper TEXT,
                 item TEXT,
+                quantity TEXT,
                 vessel_name TEXT,
                 hbl_no TEXT,
                 size TEXT,
@@ -6028,6 +6077,11 @@ def init_db() -> None:
             )
             """
         )
+        import_shipment_columns = {
+            row["name"] for row in connection.execute("PRAGMA table_info(import_shipments)").fetchall()
+        }
+        if "quantity" not in import_shipment_columns:
+            connection.execute("ALTER TABLE import_shipments ADD COLUMN quantity TEXT")
         connection.execute(
             """
             CREATE TABLE IF NOT EXISTS leave_types (
@@ -7395,6 +7449,7 @@ IMPORT_SHIPMENT_FIELDS = (
     "arrival_port",
     "shipper",
     "item",
+    "quantity",
     "vessel_name",
     "hbl_no",
     "size",
@@ -7411,7 +7466,7 @@ def list_import_shipments() -> list[dict[str, str | int]]:
         rows = connection.execute(
             """
             SELECT id, created_at, updated_at, departure_date, arrival_date,
-                   loading_port, arrival_port, shipper, item, vessel_name,
+                   loading_port, arrival_port, shipper, item, quantity, vessel_name,
                    hbl_no, size, progress_status, free_time, warehouse_due_date, completed_at
               FROM import_shipments
              ORDER BY CASE WHEN completed_at IS NULL OR completed_at = '' THEN 0 ELSE 1 END,
