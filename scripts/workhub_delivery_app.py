@@ -4772,7 +4772,7 @@ HTML = r"""<!doctype html>
         closeLedgerFilter();
         loadLedgerCases();
       } else if (showLeave) {
-        setPageTitle("연차 관리");
+        setPageTitle(leaveWorkspace.querySelector(".workspace-title")?.textContent || "연차");
         closeLedgerFilter();
         loadLeaveData();
       } else if (showUserAdmin) {
@@ -5360,13 +5360,13 @@ SYSTEM_NAV_HTML = r"""
 """
 
 LEAVE_NAV_HTML = r"""
-      <button class="nav-item" type="button" data-open="leave"><i data-lucide="calendar-days"></i> <span>연차 관리</span></button>
+      <button class="nav-item" type="button" data-open="leave"><i data-lucide="calendar-days"></i> <span>__LEAVE_TITLE__</span></button>
 """
 
 LEAVE_WORKSPACE_HTML = r"""
       <section class="workspace-view" id="leaveWorkspace">
         <div class="workspace-head">
-          <div class="workspace-title">연차 관리</div>
+          <div class="workspace-title">__LEAVE_TITLE__</div>
           <div class="workspace-actions">
             <button class="workspace-button" type="button" id="leaveRefresh">새로고침</button>
           </div>
@@ -5762,8 +5762,9 @@ def render_app_html(user: dict[str, str]) -> str:
     display = display_name if display_name == role else f"{display_name} · {role}"
     permissions = normalize_permissions(user.get("permissions", []), user.get("role", "user"))
     leave_enabled = any(permission in permissions for permission in ("leave_view", "leave_approve", "leave_manage"))
-    leave_nav = LEAVE_NAV_HTML if leave_enabled else ""
-    leave_workspace = LEAVE_WORKSPACE_HTML if leave_enabled else ""
+    leave_title = "연차 관리 및 신청" if any(permission in permissions for permission in ("leave_approve", "leave_manage")) else "연차 신청 및 확인"
+    leave_nav = LEAVE_NAV_HTML.replace("__LEAVE_TITLE__", leave_title) if leave_enabled else ""
+    leave_workspace = LEAVE_WORKSPACE_HTML.replace("__LEAVE_TITLE__", leave_title) if leave_enabled else ""
     admin_nav = ADMIN_NAV_HTML if "user_admin" in permissions else ""
     admin_workspace = ADMIN_WORKSPACE_HTML.replace("__PERMISSION_CHECKBOXES__", permissions_html()) if "user_admin" in permissions else ""
     backup_nav = BACKUP_NAV_HTML if "backup_manage" in permissions else ""
