@@ -1217,6 +1217,36 @@ HTML = r"""<!doctype html>
       white-space: nowrap;
     }
     .ledger-import-button input { display: none; }
+    .management-month-tabs {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 8px;
+      padding: 8px 0 0;
+    }
+    .management-month-tab {
+      height: 30px;
+      min-width: 54px;
+      padding: 0 10px;
+      border: 1px solid #cfd6e2;
+      border-radius: 7px;
+      background: white;
+      color: #344054;
+      font-size: 12px;
+      font-weight: 850;
+      cursor: pointer;
+    }
+    .management-month-tab.active {
+      border-color: #145bc8;
+      background: #eef6ff;
+      color: #145bc8;
+    }
+    .management-download-group {
+      display: inline-flex;
+      flex-wrap: wrap;
+      gap: 5px;
+      align-items: center;
+    }
     .ledger-wrap {
       border: 1px solid #d7dce5;
       border-radius: 8px;
@@ -2002,7 +2032,7 @@ HTML = r"""<!doctype html>
           <div class="ledger-toolbar">
             <input id="managementSearchInput" type="text" placeholder="거래처, 수령자, 상품명, 주소, 송장번호 검색" />
             <select id="managementYearFilter">
-              <option value="">년도별로 보기</option>
+              <option value="">년도 선택</option>
             </select>
             <select id="managementMonthFilter">
               <option value="">월별로 보기</option>
@@ -2010,13 +2040,17 @@ HTML = r"""<!doctype html>
             <button class="btn blue" id="managementRefresh" type="button">조회</button>
             <select id="managementPageSize">
               <option value="100">100개씩 보기</option>
-              <option value="500">500개씩 보기</option>
+              <option value="500" selected>500개씩 보기</option>
               <option value="1000">1,000개씩 보기</option>
               <option value="2000">2,000개씩 보기</option>
               <option value="5000">5,000개씩 보기</option>
             </select>
-            <span class="ledger-count" id="managementCountLabel">표시 0건</span>
-            <button class="btn blue" id="managementDownloadExcel" type="button">엑셀 다운로드</button>
+            <div class="management-download-group">
+              <button class="btn blue" id="managementDownloadSelected" type="button">선택 다운로드</button>
+              <button class="btn blue" id="managementDownloadMonth" type="button">월별 다운로드</button>
+              <button class="btn blue" id="managementDownloadYear" type="button">년별 다운로드</button>
+              <button class="btn blue" id="managementDownloadAll" type="button">전체 다운로드</button>
+            </div>
             <label class="ledger-import-button" for="managementImportInput">
               <i data-lucide="upload"></i>
               <span id="managementImportDropMain">업로드</span>
@@ -2050,6 +2084,7 @@ HTML = r"""<!doctype html>
               <tbody id="managementBody"></tbody>
             </table>
           </div>
+          <div class="management-month-tabs" id="managementMonthTabs"></div>
         </div>
         <div class="ledger-filter-popover" id="ledgerFilterPopover">
           <div class="ledger-filter-title" id="ledgerFilterTitle">필터</div>
@@ -2108,7 +2143,7 @@ HTML = r"""<!doctype html>
       setHidden(document.querySelector("label[for='ledgerImportInput']"), !can("excel_upload"));
       setHidden(document.querySelector("label[for='managementImportInput']"), !can("excel_upload"));
       setHidden(ledgerDownloadExcel, !can("excel_download"));
-      setHidden(managementDownloadExcel, !can("excel_download"));
+      managementDownloadButtons.forEach((button) => setHidden(button, !can("excel_download")));
       setHidden(document.querySelector("label[for='vendorContactsFileInput']"), !can("excel_upload"));
       setHidden(saveVendorContactButton, !can("mail_send"));
       document.querySelectorAll('[data-open="cs"]').forEach((button) => setHidden(button, !can("mail_send")));
@@ -2179,11 +2214,20 @@ HTML = r"""<!doctype html>
     const managementMonthFilter = document.querySelector("#managementMonthFilter");
     const managementRefresh = document.querySelector("#managementRefresh");
     const managementPageSize = document.querySelector("#managementPageSize");
-    const managementDownloadExcel = document.querySelector("#managementDownloadExcel");
-    const managementCountLabel = document.querySelector("#managementCountLabel");
+    const managementDownloadSelected = document.querySelector("#managementDownloadSelected");
+    const managementDownloadMonth = document.querySelector("#managementDownloadMonth");
+    const managementDownloadYear = document.querySelector("#managementDownloadYear");
+    const managementDownloadAll = document.querySelector("#managementDownloadAll");
+    const managementDownloadButtons = [
+      managementDownloadSelected,
+      managementDownloadMonth,
+      managementDownloadYear,
+      managementDownloadAll,
+    ].filter(Boolean);
     const managementImportInput = document.querySelector("#managementImportInput");
     const managementImportDropMain = document.querySelector("#managementImportDropMain");
     const managementBody = document.querySelector("#managementBody");
+    const managementMonthTabs = document.querySelector("#managementMonthTabs");
     const managementSaveAll = document.querySelector("#managementSaveAll");
     const ledgerSaveAll = document.querySelector("#ledgerSaveAll");
     const managementDeleteSelected = document.querySelector("#managementDeleteSelected");
@@ -2286,6 +2330,7 @@ HTML = r"""<!doctype html>
     if (ledgerFilterPopover) document.body.appendChild(ledgerFilterPopover);
     fillPeriodSelects(ledgerYearFilter, ledgerMonthFilter);
     fillPeriodSelects(managementYearFilter, managementMonthFilter);
+    renderManagementMonthTabs();
     applyStaticPermissions();
     loadNoticeTemplate();
 
@@ -2334,6 +2379,17 @@ HTML = r"""<!doctype html>
 
     function ensureYearForMonth(yearSelect, monthSelect) {
       if (monthSelect.value && !yearSelect.value) yearSelect.value = String(new Date().getFullYear());
+    }
+
+    function renderManagementMonthTabs() {
+      if (!managementMonthTabs) return;
+      const activeMonth = managementMonthFilter.value || "";
+      const activeYear = managementYearFilter.value || String(new Date().getFullYear());
+      managementMonthTabs.innerHTML = Array.from({ length: 12 }, (_, index) => {
+        const month = String(index + 1).padStart(2, "0");
+        const active = month === activeMonth ? " active" : "";
+        return `<button class="management-month-tab${active}" type="button" data-management-month="${month}">${activeYear}년 ${index + 1}월</button>`;
+      }).join("");
     }
 
     function roleText(role) {
@@ -3255,7 +3311,6 @@ HTML = r"""<!doctype html>
         const field = button.dataset.managementFilterButton;
         button.classList.toggle("active", Boolean(managementFilters[field]));
       });
-      managementCountLabel.textContent = `불러온 ${managementRecords.length}건 / 표시 ${filtered.length}건`;
       if (currentMode === "management") notice.textContent = `${filtered.length}건 조회되었습니다.`;
     }
 
@@ -3599,10 +3654,11 @@ HTML = r"""<!doctype html>
 
     async function loadManagementRecords() {
       const query = managementSearchInput.value.trim();
-      const params = new URLSearchParams({ limit: managementPageSize.value || "100" });
+      const params = new URLSearchParams({ limit: managementPageSize.value || "500" });
       if (query) params.set("q", query);
       if (managementYearFilter.value) params.set("year", managementYearFilter.value);
       if (managementMonthFilter.value) params.set("month", managementMonthFilter.value);
+      renderManagementMonthTabs();
       try {
         const response = await fetch(`/api/management-records?${params.toString()}`);
         if (!response.ok) return;
@@ -3858,6 +3914,10 @@ HTML = r"""<!doctype html>
       return Array.from(managementBody.querySelectorAll("tr[data-record-id]")).map((row) => collectManagementRow(row));
     }
 
+    function collectSelectedManagementExportRows() {
+      return selectedRows(managementBody, "tr[data-record-id]").map((row) => collectManagementRow(row));
+    }
+
     function textFromCell(row, index) {
       return row.children[index]?.textContent.trim() || "";
     }
@@ -3917,6 +3977,64 @@ HTML = r"""<!doctype html>
         link.remove();
         URL.revokeObjectURL(url);
         notice.textContent = "엑셀 다운로드가 시작되었습니다.";
+      } catch (error) {
+        notice.textContent = error.message;
+      } finally {
+        button.disabled = false;
+      }
+    }
+
+    async function downloadManagementExcel(scope, button) {
+      const payload = { scope };
+      let fallbackName = "통합관리대장.xlsx";
+      if (scope === "selected") {
+        payload.rows = collectSelectedManagementExportRows();
+        if (!payload.rows.length) {
+          notice.textContent = "다운로드할 행을 체크해주세요.";
+          return;
+        }
+        fallbackName = "통합관리대장_선택.xlsx";
+      } else if (scope === "month") {
+        ensureYearForMonth(managementYearFilter, managementMonthFilter);
+        if (!managementYearFilter.value || !managementMonthFilter.value) {
+          notice.textContent = "월별 다운로드는 년도와 월을 선택해주세요.";
+          return;
+        }
+        payload.year = managementYearFilter.value;
+        payload.month = managementMonthFilter.value;
+        fallbackName = `통합관리대장_${payload.year}년_${Number(payload.month)}월.xlsx`;
+      } else if (scope === "year") {
+        if (!managementYearFilter.value) {
+          notice.textContent = "년별 다운로드는 년도를 선택해주세요.";
+          return;
+        }
+        payload.year = managementYearFilter.value;
+        fallbackName = `통합관리대장_${payload.year}년.xlsx`;
+      } else {
+        fallbackName = "통합관리대장_전체.xlsx";
+      }
+
+      try {
+        button.disabled = true;
+        const response = await fetch("/api/management-export", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        if (!response.ok) {
+          const data = await response.json();
+          throw new Error(data.error || "통합관리대장 엑셀 다운로드에 실패했습니다.");
+        }
+        const blob = await response.blob();
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = filenameFromResponse(response, fallbackName);
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        URL.revokeObjectURL(url);
+        notice.textContent = "통합관리대장 엑셀 다운로드가 시작되었습니다.";
       } catch (error) {
         notice.textContent = error.message;
       } finally {
@@ -4409,18 +4527,33 @@ HTML = r"""<!doctype html>
     managementPageSize.addEventListener("change", loadManagementRecords);
     ledgerPageSize.addEventListener("change", loadLedgerCases);
     ledgerYearFilter.addEventListener("change", loadLedgerCases);
-    managementYearFilter.addEventListener("change", loadManagementRecords);
+    managementYearFilter.addEventListener("change", () => {
+      renderManagementMonthTabs();
+      loadManagementRecords();
+    });
     ledgerMonthFilter.addEventListener("change", () => {
       ensureYearForMonth(ledgerYearFilter, ledgerMonthFilter);
       loadLedgerCases();
     });
     managementMonthFilter.addEventListener("change", () => {
       ensureYearForMonth(managementYearFilter, managementMonthFilter);
+      renderManagementMonthTabs();
       loadManagementRecords();
     });
-    managementDownloadExcel.addEventListener("click", () => {
-      downloadExcel("/api/management-export", collectManagementExportRows(), "통합관리대장.xlsx", managementDownloadExcel);
-    });
+    if (managementMonthTabs) {
+      managementMonthTabs.addEventListener("click", (event) => {
+        const button = event.target.closest("[data-management-month]");
+        if (!button) return;
+        if (!managementYearFilter.value) managementYearFilter.value = String(new Date().getFullYear());
+        managementMonthFilter.value = button.dataset.managementMonth || "";
+        renderManagementMonthTabs();
+        loadManagementRecords();
+      });
+    }
+    managementDownloadSelected.addEventListener("click", () => downloadManagementExcel("selected", managementDownloadSelected));
+    managementDownloadMonth.addEventListener("click", () => downloadManagementExcel("month", managementDownloadMonth));
+    managementDownloadYear.addEventListener("click", () => downloadManagementExcel("year", managementDownloadYear));
+    managementDownloadAll.addEventListener("click", () => downloadManagementExcel("all", managementDownloadAll));
     ledgerDownloadExcel.addEventListener("click", () => {
       downloadExcel("/api/cs-cases-export", collectLedgerExportRows(), "CS처리대장.xlsx", ledgerDownloadExcel);
     });
@@ -6661,8 +6794,7 @@ def delete_cs_cases(case_ids: list[int]) -> int:
         connection.close()
 
 
-def list_management_records(query: str = "", limit: int = 300, year: str = "", month: str = "") -> list[dict[str, str | int]]:
-    init_db()
+def management_query_conditions(query: str = "", year: str = "", month: str = "") -> tuple[str, list[object]]:
     query = query.strip()
     params: list[object] = []
     conditions: list[str] = []
@@ -6690,12 +6822,21 @@ def list_management_records(query: str = "", limit: int = 300, year: str = "", m
             """
         )
         params = [pattern] * 15
-    period_condition, period_params = date_period_condition(["order_date", "ship_date", "created_at"], year, month)
+    period_condition, period_params = date_period_condition(["order_date", "ship_date"], year, month)
     if period_condition:
         conditions.append(period_condition)
         params.extend(period_params)
     where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
-    params.append(limit)
+    return where, params
+
+
+def list_management_records(query: str = "", limit: int | None = 300, year: str = "", month: str = "") -> list[dict[str, str | int]]:
+    init_db()
+    where, params = management_query_conditions(query, year, month)
+    limit_sql = ""
+    if limit is not None:
+        limit_sql = "LIMIT ?"
+        params.append(limit)
     connection = connect_db()
     try:
         rows = connection.execute(
@@ -6707,9 +6848,34 @@ def list_management_records(query: str = "", limit: int = 300, year: str = "", m
               FROM management_records
               {where}
              ORDER BY order_date DESC, id DESC
-             LIMIT ?
+             {limit_sql}
             """,
             params,
+        ).fetchall()
+    finally:
+        connection.close()
+    return [dict(row) for row in rows]
+
+
+def list_management_records_by_ids(record_ids: list[int]) -> list[dict[str, str | int]]:
+    init_db()
+    if not record_ids:
+        return []
+    placeholders = ", ".join("?" for _ in record_ids)
+    order_case = " ".join(f"WHEN {record_id} THEN {index}" for index, record_id in enumerate(record_ids))
+    connection = connect_db()
+    try:
+        rows = connection.execute(
+            f"""
+            SELECT id, created_at, source_file, source_sheet, source_row, purchase_vendor,
+                   sales_vendor, transaction_type, ledger_checked, order_date, ship_date,
+                   orderer_name, sender_phone, receiver_name, receiver_phone, product_name,
+                   quantity, receiver_address, courier, invoice_number, memo, cs_received_at
+              FROM management_records
+             WHERE id IN ({placeholders})
+             ORDER BY CASE id {order_case} END
+            """,
+            record_ids,
         ).fetchall()
     finally:
         connection.close()
@@ -7016,6 +7182,35 @@ def management_workbook_bytes_from_template(rows: list[dict]) -> bytes:
     stream = BytesIO()
     workbook.save(stream)
     return stream.getvalue()
+
+
+def management_export_rows_from_payload(payload: dict) -> tuple[list[dict], str]:
+    scope = clean_payload_text(payload, "scope") or "selected"
+    if scope == "selected":
+        rows = payload.get("rows", [])
+        if isinstance(rows, list) and rows:
+            return rows, "통합관리대장_선택"
+        record_ids = [int(value) for value in payload.get("ids", []) if str(value).isdigit()]
+        rows = list_management_records_by_ids(record_ids)
+        return rows, "통합관리대장_선택"
+    if scope == "month":
+        year = clean_payload_text(payload, "year")
+        month = clean_payload_text(payload, "month").zfill(2)
+        if not re.fullmatch(r"\d{4}", year) or not re.fullmatch(r"\d{2}", month) or not (1 <= int(month) <= 12):
+            raise ValueError("월별 다운로드는 년도와 월을 선택해주세요.")
+        rows = list_management_records(limit=None, year=year, month=month)
+        return rows, f"통합관리대장_{year}년_{int(month)}월"
+    if scope == "year":
+        year = clean_payload_text(payload, "year")
+        if not re.fullmatch(r"\d{4}", year):
+            raise ValueError("년별 다운로드는 년도를 선택해주세요.")
+        rows = list_management_records(limit=None, year=year)
+        return rows, f"통합관리대장_{year}년"
+    if scope == "all":
+        rows = list_management_records(limit=None)
+        return rows, "통합관리대장_전체"
+    rows = payload.get("rows", [])
+    return rows if isinstance(rows, list) else [], "통합관리대장"
 
 
 def find_header(headers: list[str], names: set[str]) -> int | None:
@@ -7949,11 +8144,11 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                     return
                 length = int(self.headers.get("Content-Length", "0"))
                 payload = json.loads(self.rfile.read(length).decode("utf-8"))
-                rows = payload.get("rows", [])
-                if not isinstance(rows, list) or not rows:
+                rows, filename_stem = management_export_rows_from_payload(payload)
+                if not rows:
                     raise ValueError("엑셀로 다운로드할 통합관리대장 데이터가 없습니다.")
                 data = management_workbook_bytes_from_template(rows)
-                filename = quote(f"통합관리대장_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx")
+                filename = quote(f"{filename_stem}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx")
                 self.send_response(200)
                 self.send_header("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
                 self.send_header("Content-Disposition", f"attachment; filename*=UTF-8''{filename}")
