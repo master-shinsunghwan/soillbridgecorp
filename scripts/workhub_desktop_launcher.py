@@ -9,7 +9,7 @@ from urllib.request import urlopen
 from workhub_delivery_app import run
 
 
-PORT = 8765
+PORT = 8770
 URL = f"http://127.0.0.1:{PORT}/"
 APP_TITLE = "(주)소일브릿지 업무자동화"
 

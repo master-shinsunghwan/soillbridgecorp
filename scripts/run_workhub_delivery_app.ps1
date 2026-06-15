@@ -3,7 +3,7 @@ $ErrorActionPreference = "Stop"
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $Root = Split-Path -Parent $ScriptDir
 $App = Join-Path $ScriptDir "workhub_delivery_app.py"
-$Port = 8765
+$Port = 8770
 $Url = "http://127.0.0.1:$Port"
 
 $PythonCandidates = @(
