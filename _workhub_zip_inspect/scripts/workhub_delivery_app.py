@@ -20,7 +20,7 @@ import tempfile
 import zipfile
 from copy import copy
 from io import BytesIO
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from email.message import EmailMessage
 from email.utils import formataddr
 from html import escape as html_escape
@@ -120,6 +120,22 @@ PERMISSION_DEFINITIONS = (
 ALL_PERMISSIONS = tuple(key for key, _, _ in PERMISSION_DEFINITIONS)
 DEFAULT_ROLE_PERMISSIONS = {
     "admin": ALL_PERMISSIONS,
+    "sub_admin": (
+        "ledger_delete",
+        "notice_manage",
+        "ledger_edit",
+        "excel_upload",
+        "excel_download",
+        "cs_receive",
+        "mail_send",
+        "import_shipment_manage",
+        "leave_view",
+        "leave_approve",
+        "leave_manage",
+        "crm_view",
+        "crm_manage",
+        "crm_message_manage",
+    ),
     "user": ("ledger_edit", "excel_download", "cs_receive", "leave_view", "crm_view"),
 }
 LUCIDE_FALLBACK_JS = """
@@ -2097,6 +2113,196 @@ HTML = r"""<!doctype html>
       font-size: 11px;
       font-weight: 800;
     }
+    .company-calendar-shell {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(300px, 360px);
+      gap: 12px;
+      align-items: start;
+    }
+    .company-calendar-toolbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--line);
+      background: #fbfcff;
+    }
+    .company-calendar-title {
+      color: #111827;
+      font-size: 18px;
+      font-weight: 950;
+      letter-spacing: 0;
+    }
+    .company-calendar-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      justify-content: flex-end;
+    }
+    .company-calendar-legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      padding: 10px 14px;
+      border-bottom: 1px solid var(--line);
+      color: #667085;
+      font-size: 11px;
+      font-weight: 850;
+    }
+    .calendar-legend-dot {
+      width: 9px;
+      height: 9px;
+      border-radius: 999px;
+      display: inline-block;
+      margin-right: 5px;
+      vertical-align: -1px;
+    }
+    .calendar-legend-dot.project { background: #155bc8; }
+    .calendar-legend-dot.task { background: #0b8f55; }
+    .calendar-legend-dot.leave { background: #c2410c; }
+    .calendar-legend-dot.pending { background: #9333ea; }
+    .company-calendar-weekdays,
+    .company-calendar-grid {
+      display: grid;
+      grid-template-columns: repeat(7, minmax(0, 1fr));
+    }
+    .company-calendar-weekdays {
+      border-bottom: 1px solid var(--line);
+      background: #f8fafc;
+      color: #667085;
+      font-size: 11px;
+      font-weight: 950;
+      text-align: center;
+    }
+    .company-calendar-weekdays div {
+      padding: 9px 4px;
+      border-right: 1px solid #eef2f7;
+    }
+    .company-calendar-weekdays div:last-child { border-right: 0; }
+    .company-calendar-grid {
+      min-height: 620px;
+      background: #eef2f7;
+      gap: 1px;
+    }
+    .calendar-day {
+      min-height: 104px;
+      padding: 8px;
+      border: 0;
+      background: #fff;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      text-align: left;
+      font-family: inherit;
+      cursor: pointer;
+    }
+    .calendar-day.other-month {
+      background: #f8fafc;
+      color: #98a2b3;
+    }
+    .calendar-day.today {
+      box-shadow: inset 0 0 0 2px rgba(21, 91, 200, .32);
+    }
+    .calendar-day.selected {
+      box-shadow: inset 0 0 0 2px #155bc8;
+    }
+    .calendar-day:focus-visible,
+    .calendar-event:focus-visible,
+    .company-calendar-side .company-task-item:focus-visible {
+      outline: 3px solid rgba(21, 91, 200, .35);
+      outline-offset: -2px;
+    }
+    .calendar-date {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 6px;
+      color: #344054;
+      font-size: 12px;
+      font-weight: 950;
+    }
+    .calendar-date-count {
+      min-width: 20px;
+      height: 20px;
+      padding: 0 6px;
+      border-radius: 999px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      background: #eef2ff;
+      color: #155bc8;
+      font-size: 10px;
+      font-weight: 950;
+    }
+    .calendar-event-list {
+      display: grid;
+      gap: 4px;
+      min-width: 0;
+    }
+    .calendar-event {
+      min-height: 22px;
+      padding: 4px 6px;
+      border: 1px solid transparent;
+      border-radius: 6px;
+      overflow: hidden;
+      color: #1f2937;
+      font-size: 11px;
+      font-weight: 850;
+      line-height: 1.2;
+      white-space: nowrap;
+      text-overflow: ellipsis;
+      cursor: pointer;
+    }
+    .calendar-event.project {
+      border-color: #bfdbfe;
+      background: #eff6ff;
+      color: #155bc8;
+    }
+    .calendar-event.task {
+      border-color: #bbf7d0;
+      background: #f0fdf4;
+      color: #067647;
+    }
+    .calendar-event.leave {
+      border-color: #fed7aa;
+      background: #fff7ed;
+      color: #c2410c;
+    }
+    .calendar-event.pending {
+      border-color: #ddd6fe;
+      background: #f5f3ff;
+      color: #7e22ce;
+    }
+    .calendar-more {
+      color: #667085;
+      font-size: 11px;
+      font-weight: 850;
+    }
+    .company-calendar-side {
+      display: grid;
+      gap: 12px;
+    }
+    .calendar-side-date {
+      color: #111827;
+      font-size: 16px;
+      font-weight: 950;
+    }
+    .calendar-side-list {
+      display: grid;
+      gap: 8px;
+      margin-top: 12px;
+    }
+    .calendar-empty {
+      padding: 18px;
+      border: 1px dashed #cbd5e1;
+      border-radius: 8px;
+      background: #f8fafc;
+      color: #667085;
+      font-size: 12px;
+      font-weight: 850;
+      text-align: center;
+    }
     .company-quick-links {
       display: flex;
       flex-wrap: wrap;
@@ -3115,6 +3321,7 @@ HTML = r"""<!doctype html>
       .crm-task-layout { grid-template-columns: 1fr; }
       .crm-task-detail { min-height: 320px; }
       .company-grid { grid-template-columns: 1fr; }
+      .company-calendar-shell { grid-template-columns: 1fr; }
       .company-staff-layout { grid-template-columns: 1fr; }
       .crm-task-toolbar { grid-template-columns: repeat(3, minmax(0, 1fr)); }
       .crm-project-row { grid-template-columns: 1fr; }
@@ -3133,6 +3340,8 @@ HTML = r"""<!doctype html>
       .company-mini-grid,
       .internal-chat-side { grid-template-columns: 1fr; }
       .company-org-tree { min-width: 560px; }
+      .company-calendar-grid { min-height: 520px; }
+      .calendar-day { min-height: 92px; padding: 6px; }
       .internal-chat-form { grid-template-columns: 1fr; }
       .crm-task-toolbar { grid-template-columns: 1fr; }
     }
@@ -3554,6 +3763,7 @@ HTML = r"""<!doctype html>
         </button>
         <div class="nav-submenu">
           <button class="nav-subitem active" type="button" data-view="dashboard" data-company-tab="notice">공지사항</button>
+          <button class="nav-subitem" type="button" data-view="dashboard" data-company-tab="calendar">캘린더</button>
           <button class="nav-subitem" type="button" data-view="dashboard" data-company-tab="rules">사규/가이드</button>
           <button class="nav-subitem" type="button" data-view="dashboard" data-company-tab="staff">직원 대시보드</button>
           <button class="nav-subitem" type="button" data-view="dashboard" data-company-tab="chat">사내 메신저</button>
@@ -3632,6 +3842,7 @@ HTML = r"""<!doctype html>
       <section class="content company-portal" id="dashboardContent">
         <div class="company-tabs">
           <button class="company-tab active" type="button" data-company-tab="notice">공지사항</button>
+          <button class="company-tab" type="button" data-company-tab="calendar">캘린더</button>
           <button class="company-tab" type="button" data-company-tab="rules">사규/가이드</button>
           <button class="company-tab" type="button" data-company-tab="staff">직원 대시보드</button>
           <button class="company-tab" type="button" data-company-tab="chat">사내 메신저</button>
@@ -3657,6 +3868,56 @@ HTML = r"""<!doctype html>
                 </div>
               </div>
             </article>
+          </div>
+        </section>
+
+        <section class="company-panel" data-company-panel="calendar">
+          <div class="company-calendar-shell">
+            <article class="company-card">
+              <div class="company-calendar-toolbar">
+                <div class="company-calendar-title" id="companyCalendarTitle">캘린더</div>
+                <div class="company-calendar-actions">
+                  <button class="crm-mini-button" type="button" id="companyCalendarPrev" aria-label="이전 달"><i data-lucide="chevron-left"></i></button>
+                  <button class="crm-mini-button" type="button" id="companyCalendarToday">오늘</button>
+                  <button class="crm-mini-button" type="button" id="companyCalendarNext" aria-label="다음 달"><i data-lucide="chevron-right"></i></button>
+                  <button class="crm-mini-button" type="button" id="companyCalendarRefresh">새로고침</button>
+                </div>
+              </div>
+              <div class="company-calendar-legend" aria-label="캘린더 항목 구분">
+                <span><i class="calendar-legend-dot project"></i>프로젝트</span>
+                <span><i class="calendar-legend-dot task"></i>업무 마감</span>
+                <span><i class="calendar-legend-dot leave"></i>연차</span>
+                <span><i class="calendar-legend-dot pending"></i>승인대기</span>
+              </div>
+              <div class="company-calendar-weekdays" aria-hidden="true">
+                <div>월</div><div>화</div><div>수</div><div>목</div><div>금</div><div>토</div><div>일</div>
+              </div>
+              <div class="company-calendar-grid" id="companyCalendarGrid" role="grid" aria-label="회사 일정 월간 캘린더">
+                <div class="calendar-empty">캘린더를 불러오는 중입니다.</div>
+              </div>
+            </article>
+            <aside class="company-calendar-side">
+              <article class="company-card">
+                <div class="company-card-head"><span>선택한 날짜</span><button class="crm-mini-button" type="button" data-open="crm" data-crm-nav-tab="tasks">업무보드</button></div>
+                <div class="company-card-body">
+                  <div class="calendar-side-date" id="companyCalendarSelectedDate">오늘</div>
+                  <div class="calendar-side-list" id="companyCalendarSelectedList">
+                    <div class="calendar-empty">날짜를 선택하면 일정이 표시됩니다.</div>
+                  </div>
+                </div>
+              </article>
+              <article class="company-card">
+                <div class="company-card-head"><span>이번 달 요약</span></div>
+                <div class="company-card-body">
+                  <div class="company-mini-grid">
+                    <div><span>프로젝트</span><strong id="companyCalendarProjectCount">0건</strong></div>
+                    <div><span>업무 마감</span><strong id="companyCalendarTaskCount">0건</strong></div>
+                    <div><span>연차</span><strong id="companyCalendarLeaveCount">0건</strong></div>
+                    <div><span>지연/높음</span><strong id="companyCalendarRiskCount">0건</strong></div>
+                  </div>
+                </div>
+              </article>
+            </aside>
           </div>
         </section>
 
@@ -4622,6 +4883,18 @@ HTML = r"""<!doctype html>
     const companyStaffTaskBody = document.querySelector("#companyStaffTaskBody");
     const companyStaffDueToday = document.querySelector("#companyStaffDueToday");
     const companyStaffNoticeTitle = document.querySelector("#companyStaffNoticeTitle");
+    const companyCalendarTitle = document.querySelector("#companyCalendarTitle");
+    const companyCalendarGrid = document.querySelector("#companyCalendarGrid");
+    const companyCalendarPrev = document.querySelector("#companyCalendarPrev");
+    const companyCalendarToday = document.querySelector("#companyCalendarToday");
+    const companyCalendarNext = document.querySelector("#companyCalendarNext");
+    const companyCalendarRefresh = document.querySelector("#companyCalendarRefresh");
+    const companyCalendarSelectedDate = document.querySelector("#companyCalendarSelectedDate");
+    const companyCalendarSelectedList = document.querySelector("#companyCalendarSelectedList");
+    const companyCalendarProjectCount = document.querySelector("#companyCalendarProjectCount");
+    const companyCalendarTaskCount = document.querySelector("#companyCalendarTaskCount");
+    const companyCalendarLeaveCount = document.querySelector("#companyCalendarLeaveCount");
+    const companyCalendarRiskCount = document.querySelector("#companyCalendarRiskCount");
     const internalChatRoomList = document.querySelector("#internalChatRoomList");
     const internalChatTitle = document.querySelector("#internalChatTitle");
     const internalChatHint = document.querySelector("#internalChatHint");
@@ -4819,6 +5092,10 @@ HTML = r"""<!doctype html>
     let internalChatUsers = [];
     let internalChatRoom = { type: "global", userId: "" };
     let companyActiveTab = "notice";
+    let companyCalendarMonth = todayString().slice(0, 7);
+    let companyCalendarSelectedDay = todayString();
+    let companyCalendarEvents = [];
+    let companyCalendarSummary = {};
     let crmActiveTab = "dashboard";
     let crmSelectedTaskId = "";
     const CRM_TASK_STATUSES = ["대기", "진행중", "보류", "완료"];
@@ -4983,7 +5260,9 @@ HTML = r"""<!doctype html>
     }
 
     function roleText(role) {
-      return role === "admin" ? "관리자" : "사용자";
+      if (role === "admin") return "관리자";
+      if (role === "sub_admin") return "부관리자";
+      return "사용자";
     }
 
     function resetUserAdminForm() {
@@ -5006,6 +5285,31 @@ HTML = r"""<!doctype html>
       if (userAdminRole.value === "admin") {
         userAdminPermissionChecks.forEach((checkbox) => {
           checkbox.checked = true;
+        });
+      } else if (userAdminRole.value === "sub_admin") {
+        const defaults = new Set([
+          "ledger_delete",
+          "notice_manage",
+          "ledger_edit",
+          "excel_upload",
+          "excel_download",
+          "cs_receive",
+          "mail_send",
+          "import_shipment_manage",
+          "leave_view",
+          "leave_approve",
+          "leave_manage",
+          "crm_view",
+          "crm_manage",
+          "crm_message_manage",
+        ]);
+        userAdminPermissionChecks.forEach((checkbox) => {
+          checkbox.checked = defaults.has(checkbox.value);
+        });
+      } else {
+        const defaults = new Set(["ledger_edit", "excel_download", "cs_receive", "leave_view", "crm_view"]);
+        userAdminPermissionChecks.forEach((checkbox) => {
+          checkbox.checked = defaults.has(checkbox.value);
         });
       }
     }
@@ -5045,7 +5349,7 @@ HTML = r"""<!doctype html>
         checkbox.checked = permissions.has(checkbox.value);
       });
       userAdminMessage.textContent = `${user.username} 계정 수정 중입니다. ${user.active ? "비밀번호는 변경할 때만 입력하세요." : "사용을 체크하고 저장하면 승인됩니다."}`;
-      userAdminUsername.focus();
+      userAdminUsername?.focus();
     }
 
     async function loadUserAccounts() {
@@ -5410,6 +5714,7 @@ HTML = r"""<!doctype html>
         leaveReasonInput.value = "";
         leaveMessage.textContent = data.message || "연차 신청이 저장되었습니다.";
         await loadLeaveData();
+        if (companyActiveTab === "calendar") await loadCompanyCalendar().catch(() => {});
         setLeaveTab("mine");
       } catch (error) {
         leaveMessage.textContent = error.message;
@@ -5438,6 +5743,7 @@ HTML = r"""<!doctype html>
         if (!response.ok) throw new Error(data.error || "연차 신청 처리에 실패했습니다.");
         leaveMessage.textContent = data.message || "처리되었습니다.";
         await loadLeaveData();
+        if (companyActiveTab === "calendar") await loadCompanyCalendar().catch(() => {});
       } catch (error) {
         leaveMessage.textContent = error.message;
       }
@@ -5482,6 +5788,7 @@ HTML = r"""<!doctype html>
         leaveUsageNoteInput.value = "";
         leaveMessage.textContent = data.message || "기존 사용 연차를 등록했습니다.";
         await loadLeaveData();
+        if (companyActiveTab === "calendar") await loadCompanyCalendar().catch(() => {});
       } catch (error) {
         leaveMessage.textContent = error.message;
       }
@@ -5542,7 +5849,7 @@ HTML = r"""<!doctype html>
       }
       loadNoticeTemplate();
       noticePopup.classList.add("open");
-      setTimeout(() => noticeTitleInput.focus(), 0);
+      setTimeout(() => noticeTitleInput?.focus(), 0);
     }
 
     function closeNoticePopup() {
@@ -5618,7 +5925,7 @@ HTML = r"""<!doctype html>
       }
       resetImportShipmentForm(record);
       importShipmentPopup.classList.add("open");
-      setTimeout(() => importDepartureDate.focus(), 0);
+      setTimeout(() => importDepartureDate?.focus(), 0);
     }
 
     function closeImportShipmentPopup() {
@@ -5953,6 +6260,10 @@ HTML = r"""<!doctype html>
       syncCompanyNavState();
       if (companyActiveTab === "staff") {
         loadCompanyStaffDashboard().catch(() => {});
+      } else if (companyActiveTab === "calendar") {
+        loadCompanyCalendar().catch(() => {
+          if (companyCalendarGrid) companyCalendarGrid.innerHTML = `<div class="calendar-empty">캘린더를 불러오지 못했습니다.</div>`;
+        });
       } else if (companyActiveTab === "chat") {
         loadInternalChatUsers()
           .then(() => loadInternalMessages())
@@ -5960,6 +6271,158 @@ HTML = r"""<!doctype html>
           if (internalChatList) internalChatList.innerHTML = `<div class="internal-chat-empty">메시지를 불러오지 못했습니다.</div>`;
         });
       }
+    }
+
+    function parseLocalDate(value) {
+      const match = String(value || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
+      if (!match) return null;
+      return new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+    }
+
+    function localDateString(dateValue) {
+      const year = dateValue.getFullYear();
+      const month = String(dateValue.getMonth() + 1).padStart(2, "0");
+      const day = String(dateValue.getDate()).padStart(2, "0");
+      return `${year}-${month}-${day}`;
+    }
+
+    function monthTitle(monthText) {
+      const [year, month] = String(monthText || todayString().slice(0, 7)).split("-");
+      return `${year}년 ${Number(month)}월`;
+    }
+
+    function shiftCalendarMonth(delta) {
+      const base = parseLocalDate(`${companyCalendarMonth}-01`) || parseLocalDate(`${todayString().slice(0, 7)}-01`);
+      base.setMonth(base.getMonth() + delta);
+      companyCalendarMonth = localDateString(base).slice(0, 7);
+      companyCalendarSelectedDay = localDateString(base);
+      return loadCompanyCalendar();
+    }
+
+    function calendarEventLabel(event) {
+      if (event.type === "project") return `프로젝트 · ${event.subtitle || ""}`;
+      if (event.type === "leave") return `연차 · ${event.subtitle || ""}`;
+      if (event.type === "pending") return `승인대기 · ${event.subtitle || ""}`;
+      return `업무 · ${event.subtitle || ""}`;
+    }
+
+    function eventsForDay(dayText) {
+      return companyCalendarEvents.filter((event) => event.date === dayText);
+    }
+
+    function renderCalendarEvent(event, compact = true) {
+      const title = compact ? event.title : `${event.title} · ${event.subtitle || ""}`;
+      return `
+        <button class="calendar-event ${escapeHtml(event.type || "task")}" type="button" data-calendar-event-id="${escapeHtml(event.id)}" aria-label="${escapeHtml(calendarEventLabel(event))}">
+          ${escapeHtml(title || "일정")}
+        </button>
+      `;
+    }
+
+    function renderCompanyCalendarSelectedDay() {
+      if (!companyCalendarSelectedDate || !companyCalendarSelectedList) return;
+      const selected = parseLocalDate(companyCalendarSelectedDay);
+      companyCalendarSelectedDate.textContent = selected ? shortKoreanDate(companyCalendarSelectedDay) : companyCalendarSelectedDay;
+      const items = eventsForDay(companyCalendarSelectedDay);
+      if (!items.length) {
+        companyCalendarSelectedList.innerHTML = `<div class="calendar-empty">선택한 날짜에 표시할 일정이 없습니다.</div>`;
+        return;
+      }
+      companyCalendarSelectedList.innerHTML = items.map((event) => `
+        <div class="company-task-item" role="button" tabindex="0" data-calendar-event-id="${escapeHtml(event.id)}" aria-label="${escapeHtml(calendarEventLabel(event))}">
+          <div>
+            <div class="company-task-title">${escapeHtml(event.title || "일정")}</div>
+            <div class="company-task-meta">${escapeHtml(calendarEventLabel(event))}</div>
+          </div>
+          <span class="calendar-event ${escapeHtml(event.type || "task")}">${escapeHtml(event.type === "project" ? "프로젝트" : event.type === "task" ? "업무" : event.type === "pending" ? "대기" : "연차")}</span>
+        </div>
+      `).join("");
+    }
+
+    function renderCompanyCalendar(payload = {}) {
+      if (!companyCalendarGrid) return;
+      companyCalendarMonth = payload.month || companyCalendarMonth;
+      companyCalendarEvents = payload.events || [];
+      companyCalendarSummary = payload.summary || companyCalendarSummary || {};
+      const monthStart = parseLocalDate(`${companyCalendarMonth}-01`) || parseLocalDate(`${todayString().slice(0, 7)}-01`);
+      const gridStart = new Date(monthStart);
+      gridStart.setDate(1 - ((monthStart.getDay() + 6) % 7));
+      const today = todayString();
+      if (companyCalendarTitle) companyCalendarTitle.textContent = monthTitle(companyCalendarMonth);
+      const summary = companyCalendarSummary;
+      if (companyCalendarProjectCount) companyCalendarProjectCount.textContent = `${summary.project || 0}건`;
+      if (companyCalendarTaskCount) companyCalendarTaskCount.textContent = `${summary.task || 0}건`;
+      if (companyCalendarLeaveCount) companyCalendarLeaveCount.textContent = `${summary.leave || 0}건`;
+      if (companyCalendarRiskCount) companyCalendarRiskCount.textContent = `${summary.risk || 0}건`;
+      const cells = [];
+      for (let index = 0; index < 42; index += 1) {
+        const day = new Date(gridStart);
+        day.setDate(gridStart.getDate() + index);
+        const dayText = localDateString(day);
+        const events = eventsForDay(dayText);
+        const visibleEvents = events.slice(0, 4);
+        const classes = [
+          "calendar-day",
+          day.getMonth() === monthStart.getMonth() ? "" : "other-month",
+          dayText === today ? "today" : "",
+          dayText === companyCalendarSelectedDay ? "selected" : "",
+        ].filter(Boolean).join(" ");
+        cells.push(`
+          <div class="${classes}" role="gridcell" tabindex="0" data-calendar-day="${escapeHtml(dayText)}" aria-label="${escapeHtml(`${shortKoreanDate(dayText)} 일정 ${events.length}건`)}">
+            <span class="calendar-date">
+              <span>${escapeHtml(day.getDate())}</span>
+              ${events.length ? `<span class="calendar-date-count">${escapeHtml(events.length)}</span>` : ""}
+            </span>
+            <span class="calendar-event-list">
+              ${visibleEvents.map((event) => renderCalendarEvent(event)).join("")}
+              ${events.length > visibleEvents.length ? `<span class="calendar-more">+${escapeHtml(events.length - visibleEvents.length)} 더보기</span>` : ""}
+            </span>
+          </div>
+        `);
+      }
+      companyCalendarGrid.innerHTML = cells.join("");
+      renderCompanyCalendarSelectedDay();
+    }
+
+    async function loadCompanyCalendar() {
+      if (!companyCalendarGrid) return;
+      if (!can("crm_view")) {
+        companyCalendarGrid.innerHTML = `<div class="calendar-empty">CRM 조회 권한이 없어 캘린더를 볼 수 없습니다.</div>`;
+        return;
+      }
+      companyCalendarGrid.innerHTML = `<div class="calendar-empty">캘린더를 불러오는 중입니다.</div>`;
+      const data = await crmFetchJson(`/api/company-calendar-events?month=${encodeURIComponent(companyCalendarMonth)}`);
+      renderCompanyCalendar(data);
+    }
+
+    function openCalendarEventWidget(eventId) {
+      const event = companyCalendarEvents.find((item) => String(item.id) === String(eventId));
+      if (!event) return;
+      if (event.type === "task" && event.task_id) {
+        openCrmTaskWidget(event.task_id).catch((error) => setCrmMessage(error.message, true));
+        return;
+      }
+      const stateText = event.type === "project"
+        ? `${event.progress || 0}% 완료`
+        : event.type === "pending"
+          ? "승인대기"
+          : event.status || "승인";
+      openFocusWidget({
+        kicker: event.type === "project" ? "프로젝트 일정" : event.type === "pending" ? "승인대기 연차" : "연차 일정",
+        title: event.title || "일정",
+        subtitle: [shortKoreanDate(event.date), event.subtitle].filter(Boolean).join(" · "),
+        body: `
+          <div class="focus-widget-grid">
+            ${focusWidgetMetric("구분", event.type === "project" ? "프로젝트" : event.type === "pending" ? "승인대기" : "연차")}
+            ${focusWidgetMetric("일자", shortKoreanDate(event.date))}
+            ${focusWidgetMetric("상태", stateText)}
+          </div>
+          <section class="focus-widget-section">
+            <div class="focus-widget-section-title">상세</div>
+            <p class="focus-widget-text">${escapeHtml(event.reason || event.assignees || event.subtitle || "상세 내용이 없습니다.")}</p>
+          </section>
+        `,
+      });
     }
 
     function renderCompanyStaffTasks(tasks) {
@@ -5999,7 +6462,8 @@ HTML = r"""<!doctype html>
         return;
       }
       const leads = staff.filter((user) => user.role === "admin");
-      const members = staff.filter((user) => user.role !== "admin");
+      const subLeads = staff.filter((user) => user.role === "sub_admin");
+      const members = staff.filter((user) => !["admin", "sub_admin"].includes(user.role));
       const renderPerson = (user, lead = false) => `
         <article class="company-person-card${lead ? " lead" : ""}${String(user.id) === String(currentUser.id) ? " me" : ""}" role="button" tabindex="0" aria-label="${escapeHtml(`${user.display_name || user.username} 직원 크게 보기`)}" data-company-person-card="${escapeHtml(user.id)}">
           <div class="company-person-top">
@@ -6021,8 +6485,9 @@ HTML = r"""<!doctype html>
           <div class="company-org-level lead">
             ${(leads.length ? leads : staff.slice(0, 1)).map((user) => renderPerson(user, true)).join("")}
           </div>
+          ${subLeads.length ? `<div class="company-org-level staff">${subLeads.map((user) => renderPerson(user, true)).join("")}</div>` : ""}
           <div class="company-org-level staff">
-            ${(members.length ? members : staff.filter((user) => !leads.includes(user))).map((user) => renderPerson(user)).join("")}
+            ${(members.length ? members : staff.filter((user) => !leads.includes(user) && !subLeads.includes(user))).map((user) => renderPerson(user)).join("")}
           </div>
         </div>
       `;
@@ -6142,7 +6607,7 @@ HTML = r"""<!doctype html>
       if (!internalChatBody) return;
       const body = internalChatBody.value.trim();
       if (!body) {
-        internalChatBody.focus();
+        internalChatBody?.focus();
         return;
       }
       await crmFetchJson("/api/internal-message-save", {
@@ -6161,10 +6626,11 @@ HTML = r"""<!doctype html>
           loadCrmMineTasks().catch(() => {}),
           loadCrmStaffDashboard().catch(() => {}),
           loadCompanyStaffDashboard().catch(() => {}),
+          loadCompanyCalendar().catch(() => {}),
           loadCrmDashboard().catch(() => {}),
         ]);
       }
-      internalChatBody.focus();
+      internalChatBody?.focus();
     }
 
     function setCrmTab(tabName) {
@@ -6462,7 +6928,7 @@ HTML = r"""<!doctype html>
       crmAccountPhone.value = account.phone || "";
       crmAccountEmail.value = account.email || "";
       crmAccountMemo.value = account.memo || "";
-      crmAccountName.focus();
+      crmAccountName?.focus();
     }
 
     function renderCrmAccounts() {
@@ -6587,7 +7053,7 @@ HTML = r"""<!doctype html>
       crmTaskPriority.value = task.priority || "보통";
       crmTaskStatus.value = task.status || "대기";
       crmTaskDescription.value = task.description || "";
-      crmTaskTitle.focus();
+      crmTaskTitle?.focus();
     }
 
     function crmPriorityClass(priority) {
@@ -6834,7 +7300,8 @@ HTML = r"""<!doctype html>
       focusWidgetTaskId = "";
       focusWidgetEmployeeId = "";
       if (focusWidgetLastFocus && typeof focusWidgetLastFocus.focus === "function") {
-        setTimeout(() => focusWidgetLastFocus.focus(), 0);
+        const returnFocusTarget = focusWidgetLastFocus;
+        setTimeout(() => returnFocusTarget.focus(), 0);
       }
       focusWidgetLastFocus = null;
     }
@@ -7251,6 +7718,7 @@ HTML = r"""<!doctype html>
       await loadCrmTasks();
       if (crmActiveTab === "mine") await loadCrmMineTasks();
       if (companyActiveTab === "staff") await loadCompanyStaffDashboard().catch(() => {});
+      if (companyActiveTab === "calendar") await loadCompanyCalendar().catch(() => {});
       await loadCrmDashboard();
     }
 
@@ -7266,6 +7734,7 @@ HTML = r"""<!doctype html>
       await ensureCrmTaskComments(taskId, true);
       if (crmActiveTab === "mine") await loadCrmMineTasks();
       if (companyActiveTab === "staff") await loadCompanyStaffDashboard().catch(() => {});
+      if (companyActiveTab === "calendar") await loadCompanyCalendar().catch(() => {});
       await loadCrmDashboard();
     }
 
@@ -7631,7 +8100,7 @@ HTML = r"""<!doctype html>
       ledgerFilterPopover.style.left = `${Math.min(rect.left, window.innerWidth - 280)}px`;
       ledgerFilterPopover.style.top = `${Math.min(rect.bottom + 6, window.innerHeight - 410)}px`;
       ledgerFilterPopover.classList.add("open");
-      ledgerFilterSearch.focus();
+      ledgerFilterSearch?.focus();
       ledgerFilterSearch.select();
     }
 
@@ -7645,7 +8114,7 @@ HTML = r"""<!doctype html>
       ledgerFilterPopover.style.left = `${Math.min(rect.left, window.innerWidth - 280)}px`;
       ledgerFilterPopover.style.top = `${Math.min(rect.bottom + 6, window.innerHeight - 410)}px`;
       ledgerFilterPopover.classList.add("open");
-      ledgerFilterSearch.focus();
+      ledgerFilterSearch?.focus();
       ledgerFilterSearch.select();
     }
 
@@ -7775,7 +8244,7 @@ HTML = r"""<!doctype html>
       cell.classList.add("selected-cell");
       activeCellEditors[scope] = { cell, control };
       setTimeout(() => {
-        control.focus();
+        control?.focus();
         if (control.select) control.select();
       }, 0);
     }
@@ -7867,7 +8336,7 @@ HTML = r"""<!doctype html>
       loadVendorContacts();
       loadCsCases();
       notice.textContent = "새 CS 내용을 입력한 뒤 CS건 DB 저장을 눌러주세요.";
-      setTimeout(() => vendorNameInput.focus(), 0);
+      setTimeout(() => vendorNameInput?.focus(), 0);
     }
 
     function closeLedgerCsPopup() {
@@ -8997,12 +9466,66 @@ HTML = r"""<!doctype html>
         const nextTab = availableTabs[nextIndex];
         if (nextTab) {
           setCrmTab(nextTab.dataset.crmTab);
-          nextTab.focus();
+          nextTab?.focus();
         }
       });
     });
     companyTabs.forEach((button) => {
       button.addEventListener("click", () => setCompanyTab(button.dataset.companyTab));
+    });
+    companyCalendarPrev?.addEventListener("click", () => shiftCalendarMonth(-1).catch(() => {
+      if (companyCalendarGrid) companyCalendarGrid.innerHTML = `<div class="calendar-empty">이전 달 캘린더를 불러오지 못했습니다.</div>`;
+    }));
+    companyCalendarNext?.addEventListener("click", () => shiftCalendarMonth(1).catch(() => {
+      if (companyCalendarGrid) companyCalendarGrid.innerHTML = `<div class="calendar-empty">다음 달 캘린더를 불러오지 못했습니다.</div>`;
+    }));
+    companyCalendarToday?.addEventListener("click", () => {
+      companyCalendarMonth = todayString().slice(0, 7);
+      companyCalendarSelectedDay = todayString();
+      loadCompanyCalendar().catch(() => {
+        if (companyCalendarGrid) companyCalendarGrid.innerHTML = `<div class="calendar-empty">오늘 캘린더를 불러오지 못했습니다.</div>`;
+      });
+    });
+    companyCalendarRefresh?.addEventListener("click", () => loadCompanyCalendar().catch(() => {
+      if (companyCalendarGrid) companyCalendarGrid.innerHTML = `<div class="calendar-empty">캘린더를 새로고침하지 못했습니다.</div>`;
+    }));
+    companyCalendarGrid?.addEventListener("click", (event) => {
+      const eventButton = event.target.closest("[data-calendar-event-id]");
+      if (eventButton) {
+        event.stopPropagation();
+        openCalendarEventWidget(eventButton.dataset.calendarEventId);
+        return;
+      }
+      const dayCell = event.target.closest("[data-calendar-day]");
+      if (!dayCell) return;
+      companyCalendarSelectedDay = dayCell.dataset.calendarDay;
+      renderCompanyCalendar({ month: companyCalendarMonth, events: companyCalendarEvents, summary: companyCalendarSummary });
+    });
+    companyCalendarGrid?.addEventListener("keydown", (event) => {
+      if (!isCardActivationKey(event)) return;
+      const eventButton = event.target.closest("[data-calendar-event-id]");
+      if (eventButton) {
+        event.preventDefault();
+        openCalendarEventWidget(eventButton.dataset.calendarEventId);
+        return;
+      }
+      const dayCell = event.target.closest("[data-calendar-day]");
+      if (!dayCell) return;
+      event.preventDefault();
+      companyCalendarSelectedDay = dayCell.dataset.calendarDay;
+      renderCompanyCalendar({ month: companyCalendarMonth, events: companyCalendarEvents, summary: companyCalendarSummary });
+    });
+    companyCalendarSelectedList?.addEventListener("click", (event) => {
+      const row = event.target.closest("[data-calendar-event-id]");
+      if (!row) return;
+      openCalendarEventWidget(row.dataset.calendarEventId);
+    });
+    companyCalendarSelectedList?.addEventListener("keydown", (event) => {
+      if (!isCardActivationKey(event)) return;
+      const row = event.target.closest("[data-calendar-event-id]");
+      if (!row) return;
+      event.preventDefault();
+      openCalendarEventWidget(row.dataset.calendarEventId);
     });
     if (companyStaffRefresh) {
       companyStaffRefresh.addEventListener("click", () => loadCompanyStaffDashboard().catch((error) => {
@@ -9137,7 +9660,7 @@ HTML = r"""<!doctype html>
       resetCrmTaskForm();
       setCrmTaskFormOpen(true);
       setCrmTab("tasks");
-      crmTaskTitle.focus();
+      crmTaskTitle?.focus();
     });
     crmAccountForm.addEventListener("submit", (event) => {
       saveCrmAccountForm(event).catch((error) => setCrmMessage(error.message, true));
@@ -9321,7 +9844,7 @@ HTML = r"""<!doctype html>
       crmMessengerPlatform.value = mapButton.dataset.platform || "kakao";
       crmMessengerSenderKey.value = mapButton.dataset.crmMapSender || "";
       crmMessengerDisplayName.value = mapButton.dataset.senderName || "";
-      crmMessengerUser.focus();
+      crmMessengerUser?.focus();
       setCrmMessage("Workhub 사용자를 선택한 뒤 저장하면 이 발신자가 등록 직원으로 매핑됩니다.");
     });
     document.querySelector("#orderNavToggle").addEventListener("click", () => {
@@ -9900,7 +10423,7 @@ LOGIN_HTML = r"""<!doctype html>
       <div class="brand-mark">SB</div>
       <div>
         <div class="brand-title">(주)소일브릿지<br>업무자동화</div>
-        <div class="brand-sub">관리자 / 사용자 로그인</div>
+        <div class="brand-sub">관리자 / 부관리자 / 사용자 로그인</div>
       </div>
     </div>
     <div class="success" style="display: __LOGIN_MESSAGE_DISPLAY__;">__LOGIN_MESSAGE__</div>
@@ -10091,8 +10614,9 @@ ADMIN_WORKSPACE_HTML = r"""
               </label>
               <label>권한
                 <select id="userAdminRole">
-                  <option value="user">사용자</option>
                   <option value="admin">관리자</option>
+                  <option value="sub_admin">부관리자</option>
+                  <option value="user">사용자</option>
                 </select>
               </label>
               <label>비밀번호
@@ -10389,7 +10913,11 @@ def permissions_html() -> str:
 
 
 def role_label(role: str) -> str:
-    return "관리자" if role == "admin" else "사용자"
+    if role == "admin":
+        return "관리자"
+    if role == "sub_admin":
+        return "부관리자"
+    return "사용자"
 
 
 def security_time_text(timestamp: float | int | None) -> str:
@@ -11112,7 +11640,8 @@ def list_users() -> list[dict[str, str | int]]:
             SELECT id, username, display_name, role, permissions, active, created_at, updated_at,
                    last_login_at, password_changed_at, approved_at
               FROM users
-             ORDER BY role = 'admin' DESC, username COLLATE NOCASE
+             ORDER BY CASE role WHEN 'admin' THEN 0 WHEN 'sub_admin' THEN 1 ELSE 2 END,
+                      username COLLATE NOCASE
             """
         ).fetchall()
         users = []
@@ -11146,7 +11675,7 @@ def company_staff_dashboard_payload(current_user: dict[str, str]) -> dict:
               LEFT JOIN crm_tasks tasks ON tasks.assignee_user_id = users.id
              WHERE users.active = 1
              GROUP BY users.id
-             ORDER BY users.role = 'admin' DESC,
+             ORDER BY CASE users.role WHEN 'admin' THEN 0 WHEN 'sub_admin' THEN 1 ELSE 2 END,
                       users.display_name COLLATE NOCASE,
                       users.username COLLATE NOCASE
             """,
@@ -11156,7 +11685,7 @@ def company_staff_dashboard_payload(current_user: dict[str, str]) -> dict:
         for row in rows:
             item = dict(row)
             role = str(item.get("role") or "user")
-            item["team_label"] = "운영 리드" if role == "admin" else "업무 담당"
+            item["team_label"] = "운영 리드" if role == "admin" else ("부운영 리드" if role == "sub_admin" else "업무 담당")
             item["task_count"] = int(item.get("task_count") or 0)
             item["open_tasks"] = int(item.get("open_tasks") or 0)
             item["due_today"] = int(item.get("due_today") or 0)
@@ -11168,6 +11697,153 @@ def company_staff_dashboard_payload(current_user: dict[str, str]) -> dict:
         }
     finally:
         connection.close()
+
+
+def month_bounds(month_text: str) -> tuple[date, date]:
+    today = date.today()
+    match = re.match(r"^(\d{4})-(\d{2})$", str(month_text or "").strip())
+    if match:
+        year = int(match.group(1))
+        month = int(match.group(2))
+        if not 1 <= month <= 12:
+            raise ValueError("캘린더 월 형식이 올바르지 않습니다.")
+        start = date(year, month, 1)
+    else:
+        start = date(today.year, today.month, 1)
+    next_month = date(start.year + (1 if start.month == 12 else 0), 1 if start.month == 12 else start.month + 1, 1)
+    return start, next_month - timedelta(days=1)
+
+
+def company_calendar_payload(user: dict[str, str], month_text: str) -> dict:
+    init_db()
+    start, end = month_bounds(month_text)
+    start_text = start.isoformat()
+    end_text = end.isoformat()
+    today_text = date.today().isoformat()
+    can_see_leave = any(user_has_permission(user, permission) for permission in ("leave_view", "leave_approve", "leave_manage"))
+    can_see_team_leave = user_has_permission(user, "leave_approve") or user_has_permission(user, "leave_manage")
+    user_id = int(user.get("id") or 0)
+    connection = connect_db()
+    try:
+        task_rows = connection.execute(
+            """
+            SELECT id, public_id, title, description, account_name, assignee_user_id, assignee_name,
+                   requester_name, due_at, priority, status, source, updated_at
+              FROM crm_tasks
+             WHERE due_at IS NOT NULL
+               AND due_at != ''
+               AND substr(due_at, 1, 10) BETWEEN ? AND ?
+             ORDER BY substr(due_at, 1, 10), priority = '높음' DESC, due_at
+            """,
+            (start_text, end_text),
+        ).fetchall()
+        project_rows = connection.execute(
+            """
+            SELECT COALESCE(NULLIF(account_name, ''), '직원 지시 업무') AS project_name,
+                   MIN(substr(due_at, 1, 10)) AS event_date,
+                   COUNT(*) AS total_tasks,
+                   SUM(CASE WHEN status != '완료' THEN 1 ELSE 0 END) AS open_tasks,
+                   SUM(CASE WHEN status = '완료' THEN 1 ELSE 0 END) AS completed_tasks,
+                   SUM(CASE WHEN priority = '높음' AND status != '완료' THEN 1 ELSE 0 END) AS high_priority,
+                   GROUP_CONCAT(DISTINCT NULLIF(assignee_name, '')) AS assignee_names
+              FROM crm_tasks
+             WHERE due_at IS NOT NULL
+               AND due_at != ''
+               AND substr(due_at, 1, 10) BETWEEN ? AND ?
+             GROUP BY COALESCE(NULLIF(account_name, ''), '직원 지시 업무')
+             ORDER BY event_date, open_tasks DESC
+             LIMIT 80
+            """,
+            (start_text, end_text),
+        ).fetchall()
+        leave_rows = []
+        if can_see_leave:
+            leave_conditions = ["leave_requests.start_date <= ?", "leave_requests.end_date >= ?"]
+            leave_params: list[object] = [end_text, start_text]
+            if can_see_team_leave:
+                leave_conditions.append("leave_requests.status IN ('APPROVED', 'PENDING')")
+            else:
+                leave_conditions.append("(leave_requests.status = 'APPROVED' OR leave_requests.user_id = ?)")
+                leave_params.append(user_id)
+            leave_rows = connection.execute(
+                f"""
+                SELECT leave_requests.*, leave_types.name AS leave_type_name, users.display_name
+                  FROM leave_requests
+                  JOIN leave_types ON leave_types.id = leave_requests.leave_type_id
+                  JOIN users ON users.id = leave_requests.user_id
+                 WHERE {' AND '.join(leave_conditions)}
+                 ORDER BY leave_requests.start_date, users.display_name
+                """,
+                tuple(leave_params),
+            ).fetchall()
+    finally:
+        connection.close()
+
+    events: list[dict[str, object]] = []
+    for row in project_rows:
+        total_tasks = int(row["total_tasks"] or 0)
+        completed_tasks = int(row["completed_tasks"] or 0)
+        progress = round((completed_tasks / total_tasks) * 100) if total_tasks else 0
+        events.append({
+            "id": f"project:{row['project_name']}",
+            "type": "project",
+            "date": row["event_date"],
+            "title": row["project_name"],
+            "subtitle": f"{progress}% 완료 · 진행 {int(row['open_tasks'] or 0)}건",
+            "project_name": row["project_name"],
+            "assignees": row["assignee_names"] or "",
+            "high_priority": int(row["high_priority"] or 0),
+            "progress": progress,
+        })
+    for row in task_rows:
+        due_day = str(row["due_at"] or "")[:10]
+        risk = row["status"] != "완료" and due_day < today_text
+        events.append({
+            "id": f"task:{row['id']}",
+            "type": "task",
+            "date": due_day,
+            "title": row["title"] or row["public_id"],
+            "subtitle": f"{row['public_id']} · {row['assignee_name'] or '담당자 미정'} · {row['status']}",
+            "task_id": row["id"],
+            "public_id": row["public_id"],
+            "priority": row["priority"],
+            "status": row["status"],
+            "risk": risk or row["priority"] == "높음",
+        })
+    for row in leave_rows:
+        leave_start = max(parse_iso_date(row["start_date"]), start)
+        leave_end = min(parse_iso_date(row["end_date"]), end)
+        cursor = leave_start
+        while cursor <= leave_end:
+            status = row["status"] or "PENDING"
+            events.append({
+                "id": f"leave:{row['id']}:{cursor.isoformat()}",
+                "type": "pending" if status == "PENDING" else "leave",
+                "date": cursor.isoformat(),
+                "title": f"{row['display_name']} {row['leave_type_name']}",
+                "subtitle": f"{leave_status_label(status)} · {row['unit'] == 'HALF_DAY' and '반차' or '연차'}",
+                "leave_id": row["id"],
+                "user_id": row["user_id"],
+                "status": status,
+                "requested_days": round(float(row["requested_days"] or 0), 2),
+                "reason": row["reason"] or "",
+            })
+            cursor += timedelta(days=1)
+    summary = {
+        "project": sum(1 for event in events if event["type"] == "project"),
+        "task": sum(1 for event in events if event["type"] == "task"),
+        "leave": sum(1 for event in events if event["type"] in {"leave", "pending"}),
+        "risk": sum(1 for event in events if event.get("risk") or (event["type"] == "pending")),
+    }
+    return {
+        "month": start.strftime("%Y-%m"),
+        "start": start_text,
+        "end": end_text,
+        "today": today_text,
+        "can_see_team_leave": can_see_team_leave,
+        "summary": summary,
+        "events": sorted(events, key=lambda item: (str(item["date"]), {"project": 0, "leave": 1, "pending": 2, "task": 3}.get(str(item["type"]), 9), str(item["title"]))),
+    }
 
 
 def list_internal_messages(
@@ -11342,8 +12018,8 @@ def save_user_account(payload: dict, actor: dict[str, str]) -> int:
     password = str(payload.get("password", "") or "")
     active = 1 if payload.get("active", True) else 0
     permissions = normalize_permissions(payload.get("permissions", []), role)
-    if role not in {"admin", "user"}:
-        raise ValueError("권한은 관리자 또는 사용자만 선택할 수 있습니다.")
+    if role not in {"admin", "sub_admin", "user"}:
+        raise ValueError("권한은 관리자, 부관리자, 사용자 중 하나만 선택할 수 있습니다.")
     validate_username(username)
     if not display_name:
         display_name = username
@@ -13778,6 +14454,17 @@ class WorkhubHandler(BaseHTTPRequestHandler):
             if not self.require_permission(user, "crm_view", "CRM 조회"):
                 return
             self.send_json(company_staff_dashboard_payload(user))
+            return
+
+        if self.path.startswith("/api/company-calendar-events"):
+            if not self.require_permission(user, "crm_view", "CRM 조회"):
+                return
+            parsed = urlsplit(self.path)
+            params = parse_qs(parsed.query)
+            try:
+                self.send_json(company_calendar_payload(user, params.get("month", [""])[0]))
+            except ValueError as exc:
+                self.send_json({"error": str(exc)}, status=400)
             return
 
         if self.path.startswith("/api/internal-messages"):
