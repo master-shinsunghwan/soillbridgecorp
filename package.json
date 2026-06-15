@@ -1,0 +1,14 @@
+{
+  "name": "soillbridge-workhub",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "build:css": "tailwindcss -i ./src/workhub.css -o ./static/workhub.css --minify",
+    "watch:css": "tailwindcss -i ./src/workhub.css -o ./static/workhub.css --watch"
+  },
+  "devDependencies": {
+    "@tailwindcss/cli": "^4.1.17",
+    "daisyui": "^5.5.23",
+    "tailwindcss": "^4.1.17"
+  }
+}

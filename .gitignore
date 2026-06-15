@@ -16,7 +16,9 @@ build/
 *.msi
 
 # Archived planning/research materials not used by Workhub app
-docs/
+docs/*
+!docs/superpowers/
+!docs/superpowers/**
 scripts/attach_delivery_product_images.py
 scripts/build_china_oem_fob_rfq.mjs
 scripts/build_delivery_meeting_report.mjs
@@ -29,6 +31,7 @@ scripts/toss_price_compare_README.md
 # Runtime data and secrets
 config/
 data/
+local_data*/
 *.db
 *.sqlite
 *.sqlite3

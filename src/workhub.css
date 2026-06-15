@@ -1,0 +1,7 @@
+@import "tailwindcss";
+
+@plugin "daisyui" {
+  themes: corporate --default, business --prefersdark;
+}
+
+@source "../scripts/workhub_delivery_app.py";
