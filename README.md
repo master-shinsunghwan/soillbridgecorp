@@ -14,38 +14,140 @@
 - 엑셀 자동화: 송장번호 추출, 롯데택배 발주서 변환, 차량인수증 생성
 - 운영 도구: 백업/복원, 사용자 계정 승인, 권한 관리
 
-## 실행 방법
+## 처음 설치하는 방법
 
-### 1. 의존성 설치
+아래 순서대로 한 번만 준비하면 됩니다.
+
+### 1. 프로젝트 받기
+
+GitHub에서 프로젝트를 내려받습니다.
+
+```powershell
+git clone https://github.com/master-shinsunghwan/soillbridgecorp.git
+```
+
+프로젝트 폴더로 이동합니다.
+
+```powershell
+cd soillbridgecorp
+```
+
+이미 ZIP 파일로 받은 경우에는 압축을 풀고, 압축을 푼 폴더에서 아래 단계를 진행하면 됩니다.
+
+### 2. Python 설치 확인
+
+명령 프롬프트나 PowerShell에서 아래 명령을 입력합니다.
+
+```powershell
+python --version
+```
+
+버전이 표시되면 준비된 상태입니다. Python이 없다고 나오면 [Python 공식 사이트](https://www.python.org/downloads/)에서 설치한 뒤 다시 확인합니다.
+
+### 3. Node.js 설치 확인
+
+화면 빌드와 개발 확인을 위해 Node.js가 필요합니다.
+
+```powershell
+node --version
+npm --version
+```
+
+버전이 표시되면 준비된 상태입니다. 없다면 [Node.js 공식 사이트](https://nodejs.org/)에서 LTS 버전을 설치합니다.
+
+### 4. 필요한 패키지 설치
+
+프로젝트 폴더에서 아래 명령을 실행합니다.
 
 ```powershell
 npm install
 ```
 
-### 2. 앱 실행
+## 실행 방법
 
-기본 포트로 실행하려면:
-
-```powershell
-python _workhub_zip_inspect/scripts/workhub_delivery_app.py
-```
-
-8770 포트로 실행하려면:
+### 가장 쉬운 실행
 
 ```powershell
 python _workhub_zip_inspect/scripts/workhub_delivery_app.py 8770
 ```
 
-브라우저에서 접속:
+실행 후 브라우저에서 아래 주소로 접속합니다.
 
 ```text
 http://127.0.0.1:8770/
 ```
 
-### 3. 화면 빌드 확인
+### 기본 포트로 실행
+
+```powershell
+python _workhub_zip_inspect/scripts/workhub_delivery_app.py
+```
+
+기본 포트로 실행하면 아래 주소로 접속합니다.
+
+```text
+http://127.0.0.1:8765/
+```
+
+### 다른 포트로 실행
+
+8770 대신 원하는 숫자를 넣으면 됩니다.
+
+```powershell
+python _workhub_zip_inspect/scripts/workhub_delivery_app.py 9000
+```
+
+이 경우 접속 주소도 포트 번호에 맞게 바뀝니다.
+
+```text
+http://127.0.0.1:9000/
+```
+
+## 로그인과 계정 등록
+
+1. 앱 주소로 접속합니다.
+2. 기존 계정이 있으면 아이디와 비밀번호로 로그인합니다.
+3. 신규 직원은 로그인 화면의 `계정 등록 요청`에서 아이디, 표시 이름, 비밀번호를 입력합니다.
+4. 관리자가 권한설정 화면에서 계정을 승인하면 로그인할 수 있습니다.
+
+권한은 `관리자`, `부관리자`, `사용자`로 나뉩니다.
+
+- 관리자: 사용자 관리, 백업, 시스템 업데이트까지 전체 관리
+- 부관리자: 업무 운영, CRM, 연차, 공지, 엑셀 업무 관리
+- 사용자: 일반 업무 조회/처리 중심
+
+## 실행이 안 될 때 확인할 것
+
+### 포트가 이미 사용 중이라고 나올 때
+
+다른 포트로 실행하면 됩니다.
+
+```powershell
+python _workhub_zip_inspect/scripts/workhub_delivery_app.py 9000
+```
+
+### 브라우저에서 접속이 안 될 때
+
+실행 창에 표시된 주소와 브라우저 주소가 같은지 확인합니다.
+
+예를 들어 `8770`으로 실행했다면 주소도 `http://127.0.0.1:8770/`이어야 합니다.
+
+### 화면 변경 후 이상하게 보일 때
+
+브라우저를 새로고침하거나, 서버를 끄고 다시 실행합니다.
+
+## 개발/검증용 명령
+
+화면 빌드가 되는지 확인하려면:
 
 ```powershell
 npm run build
+```
+
+Python 문법을 확인하려면:
+
+```powershell
+python -m py_compile _workhub_zip_inspect/scripts/workhub_delivery_app.py _workhub_zip_inspect/scripts/workhub_crm.py
 ```
 
 ## 기본 사용 흐름
@@ -108,4 +210,3 @@ npm run build
 
 - `_workhub_zip_inspect/scripts/workhub_delivery_app.py`
 - `_workhub_zip_inspect/scripts/workhub_crm.py`
-
