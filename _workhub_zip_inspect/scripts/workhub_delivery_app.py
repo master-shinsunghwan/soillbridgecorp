@@ -9096,7 +9096,7 @@ HTML = r"""<!doctype html>
       templateDropMain.textContent = "롯데택배 발주서 양식을 선택해주세요.";
       messagePlaceholder.style.display = "none";
       if (mode === "delivery") {
-        modalTitle.textContent = "택배건 요약";
+        modalTitle.textContent = "개별 택배건 정리";
         fileLabel.textContent = "주소일브릿지 엑셀 선택";
         submitButton.textContent = "생성";
         submitButton.className = "btn primary";

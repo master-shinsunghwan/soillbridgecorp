@@ -49,6 +49,12 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         self.assertIn("openModal(mode)", html_source)
         self.assertIn("event.stopImmediatePropagation()", html_source)
 
+    def test_delivery_modal_title_matches_menu_label(self) -> None:
+        html_source = (SCRIPTS / "workhub_delivery_app.py").read_text(encoding="utf-8")
+
+        self.assertIn('data-open="delivery">개별 택배건 정리</button>', html_source)
+        self.assertIn('modalTitle.textContent = "개별 택배건 정리";', html_source)
+
 
 if __name__ == "__main__":
     unittest.main()
