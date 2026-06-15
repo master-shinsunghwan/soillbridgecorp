@@ -17,7 +17,7 @@ PRODUCT_HEADERS = ("제 품 명", "제품명", "상품명", "품명", "주문상
 QUANTITY_HEADERS = ("수 량", "수량", "주문수량", "개수")
 ORDER_HEADERS = ("주문번호", "주문 번호", "order_no", "order number")
 RECEIVER_NAME_HEADERS = ("받으시는분", "받으시는 분", "수취인", "수령인", "수령자", "받는분")
-RECEIVER_PHONE_HEADERS = ("받으시는분 연락처", "받으시는분연락처", "수취인연락처", "수령인연락처", "수령자연락처", "받는분연락처")
+RECEIVER_PHONE_HEADERS = ("받으시는분 연락처", "받으시는분연락처", "수취인연락처", "수령인연락처", "수령자연락처", "수령자 연락처", "받는분연락처")
 DETAIL_ADDRESS_HEADERS = ("상 세 주 소", "상세주소", "상세 주소", "주소", "받으시는분주소")
 
 WEEKDAYS_KO = ("월", "화", "수", "목", "금", "토", "일")

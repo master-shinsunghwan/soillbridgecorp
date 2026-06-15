@@ -52,7 +52,6 @@ def extract_invoice_rows(path: Path, sheet_name: str | None = None) -> list[tupl
     address_idx = find_column(headers, ADDRESS_HEADERS, "수하인기본주소")
 
     grouped: OrderedDict[tuple[str, str, str], list[str]] = OrderedDict()
-    seen_by_key: dict[tuple[str, str, str], set[str]] = {}
 
     for row in rows:
         if not any(row):
@@ -68,11 +67,8 @@ def extract_invoice_rows(path: Path, sheet_name: str | None = None) -> list[tupl
         key = (order_number, name, address)
         if key not in grouped:
             grouped[key] = []
-            seen_by_key[key] = set()
 
-        if invoice_number not in seen_by_key[key]:
-            grouped[key].append(invoice_number)
-            seen_by_key[key].add(invoice_number)
+        grouped[key].append(invoice_number)
 
     return [(key[1], " / ".join(invoice_numbers)) for key, invoice_numbers in grouped.items()]
 
