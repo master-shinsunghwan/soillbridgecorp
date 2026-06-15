@@ -36,3 +36,19 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         self.assertIn("crm_view", app.DEFAULT_ROLE_PERMISSIONS["user"])
         self.assertIn("sub_admin", app.DEFAULT_ROLE_PERMISSIONS)
         self.assertIn('data-open="crm"', app.render_app_html({"display_name": "???", "role": "admin", "permissions": app.ALL_PERMISSIONS}))
+
+    def test_order_submenus_have_delegated_modal_click_fallback(self) -> None:
+        html_source = (SCRIPTS / "workhub_delivery_app.py").read_text(encoding="utf-8")
+
+        for mode in ("delivery", "invoice", "lotte", "vehicle"):
+            self.assertIn(f'data-open="{mode}"', html_source)
+            self.assertIn(f'"{mode}"', html_source)
+
+        self.assertIn("ORDER_MODAL_MODES", html_source)
+        self.assertIn('sidebar.addEventListener("click"', html_source)
+        self.assertIn("openModal(mode)", html_source)
+        self.assertIn("event.stopImmediatePropagation()", html_source)
+
+
+if __name__ == "__main__":
+    unittest.main()

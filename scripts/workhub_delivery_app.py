@@ -4726,6 +4726,7 @@ HTML = r"""<!doctype html>
     const currentUser = __CURRENT_USER__;
     const currentUserPermissions = new Set(__USER_PERMISSIONS__);
     const permissionLabels = __PERMISSION_LABELS__;
+    const sidebar = document.querySelector(".sidebar");
     const sidebarSearchInput = document.querySelector("#sidebarSearchInput");
     let sidebarSearchUserTyped = false;
     const sidebarSearchAutofillValues = new Set([
@@ -9413,6 +9414,19 @@ HTML = r"""<!doctype html>
       scheduleSidebarSearchAutofillGuard();
       window.setInterval(guardSidebarSearchAutofill, 500);
     }
+
+    const ORDER_MODAL_MODES = new Set(["delivery", "invoice", "lotte", "vehicle"]);
+    sidebar.addEventListener("click", (event) => {
+      const button = event.target.closest("[data-open]");
+      if (!button || !sidebar.contains(button)) return;
+      const mode = button.dataset.open;
+      if (!ORDER_MODAL_MODES.has(mode)) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      scheduleSidebarSearchAutofillGuard();
+      document.querySelector("#orderNavGroup")?.classList.add("open");
+      openModal(mode);
+    }, true);
 
     document.querySelectorAll("[data-open]").forEach((button) => {
       button.addEventListener("click", () => {
