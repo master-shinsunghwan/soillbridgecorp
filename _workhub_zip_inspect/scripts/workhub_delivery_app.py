@@ -38,16 +38,20 @@ from workhub_crm import (
     add_crm_task_comment,
     change_crm_task_status,
     crm_dashboard_payload,
+    delete_crm_saved_view,
     ensure_webhook_token,
     handle_crm_messenger_webhook,
     init_crm_db,
     list_crm_accounts,
     list_crm_message_events,
     list_crm_messenger_users,
+    list_crm_saved_views,
+    list_crm_task_comments,
     list_crm_tasks,
     rotate_webhook_token,
     save_crm_account,
     save_crm_messenger_user,
+    save_crm_saved_view,
     save_crm_task,
 )
 
@@ -2095,12 +2099,75 @@ HTML = r"""<!doctype html>
     }
     .internal-chat {
       display: grid;
-      grid-template-rows: minmax(360px, 1fr) auto;
+      grid-template-columns: 240px minmax(0, 1fr);
       min-height: 520px;
       border: 1px solid var(--line);
       border-radius: 8px;
       overflow: hidden;
       background: white;
+    }
+    .internal-chat-rooms {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      padding: 12px;
+      border-right: 1px solid var(--line);
+      background: #f8fafc;
+      overflow: auto;
+    }
+    .internal-chat-room {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      width: 100%;
+      min-height: 38px;
+      padding: 8px 10px;
+      border: 1px solid transparent;
+      border-radius: 8px;
+      background: transparent;
+      color: #344054;
+      cursor: pointer;
+      font-family: inherit;
+      font-size: 12px;
+      font-weight: 900;
+      text-align: left;
+    }
+    .internal-chat-room:hover,
+    .internal-chat-room.active {
+      border-color: #bfdbfe;
+      background: white;
+      color: #1d4ed8;
+    }
+    .internal-chat-room small {
+      color: #667085;
+      font-size: 10px;
+      font-weight: 850;
+    }
+    .internal-chat-main {
+      display: grid;
+      grid-template-rows: auto minmax(360px, 1fr) auto;
+      min-width: 0;
+    }
+    .internal-chat-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      min-height: 58px;
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--line);
+      background: white;
+    }
+    .internal-chat-title {
+      color: #111827;
+      font-size: 14px;
+      font-weight: 950;
+    }
+    .internal-chat-hint {
+      color: #667085;
+      font-size: 11px;
+      font-weight: 800;
     }
     .internal-chat-list {
       display: flex;
@@ -2129,6 +2196,14 @@ HTML = r"""<!doctype html>
       align-self: flex-end;
       border-color: #bfdbfe;
       background: #eff6ff;
+    }
+    .internal-message.command-ok {
+      border-color: #bbf7d0;
+      background: #f0fdf4;
+    }
+    .internal-message.command-error {
+      border-color: #fecaca;
+      background: #fef2f2;
     }
     .internal-message-meta {
       display: flex;
@@ -2175,6 +2250,66 @@ HTML = r"""<!doctype html>
     .internal-chat-form textarea:focus {
       border-color: #2563eb;
       box-shadow: 0 0 0 2px rgba(37, 99, 235, .12);
+    }
+    .crm-staff-list {
+      display: grid;
+      gap: 10px;
+    }
+    .crm-staff-row {
+      display: grid;
+      grid-template-columns: minmax(180px, 1fr) repeat(3, minmax(72px, auto)) minmax(220px, 1.2fr);
+      gap: 10px;
+      align-items: center;
+      padding: 12px;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      background: #fff;
+    }
+    .crm-staff-person {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-width: 0;
+    }
+    .crm-staff-avatar {
+      display: grid;
+      place-items: center;
+      width: 36px;
+      height: 36px;
+      border-radius: 8px;
+      background: #eff6ff;
+      color: #1d4ed8;
+      font-size: 12px;
+      font-weight: 950;
+      flex: 0 0 auto;
+    }
+    .crm-staff-name {
+      color: #111827;
+      font-size: 13px;
+      font-weight: 950;
+    }
+    .crm-staff-role,
+    .crm-staff-latest {
+      color: #667085;
+      font-size: 11px;
+      font-weight: 800;
+      line-height: 1.45;
+    }
+    .crm-staff-metric {
+      text-align: center;
+    }
+    .crm-staff-metric span {
+      display: block;
+      color: #667085;
+      font-size: 10px;
+      font-weight: 850;
+    }
+    .crm-staff-metric strong {
+      display: block;
+      margin-top: 4px;
+      color: #111827;
+      font-size: 16px;
+      font-weight: 950;
     }
     .internal-chat-side {
       display: grid;
@@ -2397,6 +2532,82 @@ HTML = r"""<!doctype html>
       border: 1px solid var(--line);
       border-radius: 8px;
       background: white;
+    }
+    .sr-only {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      border: 0;
+    }
+    .crm-tab:focus-visible,
+    .crm-mini-button:focus-visible,
+    .crm-input:focus-visible,
+    .crm-select:focus-visible,
+    .crm-textarea:focus-visible,
+    .crm-task-card:focus-visible,
+    .crm-filter-check input:focus-visible {
+      outline: 3px solid rgba(21, 91, 200, .35);
+      outline-offset: 2px;
+    }
+    .crm-task-toolbar {
+      display: grid;
+      grid-template-columns: minmax(150px, .9fr) minmax(140px, .9fr) auto auto minmax(180px, 1.2fr) repeat(5, minmax(128px, .8fr)) auto auto auto;
+      align-items: center;
+    }
+    .crm-task-toolbar .crm-input,
+    .crm-task-toolbar .crm-select {
+      width: 100%;
+      min-width: 0;
+    }
+    .crm-filter-check {
+      min-height: 32px;
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      padding: 0 9px;
+      border: 1px solid #cbd5e1;
+      border-radius: 7px;
+      background: #fbfcff;
+      color: #344054;
+      font-size: 12px;
+      font-weight: 900;
+      white-space: nowrap;
+    }
+    .crm-filter-check input {
+      width: 15px;
+      height: 15px;
+    }
+    .crm-view-strip {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+      padding: 10px 12px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fbfcff;
+    }
+    .crm-view-pill {
+      min-height: 30px;
+      border: 1px solid #d8dee9;
+      border-radius: 7px;
+      background: white;
+      color: #344054;
+      padding: 0 10px;
+      font-family: inherit;
+      font-size: 12px;
+      font-weight: 900;
+      cursor: pointer;
+    }
+    .crm-view-pill.active {
+      border-color: #155bc8;
+      background: #eef6ff;
+      color: #155bc8;
     }
     .crm-input,
     .crm-select,
@@ -2748,21 +2959,72 @@ HTML = r"""<!doctype html>
     .crm-detail-actions .crm-mini-button {
       min-height: 34px;
     }
+    .crm-detail-comment-form {
+      display: grid;
+      gap: 8px;
+      padding-top: 2px;
+    }
+    .crm-detail-comment-form label,
+    .crm-timeline-title {
+      color: #344054;
+      font-size: 12px;
+      font-weight: 950;
+    }
+    .crm-detail-comment-form textarea {
+      width: 100%;
+      min-height: 72px;
+    }
+    .crm-timeline {
+      display: grid;
+      gap: 8px;
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }
+    .crm-timeline-item {
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      background: #fbfcff;
+      padding: 10px;
+    }
+    .crm-timeline-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+      color: #344054;
+      font-size: 11px;
+      font-weight: 950;
+    }
+    .crm-timeline-body {
+      margin-top: 5px;
+      color: #475467;
+      font-size: 12px;
+      font-weight: 800;
+      line-height: 1.45;
+      word-break: keep-all;
+    }
     @media (max-width: 1280px) {
       .crm-task-layout { grid-template-columns: 1fr; }
       .crm-task-detail { min-height: 320px; }
       .company-grid { grid-template-columns: 1fr; }
       .company-staff-layout { grid-template-columns: 1fr; }
+      .crm-task-toolbar { grid-template-columns: repeat(3, minmax(0, 1fr)); }
     }
     @media (max-width: 980px) {
       .crm-task-board-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       .crm-kanban { grid-template-columns: repeat(2, minmax(220px, 1fr)); }
       .crm-grid-2 { grid-template-columns: 1fr; }
+      .internal-chat { grid-template-columns: 1fr; }
+      .internal-chat-rooms { border-right: 0; border-bottom: 1px solid var(--line); max-height: 210px; }
+      .crm-staff-row { grid-template-columns: 1fr 1fr 1fr; }
+      .crm-staff-person,
+      .crm-staff-latest { grid-column: 1 / -1; }
       .company-rule-grid,
       .company-mini-grid,
       .internal-chat-side { grid-template-columns: 1fr; }
       .company-org-tree { min-width: 560px; }
       .internal-chat-form { grid-template-columns: 1fr; }
+      .crm-task-toolbar { grid-template-columns: 1fr; }
     }
     .crm-help {
       margin: 0;
@@ -3040,7 +3302,7 @@ HTML = r"""<!doctype html>
           <button class="nav-subitem" type="button" data-open="crm" data-crm-nav-tab="dashboard">대시보드</button>
           <button class="nav-subitem" type="button" data-open="crm" data-crm-nav-tab="mine">내 업무</button>
           <button class="nav-subitem" type="button" data-open="crm" data-crm-nav-tab="tasks">업무보드</button>
-          <button class="nav-subitem" type="button" data-open="crm" data-crm-nav-tab="accounts">거래처</button>
+          <button class="nav-subitem" type="button" data-open="crm" data-crm-nav-tab="accounts">직원</button>
           <button class="nav-subitem" type="button" data-open="crm" data-crm-nav-tab="messages">메신저 연동</button>
         </div>
       </div>
@@ -3161,23 +3423,35 @@ HTML = r"""<!doctype html>
             <article class="company-card">
               <div class="company-card-head"><span>사내 메신저</span><button class="crm-mini-button" type="button" id="internalChatRefresh">새로고침</button></div>
               <div class="internal-chat">
-                <div class="internal-chat-list" id="internalChatList">
-                  <div class="internal-chat-empty">메시지를 불러오는 중입니다.</div>
+                <div class="internal-chat-rooms" id="internalChatRoomList">
+                  <button class="internal-chat-room active" type="button" data-chat-room="global"><span>전체방</span><small>공지/공유</small></button>
+                  <div class="internal-chat-empty">직원 목록을 불러오는 중입니다.</div>
                 </div>
-                <form class="internal-chat-form" id="internalChatForm">
-                  <textarea id="internalChatBody" placeholder="팀에 공유할 내용을 입력해줘. Enter는 줄바꿈, 보내기는 버튼으로 처리돼."></textarea>
-                  <button class="crm-mini-button primary" type="submit">보내기</button>
-                </form>
+                <div class="internal-chat-main">
+                  <div class="internal-chat-head">
+                    <div>
+                      <div class="internal-chat-title" id="internalChatTitle">전체방</div>
+                      <div class="internal-chat-hint" id="internalChatHint">/업무 @직원 업무내용 / 기한 으로 바로 업무 지시 가능</div>
+                    </div>
+                  </div>
+                  <div class="internal-chat-list" id="internalChatList">
+                    <div class="internal-chat-empty">메시지를 불러오는 중입니다.</div>
+                  </div>
+                  <form class="internal-chat-form" id="internalChatForm">
+                    <textarea id="internalChatBody" placeholder="/업무 @관리자 샘플 업무 / 오늘 5시 또는 일반 메시지를 입력해줘."></textarea>
+                    <button class="crm-mini-button primary" type="submit">보내기</button>
+                  </form>
+                </div>
               </div>
             </article>
             <article class="company-card">
               <div class="company-card-head"><span>메신저 방향</span></div>
               <div class="company-card-body">
-                <p class="crm-help">사내 확인, 업무 히스토리, 빠른 공유는 인앱 메신저가 더 안정적입니다. 카카오는 외부 알림이나 앱 밖 응답이 필요할 때 보조 채널로 쓰는 쪽이 좋습니다.</p>
+                <p class="crm-help">전체 공유는 전체방, 특정 지시는 직원 DM에서 처리합니다. 어느 방에서든 /업무 @직원 업무내용 / 기한 형식으로 바로 업무를 만들 수 있습니다.</p>
                 <div class="internal-chat-side">
-                  <div><span>채널</span><strong>전체방</strong></div>
+                  <div><span>채널</span><strong>전체방 + 직원 DM</strong></div>
                   <div><span>저장</span><strong>앱 DB</strong></div>
-                  <div><span>권한</span><strong>로그인 직원</strong></div>
+                  <div><span>업무화</span><strong>/업무 명령</strong></div>
                 </div>
                 <div class="company-quick-links">
                   <button class="workspace-button" type="button" data-open="crm" data-crm-nav-tab="tasks">업무보드</button>
@@ -3256,23 +3530,23 @@ HTML = r"""<!doctype html>
           <div class="workspace-title">업무관리</div>
           <div class="workspace-actions">
             <button class="workspace-button" type="button" id="crmRefresh">새로고침</button>
-            <button class="workspace-button" type="button" id="crmAccountQuick">거래처 추가</button>
+            <button class="workspace-button" type="button" id="crmAccountQuick">직원 보기</button>
             <button class="workspace-button" type="button" id="crmTaskQuick">업무 등록</button>
             <button class="workspace-button" type="button" data-open-window="crm">새창으로 열기</button>
           </div>
         </div>
-        <div class="crm-tabs">
-          <button class="crm-tab active" type="button" data-crm-tab="dashboard">대시보드</button>
-          <button class="crm-tab" type="button" data-crm-tab="mine">내 업무</button>
-          <button class="crm-tab" type="button" data-crm-tab="tasks">업무보드</button>
-          <button class="crm-tab" type="button" data-crm-tab="accounts">거래처</button>
-          <button class="crm-tab" type="button" data-crm-tab="messages" id="crmMessagesTab">메신저 연동</button>
+        <div class="crm-tabs" role="tablist" aria-label="CRM 메뉴">
+          <button class="crm-tab active" type="button" role="tab" id="crmTabDashboard" aria-selected="true" aria-controls="crmPanelDashboard" tabindex="0" data-crm-tab="dashboard">대시보드</button>
+          <button class="crm-tab" type="button" role="tab" id="crmTabMine" aria-selected="false" aria-controls="crmPanelMine" tabindex="-1" data-crm-tab="mine">내 업무</button>
+          <button class="crm-tab" type="button" role="tab" id="crmTabTasks" aria-selected="false" aria-controls="crmPanelTasks" tabindex="-1" data-crm-tab="tasks">업무보드</button>
+          <button class="crm-tab" type="button" role="tab" id="crmTabAccounts" aria-selected="false" aria-controls="crmPanelAccounts" tabindex="-1" data-crm-tab="accounts">직원</button>
+          <button class="crm-tab" type="button" role="tab" id="crmMessagesTab" aria-selected="false" aria-controls="crmPanelMessages" tabindex="-1" data-crm-tab="messages">메신저 연동</button>
         </div>
-        <div class="crm-message" id="crmMessage"></div>
+        <div class="crm-message" id="crmMessage" role="status" aria-live="polite"></div>
 
-        <section class="crm-panel active" data-crm-panel="dashboard">
+        <section class="crm-panel active" role="tabpanel" id="crmPanelDashboard" aria-labelledby="crmTabDashboard" tabindex="0" data-crm-panel="dashboard">
           <div class="crm-stat-grid">
-            <article class="crm-stat"><div class="crm-stat-label">등록 거래처</div><div class="crm-stat-value" id="crmStatAccounts">0</div></article>
+            <article class="crm-stat"><div class="crm-stat-label">활성 직원</div><div class="crm-stat-value" id="crmStatAccounts">0</div></article>
             <article class="crm-stat"><div class="crm-stat-label">진행 업무</div><div class="crm-stat-value" id="crmStatOpenTasks">0</div></article>
             <article class="crm-stat"><div class="crm-stat-label">오늘 마감</div><div class="crm-stat-value" id="crmStatDueToday">0</div></article>
             <article class="crm-stat"><div class="crm-stat-label">지연 업무</div><div class="crm-stat-value" id="crmStatOverdue">0</div></article>
@@ -3282,7 +3556,7 @@ HTML = r"""<!doctype html>
               <div class="crm-card-head"><span>우선 처리 업무</span><button class="crm-mini-button" type="button" data-crm-go="tasks">전체 보기</button></div>
               <div class="crm-table-wrap">
                 <table class="crm-table">
-                  <thead><tr><th>번호</th><th>거래처</th><th>업무</th><th>담당자</th><th>기한</th><th>상태</th></tr></thead>
+                  <thead><tr><th>번호</th><th>업무 구분</th><th>업무</th><th>담당자</th><th>기한</th><th>상태</th></tr></thead>
                   <tbody id="crmPriorityTaskBody"></tbody>
                 </table>
               </div>
@@ -3299,17 +3573,26 @@ HTML = r"""<!doctype html>
           </div>
         </section>
 
-        <section class="crm-panel" data-crm-panel="mine">
+        <section class="crm-panel" role="tabpanel" id="crmPanelMine" aria-labelledby="crmTabMine" tabindex="0" data-crm-panel="mine">
           <div class="crm-task-board-stats" id="crmMineStats"></div>
           <div class="crm-table-wrap">
             <table class="crm-table">
-              <thead><tr><th>번호</th><th>거래처</th><th>업무</th><th>마감</th><th>상태</th><th>우선순위</th><th>처리</th></tr></thead>
+              <thead><tr><th>번호</th><th>업무 구분</th><th>업무</th><th>마감</th><th>상태</th><th>우선순위</th><th>처리</th></tr></thead>
               <tbody id="crmMineTaskBody"></tbody>
             </table>
           </div>
         </section>
 
-        <section class="crm-panel" data-crm-panel="accounts">
+        <section class="crm-panel" role="tabpanel" id="crmPanelAccounts" aria-labelledby="crmTabAccounts" tabindex="0" data-crm-panel="accounts">
+          <article class="crm-card">
+            <div class="crm-card-head"><span>직원별 업무 현황</span><button class="crm-mini-button" type="button" id="crmStaffRefresh">새로고침</button></div>
+            <div class="crm-card-body">
+              <div class="crm-staff-list" id="crmStaffBody">
+                <div class="internal-chat-empty">직원 업무 현황을 불러오는 중입니다.</div>
+              </div>
+            </div>
+          </article>
+          <div hidden>
           <form class="crm-card" id="crmAccountForm">
             <div class="crm-card-head"><span>거래처 등록/수정</span><button class="crm-mini-button primary" type="submit">저장</button></div>
             <div class="crm-card-body crm-form-grid">
@@ -3333,9 +3616,10 @@ HTML = r"""<!doctype html>
               <tbody id="crmAccountBody"></tbody>
             </table>
           </div>
+          </div>
         </section>
 
-        <section class="crm-panel" data-crm-panel="tasks">
+        <section class="crm-panel" role="tabpanel" id="crmPanelTasks" aria-labelledby="crmTabTasks" tabindex="0" data-crm-panel="tasks">
           <form class="crm-card crm-task-form collapsed" id="crmTaskForm">
             <div class="crm-card-head">
               <span>업무 등록/수정</span>
@@ -3347,7 +3631,7 @@ HTML = r"""<!doctype html>
             <div class="crm-card-body crm-form-grid">
               <input id="crmTaskId" type="hidden" />
               <select class="crm-select" id="crmTaskAccount"></select>
-              <input class="crm-input wide" id="crmTaskAccountName" type="text" placeholder="새 거래처명 또는 선택 거래처" />
+              <input class="crm-input wide" id="crmTaskAccountName" type="text" placeholder="선택 업무 구분/거래처명 (선택)" />
               <input class="crm-input wide" id="crmTaskTitle" type="text" placeholder="업무 제목" />
               <select class="crm-select" id="crmTaskAssignee"></select>
               <input class="crm-input" id="crmTaskDue" type="text" placeholder="기한 예) 오늘 5시" />
@@ -3357,10 +3641,31 @@ HTML = r"""<!doctype html>
               <button class="crm-mini-button" type="button" id="crmTaskReset">초기화</button>
             </div>
           </form>
-          <div class="crm-toolbar">
-            <input class="crm-input" id="crmTaskSearch" type="text" placeholder="업무, 거래처, 번호 검색" />
+          <div class="crm-view-strip" id="crmTaskPresetList" aria-label="업무 빠른 보기"></div>
+          <div class="crm-toolbar crm-task-toolbar" aria-label="업무 필터">
+            <label class="sr-only" for="crmTaskViewSelect">저장뷰</label>
+            <select class="crm-select" id="crmTaskViewSelect"><option value="">저장뷰 선택</option></select>
+            <label class="sr-only" for="crmTaskViewName">저장뷰 이름</label>
+            <input class="crm-input" id="crmTaskViewName" type="text" placeholder="저장뷰 이름" />
+            <button class="crm-mini-button" type="button" id="crmTaskViewSave">현재 보기 저장</button>
+            <button class="crm-mini-button" type="button" id="crmTaskViewDelete">저장뷰 삭제</button>
+            <label class="sr-only" for="crmTaskSearch">업무 검색</label>
+            <input class="crm-input" id="crmTaskSearch" type="search" placeholder="업무, 직원, 번호 검색" />
+            <label class="sr-only" for="crmTaskStatusFilter">상태</label>
             <select class="crm-select" id="crmTaskStatusFilter"><option value="">상태 전체</option><option>대기</option><option>진행중</option><option>완료</option><option>보류</option></select>
+            <label class="sr-only" for="crmTaskAssigneeFilter">담당자</label>
+            <select class="crm-select" id="crmTaskAssigneeFilter"><option value="">담당자 전체</option></select>
+            <label class="sr-only" for="crmTaskPriorityFilter">우선순위</label>
+            <select class="crm-select" id="crmTaskPriorityFilter"><option value="">우선순위 전체</option><option>높음</option><option>보통</option><option>낮음</option></select>
+            <label class="sr-only" for="crmTaskDueFilter">마감</label>
+            <select class="crm-select" id="crmTaskDueFilter"><option value="">마감 전체</option><option value="today">오늘 마감</option><option value="overdue">지연</option><option value="upcoming">향후 마감</option><option value="none">기한 없음</option></select>
+            <label class="sr-only" for="crmTaskSourceFilter">출처</label>
+            <select class="crm-select" id="crmTaskSourceFilter"><option value="">출처 전체</option><option value="app">직접 등록</option><option value="internal_message">사내 메신저</option><option value="messenger">외부 메신저</option></select>
+            <label class="sr-only" for="crmTaskSort">정렬</label>
+            <select class="crm-select" id="crmTaskSort"><option value="smart">추천순</option><option value="due">마감순</option><option value="updated">최근 수정순</option></select>
+            <label class="crm-filter-check"><input type="checkbox" id="crmTaskOpenOnly" checked /> 미완료만</label>
             <button class="crm-mini-button primary" type="button" id="crmTaskSearchButton">조회</button>
+            <button class="crm-mini-button" type="button" id="crmTaskFilterReset">초기화</button>
           </div>
           <div class="crm-task-board-stats" id="crmTaskBoardStats"></div>
           <div class="crm-task-layout">
@@ -3371,7 +3676,7 @@ HTML = r"""<!doctype html>
           </div>
         </section>
 
-        <section class="crm-panel" data-crm-panel="messages">
+        <section class="crm-panel" role="tabpanel" id="crmPanelMessages" aria-labelledby="crmMessagesTab" tabindex="0" data-crm-panel="messages">
           <article class="crm-card">
             <div class="crm-card-head"><span>카카오 공식 연동 준비</span></div>
             <div class="crm-card-body crm-webhook-setup">
@@ -3885,7 +4190,7 @@ HTML = r"""<!doctype html>
       setHidden(importShipmentWorkspaceOpen, !can("import_shipment_manage"));
       document.querySelectorAll('[data-open="crm"]').forEach((button) => setHidden(button, !can("crm_view")));
       setHidden(document.querySelector('.nav-subitem[data-crm-nav-tab="messages"]'), !can("crm_message_manage"));
-      setHidden(crmAccountQuick, !can("crm_manage"));
+      setHidden(crmAccountQuick, !can("crm_view"));
       setHidden(crmTaskQuick, !can("crm_manage"));
       setHidden(crmAccountForm, !can("crm_manage"));
       setHidden(crmTaskForm, !can("crm_manage"));
@@ -4006,6 +4311,9 @@ HTML = r"""<!doctype html>
     const companyStaffTaskBody = document.querySelector("#companyStaffTaskBody");
     const companyStaffDueToday = document.querySelector("#companyStaffDueToday");
     const companyStaffNoticeTitle = document.querySelector("#companyStaffNoticeTitle");
+    const internalChatRoomList = document.querySelector("#internalChatRoomList");
+    const internalChatTitle = document.querySelector("#internalChatTitle");
+    const internalChatHint = document.querySelector("#internalChatHint");
     const internalChatList = document.querySelector("#internalChatList");
     const internalChatForm = document.querySelector("#internalChatForm");
     const internalChatBody = document.querySelector("#internalChatBody");
@@ -4128,6 +4436,8 @@ HTML = r"""<!doctype html>
     const crmAccountSearch = document.querySelector("#crmAccountSearch");
     const crmAccountSearchButton = document.querySelector("#crmAccountSearchButton");
     const crmAccountBody = document.querySelector("#crmAccountBody");
+    const crmStaffRefresh = document.querySelector("#crmStaffRefresh");
+    const crmStaffBody = document.querySelector("#crmStaffBody");
     const crmTaskForm = document.querySelector("#crmTaskForm");
     const crmTaskId = document.querySelector("#crmTaskId");
     const crmTaskAccount = document.querySelector("#crmTaskAccount");
@@ -4140,9 +4450,21 @@ HTML = r"""<!doctype html>
     const crmTaskDescription = document.querySelector("#crmTaskDescription");
     const crmTaskReset = document.querySelector("#crmTaskReset");
     const crmTaskFormToggle = document.querySelector("#crmTaskFormToggle");
+    const crmTaskPresetList = document.querySelector("#crmTaskPresetList");
+    const crmTaskViewSelect = document.querySelector("#crmTaskViewSelect");
+    const crmTaskViewName = document.querySelector("#crmTaskViewName");
+    const crmTaskViewSave = document.querySelector("#crmTaskViewSave");
+    const crmTaskViewDelete = document.querySelector("#crmTaskViewDelete");
     const crmTaskSearch = document.querySelector("#crmTaskSearch");
     const crmTaskStatusFilter = document.querySelector("#crmTaskStatusFilter");
+    const crmTaskAssigneeFilter = document.querySelector("#crmTaskAssigneeFilter");
+    const crmTaskPriorityFilter = document.querySelector("#crmTaskPriorityFilter");
+    const crmTaskDueFilter = document.querySelector("#crmTaskDueFilter");
+    const crmTaskSourceFilter = document.querySelector("#crmTaskSourceFilter");
+    const crmTaskSort = document.querySelector("#crmTaskSort");
+    const crmTaskOpenOnly = document.querySelector("#crmTaskOpenOnly");
     const crmTaskSearchButton = document.querySelector("#crmTaskSearchButton");
+    const crmTaskFilterReset = document.querySelector("#crmTaskFilterReset");
     const crmTaskBoardStats = document.querySelector("#crmTaskBoardStats");
     const crmTaskBody = document.querySelector("#crmTaskBody");
     const crmTaskDetail = document.querySelector("#crmTaskDetail");
@@ -4175,10 +4497,23 @@ HTML = r"""<!doctype html>
     let crmTasks = [];
     let crmMineTasks = [];
     let crmUsers = [];
+    let internalChatUsers = [];
+    let internalChatRoom = { type: "global", userId: "" };
     let companyActiveTab = "notice";
     let crmActiveTab = "dashboard";
     let crmSelectedTaskId = "";
     const CRM_TASK_STATUSES = ["대기", "진행중", "보류", "완료"];
+    const CRM_TASK_BUILTIN_VIEWS = [
+      { id: "open", name: "전체 미완료", filters: { open_only: "1", sort: "smart" } },
+      { id: "today", name: "오늘 마감", filters: { due: "today", open_only: "1", sort: "due" } },
+      { id: "overdue", name: "지연", filters: { due: "overdue", open_only: "1", sort: "due" } },
+      { id: "mine", name: "내 업무", filters: { assignee_user_id: String(currentUser.id || ""), open_only: "1", sort: "due" } },
+      { id: "messages", name: "메신저 지시", filters: { source: "internal_message", open_only: "1", sort: "updated" } },
+    ];
+    let crmSavedViews = [];
+    let crmActiveTaskViewId = "builtin:open";
+    const crmTaskComments = {};
+    const crmTaskCommentLoads = {};
     let activeLedgerFilterField = "";
     let activeManagementFilterField = "";
     const activeCellEditors = {
@@ -5286,7 +5621,9 @@ HTML = r"""<!doctype html>
       if (companyActiveTab === "staff") {
         loadCompanyStaffDashboard().catch(() => {});
       } else if (companyActiveTab === "chat") {
-        loadInternalMessages().catch(() => {
+        loadInternalChatUsers()
+          .then(() => loadInternalMessages())
+          .catch(() => {
           if (internalChatList) internalChatList.innerHTML = `<div class="internal-chat-empty">메시지를 불러오지 못했습니다.</div>`;
         });
       }
@@ -5306,7 +5643,7 @@ HTML = r"""<!doctype html>
         <div class="company-task-item">
           <div>
             <div class="company-task-title">${escapeHtml(task.title)}</div>
-            <div class="company-task-meta">${escapeHtml(task.public_id || "")} · ${escapeHtml(task.account_name || "거래처 미지정")} · ${escapeHtml(crmDueDateText(task))}</div>
+            <div class="company-task-meta">${escapeHtml(task.public_id || "")} · ${escapeHtml(crmTaskContextLabel(task))} · ${escapeHtml(crmDueDateText(task))}</div>
           </div>
           ${crmStatusBadge(task.status)}
         </div>
@@ -5378,22 +5715,72 @@ HTML = r"""<!doctype html>
       renderCompanyStaffTasks(myTaskData.tasks || []);
     }
 
+    function internalChatRoomLabel() {
+      if (internalChatRoom.type === "dm") {
+        const user = internalChatUsers.find((item) => String(item.id) === String(internalChatRoom.userId));
+        return user ? `${user.display_name || user.username} DM` : "직원 DM";
+      }
+      return "전체방";
+    }
+
+    function renderInternalChatRooms() {
+      if (!internalChatRoomList) return;
+      const globalActive = internalChatRoom.type === "global";
+      const rows = [`<button class="internal-chat-room${globalActive ? " active" : ""}" type="button" data-chat-room="global"><span>전체방</span><small>공지/공유</small></button>`];
+      internalChatUsers.forEach((user) => {
+        if (String(user.id) === String(currentUser.id)) return;
+        const active = internalChatRoom.type === "dm" && String(internalChatRoom.userId) === String(user.id);
+        rows.push(`
+          <button class="internal-chat-room${active ? " active" : ""}" type="button" data-chat-room="dm" data-chat-user-id="${escapeHtml(user.id)}">
+            <span>${escapeHtml(user.display_name || user.username)}</span>
+            <small>${escapeHtml(roleText(user.role))}</small>
+          </button>
+        `);
+      });
+      internalChatRoomList.innerHTML = rows.join("");
+      if (internalChatTitle) internalChatTitle.textContent = internalChatRoomLabel();
+      if (internalChatHint) {
+        internalChatHint.textContent = internalChatRoom.type === "dm"
+          ? "DM에서도 /업무 @직원 업무내용 / 기한 으로 업무 지시 가능"
+          : "전체방 공유와 /업무 @직원 업무내용 / 기한 명령을 지원";
+      }
+    }
+
+    async function loadInternalChatUsers() {
+      if (!can("crm_view")) {
+        internalChatUsers = [];
+        renderInternalChatRooms();
+        return;
+      }
+      const data = await crmFetchJson("/api/company-staff-dashboard");
+      internalChatUsers = data.staff || [];
+      renderInternalChatRooms();
+    }
+
+    function internalMessageClass(message) {
+      if (message.command_error) return " command-error";
+      if (message.command_result) return " command-ok";
+      return "";
+    }
+
     function renderInternalMessages(messages) {
       if (!internalChatList) return;
       const rows = messages || [];
       if (!rows.length) {
-        internalChatList.innerHTML = `<div class="internal-chat-empty">아직 메시지가 없습니다. 첫 공유를 남겨줘.</div>`;
+        internalChatList.innerHTML = `<div class="internal-chat-empty">아직 메시지가 없습니다. 첫 공유나 DM을 남겨줘.</div>`;
         return;
       }
       internalChatList.innerHTML = rows.map((message) => {
         const isMine = String(message.user_id) === String(currentUser.id);
         return `
-          <article class="internal-message${isMine ? " mine" : ""}">
+          <article class="internal-message${isMine ? " mine" : ""}${internalMessageClass(message)}">
             <div class="internal-message-meta">
               <span class="internal-message-name">${escapeHtml(message.display_name || message.username || "직원")}</span>
               <span>${escapeHtml(message.created_at || "")}</span>
             </div>
             <div class="internal-message-body">${escapeHtml(message.body || "")}</div>
+            ${message.command_result ? `<div class="internal-message-meta"><span>${escapeHtml(message.command_result)}</span></div>` : ""}
+            ${message.command_error ? `<div class="internal-message-meta"><span>${escapeHtml(message.command_error)}</span></div>` : ""}
           </article>
         `;
       }).join("");
@@ -5401,8 +5788,18 @@ HTML = r"""<!doctype html>
     }
 
     async function loadInternalMessages() {
-      const data = await crmFetchJson("/api/internal-messages?limit=100");
+      renderInternalChatRooms();
+      const params = new URLSearchParams({ limit: "100", room: internalChatRoom.type });
+      if (internalChatRoom.type === "dm" && internalChatRoom.userId) params.set("user_id", internalChatRoom.userId);
+      const data = await crmFetchJson(`/api/internal-messages?${params.toString()}`);
       renderInternalMessages(data.messages || []);
+    }
+
+    async function setInternalChatRoom(type, userId = "") {
+      internalChatRoom = { type: type === "dm" ? "dm" : "global", userId: type === "dm" ? String(userId || "") : "" };
+      renderInternalChatRooms();
+      await loadInternalMessages();
+      internalChatBody?.focus();
     }
 
     async function sendInternalMessage(event) {
@@ -5415,21 +5812,43 @@ HTML = r"""<!doctype html>
       }
       await crmFetchJson("/api/internal-message-save", {
         method: "POST",
-        body: JSON.stringify({ body }),
+        body: JSON.stringify({
+          body,
+          room_type: internalChatRoom.type,
+          recipient_user_id: internalChatRoom.type === "dm" ? internalChatRoom.userId : "",
+        }),
       });
       internalChatBody.value = "";
       await loadInternalMessages();
+      if (body.startsWith("/업무")) {
+        await Promise.all([
+          loadCrmTasks().catch(() => {}),
+          loadCrmMineTasks().catch(() => {}),
+          loadCrmStaffDashboard().catch(() => {}),
+          loadCompanyStaffDashboard().catch(() => {}),
+          loadCrmDashboard().catch(() => {}),
+        ]);
+      }
       internalChatBody.focus();
     }
 
     function setCrmTab(tabName) {
       if (tabName === "messages" && !can("crm_message_manage")) tabName = "dashboard";
       crmActiveTab = tabName;
-      crmTabs.forEach((button) => button.classList.toggle("active", button.dataset.crmTab === tabName));
-      crmPanels.forEach((panel) => panel.classList.toggle("active", panel.dataset.crmPanel === tabName));
+      crmTabs.forEach((button) => {
+        const active = button.dataset.crmTab === tabName;
+        button.classList.toggle("active", active);
+        button.setAttribute("aria-selected", active ? "true" : "false");
+        button.tabIndex = active ? 0 : -1;
+      });
+      crmPanels.forEach((panel) => {
+        const active = panel.dataset.crmPanel === tabName;
+        panel.classList.toggle("active", active);
+        panel.hidden = !active;
+      });
       syncCrmNavState();
       if (tabName === "accounts") {
-        loadCrmAccounts().catch((error) => setCrmMessage(error.message, true));
+        loadCrmStaffDashboard().catch((error) => setCrmMessage(error.message, true));
       } else if (tabName === "mine") {
         loadCrmMineTasks().catch((error) => setCrmMessage(error.message, true));
       } else if (tabName === "tasks") {
@@ -5441,24 +5860,176 @@ HTML = r"""<!doctype html>
       }
     }
 
+    function crmTaskFilterDefaults() {
+      return { q: "", status: "", assignee_user_id: "", priority: "", due: "", source: "", open_only: "1", sort: "smart" };
+    }
+
+    function normalizeCrmTaskFilters(filters = {}) {
+      const defaults = crmTaskFilterDefaults();
+      const normalized = { ...defaults };
+      Object.keys(defaults).forEach((key) => {
+        if (Object.prototype.hasOwnProperty.call(filters, key)) normalized[key] = String(filters[key] || "");
+      });
+      normalized.open_only = normalized.open_only === "1" || normalized.open_only === "true" ? "1" : "";
+      if (normalized.status === "완료") normalized.open_only = "";
+      if (!["smart", "due", "updated"].includes(normalized.sort)) normalized.sort = "smart";
+      return normalized;
+    }
+
+    function readCrmTaskFilters() {
+      return normalizeCrmTaskFilters({
+        q: crmTaskSearch?.value.trim() || "",
+        status: crmTaskStatusFilter?.value || "",
+        assignee_user_id: crmTaskAssigneeFilter?.value || "",
+        priority: crmTaskPriorityFilter?.value || "",
+        due: crmTaskDueFilter?.value || "",
+        source: crmTaskSourceFilter?.value || "",
+        open_only: crmTaskOpenOnly?.checked ? "1" : "",
+        sort: crmTaskSort?.value || "smart",
+      });
+    }
+
+    function writeCrmTaskFilters(filters = {}) {
+      const normalized = normalizeCrmTaskFilters(filters);
+      if (crmTaskSearch) crmTaskSearch.value = normalized.q;
+      if (crmTaskStatusFilter) crmTaskStatusFilter.value = normalized.status;
+      if (crmTaskAssigneeFilter) crmTaskAssigneeFilter.value = normalized.assignee_user_id;
+      if (crmTaskPriorityFilter) crmTaskPriorityFilter.value = normalized.priority;
+      if (crmTaskDueFilter) crmTaskDueFilter.value = normalized.due;
+      if (crmTaskSourceFilter) crmTaskSourceFilter.value = normalized.source;
+      if (crmTaskOpenOnly) crmTaskOpenOnly.checked = normalized.open_only === "1";
+      if (crmTaskSort) crmTaskSort.value = normalized.sort;
+    }
+
+    function crmBuiltinTaskView(viewId) {
+      const id = String(viewId || "").replace(/^builtin:/, "");
+      return CRM_TASK_BUILTIN_VIEWS.find((view) => view.id === id);
+    }
+
+    function crmSavedTaskView(viewId) {
+      const id = String(viewId || "").replace(/^saved:/, "");
+      return crmSavedViews.find((view) => String(view.id) === id);
+    }
+
+    function renderCrmSavedViews() {
+      if (!crmTaskViewSelect || !crmTaskPresetList) return;
+      const savedOptions = crmSavedViews.map((view) => (
+        `<option value="saved:${escapeHtml(view.id)}">${escapeHtml(view.name)}</option>`
+      )).join("");
+      crmTaskViewSelect.innerHTML = [
+        `<option value="">저장뷰 선택</option>`,
+        `<optgroup label="기본 보기">${CRM_TASK_BUILTIN_VIEWS.map((view) => (
+          `<option value="builtin:${escapeHtml(view.id)}">${escapeHtml(view.name)}</option>`
+        )).join("")}</optgroup>`,
+        savedOptions ? `<optgroup label="내 저장뷰">${savedOptions}</optgroup>` : "",
+      ].join("");
+      crmTaskViewSelect.value = Array.from(crmTaskViewSelect.options).some((option) => option.value === crmActiveTaskViewId) ? crmActiveTaskViewId : "";
+      crmTaskPresetList.innerHTML = CRM_TASK_BUILTIN_VIEWS.map((view) => {
+        const active = crmActiveTaskViewId === `builtin:${view.id}`;
+        return `<button class="crm-view-pill${active ? " active" : ""}" type="button" data-crm-task-view="builtin:${escapeHtml(view.id)}">${escapeHtml(view.name)}</button>`;
+      }).join("");
+      if (crmTaskViewName && document.activeElement !== crmTaskViewName) {
+        const selectedSaved = crmSavedTaskView(crmActiveTaskViewId);
+        crmTaskViewName.value = selectedSaved?.name || "";
+      }
+      if (crmTaskViewDelete) crmTaskViewDelete.disabled = !crmActiveTaskViewId.startsWith("saved:");
+    }
+
+    function applyCrmTaskView(viewId, load = true) {
+      const viewKey = String(viewId || "");
+      const builtin = crmBuiltinTaskView(viewKey);
+      const saved = crmSavedTaskView(viewKey);
+      if (!builtin && !saved) return;
+      crmActiveTaskViewId = builtin ? `builtin:${builtin.id}` : `saved:${saved.id}`;
+      writeCrmTaskFilters(builtin ? builtin.filters : saved.filters || {});
+      renderCrmSavedViews();
+      if (load) loadCrmTasks().catch((error) => setCrmMessage(error.message, true));
+    }
+
+    function markCrmTaskFiltersDirty() {
+      crmActiveTaskViewId = "";
+      renderCrmSavedViews();
+    }
+
+    async function loadCrmSavedViews() {
+      if (!can("crm_view")) return;
+      const data = await crmFetchJson("/api/crm-saved-views?scope=tasks");
+      crmSavedViews = data.views || [];
+      renderCrmSavedViews();
+    }
+
+    async function saveCurrentCrmTaskView() {
+      const filters = readCrmTaskFilters();
+      const selected = crmSavedTaskView(crmActiveTaskViewId);
+      const name = String(crmTaskViewName?.value || selected?.name || "").trim();
+      if (!name) {
+        setCrmMessage("저장뷰 이름을 입력해줘.", true);
+        crmTaskViewName?.focus();
+        return;
+      }
+      const data = await crmFetchJson("/api/crm-saved-view-save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: selected?.id || "",
+          scope: "tasks",
+          name: name.trim(),
+          filters,
+          sort_key: filters.sort,
+        }),
+      });
+      crmSavedViews = data.views || [];
+      crmActiveTaskViewId = `saved:${data.view_id}`;
+      if (crmTaskViewName) crmTaskViewName.value = name.trim();
+      renderCrmSavedViews();
+      setCrmMessage(data.message || "저장뷰를 저장했습니다.");
+    }
+
+    async function deleteCurrentCrmTaskView() {
+      const selected = crmSavedTaskView(crmActiveTaskViewId);
+      if (!selected) {
+        setCrmMessage("삭제할 내 저장뷰를 선택해줘.", true);
+        return;
+      }
+      if (!confirm(`'${selected.name}' 저장뷰를 삭제할까요?`)) return;
+      const data = await crmFetchJson("/api/crm-saved-view-delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: selected.id, scope: "tasks" }),
+      });
+      crmSavedViews = data.views || [];
+      crmActiveTaskViewId = "builtin:open";
+      writeCrmTaskFilters(crmBuiltinTaskView("open")?.filters || {});
+      renderCrmSavedViews();
+      setCrmMessage(data.message || "저장뷰를 삭제했습니다.");
+      await loadCrmTasks();
+    }
+
     function renderCrmUserOptions() {
       const options = [`<option value="">담당자 선택</option>`].concat(
         crmUsers.map((user) => `<option value="${escapeHtml(user.id)}">${escapeHtml(user.display_name || user.username)}</option>`)
       ).join("");
       if (crmTaskAssignee) crmTaskAssignee.innerHTML = options;
       if (crmMessengerUser) crmMessengerUser.innerHTML = options;
+      if (crmTaskAssigneeFilter) {
+        const current = crmTaskAssigneeFilter.value;
+        crmTaskAssigneeFilter.innerHTML = [`<option value="">담당자 전체</option>`].concat(
+          crmUsers.map((user) => `<option value="${escapeHtml(user.id)}">${escapeHtml(user.display_name || user.username)}</option>`)
+        ).join("");
+        crmTaskAssigneeFilter.value = Array.from(crmTaskAssigneeFilter.options).some((option) => option.value === current) ? current : "";
+      }
     }
 
     function renderCrmAccountOptions() {
       if (!crmTaskAccount) return;
-      crmTaskAccount.innerHTML = [`<option value="">거래처 선택</option>`].concat(
+      crmTaskAccount.innerHTML = [`<option value="">업무 구분/거래처 선택</option>`].concat(
         crmAccounts.map((account) => `<option value="${escapeHtml(account.id)}">${escapeHtml(account.name)}</option>`)
       ).join("");
     }
 
     function renderCrmDashboard(data) {
       const stats = data.stats || {};
-      crmStatAccounts.textContent = stats.accounts || 0;
+      crmStatAccounts.textContent = crmUsers.length || stats.accounts || 0;
       crmStatOpenTasks.textContent = stats.open_tasks || 0;
       crmStatDueToday.textContent = stats.due_today || 0;
       crmStatOverdue.textContent = stats.overdue || 0;
@@ -5466,7 +6037,7 @@ HTML = r"""<!doctype html>
       crmPriorityTaskBody.innerHTML = tasks.length ? tasks.map((task) => `
         <tr>
           <td>${escapeHtml(task.public_id)}</td>
-          <td>${escapeHtml(task.account_name)}</td>
+          <td>${escapeHtml(crmTaskContextLabel(task))}</td>
           <td class="left">${escapeHtml(task.title)}</td>
           <td>${escapeHtml(task.assignee_name)}</td>
           <td>${escapeHtml(task.due_at)}</td>
@@ -5525,6 +6096,49 @@ HTML = r"""<!doctype html>
           <td><button class="crm-mini-button" type="button" data-crm-account-edit="${escapeHtml(account.id)}">수정</button></td>
         </tr>
       `).join("") : `<tr><td colspan="7">등록된 CRM 거래처가 없습니다.</td></tr>`;
+    }
+
+    function latestTaskForUser(tasks, userId) {
+      return (tasks || []).find((task) => String(task.assignee_user_id || "") === String(userId || "") && task.status !== "완료");
+    }
+
+    function renderCrmStaffDashboard(payload, tasks) {
+      if (!crmStaffBody) return;
+      const staff = payload?.staff || [];
+      const rows = tasks || [];
+      if (!staff.length) {
+        crmStaffBody.innerHTML = `<div class="internal-chat-empty">표시할 직원 계정이 없습니다.</div>`;
+        return;
+      }
+      crmStaffBody.innerHTML = staff.map((user) => {
+        const latest = latestTaskForUser(rows, user.id);
+        return `
+          <article class="crm-staff-row">
+            <div class="crm-staff-person">
+              <div class="crm-staff-avatar">${escapeHtml(personInitials(user))}</div>
+              <div>
+                <div class="crm-staff-name">${escapeHtml(user.display_name || user.username)}</div>
+                <div class="crm-staff-role">${escapeHtml(roleText(user.role))} · ${escapeHtml(user.username)}</div>
+              </div>
+            </div>
+            <div class="crm-staff-metric"><span>진행</span><strong>${escapeHtml(user.open_tasks || 0)}</strong></div>
+            <div class="crm-staff-metric"><span>오늘</span><strong>${escapeHtml(user.due_today || 0)}</strong></div>
+            <div class="crm-staff-metric"><span>지연</span><strong>${escapeHtml(user.overdue || 0)}</strong></div>
+            <div class="crm-staff-latest">${latest ? `${escapeHtml(latest.public_id || "")} · ${escapeHtml(latest.title || "")} · ${escapeHtml(crmDueDateText(latest))}` : "최근 미완료 업무 없음"}</div>
+          </article>
+        `;
+      }).join("");
+    }
+
+    async function loadCrmStaffDashboard() {
+      if (!can("crm_view")) return;
+      const [staffPayload, taskPayload] = await Promise.all([
+        crmFetchJson("/api/company-staff-dashboard"),
+        crmFetchJson("/api/crm-tasks?limit=2000"),
+      ]);
+      crmUsers = staffPayload.staff || crmUsers;
+      renderCrmUserOptions();
+      renderCrmStaffDashboard(staffPayload, taskPayload.tasks || []);
     }
 
     async function loadCrmAccounts() {
@@ -5607,6 +6221,18 @@ HTML = r"""<!doctype html>
       return task?.due_at || "기한 없음";
     }
 
+    function crmTaskContextLabel(task) {
+      return task?.account_name || "직원 지시 업무";
+    }
+
+    function crmSourceLabel(source) {
+      const value = String(source || "app");
+      if (value === "internal_message") return "사내 메신저";
+      if (value.startsWith("messenger:")) return "외부 메신저";
+      if (value === "app") return "직접 등록";
+      return value;
+    }
+
     function crmDueDateOnly(task) {
       const due = task?.due_at || "";
       return due.length >= 10 ? due.slice(0, 10) : "";
@@ -5641,14 +6267,14 @@ HTML = r"""<!doctype html>
       const isActive = String(task.id) === String(crmSelectedTaskId);
       const canEdit = can("crm_manage");
       return `
-        <article class="crm-task-card ${isActive ? "active" : ""}" data-crm-task-card="${escapeHtml(task.id)}">
+        <article class="crm-task-card ${isActive ? "active" : ""}" role="button" tabindex="0" aria-pressed="${isActive ? "true" : "false"}" aria-label="${escapeHtml(`${task.public_id || ""} ${task.title || ""}`)}" data-crm-task-card="${escapeHtml(task.id)}">
           <div class="crm-task-card-top">
             ${crmPriorityBadge(task.priority)}
             <span class="crm-status ${crmStatusClass(task.status)}">${escapeHtml(task.status || "대기")}</span>
           </div>
           <div>
             <div class="crm-task-card-title">${escapeHtml(task.title)}</div>
-            <div class="crm-task-card-sub">${escapeHtml(task.account_name || "거래처 미지정")}</div>
+            <div class="crm-task-card-sub">${escapeHtml(crmTaskContextLabel(task))}</div>
           </div>
           <div class="crm-task-card-sub">${escapeHtml(task.description || "상세 내용이 없습니다.")}</div>
           <div class="crm-task-card-meta">
@@ -5667,6 +6293,62 @@ HTML = r"""<!doctype html>
       `;
     }
 
+    function crmTimelineTypeLabel(type) {
+      if (type === "status") return "상태 변경";
+      if (type === "messenger") return "메신저";
+      return "댓글";
+    }
+
+    function renderCrmTaskTimeline(task) {
+      const key = String(task.id || "");
+      const comments = crmTaskComments[key];
+      const loading = crmTaskCommentLoads[key];
+      const creation = {
+        label: "업무 생성",
+        created_at: task.created_at || "",
+        author_name: task.requester_name || "시스템",
+        body: `${crmSourceLabel(task.source)}에서 생성됐습니다.`,
+      };
+      const commentItems = (comments || []).map((comment) => ({
+        label: crmTimelineTypeLabel(comment.comment_type),
+        created_at: comment.created_at || "",
+        author_name: comment.author_name || "직원",
+        body: comment.body || "",
+      }));
+      const items = commentItems.concat([creation]);
+      if (!comments && loading) {
+        items.unshift({
+          label: "불러오는 중",
+          created_at: "",
+          author_name: "",
+          body: "활동 이력을 불러오고 있습니다.",
+        });
+      } else if (comments && !comments.length) {
+        items.unshift({
+          label: "활동 없음",
+          created_at: "",
+          author_name: "",
+          body: "아직 댓글이나 상태 변경 이력이 없습니다.",
+        });
+      }
+      return `
+        <div>
+          <div class="crm-timeline-title">활동 이력</div>
+          <ol class="crm-timeline" aria-label="업무 활동 이력">
+            ${items.map((item) => `
+              <li class="crm-timeline-item">
+                <div class="crm-timeline-head">
+                  <span>${escapeHtml(item.label)}${item.author_name ? ` · ${escapeHtml(item.author_name)}` : ""}</span>
+                  <span>${escapeHtml(item.created_at)}</span>
+                </div>
+                <div class="crm-timeline-body">${escapeHtml(item.body)}</div>
+              </li>
+            `).join("")}
+          </ol>
+        </div>
+      `;
+    }
+
     function renderCrmTaskDetail(task) {
       if (!crmTaskDetail) return;
       if (!task) {
@@ -5674,10 +6356,11 @@ HTML = r"""<!doctype html>
         return;
       }
       const canEdit = can("crm_manage");
+      const commentId = `crmTaskCommentBody-${task.id}`;
       crmTaskDetail.innerHTML = `
         <div class="crm-task-detail-inner">
           <div>
-            <div class="crm-task-detail-kicker">${escapeHtml(task.account_name || "거래처 미지정")} · ${escapeHtml(task.public_id || "")}</div>
+            <div class="crm-task-detail-kicker">${escapeHtml(crmTaskContextLabel(task))} · ${escapeHtml(task.public_id || "")}</div>
             <div class="crm-task-detail-title">${escapeHtml(task.title)}</div>
           </div>
           <div class="crm-task-detail-desc">${escapeHtml(task.description || "상세 내용이 없습니다.")}</div>
@@ -5687,7 +6370,7 @@ HTML = r"""<!doctype html>
             <div class="crm-detail-cell"><span>마감</span><strong>${escapeHtml(crmDueDateText(task))}</strong></div>
             <div class="crm-detail-cell"><span>상태</span><strong>${escapeHtml(task.status || "대기")}</strong></div>
             <div class="crm-detail-cell"><span>우선순위</span><strong>${escapeHtml(task.priority || "보통")}</strong></div>
-            <div class="crm-detail-cell"><span>출처</span><strong>${escapeHtml(task.source || "app")}</strong></div>
+            <div class="crm-detail-cell"><span>출처</span><strong>${escapeHtml(crmSourceLabel(task.source))}</strong></div>
           </div>
           <div class="crm-detail-actions">
             ${canEdit ? `<button class="crm-mini-button" type="button" data-crm-task-edit="${escapeHtml(task.id)}">수정</button>` : ""}
@@ -5696,13 +6379,44 @@ HTML = r"""<!doctype html>
             <button class="crm-mini-button" type="button" data-crm-task-status="${escapeHtml(task.id)}" data-status="보류">보류</button>
             <button class="crm-mini-button" type="button" data-crm-task-comment="${escapeHtml(task.id)}">댓글</button>
           </div>
+          <form class="crm-detail-comment-form" data-crm-comment-form="${escapeHtml(task.id)}">
+            <label for="${escapeHtml(commentId)}">댓글</label>
+            <textarea class="crm-textarea" id="${escapeHtml(commentId)}" data-crm-comment-body placeholder="처리 내용이나 다음 액션을 남겨줘."></textarea>
+            <button class="crm-mini-button primary" type="submit">댓글 등록</button>
+          </form>
+          ${renderCrmTaskTimeline(task)}
         </div>
       `;
+    }
+
+    function focusCrmTaskCommentForm(taskId) {
+      const escapedTaskId = window.CSS?.escape ? CSS.escape(String(taskId || "")) : String(taskId || "").replaceAll('"', '\\"');
+      const textarea = crmTaskDetail?.querySelector(`[data-crm-comment-form="${escapedTaskId}"] [data-crm-comment-body]`);
+      if (textarea) textarea.focus();
+    }
+
+    async function ensureCrmTaskComments(taskId, force = false) {
+      const key = String(taskId || "");
+      if (!key || (!force && crmTaskComments[key])) return;
+      if (crmTaskCommentLoads[key]) return crmTaskCommentLoads[key];
+      crmTaskCommentLoads[key] = crmFetchJson(`/api/crm-task-comments?task_id=${encodeURIComponent(key)}`)
+        .then((data) => {
+          crmTaskComments[key] = data.comments || [];
+          delete crmTaskCommentLoads[key];
+          const selected = crmTasks.find((task) => String(task.id) === String(crmSelectedTaskId));
+          if (selected && String(selected.id) === key) renderCrmTaskDetail(selected);
+        })
+        .catch((error) => {
+          delete crmTaskCommentLoads[key];
+          setCrmMessage(error.message, true);
+        });
+      return crmTaskCommentLoads[key];
     }
 
     function selectCrmTask(taskId) {
       crmSelectedTaskId = String(taskId || "");
       renderCrmTasks();
+      ensureCrmTaskComments(crmSelectedTaskId).catch(() => {});
     }
 
     function renderCrmTasks() {
@@ -5732,7 +6446,9 @@ HTML = r"""<!doctype html>
           </section>
         `;
       }).join("");
-      renderCrmTaskDetail(crmTasks.find((task) => String(task.id) === String(crmSelectedTaskId)));
+      const selectedTask = crmTasks.find((task) => String(task.id) === String(crmSelectedTaskId));
+      renderCrmTaskDetail(selectedTask);
+      if (selectedTask) ensureCrmTaskComments(selectedTask.id).catch(() => {});
     }
 
     function renderCrmMineTasks() {
@@ -5760,7 +6476,7 @@ HTML = r"""<!doctype html>
       crmMineTaskBody.innerHTML = openTasks.length ? openTasks.map((task) => `
         <tr>
           <td>${escapeHtml(task.public_id || "")}</td>
-          <td class="left">${escapeHtml(task.account_name || "거래처 미지정")}</td>
+          <td class="left">${escapeHtml(crmTaskContextLabel(task))}</td>
           <td class="left">${escapeHtml(task.title)}</td>
           <td>${escapeHtml(crmDueDateText(task))}</td>
           <td>${crmStatusBadge(task.status)}</td>
@@ -5779,9 +6495,16 @@ HTML = r"""<!doctype html>
 
     async function loadCrmTasks() {
       if (!can("crm_view")) return;
-      const params = new URLSearchParams();
-      if (crmTaskSearch?.value) params.set("q", crmTaskSearch.value.trim());
-      if (crmTaskStatusFilter?.value) params.set("status", crmTaskStatusFilter.value);
+      const filters = readCrmTaskFilters();
+      const params = new URLSearchParams({ limit: "2000" });
+      if (filters.q) params.set("q", filters.q);
+      if (filters.status) params.set("status", filters.status);
+      if (filters.assignee_user_id) params.set("assignee_user_id", filters.assignee_user_id);
+      if (filters.priority) params.set("priority", filters.priority);
+      if (filters.due) params.set("due", filters.due);
+      if (filters.source) params.set("source", filters.source);
+      if (filters.open_only) params.set("open_only", "1");
+      if (filters.sort) params.set("sort", filters.sort);
       const data = await crmFetchJson(`/api/crm-tasks?${params.toString()}`);
       crmTasks = data.tasks || [];
       renderCrmTasks();
@@ -5789,7 +6512,7 @@ HTML = r"""<!doctype html>
 
     async function loadCrmMineTasks() {
       if (!can("crm_view")) return;
-      const data = await crmFetchJson("/api/crm-tasks?mine=1&limit=300");
+      const data = await crmFetchJson("/api/crm-tasks?mine=1&open_only=1&sort=due&limit=300");
       crmMineTasks = data.tasks || [];
       renderCrmMineTasks();
     }
@@ -5833,22 +6556,48 @@ HTML = r"""<!doctype html>
         body: JSON.stringify({ id: taskId, status }),
       });
       setCrmMessage(data.message || "업무 상태를 저장했습니다.");
+      delete crmTaskComments[String(taskId || "")];
       await loadCrmTasks();
+      await ensureCrmTaskComments(taskId, true);
       if (crmActiveTab === "mine") await loadCrmMineTasks();
       if (companyActiveTab === "staff") await loadCompanyStaffDashboard().catch(() => {});
       await loadCrmDashboard();
     }
 
-    async function addCrmTaskComment(taskId) {
-      const body = prompt("댓글 내용을 입력해줘.");
-      if (!body) return;
+    function openCrmTaskComment(taskId) {
+      const task = findCrmTaskById(taskId);
+      crmSelectedTaskId = String(taskId || "");
+      if (crmActiveTab !== "tasks") {
+        if (task) {
+          crmActiveTaskViewId = "";
+          writeCrmTaskFilters({
+            ...crmTaskFilterDefaults(),
+            q: task.public_id || task.title || "",
+            open_only: task.status === "완료" ? "" : "1",
+          });
+          renderCrmSavedViews();
+        }
+        setCrmTab("tasks");
+      }
+      else renderCrmTasks();
+      ensureCrmTaskComments(taskId).finally(() => setTimeout(() => focusCrmTaskCommentForm(taskId), 0));
+    }
+
+    async function addCrmTaskComment(taskId, body) {
+      const text = String(body || "").trim();
+      if (!text) {
+        focusCrmTaskCommentForm(taskId);
+        return;
+      }
       const data = await crmFetchJson("/api/crm-task-comment", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: taskId, body }),
+        body: JSON.stringify({ id: taskId, body: text }),
       });
       setCrmMessage(data.message || "댓글을 저장했습니다.");
+      delete crmTaskComments[String(taskId || "")];
       await loadCrmTasks();
+      await ensureCrmTaskComments(taskId, true);
       if (crmActiveTab === "mine") await loadCrmMineTasks();
       if (companyActiveTab === "staff") await loadCompanyStaffDashboard().catch(() => {});
       await loadCrmDashboard();
@@ -5966,15 +6715,18 @@ HTML = r"""<!doctype html>
       crmUsers = data.users || [];
       renderCrmUserOptions();
       renderCrmMessengerUsers(data);
+      if (crmStatAccounts) crmStatAccounts.textContent = crmUsers.length || 0;
     }
 
     async function loadCrmAll() {
       if (!can("crm_view")) return;
       setCrmMessage("");
+      renderCrmSavedViews();
       await Promise.all([
         loadCrmDashboard(),
         loadCrmAccounts(),
         loadCrmTasks(),
+        loadCrmSavedViews().catch(() => {}),
         loadCrmUsersForForms().catch(() => {}),
       ]);
       if (crmActiveTab === "mine") await loadCrmMineTasks();
@@ -7526,6 +8278,23 @@ HTML = r"""<!doctype html>
     });
     crmTabs.forEach((button) => {
       button.addEventListener("click", () => setCrmTab(button.dataset.crmTab));
+      button.addEventListener("keydown", (event) => {
+        const keys = ["ArrowLeft", "ArrowRight", "Home", "End"];
+        if (!keys.includes(event.key)) return;
+        event.preventDefault();
+        const availableTabs = crmTabs.filter((tab) => !tab.classList.contains("permission-hidden"));
+        const currentIndex = availableTabs.indexOf(button);
+        let nextIndex = currentIndex;
+        if (event.key === "ArrowRight") nextIndex = (currentIndex + 1) % availableTabs.length;
+        if (event.key === "ArrowLeft") nextIndex = (currentIndex - 1 + availableTabs.length) % availableTabs.length;
+        if (event.key === "Home") nextIndex = 0;
+        if (event.key === "End") nextIndex = availableTabs.length - 1;
+        const nextTab = availableTabs[nextIndex];
+        if (nextTab) {
+          setCrmTab(nextTab.dataset.crmTab);
+          nextTab.focus();
+        }
+      });
     });
     companyTabs.forEach((button) => {
       button.addEventListener("click", () => setCompanyTab(button.dataset.companyTab));
@@ -7542,8 +8311,17 @@ HTML = r"""<!doctype html>
         });
       });
     }
+    if (internalChatRoomList) {
+      internalChatRoomList.addEventListener("click", (event) => {
+        const button = event.target.closest("[data-chat-room]");
+        if (!button) return;
+        setInternalChatRoom(button.dataset.chatRoom, button.dataset.chatUserId || "").catch(() => {
+          if (internalChatList) internalChatList.innerHTML = `<div class="internal-chat-empty">메시지를 불러오지 못했습니다.</div>`;
+        });
+      });
+    }
     if (internalChatRefresh) {
-      internalChatRefresh.addEventListener("click", () => loadInternalMessages().catch(() => {
+      internalChatRefresh.addEventListener("click", () => loadInternalChatUsers().then(() => loadInternalMessages()).catch(() => {
         if (internalChatList) internalChatList.innerHTML = `<div class="internal-chat-empty">메시지를 불러오지 못했습니다.</div>`;
       }));
     }
@@ -7570,10 +8348,9 @@ HTML = r"""<!doctype html>
     });
     crmRefresh.addEventListener("click", () => loadCrmAll().catch((error) => setCrmMessage(error.message, true)));
     crmAccountQuick.addEventListener("click", () => {
-      resetCrmAccountForm();
       setCrmTab("accounts");
-      crmAccountName.focus();
     });
+    crmStaffRefresh?.addEventListener("click", () => loadCrmStaffDashboard().catch((error) => setCrmMessage(error.message, true)));
     crmTaskQuick.addEventListener("click", () => {
       resetCrmTaskForm();
       setCrmTaskFormOpen(true);
@@ -7608,20 +8385,63 @@ HTML = r"""<!doctype html>
     crmTaskFormToggle?.addEventListener("click", () => {
       setCrmTaskFormOpen(crmTaskForm.classList.contains("collapsed"));
     });
-    crmTaskSearchButton.addEventListener("click", () => loadCrmTasks().catch((error) => setCrmMessage(error.message, true)));
+    crmTaskPresetList?.addEventListener("click", (event) => {
+      const button = event.target.closest("[data-crm-task-view]");
+      if (!button) return;
+      applyCrmTaskView(button.dataset.crmTaskView);
+    });
+    crmTaskViewSelect?.addEventListener("change", () => {
+      if (crmTaskViewSelect.value) applyCrmTaskView(crmTaskViewSelect.value);
+    });
+    crmTaskViewSave?.addEventListener("click", () => {
+      saveCurrentCrmTaskView().catch((error) => setCrmMessage(error.message, true));
+    });
+    crmTaskViewDelete?.addEventListener("click", () => {
+      deleteCurrentCrmTaskView().catch((error) => setCrmMessage(error.message, true));
+    });
+    crmTaskSearchButton.addEventListener("click", () => {
+      markCrmTaskFiltersDirty();
+      loadCrmTasks().catch((error) => setCrmMessage(error.message, true));
+    });
     crmTaskSearch.addEventListener("keydown", (event) => {
       if (event.key === "Enter") {
         event.preventDefault();
+        markCrmTaskFiltersDirty();
         loadCrmTasks().catch((error) => setCrmMessage(error.message, true));
       }
     });
-    crmTaskStatusFilter.addEventListener("change", () => loadCrmTasks().catch((error) => setCrmMessage(error.message, true)));
+    crmTaskSearch?.addEventListener("input", markCrmTaskFiltersDirty);
+    [
+      crmTaskStatusFilter,
+      crmTaskAssigneeFilter,
+      crmTaskPriorityFilter,
+      crmTaskDueFilter,
+      crmTaskSourceFilter,
+      crmTaskSort,
+      crmTaskOpenOnly,
+    ].forEach((control) => {
+      control?.addEventListener("change", () => {
+        if (crmTaskStatusFilter?.value === "완료" && crmTaskOpenOnly) crmTaskOpenOnly.checked = false;
+        markCrmTaskFiltersDirty();
+        loadCrmTasks().catch((error) => setCrmMessage(error.message, true));
+      });
+    });
+    crmTaskFilterReset?.addEventListener("click", () => {
+      crmActiveTaskViewId = "builtin:open";
+      writeCrmTaskFilters(crmBuiltinTaskView("open")?.filters || {});
+      renderCrmSavedViews();
+      loadCrmTasks().catch((error) => setCrmMessage(error.message, true));
+    });
+    function findCrmTaskById(taskId) {
+      return crmTasks.find((item) => String(item.id) === String(taskId))
+        || crmMineTasks.find((item) => String(item.id) === String(taskId));
+    }
     function handleCrmTaskAction(event) {
       const editButton = event.target.closest("[data-crm-task-edit]");
       const statusButton = event.target.closest("[data-crm-task-status]");
       const commentButton = event.target.closest("[data-crm-task-comment]");
       if (editButton) {
-        const task = crmTasks.find((item) => String(item.id) === String(editButton.dataset.crmTaskEdit));
+        const task = findCrmTaskById(editButton.dataset.crmTaskEdit);
         if (task) fillCrmTaskForm(task);
         return true;
       }
@@ -7631,7 +8451,7 @@ HTML = r"""<!doctype html>
         return true;
       }
       if (commentButton) {
-        addCrmTaskComment(commentButton.dataset.crmTaskComment).catch((error) => setCrmMessage(error.message, true));
+        openCrmTaskComment(commentButton.dataset.crmTaskComment);
         return true;
       }
       return false;
@@ -7641,11 +8461,30 @@ HTML = r"""<!doctype html>
       const card = event.target.closest("[data-crm-task-card]");
       if (card) selectCrmTask(card.dataset.crmTaskCard);
     });
+    crmTaskBody.addEventListener("keydown", (event) => {
+      if (!["Enter", " "].includes(event.key)) return;
+      if (event.target.closest("button")) return;
+      const card = event.target.closest("[data-crm-task-card]");
+      if (!card) return;
+      event.preventDefault();
+      selectCrmTask(card.dataset.crmTaskCard);
+    });
     crmMineTaskBody?.addEventListener("click", (event) => {
       handleCrmTaskAction(event);
     });
     crmTaskDetail?.addEventListener("click", (event) => {
       handleCrmTaskAction(event);
+    });
+    crmTaskDetail?.addEventListener("submit", (event) => {
+      const form = event.target.closest("[data-crm-comment-form]");
+      if (!form) return;
+      event.preventDefault();
+      const textarea = form.querySelector("[data-crm-comment-body]");
+      addCrmTaskComment(form.dataset.crmCommentForm, textarea?.value || "")
+        .then(() => {
+          if (textarea) textarea.value = "";
+        })
+        .catch((error) => setCrmMessage(error.message, true));
     });
     crmMessengerForm.addEventListener("submit", (event) => {
       saveCrmMessengerForm(event).catch((error) => setCrmMessage(error.message, true));
@@ -8831,12 +9670,31 @@ def init_db() -> None:
             CREATE TABLE IF NOT EXISTS internal_messages (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 user_id INTEGER NOT NULL,
+                recipient_user_id INTEGER,
+                room_type TEXT NOT NULL DEFAULT 'global',
                 body TEXT NOT NULL,
-                created_at TEXT NOT NULL
+                created_at TEXT NOT NULL,
+                task_id INTEGER,
+                command_result TEXT,
+                command_error TEXT
             )
             """
         )
+        internal_message_columns = {
+            row["name"] for row in connection.execute("PRAGMA table_info(internal_messages)").fetchall()
+        }
+        if "recipient_user_id" not in internal_message_columns:
+            connection.execute("ALTER TABLE internal_messages ADD COLUMN recipient_user_id INTEGER")
+        if "room_type" not in internal_message_columns:
+            connection.execute("ALTER TABLE internal_messages ADD COLUMN room_type TEXT NOT NULL DEFAULT 'global'")
+        if "task_id" not in internal_message_columns:
+            connection.execute("ALTER TABLE internal_messages ADD COLUMN task_id INTEGER")
+        if "command_result" not in internal_message_columns:
+            connection.execute("ALTER TABLE internal_messages ADD COLUMN command_result TEXT")
+        if "command_error" not in internal_message_columns:
+            connection.execute("ALTER TABLE internal_messages ADD COLUMN command_error TEXT")
         connection.execute("CREATE INDEX IF NOT EXISTS idx_internal_messages_created ON internal_messages(created_at)")
+        connection.execute("CREATE INDEX IF NOT EXISTS idx_internal_messages_room ON internal_messages(room_type, recipient_user_id, user_id)")
         connection.execute(
             """
             CREATE TABLE IF NOT EXISTS system_update_history (
@@ -9261,27 +10119,93 @@ def company_staff_dashboard_payload(current_user: dict[str, str]) -> dict:
         connection.close()
 
 
-def list_internal_messages(limit: int = 100) -> list[dict[str, str | int]]:
+def list_internal_messages(
+    limit: int = 100,
+    room_type: str = "global",
+    current_user_id: int = 0,
+    other_user_id: int = 0,
+) -> list[dict[str, str | int]]:
     init_db()
     safe_limit = max(1, min(int(limit), 300))
+    room = "dm" if room_type == "dm" else "global"
     connection = connect_db()
     try:
+        conditions = ["COALESCE(internal_messages.room_type, 'global') = ?"]
+        params: list[object] = [room]
+        if room == "dm":
+            if not current_user_id or not other_user_id:
+                return []
+            conditions.append(
+                "((internal_messages.user_id = ? AND internal_messages.recipient_user_id = ?) "
+                "OR (internal_messages.user_id = ? AND internal_messages.recipient_user_id = ?))"
+            )
+            params.extend([current_user_id, other_user_id, other_user_id, current_user_id])
+        where_sql = " AND ".join(conditions)
         rows = connection.execute(
-            """
+            f"""
             SELECT internal_messages.id,
                    internal_messages.user_id,
+                   internal_messages.recipient_user_id,
+                   COALESCE(internal_messages.room_type, 'global') AS room_type,
                    internal_messages.body,
                    internal_messages.created_at,
+                   internal_messages.task_id,
+                   internal_messages.command_result,
+                   internal_messages.command_error,
                    users.username,
                    users.display_name
               FROM internal_messages
               LEFT JOIN users ON users.id = internal_messages.user_id
+             WHERE {where_sql}
              ORDER BY internal_messages.id DESC
              LIMIT ?
             """,
-            (safe_limit,),
+            tuple(params + [safe_limit]),
         ).fetchall()
         return [dict(row) for row in reversed(rows)]
+    finally:
+        connection.close()
+
+
+def find_internal_command_assignee(connection: sqlite3.Connection, mention: str) -> dict[str, str | int]:
+    mention_text = mention.strip().lstrip("@")
+    if not mention_text:
+        raise ValueError("@직원을 입력해주세요.")
+    rows = connection.execute(
+        """
+        SELECT id, username, display_name
+          FROM users
+         WHERE active = 1
+           AND (username = ? COLLATE NOCASE OR display_name = ? COLLATE NOCASE)
+         ORDER BY id
+        """,
+        (mention_text, mention_text),
+    ).fetchall()
+    if not rows:
+        raise ValueError(f"직원 '{mention_text}'를 찾지 못했습니다.")
+    if len(rows) > 1:
+        names = ", ".join(row["display_name"] or row["username"] for row in rows[:5])
+        raise ValueError(f"'{mention_text}'에 해당하는 직원이 여러 명입니다: {names}")
+    return dict(rows[0])
+
+
+def parse_internal_task_command(body: str) -> tuple[str, str, str]:
+    match = re.match(r"^/업무\s+@([^\s/]+)\s+(.+?)\s*/\s*(.+)$", body.strip())
+    if not match:
+        raise ValueError("업무 지시 형식: /업무 @직원 업무내용 / 기한")
+    assignee_text, title, due_at = [part.strip() for part in match.groups()]
+    if not title:
+        raise ValueError("업무내용을 입력해주세요.")
+    if not due_at:
+        raise ValueError("기한을 입력해주세요.")
+    return assignee_text, title, due_at
+
+
+def task_public_id(task_id: int) -> str:
+    connection = connect_db()
+    try:
+        row = connection.execute("SELECT public_id FROM crm_tasks WHERE id = ?", (task_id,)).fetchone()
+        return str(row["public_id"] if row else f"TASK-{task_id:04d}")
     finally:
         connection.close()
 
@@ -9292,15 +10216,65 @@ def save_internal_message(payload: dict, user: dict[str, str]) -> int:
         raise ValueError("메시지 내용을 입력해주세요.")
     if len(body) > 2000:
         raise ValueError("메시지는 2,000자 이하로 입력해주세요.")
+    room_type = "dm" if clean_payload_text(payload, "room_type") == "dm" else "global"
+    recipient_user_id = int(payload.get("recipient_user_id") or 0) if room_type == "dm" else 0
     init_db()
+    if room_type == "dm":
+        validation_connection = connect_db()
+        try:
+            recipient = validation_connection.execute(
+                "SELECT id FROM users WHERE id = ? AND active = 1",
+                (recipient_user_id,),
+            ).fetchone()
+            if not recipient:
+                raise ValueError("DM 대상 직원을 찾지 못했습니다.")
+        finally:
+            validation_connection.close()
+    task_id: int | None = None
+    command_result = ""
+    command_error = ""
+    if body.startswith("/업무"):
+        try:
+            assignee_text, title, due_at = parse_internal_task_command(body)
+            assignee_connection = connect_db()
+            try:
+                assignee = find_internal_command_assignee(assignee_connection, assignee_text)
+            finally:
+                assignee_connection.close()
+            task_id = save_crm_task(DB_PATH, {
+                "account_id": "",
+                "account_name": "",
+                "title": title,
+                "description": body,
+                "assignee_user_id": assignee["id"],
+                "assignee_name": assignee["display_name"] or assignee["username"],
+                "due_at": due_at,
+                "priority": "보통",
+                "status": "대기",
+                "source": "internal_message",
+            }, user)
+            public_id = task_public_id(task_id)
+            command_result = f"{public_id} 업무가 등록됐습니다."
+        except Exception as exc:  # noqa: BLE001
+            command_error = str(exc)
     connection = connect_db()
     try:
         cursor = connection.execute(
             """
-            INSERT INTO internal_messages (user_id, body, created_at)
-            VALUES (?, ?, ?)
+            INSERT INTO internal_messages
+                (user_id, recipient_user_id, room_type, body, created_at, task_id, command_result, command_error)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (int(user.get("id") or 0), body, now_text()),
+            (
+                int(user.get("id") or 0),
+                recipient_user_id or None,
+                room_type,
+                body,
+                now_text(),
+                task_id,
+                command_result,
+                command_error,
+            ),
         )
         connection.commit()
         return int(cursor.lastrowid)
@@ -11680,7 +12654,18 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                 limit = min(max(int(params.get("limit", ["100"])[0]), 1), 300)
             except ValueError:
                 limit = 100
-            self.send_json({"messages": list_internal_messages(limit=limit)})
+            try:
+                other_user_id = int(params.get("user_id", ["0"])[0] or 0)
+            except ValueError:
+                other_user_id = 0
+            self.send_json({
+                "messages": list_internal_messages(
+                    limit=limit,
+                    room_type=params.get("room", ["global"])[0],
+                    current_user_id=int(user.get("id") or 0),
+                    other_user_id=other_user_id,
+                )
+            })
             return
 
         if self.path == "/api/crm-dashboard":
@@ -11710,14 +12695,52 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                 limit = min(max(int(params.get("limit", ["300"])[0]), 1), 2000)
             except ValueError:
                 limit = 300
+            try:
+                filter_assignee_user_id = int(params.get("assignee_user_id", ["0"])[0] or 0) or None
+            except ValueError:
+                filter_assignee_user_id = None
+            if params.get("mine", [""])[0] == "1":
+                filter_assignee_user_id = int(user.get("id") or 0)
             self.send_json({
                 "tasks": list_crm_tasks(
                     DB_PATH,
                     query=params.get("q", [""])[0],
                     status=params.get("status", [""])[0],
                     assignee=params.get("assignee", [""])[0],
-                    assignee_user_id=int(user.get("id") or 0) if params.get("mine", [""])[0] == "1" else None,
+                    assignee_user_id=filter_assignee_user_id,
+                    priority=params.get("priority", [""])[0],
+                    due=params.get("due", [""])[0],
+                    source=params.get("source", [""])[0],
+                    open_only=params.get("open_only", [""])[0] == "1",
+                    sort=params.get("sort", ["smart"])[0],
                     limit=limit,
+                )
+            })
+            return
+
+        if self.path.startswith("/api/crm-task-comments"):
+            if not self.require_permission(user, "crm_view", "CRM 조회"):
+                return
+            parsed = urlsplit(self.path)
+            params = parse_qs(parsed.query)
+            self.send_json({
+                "comments": list_crm_task_comments(
+                    DB_PATH,
+                    int(params.get("task_id", ["0"])[0] or 0),
+                )
+            })
+            return
+
+        if self.path.startswith("/api/crm-saved-views"):
+            if not self.require_permission(user, "crm_view", "CRM 조회"):
+                return
+            parsed = urlsplit(self.path)
+            params = parse_qs(parsed.query)
+            self.send_json({
+                "views": list_crm_saved_views(
+                    DB_PATH,
+                    int(user.get("id") or 0),
+                    scope=params.get("scope", ["tasks"])[0],
                 )
             })
             return
@@ -11841,6 +12864,31 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                     can_manage=user_has_permission(user, "crm_manage"),
                 )
                 self.send_json({"message": "CRM 업무 댓글을 저장했습니다.", "task_id": task_id})
+                return
+
+            if self.path == "/api/crm-saved-view-save":
+                if not self.require_permission(user, "crm_view", "CRM 조회"):
+                    return
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(length).decode("utf-8"))
+                view_id = save_crm_saved_view(DB_PATH, payload, user)
+                self.send_json({
+                    "message": "CRM 저장뷰를 저장했습니다.",
+                    "view_id": view_id,
+                    "views": list_crm_saved_views(DB_PATH, int(user.get("id") or 0), scope=str(payload.get("scope") or "tasks")),
+                })
+                return
+
+            if self.path == "/api/crm-saved-view-delete":
+                if not self.require_permission(user, "crm_view", "CRM 조회"):
+                    return
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(length).decode("utf-8"))
+                delete_crm_saved_view(DB_PATH, int(payload.get("id") or 0), user)
+                self.send_json({
+                    "message": "CRM 저장뷰를 삭제했습니다.",
+                    "views": list_crm_saved_views(DB_PATH, int(user.get("id") or 0), scope=str(payload.get("scope") or "tasks")),
+                })
                 return
 
             if self.path == "/api/crm-messenger-user-save":

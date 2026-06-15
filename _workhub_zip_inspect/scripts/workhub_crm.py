@@ -73,6 +73,22 @@ def init_crm_db(connection: sqlite3.Connection) -> None:
     )
     connection.execute(
         """
+        CREATE TABLE IF NOT EXISTS crm_saved_views (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            name TEXT NOT NULL,
+            scope TEXT NOT NULL DEFAULT 'tasks',
+            filters_json TEXT NOT NULL,
+            sort_key TEXT,
+            is_default INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            UNIQUE(user_id, scope, name)
+        )
+        """
+    )
+    connection.execute(
+        """
         CREATE TABLE IF NOT EXISTS crm_message_events (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             created_at TEXT NOT NULL,
@@ -109,6 +125,7 @@ def init_crm_db(connection: sqlite3.Connection) -> None:
     connection.execute("CREATE INDEX IF NOT EXISTS idx_crm_tasks_assignee ON crm_tasks(assignee_user_id)")
     connection.execute("CREATE INDEX IF NOT EXISTS idx_crm_task_comments_task ON crm_task_comments(task_id)")
     connection.execute("CREATE INDEX IF NOT EXISTS idx_crm_message_events_created ON crm_message_events(created_at)")
+    connection.execute("CREATE INDEX IF NOT EXISTS idx_crm_saved_views_user_scope ON crm_saved_views(user_id, scope)")
 
 
 def ensure_webhook_token(path: Path) -> str:
@@ -435,19 +452,36 @@ def list_crm_tasks(
     status: str = "",
     assignee: str = "",
     assignee_user_id: int | None = None,
+    priority: str = "",
+    due: str = "",
+    source: str = "",
+    open_only: bool = False,
+    sort: str = "smart",
     limit: int = 300,
 ) -> list[dict[str, Any]]:
     connection = _connect(db_path)
     try:
+        today = date.today().isoformat()
         params: list[Any] = []
         conditions = ["1 = 1"]
         if _clean(query):
             search = f"%{_clean(query)}%"
-            conditions.append("(title LIKE ? OR account_name LIKE ? OR description LIKE ? OR public_id LIKE ?)")
-            params.extend([search, search, search, search])
+            conditions.append(
+                """
+                (title LIKE ?
+                 OR COALESCE(NULLIF(account_name, ''), '직원 지시 업무') LIKE ?
+                 OR description LIKE ?
+                 OR public_id LIKE ?
+                 OR assignee_name LIKE ?
+                 OR requester_name LIKE ?)
+                """
+            )
+            params.extend([search, search, search, search, search, search])
         if _clean(status):
             conditions.append("status = ?")
             params.append(_normalize_status(status))
+        elif open_only:
+            conditions.append("status != '완료'")
         if _clean(assignee):
             search = f"%{_clean(assignee)}%"
             conditions.append("assignee_name LIKE ?")
@@ -455,21 +489,212 @@ def list_crm_tasks(
         if assignee_user_id:
             conditions.append("assignee_user_id = ?")
             params.append(int(assignee_user_id))
+        if _clean(priority):
+            conditions.append("priority = ?")
+            params.append(_normalize_priority(priority))
+        due_filter = _clean(due)
+        if due_filter == "today":
+            conditions.append("length(due_at) >= 10 AND substr(due_at, 1, 10) = ?")
+            params.append(today)
+        elif due_filter == "overdue":
+            conditions.append("length(due_at) >= 10 AND substr(due_at, 1, 10) < ?")
+            params.append(today)
+        elif due_filter == "upcoming":
+            conditions.append("length(due_at) >= 10 AND substr(due_at, 1, 10) > ?")
+            params.append(today)
+        elif due_filter == "none":
+            conditions.append("(due_at IS NULL OR due_at = '')")
+        source_filter = _clean(source)
+        if source_filter:
+            if source_filter == "messenger":
+                conditions.append("source LIKE 'messenger:%'")
+            else:
+                conditions.append("source = ?")
+                params.append(source_filter)
+        sort_key = _clean(sort) or "smart"
+        order_by = """
+            CASE status WHEN '대기' THEN 0 WHEN '진행중' THEN 1 WHEN '보류' THEN 2 ELSE 3 END,
+            CASE WHEN due_at IS NULL OR due_at = '' THEN 1 ELSE 0 END,
+            due_at,
+            updated_at DESC
+        """
+        if sort_key == "due":
+            order_by = """
+                CASE WHEN due_at IS NULL OR due_at = '' THEN 1 ELSE 0 END,
+                due_at,
+                CASE priority WHEN '높음' THEN 0 WHEN '보통' THEN 1 ELSE 2 END,
+                updated_at DESC
+            """
+        elif sort_key == "updated":
+            order_by = "updated_at DESC, id DESC"
         params.append(max(1, min(int(limit), 2000)))
         rows = connection.execute(
             f"""
             SELECT *
               FROM crm_tasks
              WHERE {' AND '.join(conditions)}
-             ORDER BY CASE status WHEN '대기' THEN 0 WHEN '진행중' THEN 1 WHEN '보류' THEN 2 ELSE 3 END,
-                      CASE WHEN due_at IS NULL OR due_at = '' THEN 1 ELSE 0 END,
-                      due_at,
-                      updated_at DESC
+             ORDER BY {order_by}
              LIMIT ?
             """,
             params,
         ).fetchall()
         return _rows(rows)
+    finally:
+        connection.close()
+
+
+def list_crm_task_comments(db_path: Path, task_id: int, limit: int = 120) -> list[dict[str, Any]]:
+    connection = _connect(db_path)
+    try:
+        task = connection.execute("SELECT id FROM crm_tasks WHERE id = ?", (int(task_id),)).fetchone()
+        if not task:
+            raise ValueError("업무를 찾지 못했습니다.")
+        rows = connection.execute(
+            """
+            SELECT *
+              FROM crm_task_comments
+             WHERE task_id = ?
+             ORDER BY id DESC
+             LIMIT ?
+            """,
+            (int(task_id), max(1, min(int(limit), 300))),
+        ).fetchall()
+        return _rows(rows)
+    finally:
+        connection.close()
+
+
+def _saved_view_scope(value: object) -> str:
+    scope = _clean(value)
+    return scope if scope in {"tasks"} else "tasks"
+
+
+def _saved_view_filters(value: object) -> dict[str, Any]:
+    if isinstance(value, dict):
+        raw = value
+    elif isinstance(value, str) and value.strip():
+        raw = json.loads(value)
+    else:
+        raw = {}
+    allowed = {"q", "status", "assignee_user_id", "priority", "due", "source", "open_only", "sort"}
+    return {key: _clean(raw.get(key)) for key in allowed if key in raw}
+
+
+def list_crm_saved_views(db_path: Path, user_id: int, scope: str = "tasks") -> list[dict[str, Any]]:
+    connection = _connect(db_path)
+    try:
+        rows = connection.execute(
+            """
+            SELECT *
+              FROM crm_saved_views
+             WHERE user_id = ? AND scope = ?
+             ORDER BY is_default DESC, updated_at DESC, name COLLATE NOCASE
+            """,
+            (int(user_id), _saved_view_scope(scope)),
+        ).fetchall()
+        views = []
+        for row in rows:
+            item = dict(row)
+            try:
+                item["filters"] = json.loads(item.get("filters_json") or "{}")
+            except (TypeError, json.JSONDecodeError):
+                item["filters"] = {}
+            views.append(item)
+        return views
+    finally:
+        connection.close()
+
+
+def save_crm_saved_view(db_path: Path, payload: dict[str, Any], user: dict[str, Any]) -> int:
+    user_id = _user_id(user)
+    if not user_id:
+        raise ValueError("로그인 사용자를 확인하지 못했습니다.")
+    name = _clean(payload.get("name"))
+    if not name:
+        raise ValueError("저장뷰 이름을 입력해주세요.")
+    if len(name) > 40:
+        raise ValueError("저장뷰 이름은 40자 이하로 입력해주세요.")
+    scope = _saved_view_scope(payload.get("scope"))
+    filters = _saved_view_filters(payload.get("filters"))
+    sort_key = _clean(payload.get("sort_key") or filters.get("sort"))
+    is_default = 1 if payload.get("is_default") else 0
+    view_id = int(payload.get("id") or 0)
+    now = now_text()
+    connection = _connect(db_path)
+    try:
+        if is_default:
+            connection.execute(
+                "UPDATE crm_saved_views SET is_default = 0, updated_at = ? WHERE user_id = ? AND scope = ?",
+                (now, user_id, scope),
+            )
+        existing = None
+        if view_id:
+            existing = connection.execute(
+                "SELECT id FROM crm_saved_views WHERE id = ? AND user_id = ?",
+                (view_id, user_id),
+            ).fetchone()
+        if not existing:
+            existing = connection.execute(
+                "SELECT id FROM crm_saved_views WHERE user_id = ? AND scope = ? AND name = ?",
+                (user_id, scope, name),
+            ).fetchone()
+        if existing:
+            view_id = int(existing["id"])
+            connection.execute(
+                """
+                UPDATE crm_saved_views
+                   SET name = ?, scope = ?, filters_json = ?, sort_key = ?, is_default = ?, updated_at = ?
+                 WHERE id = ? AND user_id = ?
+                """,
+                (
+                    name,
+                    scope,
+                    json.dumps(filters, ensure_ascii=False),
+                    sort_key,
+                    is_default,
+                    now,
+                    view_id,
+                    user_id,
+                ),
+            )
+        else:
+            cursor = connection.execute(
+                """
+                INSERT INTO crm_saved_views
+                    (user_id, name, scope, filters_json, sort_key, is_default, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    user_id,
+                    name,
+                    scope,
+                    json.dumps(filters, ensure_ascii=False),
+                    sort_key,
+                    is_default,
+                    now,
+                    now,
+                ),
+            )
+            view_id = int(cursor.lastrowid)
+        connection.commit()
+        return view_id
+    finally:
+        connection.close()
+
+
+def delete_crm_saved_view(db_path: Path, view_id: int, user: dict[str, Any]) -> None:
+    user_id = _user_id(user)
+    if not user_id:
+        raise ValueError("로그인 사용자를 확인하지 못했습니다.")
+    connection = _connect(db_path)
+    try:
+        cursor = connection.execute(
+            "DELETE FROM crm_saved_views WHERE id = ? AND user_id = ?",
+            (int(view_id), user_id),
+        )
+        if cursor.rowcount == 0:
+            raise ValueError("삭제할 저장뷰를 찾지 못했습니다.")
+        connection.commit()
     finally:
         connection.close()
 
