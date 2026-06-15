@@ -344,11 +344,67 @@ def crm_dashboard_payload(db_path: Path) -> dict[str, Any]:
              LIMIT 8
             """
         ).fetchall()
+        project_rows = connection.execute(
+            """
+            SELECT CASE
+                     WHEN account_id IS NOT NULL THEN 'account:' || account_id
+                     ELSE 'direct:' || COALESCE(NULLIF(account_name, ''), '직원 지시 업무')
+                   END AS project_key,
+                   COALESCE(NULLIF(account_name, ''), '직원 지시 업무') AS project_name,
+                   COUNT(*) AS total_tasks,
+                   SUM(CASE WHEN status != '완료' THEN 1 ELSE 0 END) AS open_tasks,
+                   SUM(CASE WHEN status = '완료' THEN 1 ELSE 0 END) AS completed_tasks,
+                   SUM(CASE WHEN status = '대기' THEN 1 ELSE 0 END) AS waiting_tasks,
+                   SUM(CASE WHEN status = '진행중' THEN 1 ELSE 0 END) AS progress_tasks,
+                   SUM(CASE WHEN status = '보류' THEN 1 ELSE 0 END) AS hold_tasks,
+                   SUM(CASE WHEN status != '완료' AND substr(due_at, 1, 10) = ? THEN 1 ELSE 0 END) AS due_today,
+                   SUM(CASE WHEN status != '완료' AND length(due_at) >= 10 AND substr(due_at, 1, 10) < ? THEN 1 ELSE 0 END) AS overdue,
+                   SUM(CASE WHEN status != '완료' AND priority = '높음' THEN 1 ELSE 0 END) AS high_priority,
+                   GROUP_CONCAT(DISTINCT NULLIF(assignee_name, '')) AS assignee_names,
+                   MIN(CASE WHEN status != '완료' AND due_at IS NOT NULL AND due_at != '' THEN due_at END) AS next_due_at,
+                   MAX(updated_at) AS latest_update
+              FROM crm_tasks
+             GROUP BY project_key, project_name
+             ORDER BY open_tasks DESC,
+                      overdue DESC,
+                      due_today DESC,
+                      latest_update DESC
+             LIMIT 12
+            """,
+            (today, today),
+        ).fetchall()
+        project_task_rows = connection.execute(
+            """
+            SELECT CASE
+                     WHEN account_id IS NOT NULL THEN 'account:' || account_id
+                     ELSE 'direct:' || COALESCE(NULLIF(account_name, ''), '직원 지시 업무')
+                   END AS project_key,
+                   *
+              FROM crm_tasks
+             ORDER BY CASE status WHEN '대기' THEN 0 WHEN '진행중' THEN 1 WHEN '보류' THEN 2 ELSE 3 END,
+                      CASE priority WHEN '높음' THEN 0 WHEN '보통' THEN 1 ELSE 2 END,
+                      CASE WHEN due_at IS NULL OR due_at = '' THEN 1 ELSE 0 END,
+                      due_at,
+                      updated_at DESC
+             LIMIT 400
+            """
+        ).fetchall()
+        project_tasks: dict[str, list[dict[str, Any]]] = {}
+        for row in _rows(project_task_rows):
+            project_tasks.setdefault(str(row.get("project_key") or ""), []).append(row)
+        project_progress = []
+        for row in _rows(project_rows):
+            total_tasks = int(row.get("total_tasks") or 0)
+            completed_tasks = int(row.get("completed_tasks") or 0)
+            row["progress_percent"] = round((completed_tasks / total_tasks) * 100) if total_tasks else 0
+            row["tasks"] = project_tasks.get(str(row.get("project_key") or ""), [])[:20]
+            project_progress.append(row)
         return {
             "stats": stats,
             "status_counts": _rows(status_rows),
             "priority_tasks": _rows(priority_tasks),
             "recent_events": _rows(recent_events),
+            "project_progress": project_progress,
         }
     finally:
         connection.close()

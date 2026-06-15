@@ -83,7 +83,13 @@ SECRET_KEY_PATH = CONFIG_DIR / "secret.key"
 TOKEN_PREFIX_DPAPI = "dpapi:"
 TOKEN_PREFIX_KEY = "key1:"
 SESSION_COOKIE_NAME = "workhub_session"
-SESSION_SECONDS = 60 * 60 * 16
+SESSION_SECONDS = 60 * 60 * 12
+SESSION_IDLE_SECONDS = 60 * 60 * 2
+LOGIN_MAX_FAILURES = 5
+LOGIN_FAILURE_WINDOW_SECONDS = 15 * 60
+LOGIN_LOCK_SECONDS = 15 * 60
+PASSWORD_MIN_LENGTH = 10
+PASSWORD_MAX_LENGTH = 128
 BACKUP_RETENTION_DAYS = 90
 AUTO_BACKUP_HOUR = 3
 _BACKUP_SCHEDULER_STARTED = False
@@ -980,7 +986,7 @@ HTML = r"""<!doctype html>
     }
     .admin-table {
       width: 100%;
-      min-width: 760px;
+      min-width: 900px;
       border-collapse: collapse;
       font-size: 13px;
     }
@@ -2495,6 +2501,107 @@ HTML = r"""<!doctype html>
       line-height: 1;
       font-weight: 950;
     }
+    .crm-project-card {
+      overflow: hidden;
+    }
+    .crm-project-tracker {
+      display: grid;
+      gap: 8px;
+    }
+    .crm-project-row {
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      background: #fff;
+      padding: 12px;
+      display: grid;
+      grid-template-columns: minmax(220px, 1fr) minmax(180px, .8fr) minmax(150px, .6fr);
+      gap: 12px;
+      align-items: center;
+      cursor: pointer;
+    }
+    .crm-project-main {
+      min-width: 0;
+      display: grid;
+      gap: 6px;
+    }
+    .crm-project-title {
+      color: #111827;
+      font-size: 14px;
+      font-weight: 950;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .crm-project-meta {
+      color: #667085;
+      font-size: 12px;
+      font-weight: 850;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .crm-project-progress {
+      display: grid;
+      gap: 6px;
+    }
+    .crm-project-progress-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      color: #344054;
+      font-size: 12px;
+      font-weight: 950;
+    }
+    .crm-project-bar {
+      height: 9px;
+      border-radius: 999px;
+      background: #eef2f7;
+      overflow: hidden;
+    }
+    .crm-project-bar span {
+      display: block;
+      height: 100%;
+      border-radius: inherit;
+      background: linear-gradient(90deg, #155bc8, #16a34a);
+    }
+    .crm-project-metrics {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+      gap: 6px;
+    }
+    .crm-project-pill {
+      min-height: 24px;
+      border: 1px solid #d8dee9;
+      border-radius: 999px;
+      padding: 4px 8px;
+      color: #344054;
+      background: #f8fafc;
+      font-size: 11px;
+      line-height: 1.2;
+      font-weight: 900;
+      white-space: nowrap;
+    }
+    .crm-project-pill.danger {
+      color: #b42318;
+      border-color: #fecaca;
+      background: #fff1f2;
+    }
+    .crm-project-pill.today {
+      color: #155bc8;
+      border-color: #bfdbfe;
+      background: #eff6ff;
+    }
+    .crm-project-empty {
+      border: 1px dashed #cbd5e1;
+      border-radius: 8px;
+      padding: 18px;
+      color: #667085;
+      text-align: center;
+      font-size: 12px;
+      font-weight: 850;
+    }
     .crm-grid-2 {
       display: grid;
       grid-template-columns: minmax(0, 1.1fr) minmax(0, .9fr);
@@ -2550,6 +2657,7 @@ HTML = r"""<!doctype html>
     .crm-select:focus-visible,
     .crm-textarea:focus-visible,
     .crm-task-card:focus-visible,
+    .crm-project-row:focus-visible,
     .crm-filter-check input:focus-visible {
       outline: 3px solid rgba(21, 91, 200, .35);
       outline-offset: 2px;
@@ -3009,6 +3117,8 @@ HTML = r"""<!doctype html>
       .company-grid { grid-template-columns: 1fr; }
       .company-staff-layout { grid-template-columns: 1fr; }
       .crm-task-toolbar { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+      .crm-project-row { grid-template-columns: 1fr; }
+      .crm-project-metrics { justify-content: flex-start; }
     }
     @media (max-width: 980px) {
       .crm-task-board-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -3096,6 +3206,185 @@ HTML = r"""<!doctype html>
       line-height: 1.45;
       white-space: pre-wrap;
       word-break: break-word;
+    }
+    .focus-widget-backdrop {
+      position: fixed;
+      inset: 0;
+      z-index: 110;
+      display: none;
+      place-items: center;
+      padding: 22px;
+      background: rgba(15, 23, 42, .45);
+    }
+    .focus-widget-backdrop.open {
+      display: grid;
+    }
+    .focus-widget {
+      width: min(1040px, 100%);
+      max-height: min(860px, calc(100vh - 44px));
+      border: 1px solid #d8dee9;
+      border-radius: 8px;
+      background: white;
+      box-shadow: 0 24px 80px rgba(15, 23, 42, .24);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    .focus-widget-head {
+      min-height: 58px;
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--line);
+      background: #fbfcff;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
+    }
+    .focus-widget-kicker {
+      color: #155bc8;
+      font-size: 11px;
+      font-weight: 950;
+    }
+    .focus-widget-title {
+      margin-top: 4px;
+      color: #111827;
+      font-size: 20px;
+      line-height: 1.25;
+      font-weight: 950;
+      word-break: keep-all;
+    }
+    .focus-widget-subtitle {
+      color: #667085;
+      font-size: 12px;
+      font-weight: 850;
+    }
+    .focus-widget-close {
+      flex: 0 0 auto;
+      width: 34px;
+      height: 34px;
+      border: 1px solid #cbd5e1;
+      border-radius: 7px;
+      background: white;
+      display: grid;
+      place-items: center;
+      cursor: pointer;
+    }
+    .focus-widget-body {
+      min-height: 0;
+      overflow: auto;
+      padding: 16px;
+      display: grid;
+      gap: 14px;
+    }
+    .focus-widget-section {
+      display: grid;
+      gap: 10px;
+    }
+    .focus-widget-section-title {
+      color: #344054;
+      font-size: 12px;
+      font-weight: 950;
+    }
+    .focus-widget-text {
+      margin: 0;
+      color: #475467;
+      font-size: 14px;
+      line-height: 1.65;
+      font-weight: 750;
+      white-space: pre-wrap;
+      word-break: keep-all;
+    }
+    .focus-widget-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+    }
+    .focus-widget-metric {
+      min-height: 74px;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      background: #f8fafc;
+      padding: 12px;
+    }
+    .focus-widget-metric span {
+      display: block;
+      color: #667085;
+      font-size: 11px;
+      font-weight: 850;
+      margin-bottom: 8px;
+    }
+    .focus-widget-metric strong {
+      color: #111827;
+      font-size: 18px;
+      line-height: 1.25;
+      font-weight: 950;
+      word-break: break-word;
+    }
+    .focus-widget-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .focus-widget-table {
+      width: 100%;
+      min-width: 620px;
+      border-collapse: collapse;
+      font-size: 12px;
+    }
+    .focus-widget-table th,
+    .focus-widget-table td {
+      padding: 9px;
+      border-bottom: 1px solid #eef2f7;
+      text-align: left;
+      vertical-align: top;
+    }
+    .focus-widget-table th {
+      background: #f8fafc;
+      color: #344054;
+      font-weight: 950;
+      white-space: nowrap;
+    }
+    .focus-widget-table td {
+      color: #1f2937;
+      font-weight: 750;
+    }
+    .focus-widget-table-wrap {
+      overflow: auto;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+    }
+    .notice-board,
+    .company-person-card,
+    .crm-staff-row,
+    .company-task-item,
+    .company-panel[data-company-panel="rules"] .company-card {
+      cursor: pointer;
+    }
+    .notice-board:focus-visible,
+    .company-person-card:focus-visible,
+    .crm-staff-row:focus-visible,
+    .company-task-item:focus-visible,
+    .company-panel[data-company-panel="rules"] .company-card:focus-visible,
+    .focus-widget-close:focus-visible {
+      outline: 3px solid rgba(21, 91, 200, .35);
+      outline-offset: 2px;
+    }
+    @media (max-width: 760px) {
+      .focus-widget-backdrop {
+        padding: 10px;
+      }
+      .focus-widget {
+        max-height: calc(100vh - 20px);
+      }
+      .focus-widget-head {
+        align-items: flex-start;
+      }
+      .focus-widget-title {
+        font-size: 17px;
+      }
+      .focus-widget-grid {
+        grid-template-columns: 1fr;
+      }
     }
 
     /* Compact typography pass: keep controls usable while reducing visual bulk. */
@@ -3350,7 +3639,7 @@ HTML = r"""<!doctype html>
 
         <section class="company-panel active" data-company-panel="notice">
           <div class="company-grid">
-            <section class="notice-board company-notice" id="sidebarNoticePreview">
+            <section class="notice-board company-notice" id="sidebarNoticePreview" role="button" tabindex="0" aria-label="공지사항 크게 보기">
               <div class="notice-board-kicker">금일 공지사항</div>
               <div class="notice-board-title">등록된 공지 없음</div>
               <div class="notice-board-body">공지사항 입력 버튼을 눌러 내용을 입력해주세요.</div>
@@ -3551,6 +3840,14 @@ HTML = r"""<!doctype html>
             <article class="crm-stat"><div class="crm-stat-label">오늘 마감</div><div class="crm-stat-value" id="crmStatDueToday">0</div></article>
             <article class="crm-stat"><div class="crm-stat-label">지연 업무</div><div class="crm-stat-value" id="crmStatOverdue">0</div></article>
           </div>
+          <article class="crm-card crm-project-card">
+            <div class="crm-card-head"><span>프로젝트별 진행상황</span><button class="crm-mini-button" type="button" data-crm-go="tasks">업무보드 보기</button></div>
+            <div class="crm-card-body">
+              <div class="crm-project-tracker" id="crmProjectProgressBody">
+                <div class="crm-project-empty">프로젝트 진행상황을 불러오는 중입니다.</div>
+              </div>
+            </div>
+          </article>
           <div class="crm-grid-2">
             <article class="crm-card">
               <div class="crm-card-head"><span>우선 처리 업무</span><button class="crm-mini-button" type="button" data-crm-go="tasks">전체 보기</button></div>
@@ -3758,6 +4055,20 @@ HTML = r"""<!doctype html>
         </div>
       </div>
     </div>
+  </div>
+
+  <div class="focus-widget-backdrop" id="focusWidget" aria-hidden="true">
+    <section class="focus-widget" role="dialog" aria-modal="true" aria-labelledby="focusWidgetTitle">
+      <div class="focus-widget-head">
+        <div>
+          <div class="focus-widget-kicker" id="focusWidgetKicker">크게 보기</div>
+          <div class="focus-widget-title" id="focusWidgetTitle">상세 보기</div>
+          <div class="focus-widget-subtitle" id="focusWidgetSubtitle"></div>
+        </div>
+        <button class="focus-widget-close" id="focusWidgetClose" type="button" aria-label="닫기"><i data-lucide="x"></i></button>
+      </div>
+      <div class="focus-widget-body" id="focusWidgetBody"></div>
+    </section>
   </div>
 
   <div class="notice-popup-backdrop" id="importShipmentPopup">
@@ -4328,6 +4639,12 @@ HTML = r"""<!doctype html>
     const sidebarNoticePreview = document.querySelector("#sidebarNoticePreview");
     const noticePopup = document.querySelector("#noticePopup");
     const noticePopupClose = document.querySelector("#noticePopupClose");
+    const focusWidget = document.querySelector("#focusWidget");
+    const focusWidgetKicker = document.querySelector("#focusWidgetKicker");
+    const focusWidgetTitle = document.querySelector("#focusWidgetTitle");
+    const focusWidgetSubtitle = document.querySelector("#focusWidgetSubtitle");
+    const focusWidgetBody = document.querySelector("#focusWidgetBody");
+    const focusWidgetClose = document.querySelector("#focusWidgetClose");
     const importShipmentBody = document.querySelector("#importShipmentBody");
     const importProgressCard = document.querySelector("#importProgressCard");
     const importShipmentTreeToggle = document.querySelector("#importShipmentTreeToggle");
@@ -4422,6 +4739,7 @@ HTML = r"""<!doctype html>
     const crmStatOpenTasks = document.querySelector("#crmStatOpenTasks");
     const crmStatDueToday = document.querySelector("#crmStatDueToday");
     const crmStatOverdue = document.querySelector("#crmStatOverdue");
+    const crmProjectProgressBody = document.querySelector("#crmProjectProgressBody");
     const crmPriorityTaskBody = document.querySelector("#crmPriorityTaskBody");
     const crmRecentMessageBody = document.querySelector("#crmRecentMessageBody");
     const crmAccountForm = document.querySelector("#crmAccountForm");
@@ -4496,6 +4814,7 @@ HTML = r"""<!doctype html>
     let crmAccounts = [];
     let crmTasks = [];
     let crmMineTasks = [];
+    let crmProjectProgress = [];
     let crmUsers = [];
     let internalChatUsers = [];
     let internalChatRoom = { type: "global", userId: "" };
@@ -4514,6 +4833,13 @@ HTML = r"""<!doctype html>
     let crmActiveTaskViewId = "builtin:open";
     const crmTaskComments = {};
     const crmTaskCommentLoads = {};
+    let companyStaffPayloadCache = null;
+    let companyStaffTaskCache = [];
+    let crmStaffPayloadCache = null;
+    let crmStaffTaskCache = [];
+    let focusWidgetLastFocus = null;
+    let focusWidgetTaskId = "";
+    let focusWidgetEmployeeId = "";
     let activeLedgerFilterField = "";
     let activeManagementFilterField = "";
     const activeCellEditors = {
@@ -4528,6 +4854,12 @@ HTML = r"""<!doctype html>
     if (ledgerWorkspaceMount && ledgerFields) ledgerWorkspaceMount.appendChild(ledgerFields);
     if (ledgerFilterPopover) document.body.appendChild(ledgerFilterPopover);
     if (ledgerYearFilter && ledgerMonthFilter) fillPeriodSelects(ledgerYearFilter, ledgerMonthFilter);
+    document.querySelectorAll('.company-panel[data-company-panel="rules"] .company-card').forEach((card) => {
+      const label = card.querySelector(".company-card-head span")?.textContent?.trim() || "사규 카드";
+      card.setAttribute("role", "button");
+      card.setAttribute("tabindex", "0");
+      card.setAttribute("aria-label", `${label} 크게 보기`);
+    });
     renderManagementPeriodControls();
     applyStaticPermissions();
     loadNoticeTemplate();
@@ -4664,9 +4996,9 @@ HTML = r"""<!doctype html>
       userAdminPassword.value = "";
       userAdminActive.checked = true;
       userAdminPermissionChecks.forEach((checkbox) => {
-        checkbox.checked = ["ledger_edit", "excel_download", "cs_receive", "leave_view"].includes(checkbox.value);
+        checkbox.checked = ["ledger_edit", "excel_download", "cs_receive", "leave_view", "crm_view"].includes(checkbox.value);
       });
-      userAdminMessage.textContent = "신규 사용자는 아이디와 비밀번호를 입력한 뒤 저장하세요.";
+      userAdminMessage.textContent = "신규 사용자는 10자 이상 비밀번호를 입력한 뒤 저장하세요. 가입 요청 사용자는 활성화하면 로그인할 수 있습니다.";
     }
 
     function syncPermissionChecksForRole() {
@@ -4681,7 +5013,7 @@ HTML = r"""<!doctype html>
     function renderUserAccounts() {
       if (!userAdminBody) return;
       if (!userAccounts.length) {
-        userAdminBody.innerHTML = `<tr><td colspan="7">등록된 사용자가 없습니다.</td></tr>`;
+        userAdminBody.innerHTML = `<tr><td colspan="8">등록된 사용자가 없습니다.</td></tr>`;
         return;
       }
       userAdminBody.innerHTML = userAccounts.map((user) => `
@@ -4690,9 +5022,10 @@ HTML = r"""<!doctype html>
           <td>${escapeHtml(user.display_name)}</td>
           <td>${roleText(user.role)}</td>
           <td>${(user.permissions || []).map((permission) => permissionLabel(permission)).join(", ")}</td>
-          <td>${user.active ? "사용" : "중지"}</td>
+          <td>${user.active ? "사용" : (user.approved_at ? "중지" : "승인대기")}</td>
           <td>${escapeHtml(user.created_at || "")}</td>
-          <td><button class="admin-action" type="button" data-user-edit="${user.id}">수정</button></td>
+          <td>${escapeHtml(user.last_login_at || "없음")}</td>
+          <td><button class="admin-action" type="button" data-user-edit="${user.id}">${user.active ? "수정" : "승인/수정"}</button></td>
         </tr>
       `).join("");
     }
@@ -4711,7 +5044,7 @@ HTML = r"""<!doctype html>
       userAdminPermissionChecks.forEach((checkbox) => {
         checkbox.checked = permissions.has(checkbox.value);
       });
-      userAdminMessage.textContent = `${user.username} 계정 수정 중입니다. 비밀번호는 변경할 때만 입력하세요.`;
+      userAdminMessage.textContent = `${user.username} 계정 수정 중입니다. ${user.active ? "비밀번호는 변경할 때만 입력하세요." : "사용을 체크하고 저장하면 승인됩니다."}`;
       userAdminUsername.focus();
     }
 
@@ -5631,6 +5964,7 @@ HTML = r"""<!doctype html>
 
     function renderCompanyStaffTasks(tasks) {
       if (!companyStaffTaskBody) return;
+      companyStaffTaskCache = tasks || [];
       const openTasks = (tasks || []).filter((task) => task.status !== "완료");
       const today = todayString();
       const dueToday = openTasks.filter((task) => crmDueDateOnly(task) === today).length;
@@ -5640,7 +5974,7 @@ HTML = r"""<!doctype html>
         return;
       }
       companyStaffTaskBody.innerHTML = openTasks.slice(0, 5).map((task) => `
-        <div class="company-task-item">
+        <div class="company-task-item" role="button" tabindex="0" aria-label="${escapeHtml(`${task.public_id || ""} ${task.title || ""} 크게 보기`)}" data-company-task-id="${escapeHtml(task.id)}">
           <div>
             <div class="company-task-title">${escapeHtml(task.title)}</div>
             <div class="company-task-meta">${escapeHtml(task.public_id || "")} · ${escapeHtml(crmTaskContextLabel(task))} · ${escapeHtml(crmDueDateText(task))}</div>
@@ -5667,7 +6001,7 @@ HTML = r"""<!doctype html>
       const leads = staff.filter((user) => user.role === "admin");
       const members = staff.filter((user) => user.role !== "admin");
       const renderPerson = (user, lead = false) => `
-        <article class="company-person-card${lead ? " lead" : ""}${String(user.id) === String(currentUser.id) ? " me" : ""}">
+        <article class="company-person-card${lead ? " lead" : ""}${String(user.id) === String(currentUser.id) ? " me" : ""}" role="button" tabindex="0" aria-label="${escapeHtml(`${user.display_name || user.username} 직원 크게 보기`)}" data-company-person-card="${escapeHtml(user.id)}">
           <div class="company-person-top">
             <div class="company-person-avatar">${escapeHtml(personInitials(user))}</div>
             <div>
@@ -5711,6 +6045,7 @@ HTML = r"""<!doctype html>
         crmFetchJson("/api/company-staff-dashboard"),
         crmFetchJson("/api/crm-tasks?mine=1&limit=6"),
       ]);
+      companyStaffPayloadCache = staffData;
       renderCompanyOrg(staffData);
       renderCompanyStaffTasks(myTaskData.tasks || []);
     }
@@ -6027,12 +6362,59 @@ HTML = r"""<!doctype html>
       ).join("");
     }
 
+    function projectProgressLabel(project) {
+      if ((project.overdue || 0) > 0) return "지연 확인";
+      if ((project.due_today || 0) > 0) return "오늘 마감";
+      if ((project.open_tasks || 0) === 0) return "완료";
+      if ((project.progress_tasks || 0) > 0) return "진행중";
+      return "대기";
+    }
+
+    function projectProgressPercent(project) {
+      const value = Number(project.progress_percent || 0);
+      return Math.max(0, Math.min(100, Number.isFinite(value) ? value : 0));
+    }
+
+    function renderCrmProjectProgress(projects) {
+      if (!crmProjectProgressBody) return;
+      if (!projects.length) {
+        crmProjectProgressBody.innerHTML = `<div class="crm-project-empty">등록된 프로젝트 업무가 없습니다.</div>`;
+        return;
+      }
+      crmProjectProgressBody.innerHTML = projects.map((project) => {
+        const percent = projectProgressPercent(project);
+        const assignees = String(project.assignee_names || "").split(",").map((name) => name.trim()).filter(Boolean);
+        const ownerText = assignees.length ? assignees.slice(0, 4).join(", ") : "담당자 미정";
+        const label = projectProgressLabel(project);
+        return `
+          <article class="crm-project-row" role="button" tabindex="0" aria-label="${escapeHtml(`${project.project_name || "프로젝트"} 진행상황 크게 보기`)}" data-crm-project-key="${escapeHtml(project.project_key || "")}">
+            <div class="crm-project-main">
+              <div class="crm-project-title">${escapeHtml(project.project_name || "프로젝트 미지정")}</div>
+              <div class="crm-project-meta">${escapeHtml(ownerText)} · 다음 마감 ${escapeHtml(project.next_due_at || "없음")}</div>
+            </div>
+            <div class="crm-project-progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${escapeHtml(percent)}" aria-label="${escapeHtml(project.project_name || "프로젝트")} 완료율">
+              <div class="crm-project-progress-top"><span>${escapeHtml(label)}</span><strong>${escapeHtml(percent)}%</strong></div>
+              <div class="crm-project-bar"><span style="width: ${escapeHtml(percent)}%"></span></div>
+            </div>
+            <div class="crm-project-metrics">
+              <span class="crm-project-pill">${escapeHtml(project.open_tasks || 0)}건 진행</span>
+              <span class="crm-project-pill">${escapeHtml(project.completed_tasks || 0)}/${escapeHtml(project.total_tasks || 0)} 완료</span>
+              ${(project.due_today || 0) > 0 ? `<span class="crm-project-pill today">오늘 ${escapeHtml(project.due_today)}건</span>` : ""}
+              ${(project.overdue || 0) > 0 ? `<span class="crm-project-pill danger">지연 ${escapeHtml(project.overdue)}건</span>` : ""}
+            </div>
+          </article>
+        `;
+      }).join("");
+    }
+
     function renderCrmDashboard(data) {
       const stats = data.stats || {};
       crmStatAccounts.textContent = crmUsers.length || stats.accounts || 0;
       crmStatOpenTasks.textContent = stats.open_tasks || 0;
       crmStatDueToday.textContent = stats.due_today || 0;
       crmStatOverdue.textContent = stats.overdue || 0;
+      crmProjectProgress = data.project_progress || [];
+      renderCrmProjectProgress(crmProjectProgress);
       const tasks = data.priority_tasks || [];
       crmPriorityTaskBody.innerHTML = tasks.length ? tasks.map((task) => `
         <tr>
@@ -6104,6 +6486,8 @@ HTML = r"""<!doctype html>
 
     function renderCrmStaffDashboard(payload, tasks) {
       if (!crmStaffBody) return;
+      crmStaffPayloadCache = payload || null;
+      crmStaffTaskCache = tasks || [];
       const staff = payload?.staff || [];
       const rows = tasks || [];
       if (!staff.length) {
@@ -6113,7 +6497,7 @@ HTML = r"""<!doctype html>
       crmStaffBody.innerHTML = staff.map((user) => {
         const latest = latestTaskForUser(rows, user.id);
         return `
-          <article class="crm-staff-row">
+          <article class="crm-staff-row" role="button" tabindex="0" aria-label="${escapeHtml(`${user.display_name || user.username} 직원 업무 크게 보기`)}" data-crm-staff-card="${escapeHtml(user.id)}">
             <div class="crm-staff-person">
               <div class="crm-staff-avatar">${escapeHtml(personInitials(user))}</div>
               <div>
@@ -6417,6 +6801,327 @@ HTML = r"""<!doctype html>
       crmSelectedTaskId = String(taskId || "");
       renderCrmTasks();
       ensureCrmTaskComments(crmSelectedTaskId).catch(() => {});
+    }
+
+    function focusWidgetMetric(label, value, raw = false) {
+      const text = value === undefined || value === null || value === "" ? "-" : value;
+      return `
+        <div class="focus-widget-metric">
+          <span>${escapeHtml(label)}</span>
+          <strong>${raw ? text : escapeHtml(text)}</strong>
+        </div>
+      `;
+    }
+
+    function openFocusWidget({ kicker = "크게 보기", title = "상세 보기", subtitle = "", body = "" } = {}) {
+      if (!focusWidget || !focusWidgetBody) return;
+      const wasOpen = focusWidget.classList.contains("open");
+      if (!wasOpen) focusWidgetLastFocus = document.activeElement;
+      focusWidgetKicker.textContent = kicker;
+      focusWidgetTitle.textContent = title;
+      focusWidgetSubtitle.textContent = subtitle || "";
+      focusWidgetBody.innerHTML = body;
+      focusWidget.classList.add("open");
+      focusWidget.setAttribute("aria-hidden", "false");
+      if (!wasOpen) setTimeout(() => focusWidgetClose?.focus(), 0);
+    }
+
+    function closeFocusWidget() {
+      if (!focusWidget) return;
+      focusWidget.classList.remove("open");
+      focusWidget.setAttribute("aria-hidden", "true");
+      focusWidgetBody.innerHTML = "";
+      focusWidgetTaskId = "";
+      focusWidgetEmployeeId = "";
+      if (focusWidgetLastFocus && typeof focusWidgetLastFocus.focus === "function") {
+        setTimeout(() => focusWidgetLastFocus.focus(), 0);
+      }
+      focusWidgetLastFocus = null;
+    }
+
+    function focusWidgetTaskBody(task) {
+      const canEdit = can("crm_manage");
+      const commentId = `focusWidgetComment-${String(task.id || "").replace(/[^a-zA-Z0-9_-]/g, "-")}`;
+      return `
+        <div class="focus-widget-grid">
+          ${focusWidgetMetric("상태", crmStatusBadge(task.status), true)}
+          ${focusWidgetMetric("우선순위", crmPriorityBadge(task.priority), true)}
+          ${focusWidgetMetric("마감", crmDueDateText(task))}
+          ${focusWidgetMetric("담당자", task.assignee_name || "담당자 미정")}
+          ${focusWidgetMetric("요청자", task.requester_name || "요청자 미정")}
+          ${focusWidgetMetric("출처", crmSourceLabel(task.source))}
+        </div>
+        <section class="focus-widget-section">
+          <div class="focus-widget-section-title">업무 내용</div>
+          <p class="focus-widget-text">${escapeHtml(task.description || "상세 내용이 없습니다.")}</p>
+        </section>
+        <div class="focus-widget-actions">
+          ${canEdit ? `<button class="crm-mini-button" type="button" data-crm-task-edit="${escapeHtml(task.id)}">수정</button>` : ""}
+          <button class="crm-mini-button primary" type="button" data-crm-task-status="${escapeHtml(task.id)}" data-status="진행중">확인</button>
+          <button class="crm-mini-button primary" type="button" data-crm-task-status="${escapeHtml(task.id)}" data-status="완료">완료</button>
+          <button class="crm-mini-button" type="button" data-crm-task-status="${escapeHtml(task.id)}" data-status="보류">보류</button>
+        </div>
+        <form class="crm-detail-comment-form" data-focus-widget-comment-form="${escapeHtml(task.id)}">
+          <label for="${escapeHtml(commentId)}">댓글</label>
+          <textarea class="crm-textarea" id="${escapeHtml(commentId)}" data-focus-widget-comment-body placeholder="처리 내용이나 다음 액션을 남겨줘."></textarea>
+          <button class="crm-mini-button primary" type="submit">댓글 등록</button>
+        </form>
+        ${renderCrmTaskTimeline(task)}
+      `;
+    }
+
+    function renderFocusWidgetTask(task) {
+      openFocusWidget({
+        kicker: "업무 크게 보기",
+        title: task.title || "제목 없음",
+        subtitle: [task.public_id || "", crmTaskContextLabel(task), crmSourceLabel(task.source)].filter(Boolean).join(" · "),
+        body: focusWidgetTaskBody(task),
+      });
+    }
+
+    async function openCrmTaskWidget(taskId) {
+      const task = findCrmTaskById(taskId);
+      if (!task) {
+        openFocusWidget({
+          kicker: "업무 크게 보기",
+          title: "업무를 찾지 못했습니다",
+          subtitle: "",
+          body: `<p class="focus-widget-text">현재 화면에 로드된 업무 목록에서 해당 업무를 찾지 못했습니다. 업무보드를 새로고침한 뒤 다시 시도해줘.</p>`,
+        });
+        return;
+      }
+      focusWidgetTaskId = String(task.id || "");
+      focusWidgetEmployeeId = "";
+      renderFocusWidgetTask(task);
+      await ensureCrmTaskComments(task.id);
+      const refreshed = findCrmTaskById(task.id) || task;
+      if (focusWidget?.classList.contains("open") && focusWidgetTaskId === String(task.id || "")) {
+        renderFocusWidgetTask(refreshed);
+      }
+    }
+
+    function findStaffUserById(userId) {
+      const sources = [
+        companyStaffPayloadCache?.staff || [],
+        crmStaffPayloadCache?.staff || [],
+        crmUsers || [],
+        internalChatUsers || [],
+      ];
+      for (const source of sources) {
+        const found = source.find((user) => String(user.id) === String(userId));
+        if (found) return found;
+      }
+      return null;
+    }
+
+    function tasksForAssignee(userId, rows) {
+      return (rows || []).filter((task) => String(task.assignee_user_id || "") === String(userId || ""));
+    }
+
+    function focusWidgetEmployeeBody(user, tasks) {
+      const openTasks = (tasks || []).filter((task) => task.status !== "완료");
+      const today = todayString();
+      const dueToday = openTasks.filter((task) => crmDueDateOnly(task) === today).length;
+      const overdue = openTasks.filter((task) => {
+        const day = crmDueDateOnly(task);
+        return day && day < today;
+      }).length;
+      const rows = openTasks.slice(0, 20);
+      return `
+        <div class="focus-widget-grid">
+          ${focusWidgetMetric("진행 업무", user.open_tasks ?? openTasks.length)}
+          ${focusWidgetMetric("오늘 마감", user.due_today ?? dueToday)}
+          ${focusWidgetMetric("지연 업무", user.overdue ?? overdue)}
+          ${focusWidgetMetric("역할", user.team_label || roleText(user.role))}
+          ${focusWidgetMetric("계정", user.username || "-")}
+          ${focusWidgetMetric("상태", user.is_active === 0 ? "비활성" : "활성")}
+        </div>
+        <section class="focus-widget-section">
+          <div class="focus-widget-section-title">최근 배정 업무</div>
+          <div class="focus-widget-table-wrap">
+            <table class="focus-widget-table">
+              <thead><tr><th>번호</th><th>업무</th><th>마감</th><th>상태</th><th>우선순위</th><th>보기</th></tr></thead>
+              <tbody>
+                ${rows.length ? rows.map((task) => `
+                  <tr>
+                    <td>${escapeHtml(task.public_id || "")}</td>
+                    <td>${escapeHtml(task.title || "")}<div>${escapeHtml(crmTaskContextLabel(task))}</div></td>
+                    <td>${escapeHtml(crmDueDateText(task))}</td>
+                    <td>${crmStatusBadge(task.status)}</td>
+                    <td>${crmPriorityBadge(task.priority)}</td>
+                    <td><button class="crm-mini-button" type="button" data-focus-open-task="${escapeHtml(task.id)}">열기</button></td>
+                  </tr>
+                `).join("") : `<tr><td colspan="6">현재 표시할 미완료 업무가 없습니다.</td></tr>`}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      `;
+    }
+
+    async function openEmployeeWidget(userId) {
+      const user = findStaffUserById(userId);
+      if (!user) {
+        openFocusWidget({
+          kicker: "직원 크게 보기",
+          title: "직원을 찾지 못했습니다",
+          body: `<p class="focus-widget-text">현재 화면에 로드된 직원 목록에서 해당 직원을 찾지 못했습니다.</p>`,
+        });
+        return;
+      }
+      focusWidgetEmployeeId = String(userId || "");
+      focusWidgetTaskId = "";
+      const cachedTasks = tasksForAssignee(userId, crmStaffTaskCache.concat(companyStaffTaskCache));
+      openFocusWidget({
+        kicker: "직원 크게 보기",
+        title: user.display_name || user.username || "직원",
+        subtitle: `${user.team_label || roleText(user.role)} · ${user.username || ""}`,
+        body: focusWidgetEmployeeBody(user, cachedTasks),
+      });
+      if (!can("crm_view")) return;
+      try {
+        const data = await crmFetchJson(`/api/crm-tasks?assignee_user_id=${encodeURIComponent(userId)}&open_only=1&sort=due&limit=20`);
+        const latestTasks = data.tasks || [];
+        crmStaffTaskCache = crmStaffTaskCache
+          .filter((task) => String(task.assignee_user_id || "") !== String(userId))
+          .concat(latestTasks);
+        if (focusWidget?.classList.contains("open") && focusWidgetEmployeeId === String(userId || "")) {
+          openFocusWidget({
+            kicker: "직원 크게 보기",
+            title: user.display_name || user.username || "직원",
+            subtitle: `${user.team_label || roleText(user.role)} · ${user.username || ""}`,
+            body: focusWidgetEmployeeBody(user, latestTasks),
+          });
+        }
+      } catch (error) {
+        setCrmMessage(error.message, true);
+      }
+    }
+
+    function findCrmProjectByKey(projectKey) {
+      return crmProjectProgress.find((project) => String(project.project_key || "") === String(projectKey || ""));
+    }
+
+    function focusWidgetProjectBody(project) {
+      const percent = projectProgressPercent(project);
+      const tasks = project.tasks || [];
+      const assignees = String(project.assignee_names || "").split(",").map((name) => name.trim()).filter(Boolean);
+      return `
+        <div class="focus-widget-grid">
+          ${focusWidgetMetric("완료율", `${percent}%`)}
+          ${focusWidgetMetric("진행 업무", `${project.open_tasks || 0}건`)}
+          ${focusWidgetMetric("전체 업무", `${project.total_tasks || 0}건`)}
+          ${focusWidgetMetric("오늘 마감", `${project.due_today || 0}건`)}
+          ${focusWidgetMetric("지연 업무", `${project.overdue || 0}건`)}
+          ${focusWidgetMetric("높은 우선순위", `${project.high_priority || 0}건`)}
+        </div>
+        <section class="focus-widget-section">
+          <div class="focus-widget-section-title">프로젝트 상태</div>
+          <div class="crm-project-progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${escapeHtml(percent)}" aria-label="${escapeHtml(project.project_name || "프로젝트")} 완료율">
+            <div class="crm-project-progress-top"><span>${escapeHtml(projectProgressLabel(project))}</span><strong>${escapeHtml(percent)}%</strong></div>
+            <div class="crm-project-bar"><span style="width: ${escapeHtml(percent)}%"></span></div>
+          </div>
+          <p class="focus-widget-text">담당자: ${escapeHtml(assignees.length ? assignees.join(", ") : "담당자 미정")}\n다음 마감: ${escapeHtml(project.next_due_at || "없음")}</p>
+        </section>
+        <div class="focus-widget-actions">
+          <button class="crm-mini-button primary" type="button" data-focus-filter-project="${escapeHtml(project.project_key || "")}">업무보드에서 보기</button>
+        </div>
+        <section class="focus-widget-section">
+          <div class="focus-widget-section-title">관련 업무</div>
+          <div class="focus-widget-table-wrap">
+            <table class="focus-widget-table">
+              <thead><tr><th>번호</th><th>업무</th><th>담당자</th><th>마감</th><th>상태</th><th>우선순위</th><th>보기</th></tr></thead>
+              <tbody>
+                ${tasks.length ? tasks.map((task) => `
+                  <tr>
+                    <td>${escapeHtml(task.public_id || "")}</td>
+                    <td>${escapeHtml(task.title || "")}<div>${escapeHtml(task.description || "")}</div></td>
+                    <td>${escapeHtml(task.assignee_name || "미정")}</td>
+                    <td>${escapeHtml(crmDueDateText(task))}</td>
+                    <td>${crmStatusBadge(task.status)}</td>
+                    <td>${crmPriorityBadge(task.priority)}</td>
+                    <td><button class="crm-mini-button" type="button" data-focus-open-task="${escapeHtml(task.id)}">열기</button></td>
+                  </tr>
+                `).join("") : `<tr><td colspan="7">표시할 관련 업무가 없습니다.</td></tr>`}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      `;
+    }
+
+    function openCrmProjectWidget(projectKey) {
+      const project = findCrmProjectByKey(projectKey);
+      if (!project) {
+        openFocusWidget({
+          kicker: "프로젝트 추적기",
+          title: "프로젝트를 찾지 못했습니다",
+          body: `<p class="focus-widget-text">현재 대시보드에 로드된 프로젝트 목록에서 찾지 못했습니다. 대시보드를 새로고침한 뒤 다시 시도해줘.</p>`,
+        });
+        return;
+      }
+      focusWidgetTaskId = "";
+      focusWidgetEmployeeId = "";
+      openFocusWidget({
+        kicker: "프로젝트 추적기",
+        title: project.project_name || "프로젝트 미지정",
+        subtitle: `${projectProgressLabel(project)} · ${project.open_tasks || 0}건 진행 · ${project.total_tasks || 0}건 전체`,
+        body: focusWidgetProjectBody(project),
+      });
+    }
+
+    function applyCrmProjectFilter(projectKey) {
+      const project = findCrmProjectByKey(projectKey);
+      if (!project) return;
+      crmActiveTaskViewId = "";
+      writeCrmTaskFilters({
+        ...crmTaskFilterDefaults(),
+        q: project.project_name || "",
+        open_only: "",
+        sort: "due",
+      });
+      renderCrmSavedViews();
+      closeFocusWidget();
+      setCrmTab("tasks");
+      loadCrmTasks().catch((error) => setCrmMessage(error.message, true));
+    }
+
+    function openNoticeWidget() {
+      const payload = noticePayload();
+      focusWidgetTaskId = "";
+      focusWidgetEmployeeId = "";
+      const meta = [shortKoreanDate(payload.date), payload.owner ? `담당 ${payload.owner}` : ""].filter(Boolean).join(" / ");
+      openFocusWidget({
+        kicker: "공지사항",
+        title: payload.title || "등록된 공지 없음",
+        subtitle: meta,
+        body: `
+          <section class="focus-widget-section">
+            <div class="focus-widget-section-title">공지 내용</div>
+            <p class="focus-widget-text">${escapeHtml(payload.body || "공지사항 입력 버튼을 눌러 내용을 입력해주세요.")}</p>
+          </section>
+        `,
+      });
+    }
+
+    function openCompanyCardWidget(card) {
+      const title = card.querySelector(".company-card-head span")?.textContent?.trim() || "상세 보기";
+      const body = card.querySelector(".company-card-body")?.textContent?.trim() || "표시할 내용이 없습니다.";
+      focusWidgetTaskId = "";
+      focusWidgetEmployeeId = "";
+      openFocusWidget({
+        kicker: "사규/가이드",
+        title,
+        body: `<p class="focus-widget-text">${escapeHtml(body)}</p>`,
+      });
+    }
+
+    function isInteractiveTarget(target) {
+      return Boolean(target?.closest("button, a, input, textarea, select, label, [contenteditable='true']"));
+    }
+
+    function isCardActivationKey(event) {
+      return ["Enter", " "].includes(event.key);
     }
 
     function renderCrmTasks() {
@@ -8304,6 +9009,55 @@ HTML = r"""<!doctype html>
         if (companyOrgBody) companyOrgBody.innerHTML = `<div class="company-org-empty">${escapeHtml(error.message)}</div>`;
       }));
     }
+    sidebarNoticePreview?.addEventListener("click", () => openNoticeWidget());
+    sidebarNoticePreview?.addEventListener("keydown", (event) => {
+      if (!isCardActivationKey(event)) return;
+      event.preventDefault();
+      openNoticeWidget();
+    });
+    noticePreview?.addEventListener("click", () => openNoticeWidget());
+    companyOrgBody?.addEventListener("click", (event) => {
+      if (isInteractiveTarget(event.target)) return;
+      const card = event.target.closest("[data-company-person-card]");
+      if (!card) return;
+      openEmployeeWidget(card.dataset.companyPersonCard).catch((error) => setCrmMessage(error.message, true));
+    });
+    companyOrgBody?.addEventListener("keydown", (event) => {
+      if (!isCardActivationKey(event)) return;
+      if (isInteractiveTarget(event.target)) return;
+      const card = event.target.closest("[data-company-person-card]");
+      if (!card) return;
+      event.preventDefault();
+      openEmployeeWidget(card.dataset.companyPersonCard).catch((error) => setCrmMessage(error.message, true));
+    });
+    companyStaffTaskBody?.addEventListener("click", (event) => {
+      if (isInteractiveTarget(event.target)) return;
+      const card = event.target.closest("[data-company-task-id]");
+      if (!card) return;
+      openCrmTaskWidget(card.dataset.companyTaskId).catch((error) => setCrmMessage(error.message, true));
+    });
+    companyStaffTaskBody?.addEventListener("keydown", (event) => {
+      if (!isCardActivationKey(event)) return;
+      if (isInteractiveTarget(event.target)) return;
+      const card = event.target.closest("[data-company-task-id]");
+      if (!card) return;
+      event.preventDefault();
+      openCrmTaskWidget(card.dataset.companyTaskId).catch((error) => setCrmMessage(error.message, true));
+    });
+    dashboardContent?.addEventListener("click", (event) => {
+      if (isInteractiveTarget(event.target)) return;
+      const card = event.target.closest('.company-panel[data-company-panel="rules"] .company-card');
+      if (!card) return;
+      openCompanyCardWidget(card);
+    });
+    dashboardContent?.addEventListener("keydown", (event) => {
+      if (!isCardActivationKey(event)) return;
+      if (isInteractiveTarget(event.target)) return;
+      const card = event.target.closest('.company-panel[data-company-panel="rules"] .company-card');
+      if (!card) return;
+      event.preventDefault();
+      openCompanyCardWidget(card);
+    });
     if (internalChatForm) {
       internalChatForm.addEventListener("submit", (event) => {
         sendInternalMessage(event).catch(() => {
@@ -8346,11 +9100,39 @@ HTML = r"""<!doctype html>
     document.querySelectorAll("[data-crm-go]").forEach((button) => {
       button.addEventListener("click", () => setCrmTab(button.dataset.crmGo));
     });
+    crmProjectProgressBody?.addEventListener("click", (event) => {
+      if (isInteractiveTarget(event.target)) return;
+      const row = event.target.closest("[data-crm-project-key]");
+      if (!row) return;
+      openCrmProjectWidget(row.dataset.crmProjectKey);
+    });
+    crmProjectProgressBody?.addEventListener("keydown", (event) => {
+      if (!isCardActivationKey(event)) return;
+      if (isInteractiveTarget(event.target)) return;
+      const row = event.target.closest("[data-crm-project-key]");
+      if (!row) return;
+      event.preventDefault();
+      openCrmProjectWidget(row.dataset.crmProjectKey);
+    });
     crmRefresh.addEventListener("click", () => loadCrmAll().catch((error) => setCrmMessage(error.message, true)));
     crmAccountQuick.addEventListener("click", () => {
       setCrmTab("accounts");
     });
     crmStaffRefresh?.addEventListener("click", () => loadCrmStaffDashboard().catch((error) => setCrmMessage(error.message, true)));
+    crmStaffBody?.addEventListener("click", (event) => {
+      if (isInteractiveTarget(event.target)) return;
+      const card = event.target.closest("[data-crm-staff-card]");
+      if (!card) return;
+      openEmployeeWidget(card.dataset.crmStaffCard).catch((error) => setCrmMessage(error.message, true));
+    });
+    crmStaffBody?.addEventListener("keydown", (event) => {
+      if (!isCardActivationKey(event)) return;
+      if (isInteractiveTarget(event.target)) return;
+      const card = event.target.closest("[data-crm-staff-card]");
+      if (!card) return;
+      event.preventDefault();
+      openEmployeeWidget(card.dataset.crmStaffCard).catch((error) => setCrmMessage(error.message, true));
+    });
     crmTaskQuick.addEventListener("click", () => {
       resetCrmTaskForm();
       setCrmTaskFormOpen(true);
@@ -8434,7 +9216,10 @@ HTML = r"""<!doctype html>
     });
     function findCrmTaskById(taskId) {
       return crmTasks.find((item) => String(item.id) === String(taskId))
-        || crmMineTasks.find((item) => String(item.id) === String(taskId));
+        || crmMineTasks.find((item) => String(item.id) === String(taskId))
+        || companyStaffTaskCache.find((item) => String(item.id) === String(taskId))
+        || crmStaffTaskCache.find((item) => String(item.id) === String(taskId))
+        || crmProjectProgress.flatMap((project) => project.tasks || []).find((item) => String(item.id) === String(taskId));
     }
     function handleCrmTaskAction(event) {
       const editButton = event.target.closest("[data-crm-task-edit]");
@@ -8459,15 +9244,45 @@ HTML = r"""<!doctype html>
     crmTaskBody.addEventListener("click", (event) => {
       if (handleCrmTaskAction(event)) return;
       const card = event.target.closest("[data-crm-task-card]");
-      if (card) selectCrmTask(card.dataset.crmTaskCard);
+      if (card) {
+        selectCrmTask(card.dataset.crmTaskCard);
+        openCrmTaskWidget(card.dataset.crmTaskCard).catch((error) => setCrmMessage(error.message, true));
+      }
     });
     crmTaskBody.addEventListener("keydown", (event) => {
-      if (!["Enter", " "].includes(event.key)) return;
+      if (!isCardActivationKey(event)) return;
       if (event.target.closest("button")) return;
       const card = event.target.closest("[data-crm-task-card]");
       if (!card) return;
       event.preventDefault();
       selectCrmTask(card.dataset.crmTaskCard);
+      openCrmTaskWidget(card.dataset.crmTaskCard).catch((error) => setCrmMessage(error.message, true));
+    });
+    focusWidgetClose?.addEventListener("click", closeFocusWidget);
+    focusWidget?.addEventListener("click", (event) => {
+      if (event.target === focusWidget) closeFocusWidget();
+    });
+    focusWidgetBody?.addEventListener("click", (event) => {
+      const openTaskButton = event.target.closest("[data-focus-open-task]");
+      if (openTaskButton) {
+        openCrmTaskWidget(openTaskButton.dataset.focusOpenTask).catch((error) => setCrmMessage(error.message, true));
+        return;
+      }
+      const filterProjectButton = event.target.closest("[data-focus-filter-project]");
+      if (filterProjectButton) {
+        applyCrmProjectFilter(filterProjectButton.dataset.focusFilterProject);
+        return;
+      }
+      if (handleCrmTaskAction(event)) closeFocusWidget();
+    });
+    focusWidgetBody?.addEventListener("submit", (event) => {
+      const form = event.target.closest("[data-focus-widget-comment-form]");
+      if (!form) return;
+      event.preventDefault();
+      const textarea = form.querySelector("[data-focus-widget-comment-body]");
+      addCrmTaskComment(form.dataset.focusWidgetCommentForm, textarea?.value || "")
+        .then(() => openCrmTaskWidget(form.dataset.focusWidgetCommentForm))
+        .catch((error) => setCrmMessage(error.message, true));
     });
     crmMineTaskBody?.addEventListener("click", (event) => {
       handleCrmTaskAction(event);
@@ -8531,6 +9346,11 @@ HTML = r"""<!doctype html>
     noticePopupClose.addEventListener("click", closeNoticePopup);
     noticePopup.addEventListener("click", (event) => {
       if (event.target === noticePopup) closeNoticePopup();
+    });
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape" && focusWidget?.classList.contains("open")) {
+        closeFocusWidget();
+      }
     });
     importShipmentRefresh.addEventListener("click", loadImportShipments);
     importShipmentWorkspaceOpen?.addEventListener("click", () => openImportShipmentPopup());
@@ -8964,7 +9784,7 @@ LOGIN_HTML = r"""<!doctype html>
       color: var(--text);
     }
     .login-shell {
-      width: min(420px, calc(100vw - 32px));
+      width: min(760px, calc(100vw - 32px));
       background: var(--panel);
       border: 1px solid var(--line);
       border-radius: 14px;
@@ -9007,7 +9827,6 @@ LOGIN_HTML = r"""<!doctype html>
       box-shadow: 0 0 0 3px rgba(37, 99, 235, .13);
     }
     .error {
-      display: __ERROR_DISPLAY__;
       margin: 0 0 14px;
       padding: 11px 12px;
       border-radius: 8px;
@@ -9015,6 +9834,36 @@ LOGIN_HTML = r"""<!doctype html>
       color: #b42318;
       font-size: 13px;
       font-weight: 850;
+    }
+    .success {
+      margin: 0 0 14px;
+      padding: 11px 12px;
+      border-radius: 8px;
+      background: #dcfce7;
+      color: #047857;
+      font-size: 13px;
+      font-weight: 850;
+    }
+    .login-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      gap: 24px;
+      align-items: start;
+    }
+    .login-panel {
+      min-width: 0;
+    }
+    .register-panel {
+      min-width: 0;
+      padding: 18px;
+      border: 1px solid #e5e7eb;
+      border-radius: 10px;
+      background: #fbfcff;
+    }
+    .register-panel h2 {
+      margin: 0 0 8px;
+      font-size: 18px;
+      line-height: 1.25;
     }
     button {
       width: 100%;
@@ -9039,6 +9888,10 @@ LOGIN_HTML = r"""<!doctype html>
       line-height: 1.55;
     }
     .hint strong { color: #111827; }
+    @media (max-width: 720px) {
+      .login-grid { grid-template-columns: 1fr; }
+      .login-shell { padding: 26px 22px 24px; }
+    }
   </style>
 </head>
 <body>
@@ -9050,19 +9903,43 @@ LOGIN_HTML = r"""<!doctype html>
         <div class="brand-sub">관리자 / 사용자 로그인</div>
       </div>
     </div>
-    <h1>로그인</h1>
-    <p class="lead">업무 화면을 사용하려면 계정으로 로그인해주세요.</p>
-    <div class="error">아이디 또는 비밀번호가 올바르지 않습니다.</div>
-    <form method="post" action="/login">
-      <label for="username">아이디</label>
-      <input id="username" name="username" type="text" autocomplete="username" autofocus />
-      <label for="password">비밀번호</label>
-      <input id="password" name="password" type="password" autocomplete="current-password" />
-      <button type="submit">로그인</button>
-    </form>
-    <div class="hint">
-      기본 계정: <strong>admin / admin1234</strong><br>
-      사용자 계정: <strong>user / user1234</strong>
+    <div class="success" style="display: __LOGIN_MESSAGE_DISPLAY__;">__LOGIN_MESSAGE__</div>
+    <div class="login-grid">
+      <section class="login-panel">
+        <h1>로그인</h1>
+        <p class="lead">업무 화면을 사용하려면 승인된 계정으로 로그인해주세요.</p>
+        <div class="error" style="display: __LOGIN_ERROR_DISPLAY__;">__LOGIN_ERROR__</div>
+        <form method="post" action="/login">
+          <label for="username">아이디</label>
+          <input id="username" name="username" type="text" autocomplete="username" autofocus />
+          <label for="password">비밀번호</label>
+          <input id="password" name="password" type="password" autocomplete="current-password" />
+          <button type="submit">로그인</button>
+        </form>
+        <div class="hint">
+          로그인 실패가 반복되면 잠시 제한됩니다.<br>
+          계정은 관리자 승인 후 사용할 수 있습니다.
+        </div>
+      </section>
+      <section class="register-panel">
+        <h2>계정 등록 요청</h2>
+        <p class="lead">신규 직원은 요청을 남기고, 관리자가 승인하면 로그인할 수 있습니다.</p>
+        <div class="error" style="display: __REGISTER_ERROR_DISPLAY__;">__REGISTER_ERROR__</div>
+        <form method="post" action="/register">
+          <label for="registerUsername">아이디</label>
+          <input id="registerUsername" name="username" type="text" autocomplete="username" placeholder="영문/숫자 3~32자" />
+          <label for="registerDisplayName">표시 이름</label>
+          <input id="registerDisplayName" name="display_name" type="text" autocomplete="name" placeholder="예) 홍길동" />
+          <label for="registerPassword">비밀번호</label>
+          <input id="registerPassword" name="password" type="password" autocomplete="new-password" placeholder="10자 이상" />
+          <label for="registerPasswordConfirm">비밀번호 확인</label>
+          <input id="registerPasswordConfirm" name="password_confirm" type="password" autocomplete="new-password" />
+          <button type="submit">등록 요청</button>
+        </form>
+        <div class="hint">
+          비밀번호는 10자 이상, 기본/반복/아이디 포함 패턴은 사용할 수 없습니다.
+        </div>
+      </section>
     </div>
   </main>
 </body>
@@ -9221,13 +10098,14 @@ ADMIN_WORKSPACE_HTML = r"""
               <label>비밀번호
                 <input id="userAdminPassword" type="password" placeholder="신규/변경 시 입력" />
               </label>
-              <label class="admin-check"><input id="userAdminActive" type="checkbox" checked /> 사용</label>
+              <label class="admin-check"><input id="userAdminActive" type="checkbox" checked /> 사용/승인</label>
               <button class="workspace-button" type="button" id="userAdminSave">저장</button>
             </div>
             <div class="permission-grid" id="userAdminPermissions">
               __PERMISSION_CHECKBOXES__
             </div>
             <div class="admin-message" id="userAdminMessage"></div>
+            <div class="admin-message">가입 요청 계정은 기본적으로 승인대기 상태입니다. 내용을 확인한 뒤 사용을 체크하고 저장하면 로그인할 수 있습니다.</div>
             <div class="admin-table-wrap">
               <table class="admin-table">
                 <thead>
@@ -9238,6 +10116,7 @@ ADMIN_WORKSPACE_HTML = r"""
                     <th>세부권한</th>
                     <th>상태</th>
                     <th>생성일</th>
+                    <th>마지막 로그인</th>
                     <th>수정</th>
                   </tr>
                 </thead>
@@ -9513,6 +10392,52 @@ def role_label(role: str) -> str:
     return "관리자" if role == "admin" else "사용자"
 
 
+def security_time_text(timestamp: float | int | None) -> str:
+    if not timestamp:
+        return ""
+    return datetime.fromtimestamp(float(timestamp)).strftime("%Y-%m-%d %H:%M:%S")
+
+
+def normalize_username(value: object) -> str:
+    return str(value or "").strip()
+
+
+def validate_username(username: str) -> None:
+    if not re.fullmatch(r"[A-Za-z0-9_.-]{3,32}", username):
+        raise ValueError("아이디는 영문/숫자/._- 조합 3~32자로 입력해주세요.")
+
+
+def validate_password_policy(password: str, username: str, display_name: str = "") -> None:
+    if len(password) < PASSWORD_MIN_LENGTH:
+        raise ValueError(f"비밀번호는 {PASSWORD_MIN_LENGTH}자 이상으로 입력해주세요.")
+    if len(password) > PASSWORD_MAX_LENGTH:
+        raise ValueError(f"비밀번호는 {PASSWORD_MAX_LENGTH}자 이내로 입력해주세요.")
+    lowered = password.lower()
+    blocked = {
+        "admin1234",
+        "user1234",
+        "password",
+        "password123",
+        "qwer1234",
+        "qwerasdf",
+        "1234567890",
+        "soillbridge",
+        "workhub1234",
+    }
+    if lowered in blocked:
+        raise ValueError("초기/추측 쉬운 비밀번호는 사용할 수 없습니다.")
+    for value in (username, display_name):
+        compact = str(value or "").strip().lower().replace(" ", "")
+        if compact and len(compact) >= 3 and compact in lowered.replace(" ", ""):
+            raise ValueError("비밀번호에 아이디나 표시 이름을 그대로 넣을 수 없습니다.")
+    if len(set(password)) < 4:
+        raise ValueError("반복 문자만 있는 비밀번호는 사용할 수 없습니다.")
+
+
+def login_attempt_key(username: str, ip_address: str) -> str:
+    return f"{normalize_username(username).lower()}|{ip_address or 'local'}"
+
+
 def render_app_html(user: dict[str, str]) -> str:
     display_name = user.get("display_name") or user.get("username") or "사용자"
     role = role_label(user.get("role", "user"))
@@ -9547,8 +10472,16 @@ def render_app_html(user: dict[str, str]) -> str:
     )
 
 
-def render_login_html(show_error: bool = False) -> str:
-    return LOGIN_HTML.replace("__ERROR_DISPLAY__", "block" if show_error else "none")
+def render_login_html(show_error: bool = False, login_error: str = "", message: str = "", register_error: str = "") -> str:
+    return (
+        LOGIN_HTML
+        .replace("__LOGIN_ERROR_DISPLAY__", "block" if show_error or login_error else "none")
+        .replace("__LOGIN_ERROR__", html_escape(login_error or "아이디 또는 비밀번호가 올바르지 않습니다."))
+        .replace("__LOGIN_MESSAGE_DISPLAY__", "block" if message else "none")
+        .replace("__LOGIN_MESSAGE__", html_escape(message))
+        .replace("__REGISTER_ERROR_DISPLAY__", "block" if register_error else "none")
+        .replace("__REGISTER_ERROR__", html_escape(register_error))
+    )
 
 
 def password_hash(password: str, salt: str | None = None) -> str:
@@ -9655,13 +10588,52 @@ def init_db() -> None:
         }
         if "permissions" not in user_columns:
             connection.execute("ALTER TABLE users ADD COLUMN permissions TEXT")
+        user_extra_columns = {
+            "last_login_at": "TEXT",
+            "password_changed_at": "TEXT",
+            "created_by": "INTEGER",
+            "approved_by": "INTEGER",
+            "approved_at": "TEXT",
+        }
+        for column, column_type in user_extra_columns.items():
+            if column not in user_columns:
+                connection.execute(f"ALTER TABLE users ADD COLUMN {column} {column_type}")
         connection.execute(
             """
             CREATE TABLE IF NOT EXISTS login_sessions (
                 token_hash TEXT PRIMARY KEY,
                 username TEXT NOT NULL,
                 created_at REAL NOT NULL,
-                expires_at REAL NOT NULL
+                expires_at REAL NOT NULL,
+                last_seen_at REAL,
+                absolute_expires_at REAL
+            )
+            """
+        )
+        session_columns = {
+            row["name"] for row in connection.execute("PRAGMA table_info(login_sessions)").fetchall()
+        }
+        if "last_seen_at" not in session_columns:
+            connection.execute("ALTER TABLE login_sessions ADD COLUMN last_seen_at REAL")
+        if "absolute_expires_at" not in session_columns:
+            connection.execute("ALTER TABLE login_sessions ADD COLUMN absolute_expires_at REAL")
+        connection.execute(
+            """
+            UPDATE login_sessions
+               SET last_seen_at = COALESCE(last_seen_at, created_at),
+                   absolute_expires_at = COALESCE(absolute_expires_at, created_at + ?)
+             WHERE last_seen_at IS NULL OR absolute_expires_at IS NULL
+            """,
+            (SESSION_SECONDS,),
+        )
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS login_attempts (
+                identifier TEXT PRIMARY KEY,
+                failed_count INTEGER NOT NULL DEFAULT 0,
+                first_failed_at REAL NOT NULL,
+                last_failed_at REAL NOT NULL,
+                locked_until REAL
             )
             """
         )
@@ -9751,7 +10723,8 @@ def init_db() -> None:
                     "UPDATE users SET permissions = ?, updated_at = ? WHERE username = ?",
                     (json.dumps(ordered_permissions, ensure_ascii=False), now, row["username"]),
                 )
-        connection.execute("DELETE FROM login_sessions WHERE expires_at < ?", (time.time(),))
+        connection.execute("DELETE FROM login_sessions WHERE expires_at < ? OR COALESCE(absolute_expires_at, expires_at) < ?", (time.time(), time.time()))
+        connection.execute("DELETE FROM login_attempts WHERE last_failed_at < ? AND COALESCE(locked_until, 0) < ?", (time.time() - 24 * 60 * 60, time.time()))
         connection.execute(
             """
             CREATE TABLE IF NOT EXISTS cs_cases (
@@ -9961,9 +10934,72 @@ def init_db() -> None:
         connection.close()
 
 
+def login_lock_status(username: str, ip_address: str) -> tuple[bool, str]:
+    init_db()
+    key = login_attempt_key(username, ip_address)
+    now = time.time()
+    connection = connect_db()
+    try:
+        row = connection.execute(
+            "SELECT locked_until FROM login_attempts WHERE identifier = ?",
+            (key,),
+        ).fetchone()
+        if not row or not row["locked_until"] or float(row["locked_until"]) <= now:
+            return False, ""
+        minutes = max(1, int((float(row["locked_until"]) - now + 59) // 60))
+        return True, f"로그인 시도가 잠시 제한됐습니다. 약 {minutes}분 후 다시 시도해주세요."
+    finally:
+        connection.close()
+
+
+def record_login_failure(username: str, ip_address: str) -> None:
+    init_db()
+    key = login_attempt_key(username, ip_address)
+    now = time.time()
+    connection = connect_db()
+    try:
+        row = connection.execute(
+            "SELECT failed_count, first_failed_at FROM login_attempts WHERE identifier = ?",
+            (key,),
+        ).fetchone()
+        if not row or now - float(row["first_failed_at"]) > LOGIN_FAILURE_WINDOW_SECONDS:
+            failed_count = 1
+            first_failed_at = now
+        else:
+            failed_count = int(row["failed_count"] or 0) + 1
+            first_failed_at = float(row["first_failed_at"])
+        locked_until = now + LOGIN_LOCK_SECONDS if failed_count >= LOGIN_MAX_FAILURES else None
+        connection.execute(
+            """
+            INSERT INTO login_attempts (identifier, failed_count, first_failed_at, last_failed_at, locked_until)
+            VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(identifier) DO UPDATE SET
+                failed_count = excluded.failed_count,
+                first_failed_at = excluded.first_failed_at,
+                last_failed_at = excluded.last_failed_at,
+                locked_until = excluded.locked_until
+            """,
+            (key, failed_count, first_failed_at, now, locked_until),
+        )
+        connection.commit()
+    finally:
+        connection.close()
+
+
+def clear_login_failures(username: str, ip_address: str) -> None:
+    init_db()
+    key = login_attempt_key(username, ip_address)
+    connection = connect_db()
+    try:
+        connection.execute("DELETE FROM login_attempts WHERE identifier = ?", (key,))
+        connection.commit()
+    finally:
+        connection.close()
+
+
 def authenticate_user(username: str, password: str) -> dict[str, str] | None:
     init_db()
-    normalized = username.strip()
+    normalized = normalize_username(username)
     if not normalized or not password:
         return None
     connection = connect_db()
@@ -9978,6 +11014,8 @@ def authenticate_user(username: str, password: str) -> dict[str, str] | None:
         ).fetchone()
         if not row or not verify_password(password, row["password_hash"]):
             return None
+        connection.execute("UPDATE users SET last_login_at = ?, updated_at = ? WHERE id = ?", (now_text(), now_text(), int(row["id"])))
+        connection.commit()
         return {
             "id": str(row["id"]),
             "username": row["username"],
@@ -9993,14 +11031,16 @@ def create_login_session(username: str) -> str:
     init_db()
     token = secrets.token_urlsafe(32)
     now = time.time()
+    idle_expires_at = now + SESSION_IDLE_SECONDS
+    absolute_expires_at = now + SESSION_SECONDS
     connection = connect_db()
     try:
         connection.execute(
             """
-            INSERT INTO login_sessions (token_hash, username, created_at, expires_at)
-            VALUES (?, ?, ?, ?)
+            INSERT INTO login_sessions (token_hash, username, created_at, expires_at, last_seen_at, absolute_expires_at)
+            VALUES (?, ?, ?, ?, ?, ?)
             """,
-            (token_digest(token), username, now, now + SESSION_SECONDS),
+            (token_digest(token), username, now, min(idle_expires_at, absolute_expires_at), now, absolute_expires_at),
         )
         connection.commit()
         return token
@@ -10016,20 +11056,30 @@ def current_user_from_token(token: str) -> dict[str, str] | None:
     try:
         row = connection.execute(
             """
-            SELECT users.id, users.username, users.display_name, users.role, users.permissions, login_sessions.expires_at
+            SELECT users.id, users.username, users.display_name, users.role, users.permissions,
+                   login_sessions.expires_at,
+                   COALESCE(login_sessions.last_seen_at, login_sessions.created_at) AS last_seen_at,
+                   COALESCE(login_sessions.absolute_expires_at, login_sessions.created_at + ?) AS absolute_expires_at
               FROM login_sessions
               JOIN users ON users.username = login_sessions.username
              WHERE login_sessions.token_hash = ?
                AND users.active = 1
             """,
-            (token_digest(token),),
+            (SESSION_SECONDS, token_digest(token)),
         ).fetchone()
         if not row:
             return None
-        if float(row["expires_at"]) < time.time():
+        now = time.time()
+        if float(row["expires_at"]) < now or float(row["absolute_expires_at"]) < now:
             connection.execute("DELETE FROM login_sessions WHERE token_hash = ?", (token_digest(token),))
             connection.commit()
             return None
+        next_expires_at = min(now + SESSION_IDLE_SECONDS, float(row["absolute_expires_at"]))
+        connection.execute(
+            "UPDATE login_sessions SET last_seen_at = ?, expires_at = ? WHERE token_hash = ?",
+            (now, next_expires_at, token_digest(token)),
+        )
+        connection.commit()
         return {
             "id": str(row["id"]),
             "username": row["username"],
@@ -10059,7 +11109,8 @@ def list_users() -> list[dict[str, str | int]]:
     try:
         rows = connection.execute(
             """
-            SELECT id, username, display_name, role, permissions, active, created_at, updated_at
+            SELECT id, username, display_name, role, permissions, active, created_at, updated_at,
+                   last_login_at, password_changed_at, approved_at
               FROM users
              ORDER BY role = 'admin' DESC, username COLLATE NOCASE
             """
@@ -10285,7 +11336,7 @@ def save_internal_message(payload: dict, user: dict[str, str]) -> int:
 def save_user_account(payload: dict, actor: dict[str, str]) -> int:
     init_db()
     user_id = int(payload.get("id", 0) or 0)
-    username = clean_payload_text(payload, "username")
+    username = normalize_username(payload.get("username"))
     display_name = clean_payload_text(payload, "display_name")
     role = clean_payload_text(payload, "role") or "user"
     password = str(payload.get("password", "") or "")
@@ -10293,17 +11344,18 @@ def save_user_account(payload: dict, actor: dict[str, str]) -> int:
     permissions = normalize_permissions(payload.get("permissions", []), role)
     if role not in {"admin", "user"}:
         raise ValueError("권한은 관리자 또는 사용자만 선택할 수 있습니다.")
-    if not re.fullmatch(r"[A-Za-z0-9_.-]{3,32}", username):
-        raise ValueError("아이디는 영문/숫자/._- 조합 3~32자로 입력해주세요.")
+    validate_username(username)
     if not display_name:
         display_name = username
     if not user_id and not password:
         raise ValueError("신규 사용자는 비밀번호를 입력해주세요.")
+    if password:
+        validate_password_policy(password, username, display_name)
     now = now_text()
     connection = connect_db()
     try:
         if user_id:
-            existing = connection.execute("SELECT username FROM users WHERE id = ?", (user_id,)).fetchone()
+            existing = connection.execute("SELECT username, active FROM users WHERE id = ?", (user_id,)).fetchone()
             if not existing:
                 raise ValueError("수정할 사용자를 찾지 못했습니다.")
             if existing["username"] == actor.get("username") and not active:
@@ -10320,22 +11372,79 @@ def save_user_account(payload: dict, actor: dict[str, str]) -> int:
             if password:
                 columns.append("password_hash = ?")
                 values.append(password_hash(password))
+                columns.append("password_changed_at = ?")
+                values.append(now)
+            if active and not int(existing["active"] or 0):
+                columns.append("approved_by = ?")
+                columns.append("approved_at = ?")
+                values.extend([int(actor.get("id") or 0) or None, now])
             values.append(user_id)
             connection.execute(f"UPDATE users SET {', '.join(columns)} WHERE id = ?", values)
             saved_id = user_id
         else:
             cursor = connection.execute(
                 """
-                INSERT INTO users (username, display_name, role, permissions, password_hash, active, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO users
+                    (username, display_name, role, permissions, password_hash, active,
+                     created_at, updated_at, password_changed_at, created_by, approved_by, approved_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
-                (username, display_name, role, json.dumps(permissions, ensure_ascii=False), password_hash(password), active, now, now),
+                (
+                    username,
+                    display_name,
+                    role,
+                    json.dumps(permissions, ensure_ascii=False),
+                    password_hash(password),
+                    active,
+                    now,
+                    now,
+                    now,
+                    int(actor.get("id") or 0) or None,
+                    int(actor.get("id") or 0) if active else None,
+                    now if active else None,
+                ),
             )
             saved_id = int(cursor.lastrowid)
         connection.commit()
         return saved_id
     except sqlite3.IntegrityError as exc:
         raise ValueError("이미 사용 중인 아이디입니다.") from exc
+    finally:
+        connection.close()
+
+
+def register_user_request(payload: dict[str, str]) -> int:
+    init_db()
+    username = normalize_username(payload.get("username"))
+    display_name = clean_payload_text(payload, "display_name")
+    password = str(payload.get("password", "") or "")
+    password_confirm = str(payload.get("password_confirm", "") or "")
+    validate_username(username)
+    if not display_name:
+        raise ValueError("표시 이름을 입력해주세요.")
+    if password != password_confirm:
+        raise ValueError("비밀번호 확인이 일치하지 않습니다.")
+    validate_password_policy(password, username, display_name)
+    now = now_text()
+    permissions = default_permissions_for_role("user")
+    connection = connect_db()
+    try:
+        existing = connection.execute("SELECT id, active FROM users WHERE username = ?", (username,)).fetchone()
+        if existing:
+            if not int(existing["active"] or 0):
+                raise ValueError("이미 등록 요청된 아이디입니다. 관리자 승인을 기다려주세요.")
+            raise ValueError("이미 사용 중인 아이디입니다.")
+        cursor = connection.execute(
+            """
+            INSERT INTO users
+                (username, display_name, role, permissions, password_hash, active,
+                 created_at, updated_at, password_changed_at)
+            VALUES (?, ?, 'user', ?, ?, 0, ?, ?, ?)
+            """,
+            (username, display_name, json.dumps(permissions, ensure_ascii=False), password_hash(password), now, now, now),
+        )
+        connection.commit()
+        return int(cursor.lastrowid)
     finally:
         connection.close()
 
@@ -12473,22 +13582,34 @@ class WorkhubHandler(BaseHTTPRequestHandler):
     def current_user(self) -> dict[str, str] | None:
         return current_user_from_token(self.cookie_value(SESSION_COOKIE_NAME))
 
+    def client_ip(self) -> str:
+        forwarded = self.headers.get("X-Forwarded-For", "").split(",", 1)[0].strip()
+        return forwarded or str(self.client_address[0] if self.client_address else "local")
+
+    def is_secure_request(self) -> bool:
+        return isinstance(self.request, ssl.SSLSocket) or self.headers.get("X-Forwarded-Proto", "").lower() == "https"
+
     def send_redirect(self, location: str, status: int = 303) -> None:
         self.send_response(status)
         self.send_header("Location", location)
         self.send_header("Cache-Control", "no-store")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("X-Frame-Options", "DENY")
+        self.send_header("Referrer-Policy", "same-origin")
         self.end_headers()
 
     def set_session_cookie(self, token: str) -> None:
+        secure = "; Secure" if self.is_secure_request() else ""
         self.send_header(
             "Set-Cookie",
-            f"{SESSION_COOKIE_NAME}={quote(token)}; Path=/; Max-Age={SESSION_SECONDS}; HttpOnly; SameSite=Lax",
+            f"{SESSION_COOKIE_NAME}={quote(token)}; Path=/; Max-Age={SESSION_SECONDS}; HttpOnly; SameSite=Lax{secure}",
         )
 
     def clear_session_cookie(self) -> None:
+        secure = "; Secure" if self.is_secure_request() else ""
         self.send_header(
             "Set-Cookie",
-            f"{SESSION_COOKIE_NAME}=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax",
+            f"{SESSION_COOKIE_NAME}=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax{secure}",
         )
 
     def require_permission(self, user: dict[str, str], permission: str, label: str) -> bool:
@@ -12518,7 +13639,19 @@ class WorkhubHandler(BaseHTTPRequestHandler):
         if self.path.startswith("/login"):
             parsed = urlsplit(self.path)
             params = parse_qs(parsed.query)
-            self.send_bytes(render_login_html(show_error=params.get("error", [""])[0] == "1").encode("utf-8"), "text/html; charset=utf-8")
+            message = ""
+            login_error = ""
+            error_code = params.get("error", [""])[0]
+            if params.get("registered", [""])[0] == "1":
+                message = "계정 등록 요청이 접수됐습니다. 관리자가 승인하면 로그인할 수 있습니다."
+            if error_code == "locked":
+                login_error = "로그인 시도가 잠시 제한됐습니다. 잠시 후 다시 시도해주세요."
+            elif error_code:
+                login_error = "아이디 또는 비밀번호가 올바르지 않습니다."
+            self.send_bytes(
+                render_login_html(show_error=bool(error_code), login_error=login_error, message=message).encode("utf-8"),
+                "text/html; charset=utf-8",
+            )
             return
 
         if self.path == "/logout":
@@ -12779,19 +13912,50 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                 length = int(self.headers.get("Content-Length", "0"))
                 raw_body = self.rfile.read(length).decode("utf-8")
                 payload = parse_qs(raw_body)
+                username = payload.get("username", [""])[0]
+                password = payload.get("password", [""])[0]
+                locked, lock_message = login_lock_status(username, self.client_ip())
+                if locked:
+                    self.send_bytes(
+                        render_login_html(show_error=True, login_error=lock_message).encode("utf-8"),
+                        "text/html; charset=utf-8",
+                        status=429,
+                    )
+                    return
                 user = authenticate_user(
-                    payload.get("username", [""])[0],
-                    payload.get("password", [""])[0],
+                    username,
+                    password,
                 )
                 if not user:
+                    record_login_failure(username, self.client_ip())
                     self.send_redirect("/login?error=1")
                     return
+                clear_login_failures(username, self.client_ip())
                 token = create_login_session(user["username"])
                 self.send_response(303)
                 self.set_session_cookie(token)
                 self.send_header("Location", "/")
                 self.send_header("Cache-Control", "no-store")
+                self.send_header("X-Content-Type-Options", "nosniff")
+                self.send_header("X-Frame-Options", "DENY")
+                self.send_header("Referrer-Policy", "same-origin")
                 self.end_headers()
+                return
+
+            if self.path == "/register":
+                length = int(self.headers.get("Content-Length", "0"))
+                raw_body = self.rfile.read(length).decode("utf-8")
+                payload = {key: values[0] if values else "" for key, values in parse_qs(raw_body).items()}
+                try:
+                    register_user_request(payload)
+                except ValueError as exc:
+                    self.send_bytes(
+                        render_login_html(register_error=str(exc)).encode("utf-8"),
+                        "text/html; charset=utf-8",
+                        status=400,
+                    )
+                    return
+                self.send_redirect("/login?registered=1")
                 return
 
             if self.path == "/api/crm-messenger-webhook":
@@ -13304,6 +14468,9 @@ class WorkhubHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", content_type)
         self.send_header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
         self.send_header("Pragma", "no-cache")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("X-Frame-Options", "DENY")
+        self.send_header("Referrer-Policy", "same-origin")
         self.send_header("Content-Length", str(len(data)))
         self.end_headers()
         self.wfile.write(data)
