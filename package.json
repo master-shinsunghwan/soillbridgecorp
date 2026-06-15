@@ -2,13 +2,27 @@
   "name": "soillbridge-workhub",
   "private": true,
   "version": "0.1.0",
+  "type": "module",
   "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
     "build:css": "tailwindcss -i ./src/workhub.css -o ./static/workhub.css --minify",
     "watch:css": "tailwindcss -i ./src/workhub.css -o ./static/workhub.css --watch"
   },
+  "dependencies": {
+    "lucide-react": "^1.18.0",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7"
+  },
   "devDependencies": {
     "@tailwindcss/cli": "^4.1.17",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.2",
     "daisyui": "^5.5.23",
-    "tailwindcss": "^4.1.17"
+    "tailwindcss": "^4.1.17",
+    "typescript": "^6.0.3",
+    "vite": "^8.0.16"
   }
 }

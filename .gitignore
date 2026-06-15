@@ -1,53 +1,23 @@
-# Local/editor state
-.agents/
-.bkit-codex/
-.codex/
-.codex_tmp/
-.cursor/
-
-# Build artifacts and generated outputs
-.build/
-output/
-outputs/
-dist/
-build/
-*.exe
-*.zip
-*.msi
-
-# Archived planning/research materials not used by Workhub app
-docs/*
-!docs/superpowers/
-!docs/superpowers/**
-scripts/attach_delivery_product_images.py
-scripts/build_china_oem_fob_rfq.mjs
-scripts/build_delivery_meeting_report.mjs
-scripts/build_integrated_delivery_research.mjs
-scripts/generate_delivery_packaging_report.py
-scripts/generate_launch_crosscheck_report.py
-scripts/toss_price_compare.py
-scripts/toss_price_compare_README.md
-
-# Runtime data and secrets
-config/
-data/
-local_data*/
 *.db
 *.sqlite
 *.sqlite3
-secret.key
-mail_settings.json
-vendor_contacts.json
-
-# Python
-__pycache__/
-*.py[cod]
-.venv/
-venv/
-
-# Node dependencies
+*.zip
+*.bak
+*.tmp
+*.log
+.env
+.env.*
 node_modules/
-
-# OS files
-Thumbs.db
-.DS_Store
+dist/
+*.tsbuildinfo
+vite.config.js
+vite.config.d.ts
+__pycache__/
+*.pyc
+output/
+config/
+backups/
+_workhub_zip_inspect/config/
+_workhub_zip_inspect/backups/
+_workhub_zip_inspect/output/
+_workhub_zip_inspect/scripts/__pycache__/

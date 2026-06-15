@@ -1,0 +1,21 @@
+services:
+  workhub:
+    build: .
+    container_name: soilbridge-workhub
+    restart: unless-stopped
+    ports:
+      - "8765:8765"
+    environment:
+      WORKHUB_HOST: "0.0.0.0"
+      WORKHUB_PORT: "8765"
+      WORKHUB_DATA_DIR: "/data"
+      # 권장: 임의의 긴 문자열로 바꿔서 사용하세요.
+      # 이 값이 바뀌면 저장된 네이버 비밀번호를 다시 입력해야 합니다.
+      WORKHUB_SECRET_KEY: "CHANGE_ME_SOILBRIDGE_WORKHUB_SECRET"
+      # 선택: 카카오 스킬에 등록할 공개 HTTPS 기본 주소입니다.
+      # WORKHUB_PUBLIC_BASE_URL: "https://workhub.example.com"
+      # 선택: 카카오/메신저 웹훅 헤더 토큰을 운영에서 고정할 때 사용하세요.
+      # 비워두면 config/crm_webhook_token.txt에 자동 생성됩니다.
+      # WORKHUB_CRM_WEBHOOK_TOKEN: "CHANGE_ME_WORKHUB_CRM_WEBHOOK_TOKEN"
+    volumes:
+      - ./workhub-data:/data
