@@ -560,15 +560,22 @@ HTML = r"""<!doctype html>
       gap: 10px;
     }
     .icon-button {
-      width: 38px;
+      min-width: 38px;
       height: 38px;
       border: 1px solid var(--line);
       border-radius: 8px;
       background: white;
-      display: grid;
-      place-items: center;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
       color: #344054;
+      font-family: inherit;
+      font-size: 12px;
+      font-weight: 900;
+      padding: 0 10px;
       cursor: default;
+      white-space: nowrap;
     }
     .icon-button svg,
     .top-search svg { width: 17px; height: 17px; }
@@ -2213,6 +2220,257 @@ HTML = r"""<!doctype html>
       font-size: 13px;
       font-weight: 950;
     }
+    .company-overview {
+      display: grid;
+      grid-template-columns: minmax(0, 1.1fr) minmax(300px, .9fr);
+      gap: 12px;
+      align-items: stretch;
+    }
+    .company-overview-list,
+    .company-quick-actions {
+      display: grid;
+      gap: 8px;
+    }
+    .company-overview-list {
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+    .company-overview-item {
+      min-height: 86px;
+      padding: 12px;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      background: #f8fafc;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      gap: 8px;
+    }
+    .company-overview-item span {
+      color: #667085;
+      font-size: 11px;
+      font-weight: 900;
+      line-height: 1.35;
+    }
+    .company-overview-item strong {
+      color: #111827;
+      font-size: 18px;
+      font-weight: 950;
+      line-height: 1.2;
+    }
+    .company-overview-item small {
+      color: #475467;
+      font-size: 11px;
+      font-weight: 800;
+      line-height: 1.35;
+    }
+    .company-quick-actions {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    .company-quick-button {
+      min-height: 64px;
+      padding: 12px;
+      border: 1px solid #d0d5dd;
+      border-radius: 8px;
+      background: #fff;
+      color: #111827;
+      font-family: inherit;
+      font-size: 12px;
+      font-weight: 950;
+      text-align: left;
+      cursor: pointer;
+      display: grid;
+      grid-template-columns: 26px minmax(0, 1fr);
+      gap: 10px;
+      align-items: center;
+    }
+    .company-quick-button i {
+      width: 26px;
+      height: 26px;
+      border-radius: 8px;
+      background: #eef4ff;
+      color: var(--blue);
+      display: grid;
+      place-items: center;
+    }
+    .company-quick-button small {
+      display: block;
+      margin-top: 3px;
+      color: #667085;
+      font-size: 11px;
+      font-weight: 800;
+      line-height: 1.3;
+    }
+    .company-mini-calendar {
+      display: grid;
+      grid-template-columns: minmax(280px, 360px) minmax(0, 1fr);
+      gap: 14px;
+      align-items: start;
+    }
+    .mini-calendar-head {
+      display: grid;
+      grid-template-columns: repeat(7, minmax(0, 1fr));
+      gap: 4px;
+      margin-bottom: 6px;
+      color: #667085;
+      font-size: 10px;
+      font-weight: 950;
+      text-align: center;
+    }
+    .mini-calendar-grid {
+      display: grid;
+      grid-template-columns: repeat(7, minmax(0, 1fr));
+      gap: 4px;
+    }
+    .mini-calendar-day {
+      min-height: 42px;
+      padding: 6px;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      background: #fff;
+      color: #344054;
+      font-family: inherit;
+      font-size: 11px;
+      font-weight: 900;
+      cursor: pointer;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 4px;
+    }
+    .mini-calendar-day.other-month {
+      background: #f8fafc;
+      color: #98a2b3;
+    }
+    .mini-calendar-day.today {
+      border-color: var(--blue);
+      box-shadow: 0 0 0 2px rgba(21, 91, 200, .12);
+    }
+    .mini-calendar-day.selected {
+      background: #eef4ff;
+      border-color: var(--blue);
+      color: var(--blue);
+    }
+    .mini-calendar-day:focus-visible {
+      outline: 3px solid rgba(21, 91, 200, .25);
+      outline-offset: 2px;
+    }
+    .mini-calendar-dots {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 3px;
+      min-height: 6px;
+    }
+    .mini-calendar-dot {
+      width: 5px;
+      height: 5px;
+      border-radius: 999px;
+      background: #0b8f55;
+    }
+    .mini-calendar-dot.project { background: #155bc8; }
+    .mini-calendar-dot.leave { background: #c2410c; }
+    .mini-calendar-dot.pending { background: #9333ea; }
+    .mini-calendar-side {
+      min-height: 100%;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .mini-calendar-date {
+      color: #111827;
+      font-size: 15px;
+      font-weight: 950;
+    }
+    .mini-calendar-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      max-height: 234px;
+      overflow: auto;
+    }
+    .mini-calendar-item {
+      padding: 10px;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      background: #f8fafc;
+      cursor: pointer;
+    }
+    .mini-calendar-item:focus-visible {
+      outline: 3px solid rgba(21, 91, 200, .25);
+      outline-offset: 2px;
+    }
+    .mini-calendar-title {
+      color: #111827;
+      font-size: 12px;
+      font-weight: 950;
+      line-height: 1.35;
+    }
+    .mini-calendar-meta {
+      margin-top: 3px;
+      color: #667085;
+      font-size: 11px;
+      font-weight: 800;
+    }
+    .company-default-widgets {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 10px;
+    }
+    .company-default-widget {
+      min-height: 104px;
+      padding: 12px;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      background: #fff;
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+      gap: 8px;
+    }
+    .company-default-widget span {
+      color: #667085;
+      font-size: 11px;
+      font-weight: 900;
+      line-height: 1.35;
+    }
+    .company-default-widget strong {
+      color: #111827;
+      font-size: 24px;
+      font-weight: 950;
+      line-height: 1;
+    }
+    .company-default-widget small {
+      color: #475467;
+      font-size: 11px;
+      font-weight: 800;
+      line-height: 1.35;
+    }
+    .company-widget-actions {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 8px;
+      margin-top: 12px;
+    }
+    .company-widget-button {
+      min-height: 40px;
+      padding: 0 10px;
+      border: 1px solid #d0d5dd;
+      border-radius: 8px;
+      background: #f8fafc;
+      color: #111827;
+      font-family: inherit;
+      font-size: 12px;
+      font-weight: 950;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      white-space: nowrap;
+    }
+    .company-widget-button i {
+      width: 15px;
+      height: 15px;
+    }
     .company-task-list {
       display: flex;
       flex-direction: column;
@@ -3146,6 +3404,11 @@ HTML = r"""<!doctype html>
       font-weight: 900;
       padding: 0 8px;
       cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
+      white-space: nowrap;
     }
     .crm-mini-button.primary {
       border-color: #155bc8;
@@ -3452,6 +3715,8 @@ HTML = r"""<!doctype html>
       .crm-task-layout { grid-template-columns: 1fr; }
       .crm-task-detail { min-height: 320px; }
       .company-grid { grid-template-columns: 1fr; }
+      .company-overview { grid-template-columns: 1fr; }
+      .company-mini-calendar { grid-template-columns: 1fr; }
       .company-calendar-shell { grid-template-columns: 1fr; }
       .company-staff-layout { grid-template-columns: 1fr; }
       .crm-task-toolbar { grid-template-columns: repeat(3, minmax(0, 1fr)); }
@@ -3470,8 +3735,12 @@ HTML = r"""<!doctype html>
       .crm-staff-person,
       .crm-staff-latest { grid-column: 1 / -1; }
       .company-rule-grid,
+      .company-overview-list,
+      .company-default-widgets,
+      .company-widget-actions,
       .company-mini-grid,
       .internal-chat-side { grid-template-columns: 1fr; }
+      .company-quick-actions { grid-template-columns: 1fr; }
       .company-org-tree { min-width: 560px; }
       .company-calendar-grid { min-height: 520px; }
       .calendar-day { min-height: 92px; padding: 6px; }
@@ -3958,8 +4227,8 @@ HTML = r"""<!doctype html>
         </div>
         <div class="top-search"><i data-lucide="file-text"></i> 파일명, 수령인, 송장번호, CS내용 검색</div>
         <div class="top-tools">
-          <button class="icon-button" type="button"><i data-lucide="bell"></i></button>
-          <button class="icon-button" type="button"><i data-lucide="refresh-cw"></i></button>
+          <button class="icon-button" type="button"><i data-lucide="bell"></i><span>알림</span></button>
+          <button class="icon-button" type="button"><i data-lucide="refresh-cw"></i><span>새로고침</span></button>
           <div class="user-chip"><span class="avatar"></span><span>__USER_DISPLAY__</span></div>
           <a class="logout-button" href="/logout">로그아웃</a>
         </div>
@@ -3995,6 +4264,72 @@ HTML = r"""<!doctype html>
               </div>
             </article>
           </div>
+          <div class="company-overview">
+            <article class="company-card">
+              <div class="company-card-head"><span>오늘 한눈에 보기</span><button class="crm-mini-button" type="button" data-view="dashboard" data-company-tab="calendar">캘린더</button></div>
+              <div class="company-card-body">
+                <div class="company-overview-list">
+                  <div class="company-overview-item"><span>오늘 확인</span><strong>공지</strong><small>중요 전달사항 먼저 확인</small></div>
+                  <div class="company-overview-item"><span>업무 운영</span><strong>보드</strong><small>담당자/마감 기준으로 처리</small></div>
+                  <div class="company-overview-item"><span>팀 상태</span><strong>조직도</strong><small>직원별 진행 업무 확인</small></div>
+                  <div class="company-overview-item"><span>커뮤니케이션</span><strong>메신저</strong><small>/업무 지시 바로 등록</small></div>
+                </div>
+              </div>
+            </article>
+            <article class="company-card">
+              <div class="company-card-head"><span>빠른 실행</span></div>
+              <div class="company-card-body">
+                <div class="company-quick-actions" aria-label="회사 포털 빠른 실행">
+                  <button class="company-quick-button" type="button" data-open="crm" data-crm-nav-tab="tasks"><i data-lucide="kanban-square"></i><span>업무보드<small>상태와 마감 확인</small></span></button>
+                  <button class="company-quick-button" type="button" data-open="crm" data-crm-nav-tab="mine"><i data-lucide="check-circle-2"></i><span>내 업무<small>내가 처리할 일</small></span></button>
+                  <button class="company-quick-button" type="button" data-view="dashboard" data-company-tab="staff"><i data-lucide="network"></i><span>직원 보기<small>조직도와 담당 업무</small></span></button>
+                  <button class="company-quick-button" type="button" data-view="dashboard" data-company-tab="chat"><i data-lucide="message-square-text"></i><span>사내 메신저<small>전체방과 직원 DM</small></span></button>
+                </div>
+              </div>
+            </article>
+          </div>
+          <article class="company-card">
+            <div class="company-card-head">
+              <span id="companyMiniCalendarTitle">미니 캘린더</span>
+              <button class="crm-mini-button" type="button" data-view="dashboard" data-company-tab="calendar">전체 보기</button>
+            </div>
+            <div class="company-card-body">
+              <div class="company-mini-calendar">
+                <div>
+                  <div class="mini-calendar-head" aria-hidden="true"><span>월</span><span>화</span><span>수</span><span>목</span><span>금</span><span>토</span><span>일</span></div>
+                  <div class="mini-calendar-grid" id="companyMiniCalendarGrid" role="grid" aria-label="회사 포털 미니 캘린더">
+                    <div class="calendar-empty">미니 캘린더를 불러오는 중입니다.</div>
+                  </div>
+                </div>
+                <aside class="mini-calendar-side">
+                  <div class="mini-calendar-date" id="companyMiniCalendarDate">오늘</div>
+                  <div class="mini-calendar-list" id="companyMiniCalendarList">
+                    <div class="calendar-empty">날짜를 선택하면 일정이 표시됩니다.</div>
+                  </div>
+                </aside>
+              </div>
+            </div>
+          </article>
+          <article class="company-card">
+            <div class="company-card-head">
+              <span>기본 위젯</span>
+              <button class="crm-mini-button" type="button" data-open="crm" data-crm-nav-tab="dashboard">업무관리</button>
+            </div>
+            <div class="company-card-body">
+              <div class="company-default-widgets" aria-label="회사 포털 기본 위젯">
+                <div class="company-default-widget"><span>오늘 일정</span><strong id="companyWidgetToday">0건</strong><small id="companyWidgetTodayHint">오늘 확인할 일정</small></div>
+                <div class="company-default-widget"><span>업무 마감</span><strong id="companyWidgetTasks">0건</strong><small>이번 달 업무 마감</small></div>
+                <div class="company-default-widget"><span>연차/대기</span><strong id="companyWidgetLeave">0건</strong><small>승인 연차와 대기 건</small></div>
+                <div class="company-default-widget"><span>주의 필요</span><strong id="companyWidgetRisk">0건</strong><small>지연, 높음, 승인대기</small></div>
+              </div>
+              <div class="company-widget-actions" aria-label="기본 위젯 빠른 이동">
+                <button class="company-widget-button" type="button" data-open="crm" data-crm-nav-tab="tasks"><i data-lucide="list-checks"></i>업무 보기</button>
+                <button class="company-widget-button" type="button" data-view="dashboard" data-company-tab="calendar"><i data-lucide="calendar-days"></i>캘린더</button>
+                <button class="company-widget-button" type="button" data-open="leave"><i data-lucide="umbrella"></i>연차</button>
+                <button class="company-widget-button" type="button" data-view="dashboard" data-company-tab="chat"><i data-lucide="message-circle"></i>메신저</button>
+              </div>
+            </div>
+          </article>
         </section>
 
         <section class="company-panel" data-company-panel="calendar">
@@ -4003,9 +4338,9 @@ HTML = r"""<!doctype html>
               <div class="company-calendar-toolbar">
                 <div class="company-calendar-title" id="companyCalendarTitle">캘린더</div>
                 <div class="company-calendar-actions">
-                  <button class="crm-mini-button" type="button" id="companyCalendarPrev" aria-label="이전 달"><i data-lucide="chevron-left"></i></button>
+                  <button class="crm-mini-button" type="button" id="companyCalendarPrev" aria-label="이전 달"><i data-lucide="chevron-left"></i><span>이전</span></button>
                   <button class="crm-mini-button" type="button" id="companyCalendarToday">오늘</button>
-                  <button class="crm-mini-button" type="button" id="companyCalendarNext" aria-label="다음 달"><i data-lucide="chevron-right"></i></button>
+                  <button class="crm-mini-button" type="button" id="companyCalendarNext" aria-label="다음 달"><span>다음</span><i data-lucide="chevron-right"></i></button>
                   <button class="crm-mini-button" type="button" id="companyCalendarRefresh">새로고침</button>
                 </div>
               </div>
@@ -5105,6 +5440,15 @@ HTML = r"""<!doctype html>
     const companyCalendarTaskCount = document.querySelector("#companyCalendarTaskCount");
     const companyCalendarLeaveCount = document.querySelector("#companyCalendarLeaveCount");
     const companyCalendarRiskCount = document.querySelector("#companyCalendarRiskCount");
+    const companyMiniCalendarTitle = document.querySelector("#companyMiniCalendarTitle");
+    const companyMiniCalendarGrid = document.querySelector("#companyMiniCalendarGrid");
+    const companyMiniCalendarDate = document.querySelector("#companyMiniCalendarDate");
+    const companyMiniCalendarList = document.querySelector("#companyMiniCalendarList");
+    const companyWidgetToday = document.querySelector("#companyWidgetToday");
+    const companyWidgetTodayHint = document.querySelector("#companyWidgetTodayHint");
+    const companyWidgetTasks = document.querySelector("#companyWidgetTasks");
+    const companyWidgetLeave = document.querySelector("#companyWidgetLeave");
+    const companyWidgetRisk = document.querySelector("#companyWidgetRisk");
     const internalChatRoomList = document.querySelector("#internalChatRoomList");
     const internalChatTitle = document.querySelector("#internalChatTitle");
     const internalChatHint = document.querySelector("#internalChatHint");
@@ -5931,6 +6275,7 @@ HTML = r"""<!doctype html>
         leaveMessage.textContent = data.message || "연차 신청이 저장되었습니다.";
         await loadLeaveData();
         if (companyActiveTab === "calendar") await loadCompanyCalendar().catch(() => {});
+        if (companyActiveTab === "notice") await loadCompanyMiniCalendar().catch(() => {});
         setLeaveTab("mine");
       } catch (error) {
         leaveMessage.textContent = error.message;
@@ -5960,6 +6305,7 @@ HTML = r"""<!doctype html>
         leaveMessage.textContent = data.message || "처리되었습니다.";
         await loadLeaveData();
         if (companyActiveTab === "calendar") await loadCompanyCalendar().catch(() => {});
+        if (companyActiveTab === "notice") await loadCompanyMiniCalendar().catch(() => {});
       } catch (error) {
         leaveMessage.textContent = error.message;
       }
@@ -6480,6 +6826,10 @@ HTML = r"""<!doctype html>
         loadCompanyCalendar().catch(() => {
           if (companyCalendarGrid) companyCalendarGrid.innerHTML = `<div class="calendar-empty">캘린더를 불러오지 못했습니다.</div>`;
         });
+      } else if (companyActiveTab === "notice") {
+        loadCompanyMiniCalendar().catch(() => {
+          if (companyMiniCalendarGrid) companyMiniCalendarGrid.innerHTML = `<div class="calendar-empty">미니 캘린더를 불러오지 못했습니다.</div>`;
+        });
       } else if (companyActiveTab === "chat") {
         loadInternalChatUsers()
           .then(() => loadInternalMessages())
@@ -6555,6 +6905,72 @@ HTML = r"""<!doctype html>
       `).join("");
     }
 
+    function renderCompanyMiniCalendarSelectedDay() {
+      if (!companyMiniCalendarDate || !companyMiniCalendarList) return;
+      const selected = parseLocalDate(companyCalendarSelectedDay);
+      companyMiniCalendarDate.textContent = selected ? shortKoreanDate(companyCalendarSelectedDay) : companyCalendarSelectedDay;
+      const items = eventsForDay(companyCalendarSelectedDay);
+      if (!items.length) {
+        companyMiniCalendarList.innerHTML = `<div class="calendar-empty">선택한 날짜에 표시할 일정이 없습니다.</div>`;
+        return;
+      }
+      companyMiniCalendarList.innerHTML = items.slice(0, 6).map((event) => `
+        <div class="mini-calendar-item" role="button" tabindex="0" data-calendar-event-id="${escapeHtml(event.id)}" aria-label="${escapeHtml(calendarEventLabel(event))}">
+          <div class="mini-calendar-title">${escapeHtml(event.title || "일정")}</div>
+          <div class="mini-calendar-meta">${escapeHtml(calendarEventLabel(event))}</div>
+        </div>
+      `).join("");
+    }
+
+    function renderCompanyDefaultWidgets() {
+      const todayEvents = eventsForDay(todayString());
+      const summary = companyCalendarSummary || {};
+      if (companyWidgetToday) companyWidgetToday.textContent = `${todayEvents.length}건`;
+      if (companyWidgetTodayHint) {
+        const firstEvent = todayEvents[0];
+        companyWidgetTodayHint.textContent = firstEvent ? firstEvent.title || "오늘 일정 확인" : "오늘 표시된 일정 없음";
+      }
+      if (companyWidgetTasks) companyWidgetTasks.textContent = `${summary.task || 0}건`;
+      if (companyWidgetLeave) companyWidgetLeave.textContent = `${summary.leave || 0}건`;
+      if (companyWidgetRisk) companyWidgetRisk.textContent = `${summary.risk || 0}건`;
+    }
+
+    function renderCompanyMiniCalendar(payload = {}) {
+      if (!companyMiniCalendarGrid) return;
+      companyCalendarMonth = payload.month || companyCalendarMonth;
+      companyCalendarEvents = payload.events || companyCalendarEvents || [];
+      companyCalendarSummary = payload.summary || companyCalendarSummary || {};
+      const monthStart = parseLocalDate(`${companyCalendarMonth}-01`) || parseLocalDate(`${todayString().slice(0, 7)}-01`);
+      const gridStart = new Date(monthStart);
+      gridStart.setDate(1 - ((monthStart.getDay() + 6) % 7));
+      const today = todayString();
+      if (companyMiniCalendarTitle) companyMiniCalendarTitle.textContent = `미니 캘린더 · ${monthTitle(companyCalendarMonth)}`;
+      const cells = [];
+      for (let index = 0; index < 42; index += 1) {
+        const day = new Date(gridStart);
+        day.setDate(gridStart.getDate() + index);
+        const dayText = localDateString(day);
+        const events = eventsForDay(dayText);
+        const classes = [
+          "mini-calendar-day",
+          day.getMonth() === monthStart.getMonth() ? "" : "other-month",
+          dayText === today ? "today" : "",
+          dayText === companyCalendarSelectedDay ? "selected" : "",
+        ].filter(Boolean).join(" ");
+        cells.push(`
+          <button class="${classes}" type="button" role="gridcell" data-mini-calendar-day="${escapeHtml(dayText)}" aria-label="${escapeHtml(`${shortKoreanDate(dayText)} 일정 ${events.length}건`)}">
+            <span>${escapeHtml(day.getDate())}</span>
+            <span class="mini-calendar-dots" aria-hidden="true">
+              ${events.slice(0, 3).map((event) => `<i class="mini-calendar-dot ${escapeHtml(event.type || "task")}"></i>`).join("")}
+            </span>
+          </button>
+        `);
+      }
+      companyMiniCalendarGrid.innerHTML = cells.join("");
+      renderCompanyMiniCalendarSelectedDay();
+      renderCompanyDefaultWidgets();
+    }
+
     function renderCompanyCalendar(payload = {}) {
       if (!companyCalendarGrid) return;
       companyCalendarMonth = payload.month || companyCalendarMonth;
@@ -6598,6 +7014,7 @@ HTML = r"""<!doctype html>
       }
       companyCalendarGrid.innerHTML = cells.join("");
       renderCompanyCalendarSelectedDay();
+      renderCompanyMiniCalendar();
     }
 
     async function loadCompanyCalendar() {
@@ -6609,6 +7026,17 @@ HTML = r"""<!doctype html>
       companyCalendarGrid.innerHTML = `<div class="calendar-empty">캘린더를 불러오는 중입니다.</div>`;
       const data = await crmFetchJson(`/api/company-calendar-events?month=${encodeURIComponent(companyCalendarMonth)}`);
       renderCompanyCalendar(data);
+    }
+
+    async function loadCompanyMiniCalendar() {
+      if (!companyMiniCalendarGrid) return;
+      if (!can("crm_view")) {
+        companyMiniCalendarGrid.innerHTML = `<div class="calendar-empty">CRM 조회 권한이 없어 캘린더를 볼 수 없습니다.</div>`;
+        return;
+      }
+      companyMiniCalendarGrid.innerHTML = `<div class="calendar-empty">미니 캘린더를 불러오는 중입니다.</div>`;
+      const data = await crmFetchJson(`/api/company-calendar-events?month=${encodeURIComponent(companyCalendarMonth)}`);
+      renderCompanyMiniCalendar(data);
     }
 
     function openCalendarEventWidget(eventId) {
@@ -6843,6 +7271,7 @@ HTML = r"""<!doctype html>
           loadCrmStaffDashboard().catch(() => {}),
           loadCompanyStaffDashboard().catch(() => {}),
           loadCompanyCalendar().catch(() => {}),
+          loadCompanyMiniCalendar().catch(() => {}),
           loadCrmDashboard().catch(() => {}),
         ]);
       }
@@ -9769,6 +10198,32 @@ HTML = r"""<!doctype html>
     companyTabs.forEach((button) => {
       button.addEventListener("click", () => setCompanyTab(button.dataset.companyTab));
     });
+    companyMiniCalendarGrid?.addEventListener("click", (event) => {
+      const dayButton = event.target.closest("[data-mini-calendar-day]");
+      if (!dayButton) return;
+      companyCalendarSelectedDay = dayButton.dataset.miniCalendarDay;
+      renderCompanyMiniCalendar();
+    });
+    companyMiniCalendarGrid?.addEventListener("keydown", (event) => {
+      if (!["Enter", " "].includes(event.key)) return;
+      const dayButton = event.target.closest("[data-mini-calendar-day]");
+      if (!dayButton) return;
+      event.preventDefault();
+      companyCalendarSelectedDay = dayButton.dataset.miniCalendarDay;
+      renderCompanyMiniCalendar();
+    });
+    companyMiniCalendarList?.addEventListener("click", (event) => {
+      const row = event.target.closest("[data-calendar-event-id]");
+      if (!row) return;
+      openCalendarEventWidget(row.dataset.calendarEventId);
+    });
+    companyMiniCalendarList?.addEventListener("keydown", (event) => {
+      if (!["Enter", " "].includes(event.key)) return;
+      const row = event.target.closest("[data-calendar-event-id]");
+      if (!row) return;
+      event.preventDefault();
+      openCalendarEventWidget(row.dataset.calendarEventId);
+    });
     companyCalendarPrev?.addEventListener("click", () => shiftCalendarMonth(-1).catch(() => {
       if (companyCalendarGrid) companyCalendarGrid.innerHTML = `<div class="calendar-empty">이전 달 캘린더를 불러오지 못했습니다.</div>`;
     }));
@@ -10552,6 +11007,11 @@ HTML = r"""<!doctype html>
 
     const initialView = new URLSearchParams(window.location.search).get("view");
     showWorkspace(["management", "ledger", "crm", "import", "leave", "userAdmin", "backup", "systemUpdate"].includes(initialView) ? initialView : "dashboard");
+    if (!initialView || initialView === "dashboard") {
+      loadCompanyMiniCalendar().catch(() => {
+        if (companyMiniCalendarGrid) companyMiniCalendarGrid.innerHTML = `<div class="calendar-empty">미니 캘린더를 불러오지 못했습니다.</div>`;
+      });
+    }
   </script>
 </body>
 </html>
@@ -13889,6 +14349,9 @@ def apply_cell_style(cell, style: dict) -> None:
 
 
 def clear_management_template_sheet(worksheet, style_row: list[dict], row_height: float | None) -> None:
+    for merged_range in list(worksheet.merged_cells.ranges):
+        if merged_range.min_row <= MANAGEMENT_TEMPLATE_DATA_ROW and merged_range.max_row >= MANAGEMENT_TEMPLATE_HEADER_ROW:
+            worksheet.unmerge_cells(str(merged_range))
     if worksheet.max_row >= MANAGEMENT_TEMPLATE_DATA_ROW:
         worksheet.delete_rows(MANAGEMENT_TEMPLATE_DATA_ROW, worksheet.max_row - MANAGEMENT_TEMPLATE_DATA_ROW + 1)
     for column_index, (_, header) in enumerate(MANAGEMENT_EXPORT_COLUMNS, start=1):
@@ -13897,6 +14360,13 @@ def clear_management_template_sheet(worksheet, style_row: list[dict], row_height
         worksheet.row_dimensions[MANAGEMENT_TEMPLATE_DATA_ROW].height = row_height
     for column_index, style in enumerate(style_row, start=1):
         apply_cell_style(worksheet.cell(MANAGEMENT_TEMPLATE_DATA_ROW, column_index), style)
+
+
+def management_export_cell_value(row: dict, key: str, sequence: int) -> str:
+    if key == "sequence":
+        return clean_cell(row.get(key, "")) or str(sequence)
+    return clean_cell(row.get(key, ""))
+
 
 def populate_management_template_sheet(worksheet, title: str, rows: list[dict], style_row: list[dict], row_height: float | None) -> None:
     worksheet.title = title[:31]
@@ -13912,10 +14382,6 @@ def populate_management_template_sheet(worksheet, title: str, rows: list[dict], 
     worksheet.auto_filter.ref = f"A{MANAGEMENT_TEMPLATE_HEADER_ROW}:{last_column}{last_row}"
     worksheet.freeze_panes = f"A{MANAGEMENT_TEMPLATE_DATA_ROW}"
 
-def management_export_cell_value(row: dict, key: str, sequence: int) -> str:
-    if key == "sequence":
-        return clean_cell(row.get(key, "")) or str(sequence)
-    return clean_cell(row.get(key, ""))
 
 def management_year_from_rows(rows: list[dict], fallback: str = "") -> str:
     for row in rows:
@@ -13966,6 +14432,10 @@ def management_workbook_bytes_from_template(rows: list[dict]) -> bytes:
 
 def management_export_rows_from_payload(payload: dict) -> tuple[list[dict], str]:
     scope = clean_payload_text(payload, "scope") or "selected"
+    if scope == "template":
+        year = clean_payload_text(payload, "year")
+        rows = list_management_records(limit=None, year=year if re.fullmatch(r"\d{4}", year) else "")
+        return rows, management_template_filename_stem(rows, payload)
     if scope == "selected":
         rows = payload.get("rows", [])
         if isinstance(rows, list) and rows:
@@ -14094,6 +14564,18 @@ def find_management_header_row(worksheet, max_scan_rows: int = 10) -> tuple[int,
         if indexes["receiver_name"] is not None and indexes["product_name"] is not None:
             return row_number, indexes
     return None
+
+def find_management_header_row(worksheet, max_scan_rows: int = 10) -> tuple[int, dict[str, int | None]] | None:
+    for row_number, row in enumerate(
+        worksheet.iter_rows(min_row=1, max_row=max_scan_rows, max_col=80, values_only=True),
+        start=1,
+    ):
+        headers = [normalized_header(value) for value in row]
+        indexes = management_header_indexes(headers)
+        if indexes["receiver_name"] is not None and indexes["product_name"] is not None:
+            return row_number, indexes
+    return None
+
 
 def import_management_workbook(path: Path) -> tuple[int, int]:
     init_db()
