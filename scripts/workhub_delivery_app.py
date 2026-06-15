@@ -20,7 +20,7 @@ import tempfile
 import zipfile
 from copy import copy
 from io import BytesIO
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from email.message import EmailMessage
 from email.utils import formataddr
 from html import escape as html_escape
@@ -35,6 +35,26 @@ from delivery_text_summary import summarize_workbook
 from invoice_number_exporter import export_invoice_numbers, extract_invoice_rows
 from lotte_order_form_converter import convert_lotte_order_form
 from vehicle_receipt_generator import generate_vehicle_receipt
+from workhub_crm import (
+    add_crm_task_comment,
+    change_crm_task_status,
+    crm_dashboard_payload,
+    delete_crm_saved_view,
+    ensure_webhook_token,
+    handle_crm_messenger_webhook,
+    init_crm_db,
+    list_crm_accounts,
+    list_crm_message_events,
+    list_crm_messenger_users,
+    list_crm_saved_views,
+    list_crm_task_comments,
+    list_crm_tasks,
+    rotate_webhook_token,
+    save_crm_account,
+    save_crm_messenger_user,
+    save_crm_saved_view,
+    save_crm_task,
+)
 
 
 if getattr(sys, "frozen", False):
@@ -53,9 +73,9 @@ CONFIG_DIR = RUNTIME_ROOT / "config"
 DB_PATH = CONFIG_DIR / "workhub.db"
 MAIL_SETTINGS_PATH = CONFIG_DIR / "mail_settings.json"
 VENDOR_CONTACTS_PATH = CONFIG_DIR / "vendor_contacts.json"
+CRM_WEBHOOK_TOKEN_PATH = CONFIG_DIR / "crm_webhook_token.txt"
 BACKUP_DIR = Path(os.environ.get("WORKHUB_BACKUP_DIR", str(RUNTIME_ROOT / "backups")))
 LUCIDE_DIR = ROOT / "node_modules" / "lucide"
-STATIC_DIR = ROOT / "static"
 LOTTE_TEMPLATE = ROOT / "templates" / "lotte_order_form_template.xlsx"
 MANAGEMENT_EXPORT_TEMPLATE = ROOT / "templates" / "management_ledger_export_template.xlsx"
 NAVER_SMTP_HOST = "smtp.naver.com"
@@ -64,7 +84,13 @@ SECRET_KEY_PATH = CONFIG_DIR / "secret.key"
 TOKEN_PREFIX_DPAPI = "dpapi:"
 TOKEN_PREFIX_KEY = "key1:"
 SESSION_COOKIE_NAME = "workhub_session"
-SESSION_SECONDS = 60 * 60 * 16
+SESSION_SECONDS = 60 * 60 * 12
+SESSION_IDLE_SECONDS = 60 * 60 * 2
+LOGIN_MAX_FAILURES = 5
+LOGIN_FAILURE_WINDOW_SECONDS = 15 * 60
+LOGIN_LOCK_SECONDS = 15 * 60
+PASSWORD_MIN_LENGTH = 10
+PASSWORD_MAX_LENGTH = 128
 BACKUP_RETENTION_DAYS = 90
 AUTO_BACKUP_HOUR = 3
 _BACKUP_SCHEDULER_STARTED = False
@@ -88,11 +114,30 @@ PERMISSION_DEFINITIONS = (
     ("leave_view", "연차 조회", "연차 내역 조회"),
     ("leave_approve", "연차 승인", "연차 신청 승인/반려"),
     ("leave_manage", "연차 관리", "연차 등록/수정/삭제"),
+    ("crm_view", "CRM 조회", "CRM 거래처/업무 조회"),
+    ("crm_manage", "CRM 관리", "CRM 거래처/업무 등록 및 수정"),
+    ("crm_message_manage", "CRM 메신저 연동", "메신저 사용자 매핑 및 연동 로그 관리"),
 )
 ALL_PERMISSIONS = tuple(key for key, _, _ in PERMISSION_DEFINITIONS)
 DEFAULT_ROLE_PERMISSIONS = {
     "admin": ALL_PERMISSIONS,
-    "user": ("ledger_edit", "excel_download", "cs_receive", "leave_view"),
+    "sub_admin": (
+        "ledger_delete",
+        "notice_manage",
+        "ledger_edit",
+        "excel_upload",
+        "excel_download",
+        "cs_receive",
+        "mail_send",
+        "import_shipment_manage",
+        "leave_view",
+        "leave_approve",
+        "leave_manage",
+        "crm_view",
+        "crm_manage",
+        "crm_message_manage",
+    ),
+    "user": ("ledger_edit", "excel_download", "cs_receive", "leave_view", "crm_view"),
 }
 LUCIDE_FALLBACK_JS = """
 export function createIcons() {}
@@ -127,12 +172,12 @@ export const Settings = {};
 
 
 HTML = r"""<!doctype html>
-<html lang="ko">
+<html lang="ko" data-theme="light">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>(주)소일브릿지 발주 업무자동화</title>
-  <link rel="stylesheet" href="/static/workhub.css" />
+  <link href="https://cdn.jsdelivr.net/npm/daisyui@5" rel="stylesheet" type="text/css" />
   <style>
     :root {
       --bg: #f5f7fb;
@@ -171,11 +216,10 @@ HTML = r"""<!doctype html>
       min-height: 100vh;
       height: 100vh;
       display: grid;
-      grid-template-columns: 232px minmax(0, 1fr);
+      grid-template-columns: 248px minmax(0, 1fr);
       overflow: hidden;
     }
-    body.standalone .app { grid-template-columns: minmax(0, 1fr); }
-    body.standalone .sidebar,
+    body.standalone .app { grid-template-columns: 248px minmax(0, 1fr); }
     body.standalone .top-search,
     body.standalone .top-tools { display: none; }
     body.standalone .topbar { grid-template-columns: 1fr; }
@@ -183,6 +227,10 @@ HTML = r"""<!doctype html>
       background: linear-gradient(180deg, var(--navy), #081430);
       color: white;
       padding: 22px 16px;
+      overflow-y: auto;
+      scrollbar-width: thin;
+      scrollbar-color: rgba(255,255,255,.28) transparent;
+      border-right: 1px solid rgba(255,255,255,.08);
     }
     .brand-icon {
       width: 38px; height: 38px; border-radius: 9px;
@@ -198,10 +246,42 @@ HTML = r"""<!doctype html>
       display: flex;
       align-items: center;
       gap: 11px;
-      margin-bottom: 26px;
+      margin-bottom: 14px;
       padding: 0 4px;
     }
     .brand-label { font-size: 18px; font-weight: 900; line-height: 1.32; margin: 0; }
+    .sidebar-search {
+      position: relative;
+      margin: 0 0 18px;
+    }
+    .sidebar-search svg {
+      position: absolute;
+      left: 10px;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 15px;
+      height: 15px;
+      color: #9fb0d3;
+      pointer-events: none;
+    }
+    .sidebar-search input {
+      width: 100%;
+      height: 36px;
+      padding: 0 10px 0 32px;
+      border: 1px solid rgba(255,255,255,.14);
+      border-radius: 8px;
+      background: rgba(255,255,255,.08);
+      color: white;
+      font-family: inherit;
+      font-size: 12px;
+      font-weight: 800;
+      outline: none;
+    }
+    .sidebar-search input::placeholder { color: #9fb0d3; }
+    .sidebar-search input:focus {
+      border-color: rgba(147, 197, 253, .8);
+      box-shadow: 0 0 0 2px rgba(59, 130, 246, .22);
+    }
     .notice-board {
       min-height: 44px;
       border: 1px solid var(--line);
@@ -367,6 +447,7 @@ HTML = r"""<!doctype html>
       font-family: inherit;
       text-align: left;
       cursor: pointer;
+      transition: background .16s ease, color .16s ease, transform .16s ease, box-shadow .16s ease;
     }
     .nav-item.active {
       color: white;
@@ -406,11 +487,19 @@ HTML = r"""<!doctype html>
       font-weight: 750;
       text-align: left;
       cursor: pointer;
+      transition: background .16s ease, color .16s ease, transform .16s ease, box-shadow .16s ease;
     }
     .nav-subitem:hover,
     .nav-item:hover {
       background: rgba(255,255,255,.08);
       color: white;
+      transform: translateX(1px);
+    }
+    .nav-item.active,
+    .nav-subitem.active {
+      background: rgba(72, 118, 255, .28);
+      color: white;
+      box-shadow: inset 3px 0 0 rgba(147, 197, 253, .9);
     }
     .nav-section {
       min-height: auto;
@@ -439,9 +528,12 @@ HTML = r"""<!doctype html>
       align-items: center;
       gap: 18px;
       padding: 0 22px;
+      background: rgba(245, 247, 251, .88);
+      border-bottom: 1px solid rgba(226, 232, 240, .9);
+      backdrop-filter: blur(10px);
     }
     .title-wrap { display: grid; gap: 8px; }
-    .title { display: flex; align-items: center; gap: 10px; font-size: 25px; font-weight: 900; line-height: 1.2; }
+    .title { display: flex; align-items: center; gap: 10px; font-size: 25px; font-weight: 900; line-height: 1.2; white-space: nowrap; word-break: keep-all; }
     .subtitle { display: none; }
     .top-actions { display: flex; gap: 12px; }
     .top-button {
@@ -911,7 +1003,7 @@ HTML = r"""<!doctype html>
     }
     .admin-table {
       width: 100%;
-      min-width: 760px;
+      min-width: 900px;
       border-collapse: collapse;
       font-size: 13px;
     }
@@ -1790,11 +1882,15 @@ HTML = r"""<!doctype html>
     .workspace-title {
       font-size: 18px;
       font-weight: 950;
+      white-space: nowrap;
+      word-break: keep-all;
     }
     .workspace-actions {
       display: flex;
+      flex-wrap: wrap;
       gap: 8px;
       align-items: center;
+      justify-content: flex-end;
     }
     .workspace-button {
       height: 34px;
@@ -1807,6 +1903,8 @@ HTML = r"""<!doctype html>
       font-weight: 900;
       padding: 0 12px;
       cursor: pointer;
+      white-space: nowrap;
+      word-break: keep-all;
     }
     .workspace-button.danger {
       border-color: #f1a7a7;
@@ -1836,6 +1934,1667 @@ HTML = r"""<!doctype html>
     .workspace-view.active .ledger-toolbar,
     .workspace-view.active .management-month-tabs {
       flex: 0 0 auto;
+    }
+
+    .crm-tabs {
+      display: flex;
+      gap: 8px;
+      flex: 0 0 auto;
+      border-bottom: 1px solid var(--line);
+      overflow-x: auto;
+      overflow-y: hidden;
+    }
+    .crm-tab {
+      flex: 0 0 auto;
+      height: 34px;
+      padding: 0 13px;
+      border: 0;
+      border-bottom: 2px solid transparent;
+      background: transparent;
+      color: #475467;
+      font-family: inherit;
+      font-size: 12px;
+      font-weight: 950;
+      cursor: pointer;
+      white-space: nowrap;
+      word-break: keep-all;
+    }
+    .crm-tab.active {
+      color: var(--blue);
+      border-bottom-color: var(--blue);
+    }
+    .crm-message {
+      display: none;
+      min-height: 34px;
+      align-items: center;
+      padding: 0 12px;
+      border: 1px solid #cbd5e1;
+      border-radius: 7px;
+      background: #f8fafc;
+      color: #344054;
+      font-size: 12px;
+      font-weight: 850;
+    }
+    .crm-message.open { display: flex; }
+    .crm-message.error {
+      border-color: #fecaca;
+      background: #fff1f1;
+      color: #b42318;
+    }
+    .company-portal {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .company-tabs {
+      display: flex;
+      gap: 8px;
+      border-bottom: 1px solid var(--line);
+      overflow-x: auto;
+      overflow-y: hidden;
+    }
+    .company-tab {
+      flex: 0 0 auto;
+      min-height: 36px;
+      padding: 0 12px;
+      border: 0;
+      border-bottom: 2px solid transparent;
+      background: transparent;
+      color: #475467;
+      font-family: inherit;
+      font-size: 12px;
+      font-weight: 950;
+      cursor: pointer;
+      white-space: nowrap;
+      word-break: keep-all;
+    }
+    .company-tab.active {
+      color: var(--blue);
+      border-bottom-color: var(--blue);
+    }
+    .company-panel { display: none; }
+    .company-panel.active {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .company-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1.1fr) minmax(320px, .9fr);
+      gap: 12px;
+      align-items: stretch;
+    }
+    .company-rule-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+    }
+    .company-card {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: white;
+      overflow: hidden;
+    }
+    .company-card-head {
+      min-height: 42px;
+      padding: 0 14px;
+      border-bottom: 1px solid var(--line);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      font-size: 13px;
+      font-weight: 950;
+      background: #fbfcff;
+    }
+    .company-card-body {
+      padding: 14px;
+      color: #344054;
+      font-size: 12px;
+      font-weight: 750;
+      line-height: 1.55;
+    }
+    .company-notice {
+      margin: 0;
+      min-height: 210px;
+    }
+    .company-mini-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+      margin-top: 12px;
+    }
+    .company-mini-grid > div {
+      min-height: 64px;
+      padding: 10px;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      background: #f8fafc;
+    }
+    .company-mini-grid span {
+      display: block;
+      margin-bottom: 6px;
+      color: #667085;
+      font-size: 11px;
+      font-weight: 850;
+    }
+    .company-mini-grid strong {
+      color: #111827;
+      font-size: 13px;
+      font-weight: 950;
+    }
+    .company-task-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      padding: 12px;
+      color: #667085;
+      font-size: 12px;
+      font-weight: 800;
+    }
+    .company-task-item {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 10px;
+      align-items: center;
+      padding: 10px;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      background: #fff;
+    }
+    .company-task-title {
+      color: #111827;
+      font-size: 13px;
+      font-weight: 950;
+      line-height: 1.35;
+    }
+    .company-task-meta {
+      margin-top: 4px;
+      color: #667085;
+      font-size: 11px;
+      font-weight: 800;
+    }
+    .company-calendar-shell {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(300px, 360px);
+      gap: 12px;
+      align-items: start;
+    }
+    .company-calendar-toolbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--line);
+      background: #fbfcff;
+    }
+    .company-calendar-title {
+      color: #111827;
+      font-size: 18px;
+      font-weight: 950;
+      letter-spacing: 0;
+    }
+    .company-calendar-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      justify-content: flex-end;
+    }
+    .company-calendar-legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      padding: 10px 14px;
+      border-bottom: 1px solid var(--line);
+      color: #667085;
+      font-size: 11px;
+      font-weight: 850;
+    }
+    .calendar-legend-dot {
+      width: 9px;
+      height: 9px;
+      border-radius: 999px;
+      display: inline-block;
+      margin-right: 5px;
+      vertical-align: -1px;
+    }
+    .calendar-legend-dot.project { background: #155bc8; }
+    .calendar-legend-dot.task { background: #0b8f55; }
+    .calendar-legend-dot.leave { background: #c2410c; }
+    .calendar-legend-dot.pending { background: #9333ea; }
+    .company-calendar-weekdays,
+    .company-calendar-grid {
+      display: grid;
+      grid-template-columns: repeat(7, minmax(0, 1fr));
+    }
+    .company-calendar-weekdays {
+      border-bottom: 1px solid var(--line);
+      background: #f8fafc;
+      color: #667085;
+      font-size: 11px;
+      font-weight: 950;
+      text-align: center;
+    }
+    .company-calendar-weekdays div {
+      padding: 9px 4px;
+      border-right: 1px solid #eef2f7;
+    }
+    .company-calendar-weekdays div:last-child { border-right: 0; }
+    .company-calendar-grid {
+      min-height: 620px;
+      background: #eef2f7;
+      gap: 1px;
+    }
+    .calendar-day {
+      min-height: 104px;
+      padding: 8px;
+      border: 0;
+      background: #fff;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      text-align: left;
+      font-family: inherit;
+      cursor: pointer;
+    }
+    .calendar-day.other-month {
+      background: #f8fafc;
+      color: #98a2b3;
+    }
+    .calendar-day.today {
+      box-shadow: inset 0 0 0 2px rgba(21, 91, 200, .32);
+    }
+    .calendar-day.selected {
+      box-shadow: inset 0 0 0 2px #155bc8;
+    }
+    .calendar-day:focus-visible,
+    .calendar-event:focus-visible,
+    .company-calendar-side .company-task-item:focus-visible {
+      outline: 3px solid rgba(21, 91, 200, .35);
+      outline-offset: -2px;
+    }
+    .calendar-date {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 6px;
+      color: #344054;
+      font-size: 12px;
+      font-weight: 950;
+    }
+    .calendar-date-count {
+      min-width: 20px;
+      height: 20px;
+      padding: 0 6px;
+      border-radius: 999px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      background: #eef2ff;
+      color: #155bc8;
+      font-size: 10px;
+      font-weight: 950;
+    }
+    .calendar-event-list {
+      display: grid;
+      gap: 4px;
+      min-width: 0;
+    }
+    .calendar-event {
+      min-height: 22px;
+      padding: 4px 6px;
+      border: 1px solid transparent;
+      border-radius: 6px;
+      overflow: hidden;
+      color: #1f2937;
+      font-size: 11px;
+      font-weight: 850;
+      line-height: 1.2;
+      white-space: nowrap;
+      text-overflow: ellipsis;
+      cursor: pointer;
+    }
+    .calendar-event.project {
+      border-color: #bfdbfe;
+      background: #eff6ff;
+      color: #155bc8;
+    }
+    .calendar-event.task {
+      border-color: #bbf7d0;
+      background: #f0fdf4;
+      color: #067647;
+    }
+    .calendar-event.leave {
+      border-color: #fed7aa;
+      background: #fff7ed;
+      color: #c2410c;
+    }
+    .calendar-event.pending {
+      border-color: #ddd6fe;
+      background: #f5f3ff;
+      color: #7e22ce;
+    }
+    .calendar-more {
+      color: #667085;
+      font-size: 11px;
+      font-weight: 850;
+    }
+    .company-calendar-side {
+      display: grid;
+      gap: 12px;
+    }
+    .calendar-side-date {
+      color: #111827;
+      font-size: 16px;
+      font-weight: 950;
+    }
+    .calendar-side-list {
+      display: grid;
+      gap: 8px;
+      margin-top: 12px;
+    }
+    .calendar-empty {
+      padding: 18px;
+      border: 1px dashed #cbd5e1;
+      border-radius: 8px;
+      background: #f8fafc;
+      color: #667085;
+      font-size: 12px;
+      font-weight: 850;
+      text-align: center;
+    }
+    .company-quick-links {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 12px;
+    }
+    .internal-chat {
+      display: grid;
+      grid-template-columns: 240px minmax(0, 1fr);
+      min-height: 520px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      overflow: hidden;
+      background: white;
+    }
+    .internal-chat-rooms {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      padding: 12px;
+      border-right: 1px solid var(--line);
+      background: #f8fafc;
+      overflow: auto;
+    }
+    .internal-chat-room {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      width: 100%;
+      min-height: 38px;
+      padding: 8px 10px;
+      border: 1px solid transparent;
+      border-radius: 8px;
+      background: transparent;
+      color: #344054;
+      cursor: pointer;
+      font-family: inherit;
+      font-size: 12px;
+      font-weight: 900;
+      text-align: left;
+    }
+    .internal-chat-room:hover,
+    .internal-chat-room.active {
+      border-color: #bfdbfe;
+      background: white;
+      color: #1d4ed8;
+    }
+    .internal-chat-room small {
+      color: #667085;
+      font-size: 10px;
+      font-weight: 850;
+    }
+    .internal-chat-main {
+      display: grid;
+      grid-template-rows: auto minmax(360px, 1fr) auto;
+      min-width: 0;
+    }
+    .internal-chat-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      min-height: 58px;
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--line);
+      background: white;
+    }
+    .internal-chat-title {
+      color: #111827;
+      font-size: 14px;
+      font-weight: 950;
+    }
+    .internal-chat-hint {
+      color: #667085;
+      font-size: 11px;
+      font-weight: 800;
+    }
+    .internal-chat-list {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      padding: 14px;
+      overflow: auto;
+      background: #f8fafc;
+    }
+    .internal-chat-empty {
+      margin: auto;
+      color: #667085;
+      font-size: 12px;
+      font-weight: 850;
+      text-align: center;
+    }
+    .internal-message {
+      max-width: min(680px, 82%);
+      padding: 10px 12px;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      background: white;
+      box-shadow: 0 8px 18px rgba(15, 23, 42, .04);
+    }
+    .internal-message.mine {
+      align-self: flex-end;
+      border-color: #bfdbfe;
+      background: #eff6ff;
+    }
+    .internal-message.command-ok {
+      border-color: #bbf7d0;
+      background: #f0fdf4;
+    }
+    .internal-message.command-error {
+      border-color: #fecaca;
+      background: #fef2f2;
+    }
+    .internal-message-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-bottom: 5px;
+      color: #667085;
+      font-size: 11px;
+      font-weight: 850;
+    }
+    .internal-message-name {
+      color: #111827;
+      font-weight: 950;
+    }
+    .internal-message-body {
+      color: #1f2937;
+      font-size: 13px;
+      font-weight: 750;
+      line-height: 1.5;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .internal-chat-form {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 10px;
+      padding: 12px;
+      border-top: 1px solid var(--line);
+      background: white;
+    }
+    .internal-chat-form textarea {
+      min-height: 54px;
+      max-height: 130px;
+      resize: vertical;
+      border: 1px solid #cbd5e1;
+      border-radius: 8px;
+      padding: 10px;
+      font-family: inherit;
+      font-size: 13px;
+      font-weight: 750;
+      line-height: 1.4;
+      outline: none;
+    }
+    .internal-chat-form textarea:focus {
+      border-color: #2563eb;
+      box-shadow: 0 0 0 2px rgba(37, 99, 235, .12);
+    }
+    .crm-staff-list {
+      display: grid;
+      gap: 10px;
+    }
+    .crm-staff-row {
+      display: grid;
+      grid-template-columns: minmax(180px, 1fr) repeat(3, minmax(72px, auto)) minmax(220px, 1.2fr);
+      gap: 10px;
+      align-items: center;
+      padding: 12px;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      background: #fff;
+    }
+    .crm-staff-person {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-width: 0;
+    }
+    .crm-staff-avatar {
+      display: grid;
+      place-items: center;
+      width: 36px;
+      height: 36px;
+      border-radius: 8px;
+      background: #eff6ff;
+      color: #1d4ed8;
+      font-size: 12px;
+      font-weight: 950;
+      flex: 0 0 auto;
+    }
+    .crm-staff-name {
+      color: #111827;
+      font-size: 13px;
+      font-weight: 950;
+    }
+    .crm-staff-role,
+    .crm-staff-latest {
+      color: #667085;
+      font-size: 11px;
+      font-weight: 800;
+      line-height: 1.45;
+    }
+    .crm-staff-metric {
+      text-align: center;
+    }
+    .crm-staff-metric span {
+      display: block;
+      color: #667085;
+      font-size: 10px;
+      font-weight: 850;
+    }
+    .crm-staff-metric strong {
+      display: block;
+      margin-top: 4px;
+      color: #111827;
+      font-size: 16px;
+      font-weight: 950;
+    }
+    .internal-chat-side {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 8px;
+    }
+    .internal-chat-side > div {
+      min-height: 64px;
+      padding: 10px;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      background: #f8fafc;
+    }
+    .internal-chat-side span {
+      display: block;
+      margin-bottom: 6px;
+      color: #667085;
+      font-size: 11px;
+      font-weight: 850;
+    }
+    .internal-chat-side strong {
+      color: #111827;
+      font-size: 13px;
+      font-weight: 950;
+    }
+    .company-staff-layout {
+      display: grid;
+      grid-template-columns: minmax(0, 1.45fr) minmax(280px, .55fr);
+      gap: 12px;
+      align-items: stretch;
+    }
+    .company-org {
+      padding: 14px;
+      overflow: auto;
+    }
+    .company-org-tree {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      min-width: 680px;
+    }
+    .company-org-level {
+      display: flex;
+      justify-content: center;
+      gap: 12px;
+      position: relative;
+    }
+    .company-org-level + .company-org-level::before {
+      content: "";
+      position: absolute;
+      top: -14px;
+      left: 50%;
+      width: 1px;
+      height: 14px;
+      background: #d0d5dd;
+    }
+    .company-org-level.staff {
+      justify-content: stretch;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    }
+    .company-person-card {
+      min-height: 132px;
+      padding: 12px;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      background: #fff;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      box-shadow: 0 8px 20px rgba(15, 23, 42, .04);
+    }
+    .company-person-card.lead {
+      max-width: 260px;
+      border-color: #bfdbfe;
+      background: #eff6ff;
+    }
+    .company-person-card.me {
+      border-color: #2563eb;
+      box-shadow: 0 0 0 2px rgba(37, 99, 235, .12);
+    }
+    .company-person-top {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-width: 0;
+    }
+    .company-person-avatar {
+      flex: 0 0 auto;
+      width: 38px;
+      height: 38px;
+      border-radius: 50%;
+      display: grid;
+      place-items: center;
+      background: #111827;
+      color: white;
+      font-size: 13px;
+      font-weight: 950;
+    }
+    .company-person-name {
+      min-width: 0;
+      color: #111827;
+      font-size: 13px;
+      font-weight: 950;
+      line-height: 1.3;
+      word-break: keep-all;
+    }
+    .company-person-role {
+      margin-top: 2px;
+      color: #667085;
+      font-size: 11px;
+      font-weight: 850;
+    }
+    .company-person-meta {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 6px;
+    }
+    .company-person-meta span {
+      min-height: 46px;
+      padding: 7px;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      background: #f8fafc;
+      color: #667085;
+      font-size: 10px;
+      font-weight: 850;
+      line-height: 1.2;
+    }
+    .company-person-meta strong {
+      display: block;
+      margin-top: 4px;
+      color: #111827;
+      font-size: 13px;
+      font-weight: 950;
+    }
+    .company-org-empty {
+      padding: 18px;
+      border: 1px dashed #cbd5e1;
+      border-radius: 8px;
+      color: #667085;
+      font-size: 12px;
+      font-weight: 850;
+      text-align: center;
+    }
+    .crm-panel {
+      display: none;
+      min-height: 0;
+      flex: 1;
+      overflow: auto;
+      padding-bottom: 4px;
+    }
+    .crm-panel.active {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .crm-panel.active > .crm-card,
+    .crm-panel.active > .crm-toolbar,
+    .crm-panel.active > .crm-task-board-stats {
+      flex: 0 0 auto;
+    }
+    .crm-stat-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
+    }
+    .crm-stat {
+      min-height: 86px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: white;
+      padding: 14px;
+    }
+    .crm-stat-label {
+      font-size: 12px;
+      color: #667085;
+      font-weight: 850;
+      margin-bottom: 9px;
+    }
+    .crm-stat-value {
+      font-size: 24px;
+      line-height: 1;
+      font-weight: 950;
+    }
+    .crm-project-card {
+      overflow: hidden;
+    }
+    .crm-project-tracker {
+      display: grid;
+      gap: 8px;
+    }
+    .crm-project-row {
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      background: #fff;
+      padding: 12px;
+      display: grid;
+      grid-template-columns: minmax(220px, 1fr) minmax(180px, .8fr) minmax(150px, .6fr);
+      gap: 12px;
+      align-items: center;
+      cursor: pointer;
+    }
+    .crm-project-main {
+      min-width: 0;
+      display: grid;
+      gap: 6px;
+    }
+    .crm-project-title {
+      color: #111827;
+      font-size: 14px;
+      font-weight: 950;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .crm-project-meta {
+      color: #667085;
+      font-size: 12px;
+      font-weight: 850;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .crm-project-progress {
+      display: grid;
+      gap: 6px;
+    }
+    .crm-project-progress-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      color: #344054;
+      font-size: 12px;
+      font-weight: 950;
+    }
+    .crm-project-bar {
+      height: 9px;
+      border-radius: 999px;
+      background: #eef2f7;
+      overflow: hidden;
+    }
+    .crm-project-bar span {
+      display: block;
+      height: 100%;
+      border-radius: inherit;
+      background: linear-gradient(90deg, #155bc8, #16a34a);
+    }
+    .crm-project-metrics {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+      gap: 6px;
+    }
+    .crm-project-pill {
+      min-height: 24px;
+      border: 1px solid #d8dee9;
+      border-radius: 999px;
+      padding: 4px 8px;
+      color: #344054;
+      background: #f8fafc;
+      font-size: 11px;
+      line-height: 1.2;
+      font-weight: 900;
+      white-space: nowrap;
+    }
+    .crm-project-pill.danger {
+      color: #b42318;
+      border-color: #fecaca;
+      background: #fff1f2;
+    }
+    .crm-project-pill.today {
+      color: #155bc8;
+      border-color: #bfdbfe;
+      background: #eff6ff;
+    }
+    .crm-project-empty {
+      border: 1px dashed #cbd5e1;
+      border-radius: 8px;
+      padding: 18px;
+      color: #667085;
+      text-align: center;
+      font-size: 12px;
+      font-weight: 850;
+    }
+    .crm-grid-2 {
+      display: grid;
+      grid-template-columns: minmax(0, 1.1fr) minmax(0, .9fr);
+      gap: 12px;
+    }
+    .crm-card {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: white;
+      overflow: hidden;
+    }
+    .crm-card-head {
+      min-height: 42px;
+      padding: 0 14px;
+      border-bottom: 1px solid var(--line);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      font-size: 13px;
+      font-weight: 950;
+      background: #fbfcff;
+    }
+    .crm-card-body { padding: 12px; }
+    .crm-task-form.collapsed .crm-card-body,
+    .crm-task-form.collapsed #crmTaskSave {
+      display: none;
+    }
+    .crm-toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+      padding: 12px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: white;
+    }
+    .sr-only {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      border: 0;
+    }
+    .crm-tab:focus-visible,
+    .crm-mini-button:focus-visible,
+    .crm-input:focus-visible,
+    .crm-select:focus-visible,
+    .crm-textarea:focus-visible,
+    .crm-task-card:focus-visible,
+    .crm-project-row:focus-visible,
+    .crm-filter-check input:focus-visible {
+      outline: 3px solid rgba(21, 91, 200, .35);
+      outline-offset: 2px;
+    }
+    .crm-task-toolbar {
+      display: grid;
+      grid-template-columns: minmax(150px, .9fr) minmax(140px, .9fr) auto auto minmax(180px, 1.2fr) repeat(5, minmax(128px, .8fr)) auto auto auto;
+      align-items: center;
+    }
+    .crm-task-toolbar .crm-input,
+    .crm-task-toolbar .crm-select {
+      width: 100%;
+      min-width: 0;
+    }
+    .crm-filter-check {
+      min-height: 32px;
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      padding: 0 9px;
+      border: 1px solid #cbd5e1;
+      border-radius: 7px;
+      background: #fbfcff;
+      color: #344054;
+      font-size: 12px;
+      font-weight: 900;
+      white-space: nowrap;
+    }
+    .crm-filter-check input {
+      width: 15px;
+      height: 15px;
+    }
+    .crm-view-strip {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+      padding: 10px 12px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fbfcff;
+    }
+    .crm-view-pill {
+      min-height: 30px;
+      border: 1px solid #d8dee9;
+      border-radius: 7px;
+      background: white;
+      color: #344054;
+      padding: 0 10px;
+      font-family: inherit;
+      font-size: 12px;
+      font-weight: 900;
+      cursor: pointer;
+    }
+    .crm-view-pill.active {
+      border-color: #155bc8;
+      background: #eef6ff;
+      color: #155bc8;
+    }
+    .crm-input,
+    .crm-select,
+    .crm-textarea {
+      min-height: 32px;
+      border: 1px solid #cbd5e1;
+      border-radius: 7px;
+      padding: 0 10px;
+      background: white;
+      color: #111827;
+      font-family: inherit;
+      font-size: 12px;
+      font-weight: 700;
+    }
+    .crm-input { min-width: 160px; }
+    .crm-select { min-width: 128px; }
+    .crm-textarea {
+      height: 68px;
+      min-height: 68px;
+      padding-top: 8px;
+      resize: vertical;
+    }
+    .crm-form-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 8px;
+    }
+    .crm-form-grid .wide { grid-column: span 2; }
+    .crm-form-grid .full { grid-column: 1 / -1; }
+    .crm-table-wrap {
+      overflow: auto;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: white;
+    }
+    .crm-table {
+      width: 100%;
+      min-width: 980px;
+      border-collapse: collapse;
+      font-size: 12px;
+    }
+    .crm-table th {
+      height: 34px;
+      padding: 0 9px;
+      border-bottom: 1px solid #d8dee9;
+      background: #f8fafc;
+      color: #344054;
+      text-align: left;
+      font-weight: 950;
+      white-space: nowrap;
+    }
+    .crm-table td {
+      height: 38px;
+      padding: 6px 9px;
+      border-bottom: 1px solid #eef2f7;
+      color: #1f2937;
+      font-weight: 750;
+      vertical-align: middle;
+      white-space: nowrap;
+    }
+    .crm-table td.left {
+      white-space: normal;
+      min-width: 220px;
+    }
+    .crm-status {
+      display: inline-flex;
+      align-items: center;
+      min-height: 24px;
+      padding: 0 9px;
+      border-radius: 7px;
+      font-size: 11px;
+      font-weight: 950;
+    }
+    .crm-status.wait { color: #92400e; background: #fef3c7; }
+    .crm-status.progress { color: #155bc8; background: #dbeafe; }
+    .crm-status.done { color: #067647; background: #dcfae6; }
+    .crm-status.hold { color: #b42318; background: #fee2e2; }
+    .crm-mini-actions {
+      display: inline-flex;
+      gap: 5px;
+      align-items: center;
+    }
+    .crm-mini-button {
+      min-height: 27px;
+      border: 1px solid #cbd5e1;
+      border-radius: 6px;
+      background: white;
+      color: #1f2937;
+      font-family: inherit;
+      font-size: 11px;
+      font-weight: 900;
+      padding: 0 8px;
+      cursor: pointer;
+    }
+    .crm-mini-button.primary {
+      border-color: #155bc8;
+      background: #eef6ff;
+      color: #155bc8;
+    }
+    .crm-task-board-stats {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 10px;
+    }
+    .crm-board-stat {
+      min-height: 70px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: white;
+      padding: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+    }
+    .crm-board-stat span {
+      display: block;
+      color: #667085;
+      font-size: 11px;
+      font-weight: 850;
+      margin-bottom: 6px;
+    }
+    .crm-board-stat strong {
+      color: #111827;
+      font-size: 22px;
+      line-height: 1;
+      font-weight: 950;
+    }
+    .crm-board-stat i {
+      width: 34px;
+      height: 34px;
+      border-radius: 8px;
+      display: grid;
+      place-items: center;
+      background: #eef6ff;
+      color: #155bc8;
+      font-style: normal;
+      font-size: 12px;
+      font-weight: 950;
+    }
+    .crm-task-layout {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 340px;
+      gap: 12px;
+      min-height: 500px;
+      align-items: stretch;
+    }
+    .crm-kanban {
+      min-width: 0;
+      display: grid;
+      grid-template-columns: repeat(4, minmax(185px, 1fr));
+      gap: 10px;
+      overflow: auto;
+      padding-bottom: 2px;
+    }
+    .crm-kanban-column {
+      min-height: 460px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fbfcff;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    .crm-kanban-head {
+      min-height: 42px;
+      padding: 0 12px;
+      border-bottom: 1px solid var(--line);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      color: #111827;
+      font-size: 13px;
+      font-weight: 950;
+    }
+    .crm-kanban-count {
+      min-width: 26px;
+      height: 24px;
+      border-radius: 7px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      background: #eef2ff;
+      color: #155bc8;
+      font-size: 11px;
+      font-weight: 950;
+    }
+    .crm-kanban-list {
+      flex: 1;
+      min-height: 0;
+      overflow: auto;
+      padding: 10px;
+      display: grid;
+      gap: 10px;
+      align-content: start;
+    }
+    .crm-task-card {
+      border: 1px solid #d8dee9;
+      border-radius: 8px;
+      background: white;
+      padding: 12px;
+      cursor: pointer;
+      display: grid;
+      gap: 8px;
+      box-shadow: 0 8px 18px rgba(15, 23, 42, .04);
+    }
+    .crm-task-card.active {
+      border-color: #155bc8;
+      box-shadow: 0 0 0 2px rgba(21, 91, 200, .12), 0 10px 22px rgba(15, 23, 42, .08);
+    }
+    .crm-task-card-top,
+    .crm-task-card-meta,
+    .crm-task-card-actions {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      min-width: 0;
+    }
+    .crm-task-card-title {
+      color: #111827;
+      font-size: 13px;
+      font-weight: 950;
+      line-height: 1.35;
+      word-break: keep-all;
+    }
+    .crm-task-card-sub {
+      color: #667085;
+      font-size: 11px;
+      font-weight: 800;
+      line-height: 1.35;
+      word-break: keep-all;
+    }
+    .crm-task-card-meta {
+      color: #475467;
+      font-size: 11px;
+      font-weight: 850;
+    }
+    .crm-priority {
+      display: inline-flex;
+      align-items: center;
+      min-height: 22px;
+      padding: 0 8px;
+      border-radius: 7px;
+      font-size: 11px;
+      font-weight: 950;
+      white-space: nowrap;
+    }
+    .crm-priority.high { background: #fee2e2; color: #b42318; }
+    .crm-priority.normal { background: #eef2ff; color: #155bc8; }
+    .crm-priority.low { background: #dcfae6; color: #067647; }
+    .crm-due-text {
+      color: #92400e;
+      font-size: 11px;
+      font-weight: 950;
+      white-space: nowrap;
+    }
+    .crm-kanban-empty {
+      min-height: 72px;
+      border: 1px dashed #cbd5e1;
+      border-radius: 8px;
+      display: grid;
+      place-items: center;
+      color: #98a2b3;
+      font-size: 12px;
+      font-weight: 850;
+      text-align: center;
+      padding: 12px;
+    }
+    .crm-task-detail {
+      min-width: 0;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: white;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      align-self: stretch;
+    }
+    .crm-task-detail-empty {
+      min-height: 220px;
+      padding: 18px;
+      display: grid;
+      place-items: center;
+      color: #667085;
+      font-size: 12px;
+      font-weight: 850;
+      text-align: center;
+      line-height: 1.5;
+    }
+    .crm-task-detail-inner {
+      padding: 16px;
+      display: grid;
+      gap: 14px;
+      overflow: auto;
+    }
+    .crm-task-detail-kicker {
+      color: #155bc8;
+      font-size: 11px;
+      font-weight: 950;
+    }
+    .crm-task-detail-title {
+      margin-top: 6px;
+      color: #111827;
+      font-size: 20px;
+      line-height: 1.3;
+      font-weight: 950;
+      word-break: keep-all;
+    }
+    .crm-task-detail-desc {
+      color: #475467;
+      font-size: 12px;
+      font-weight: 800;
+      line-height: 1.5;
+      word-break: keep-all;
+    }
+    .crm-detail-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+    }
+    .crm-detail-cell {
+      min-height: 66px;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      background: #f8fafc;
+      padding: 10px;
+    }
+    .crm-detail-cell span {
+      display: block;
+      color: #667085;
+      font-size: 11px;
+      font-weight: 850;
+      margin-bottom: 5px;
+    }
+    .crm-detail-cell strong {
+      color: #111827;
+      font-size: 13px;
+      line-height: 1.3;
+      font-weight: 950;
+      word-break: break-word;
+    }
+    .crm-detail-actions {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+    }
+    .crm-detail-actions .crm-mini-button {
+      min-height: 34px;
+    }
+    .crm-detail-comment-form {
+      display: grid;
+      gap: 8px;
+      padding-top: 2px;
+    }
+    .crm-detail-comment-form label,
+    .crm-timeline-title {
+      color: #344054;
+      font-size: 12px;
+      font-weight: 950;
+    }
+    .crm-detail-comment-form textarea {
+      width: 100%;
+      min-height: 72px;
+    }
+    .crm-timeline {
+      display: grid;
+      gap: 8px;
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }
+    .crm-timeline-item {
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      background: #fbfcff;
+      padding: 10px;
+    }
+    .crm-timeline-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+      color: #344054;
+      font-size: 11px;
+      font-weight: 950;
+    }
+    .crm-timeline-body {
+      margin-top: 5px;
+      color: #475467;
+      font-size: 12px;
+      font-weight: 800;
+      line-height: 1.45;
+      word-break: keep-all;
+    }
+    @media (max-width: 1280px) {
+      .crm-task-layout { grid-template-columns: 1fr; }
+      .crm-task-detail { min-height: 320px; }
+      .company-grid { grid-template-columns: 1fr; }
+      .company-calendar-shell { grid-template-columns: 1fr; }
+      .company-staff-layout { grid-template-columns: 1fr; }
+      .crm-task-toolbar { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+      .crm-project-row { grid-template-columns: 1fr; }
+      .crm-project-metrics { justify-content: flex-start; }
+    }
+    @media (max-width: 980px) {
+      .crm-task-board-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .crm-kanban { grid-template-columns: repeat(2, minmax(220px, 1fr)); }
+      .crm-grid-2 { grid-template-columns: 1fr; }
+      .internal-chat { grid-template-columns: 1fr; }
+      .internal-chat-rooms { border-right: 0; border-bottom: 1px solid var(--line); max-height: 210px; }
+      .crm-staff-row { grid-template-columns: 1fr 1fr 1fr; }
+      .crm-staff-person,
+      .crm-staff-latest { grid-column: 1 / -1; }
+      .company-rule-grid,
+      .company-mini-grid,
+      .internal-chat-side { grid-template-columns: 1fr; }
+      .company-org-tree { min-width: 560px; }
+      .company-calendar-grid { min-height: 520px; }
+      .calendar-day { min-height: 92px; padding: 6px; }
+      .internal-chat-form { grid-template-columns: 1fr; }
+      .crm-task-toolbar { grid-template-columns: 1fr; }
+    }
+    .crm-help {
+      margin: 0;
+      color: #667085;
+      font-size: 12px;
+      line-height: 1.5;
+      font-weight: 750;
+    }
+    .crm-webhook-setup {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .crm-token {
+      display: grid;
+      grid-template-columns: 160px minmax(0, 1fr) auto;
+      gap: 8px;
+      align-items: center;
+      min-height: 36px;
+      font-size: 12px;
+      font-weight: 850;
+      color: #344054;
+    }
+    .crm-token > span:first-child {
+      white-space: nowrap;
+    }
+    .crm-token code {
+      min-width: 0;
+      padding: 8px 10px;
+      border: 1px solid #e5e7eb;
+      border-radius: 7px;
+      background: #f8fafc;
+      color: #111827;
+      word-break: break-all;
+    }
+    .crm-token-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+      color: #667085;
+      font-size: 11px;
+      font-weight: 850;
+    }
+    .crm-sample-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+      margin-top: 4px;
+    }
+    .crm-sample-title {
+      margin-bottom: 6px;
+      color: #344054;
+      font-size: 12px;
+      font-weight: 950;
+    }
+    .crm-code-block {
+      min-height: 132px;
+      max-height: 220px;
+      overflow: auto;
+      margin: 0;
+      padding: 10px;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      background: #0f172a;
+      color: #e5eefb;
+      font-family: Consolas, "Courier New", monospace;
+      font-size: 11px;
+      line-height: 1.45;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .focus-widget-backdrop {
+      position: fixed;
+      inset: 0;
+      z-index: 110;
+      display: none;
+      place-items: center;
+      padding: 22px;
+      background: rgba(15, 23, 42, .45);
+    }
+    .focus-widget-backdrop.open {
+      display: grid;
+    }
+    .focus-widget {
+      width: min(1040px, 100%);
+      max-height: min(860px, calc(100vh - 44px));
+      border: 1px solid #d8dee9;
+      border-radius: 8px;
+      background: white;
+      box-shadow: 0 24px 80px rgba(15, 23, 42, .24);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    .focus-widget-head {
+      min-height: 58px;
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--line);
+      background: #fbfcff;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
+    }
+    .focus-widget-kicker {
+      color: #155bc8;
+      font-size: 11px;
+      font-weight: 950;
+    }
+    .focus-widget-title {
+      margin-top: 4px;
+      color: #111827;
+      font-size: 20px;
+      line-height: 1.25;
+      font-weight: 950;
+      word-break: keep-all;
+    }
+    .focus-widget-subtitle {
+      color: #667085;
+      font-size: 12px;
+      font-weight: 850;
+    }
+    .focus-widget-close {
+      flex: 0 0 auto;
+      width: 34px;
+      height: 34px;
+      border: 1px solid #cbd5e1;
+      border-radius: 7px;
+      background: white;
+      display: grid;
+      place-items: center;
+      cursor: pointer;
+    }
+    .focus-widget-body {
+      min-height: 0;
+      overflow: auto;
+      padding: 16px;
+      display: grid;
+      gap: 14px;
+    }
+    .focus-widget-section {
+      display: grid;
+      gap: 10px;
+    }
+    .focus-widget-section-title {
+      color: #344054;
+      font-size: 12px;
+      font-weight: 950;
+    }
+    .focus-widget-text {
+      margin: 0;
+      color: #475467;
+      font-size: 14px;
+      line-height: 1.65;
+      font-weight: 750;
+      white-space: pre-wrap;
+      word-break: keep-all;
+    }
+    .focus-widget-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+    }
+    .focus-widget-metric {
+      min-height: 74px;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      background: #f8fafc;
+      padding: 12px;
+    }
+    .focus-widget-metric span {
+      display: block;
+      color: #667085;
+      font-size: 11px;
+      font-weight: 850;
+      margin-bottom: 8px;
+    }
+    .focus-widget-metric strong {
+      color: #111827;
+      font-size: 18px;
+      line-height: 1.25;
+      font-weight: 950;
+      word-break: break-word;
+    }
+    .focus-widget-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .focus-widget-table {
+      width: 100%;
+      min-width: 620px;
+      border-collapse: collapse;
+      font-size: 12px;
+    }
+    .focus-widget-table th,
+    .focus-widget-table td {
+      padding: 9px;
+      border-bottom: 1px solid #eef2f7;
+      text-align: left;
+      vertical-align: top;
+    }
+    .focus-widget-table th {
+      background: #f8fafc;
+      color: #344054;
+      font-weight: 950;
+      white-space: nowrap;
+    }
+    .focus-widget-table td {
+      color: #1f2937;
+      font-weight: 750;
+    }
+    .focus-widget-table-wrap {
+      overflow: auto;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+    }
+    .notice-board,
+    .company-person-card,
+    .crm-staff-row,
+    .company-task-item,
+    .company-panel[data-company-panel="rules"] .company-card {
+      cursor: pointer;
+    }
+    .notice-board:focus-visible,
+    .company-person-card:focus-visible,
+    .crm-staff-row:focus-visible,
+    .company-task-item:focus-visible,
+    .company-panel[data-company-panel="rules"] .company-card:focus-visible,
+    .focus-widget-close:focus-visible {
+      outline: 3px solid rgba(21, 91, 200, .35);
+      outline-offset: 2px;
+    }
+    @media (max-width: 760px) {
+      .focus-widget-backdrop {
+        padding: 10px;
+      }
+      .focus-widget {
+        max-height: calc(100vh - 20px);
+      }
+      .focus-widget-head {
+        align-items: flex-start;
+      }
+      .focus-widget-title {
+        font-size: 17px;
+      }
+      .focus-widget-grid {
+        grid-template-columns: 1fr;
+      }
     }
 
     /* Compact typography pass: keep controls usable while reducing visual bulk. */
@@ -1960,15 +3719,18 @@ HTML = r"""<!doctype html>
     }
 
     @media (max-width: 1180px) {
-      .app { grid-template-columns: 76px minmax(0, 1fr); }
+      .app,
+      body.standalone .app { grid-template-columns: 76px minmax(0, 1fr); }
       .brand { justify-content: center; padding: 0; }
+      .sidebar-search { display: none; }
       .brand-label, .nav-item > span, .nav-label span, .nav-section, .nav-submenu { display: none; }
       .nav-item { justify-content: center; padding: 0; }
       .stat-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       .action-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     }
     @media (max-width: 760px) {
-      .app { grid-template-columns: 1fr; }
+      .app,
+      body.standalone .app { grid-template-columns: 1fr; }
       .sidebar { display: none; }
       .topbar {
         height: auto;
@@ -1990,14 +3752,30 @@ HTML = r"""<!doctype html>
         <div class="brand-icon"><i data-lucide="briefcase-business"></i></div>
         <div class="brand-label">(주)소일브릿지<br>업무자동화</div>
       </div>
+      <label class="sidebar-search" for="sidebarSearchInput">
+        <i data-lucide="search"></i>
+        <input id="sidebarSearchInput" name="workhub-menu-search" type="search" placeholder="메뉴 검색" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" />
+      </label>
       <div class="nav-section">MAIN</div>
-      <div class="nav-group open" id="noticeNavGroup">
-        <button class="nav-item active" id="noticeNavToggle" type="button" data-view="dashboard">
-          <span class="nav-label"><i data-lucide="home"></i> <span>공지 및 수출입 업무</span></span>
+      <div class="nav-group open" id="companyNavGroup">
+        <button class="nav-item active" id="companyNavToggle" type="button" data-view="dashboard" data-company-tab="notice">
+          <span class="nav-label"><i data-lucide="home"></i> <span>회사 포털</span></span>
           <i class="nav-chevron" data-lucide="chevron-right"></i>
         </button>
         <div class="nav-submenu">
-          <button class="nav-subitem" id="noticeInputOpen" type="button">공지사항 입력</button>
+          <button class="nav-subitem active" type="button" data-view="dashboard" data-company-tab="notice">공지사항</button>
+          <button class="nav-subitem" type="button" data-view="dashboard" data-company-tab="calendar">캘린더</button>
+          <button class="nav-subitem" type="button" data-view="dashboard" data-company-tab="rules">사규/가이드</button>
+          <button class="nav-subitem" type="button" data-view="dashboard" data-company-tab="staff">직원 대시보드</button>
+          <button class="nav-subitem" type="button" data-view="dashboard" data-company-tab="chat">사내 메신저</button>
+        </div>
+      </div>
+      <div class="nav-group" id="importNavGroup">
+        <button class="nav-item" id="importNavToggle" type="button" data-open="import">
+          <span class="nav-label"><i data-lucide="truck"></i> <span>수출입 업무</span></span>
+          <i class="nav-chevron" data-lucide="chevron-right"></i>
+        </button>
+        <div class="nav-submenu">
           <button class="nav-subitem" id="importShipmentInputOpen" type="button">수입제품 출고 진행 입력</button>
         </div>
       </div>
@@ -2015,6 +3793,19 @@ HTML = r"""<!doctype html>
       </div>
       <button class="nav-item" type="button" data-open="management"><i data-lucide="database"></i> <span>통합관리대장 관리</span></button>
       <button class="nav-item" type="button" data-open="ledger"><i data-lucide="clipboard-check"></i> <span>CS 처리대장</span></button>
+      <div class="nav-group" id="crmNavGroup">
+        <button class="nav-item" id="crmNavToggle" type="button" data-open="crm" data-crm-nav-tab="dashboard">
+          <span class="nav-label"><i data-lucide="message-circle"></i> <span>업무관리</span></span>
+          <i class="nav-chevron" data-lucide="chevron-right"></i>
+        </button>
+        <div class="nav-submenu">
+          <button class="nav-subitem" type="button" data-open="crm" data-crm-nav-tab="dashboard">대시보드</button>
+          <button class="nav-subitem" type="button" data-open="crm" data-crm-nav-tab="mine">내 업무</button>
+          <button class="nav-subitem" type="button" data-open="crm" data-crm-nav-tab="tasks">업무보드</button>
+          <button class="nav-subitem" type="button" data-open="crm" data-crm-nav-tab="accounts">직원</button>
+          <button class="nav-subitem" type="button" data-open="crm" data-crm-nav-tab="messages">메신저 연동</button>
+        </div>
+      </div>
       <div class="nav-group" id="distributionMailNavGroup">
         <button class="nav-item" id="distributionMailNavToggle" type="button">
           <span class="nav-label"><i data-lucide="mail"></i> <span>유통사 업무관련 메일 발송</span></span>
@@ -2037,8 +3828,8 @@ HTML = r"""<!doctype html>
     <main>
       <header class="topbar">
         <div class="title-wrap">
-          <div class="title">금일 공지사항 <i data-lucide="chevron-down"></i></div>
-          <p class="subtitle">발주 파일 변환과 인수증 생성을 한 곳에서 처리합니다.</p>
+          <div class="title">회사 포털 <i data-lucide="chevron-down"></i></div>
+          <p class="subtitle">공지사항, 사규, 직원 현황을 한 곳에서 확인합니다.</p>
         </div>
         <div class="top-search"><i data-lucide="file-text"></i> 파일명, 수령인, 송장번호, CS내용 검색</div>
         <div class="top-tools">
@@ -2049,58 +3840,195 @@ HTML = r"""<!doctype html>
         </div>
       </header>
 
-      <section class="content" id="dashboardContent">
-        <div class="stat-grid">
-          <article class="card stat-card">
-            <div>
-              <div class="stat-label">오늘 택배건</div>
-              <div class="stat-value">352</div>
-              <div class="stat-trend">전일 대비 ▲ 12.5%</div>
-            </div>
-            <div class="stat-icon blue"><i data-lucide="package"></i></div>
-          </article>
-          <article class="card stat-card">
-            <div>
-              <div class="stat-label">송장 추출</div>
-              <div class="stat-value">87</div>
-              <div class="stat-trend">완료율 ▲ 5.3%</div>
-            </div>
-            <div class="stat-icon purple"><i data-lucide="file-spreadsheet"></i></div>
-          </article>
-          <article class="card stat-card">
-            <div>
-              <div class="stat-label">CS 미처리</div>
-              <div class="stat-value">23</div>
-              <div class="stat-trend red">전일 대비 ▲ 3.1%</div>
-            </div>
-            <div class="stat-icon orange"><i data-lucide="headphones"></i></div>
-          </article>
-          <article class="card stat-card">
-            <div>
-              <div class="stat-label">완료 처리</div>
-              <div class="stat-value">128</div>
-              <div class="stat-trend">전일 대비 ▲ 18.2%</div>
-            </div>
-            <div class="stat-icon green"><i data-lucide="copy-check"></i></div>
-          </article>
+      <section class="content company-portal" id="dashboardContent">
+        <div class="company-tabs">
+          <button class="company-tab active" type="button" data-company-tab="notice">공지사항</button>
+          <button class="company-tab" type="button" data-company-tab="calendar">캘린더</button>
+          <button class="company-tab" type="button" data-company-tab="rules">사규/가이드</button>
+          <button class="company-tab" type="button" data-company-tab="staff">직원 대시보드</button>
+          <button class="company-tab" type="button" data-company-tab="chat">사내 메신저</button>
         </div>
 
-        <section class="notice-board" id="sidebarNoticePreview">
-          <div class="notice-board-kicker">금일 공지사항</div>
-          <div class="notice-board-title">등록된 공지 없음</div>
-          <div class="notice-board-body">공지사항 입력 메뉴를 눌러 내용을 입력해주세요.</div>
+        <section class="company-panel active" data-company-panel="notice">
+          <div class="company-grid">
+            <section class="notice-board company-notice" id="sidebarNoticePreview" role="button" tabindex="0" aria-label="공지사항 크게 보기">
+              <div class="notice-board-kicker">금일 공지사항</div>
+              <div class="notice-board-title">등록된 공지 없음</div>
+              <div class="notice-board-body">공지사항 입력 버튼을 눌러 내용을 입력해주세요.</div>
+            </section>
+            <article class="company-card">
+              <div class="company-card-head">
+                <span>공지 관리</span>
+                <button class="workspace-button" id="noticeInputOpen" type="button">공지사항 입력</button>
+              </div>
+              <div class="company-card-body">
+                <p>오늘 공유해야 할 출고 마감, 업체 회신 필요 건, 내부 전달사항을 이곳에서 관리합니다.</p>
+                <div class="company-mini-grid">
+                  <div><span>저장 방식</span><strong>브라우저 localStorage</strong></div>
+                  <div><span>권한</span><strong>공지사항 관리</strong></div>
+                </div>
+              </div>
+            </article>
+          </div>
         </section>
 
-        <section class="import-progress-card" id="importProgressCard">
+        <section class="company-panel" data-company-panel="calendar">
+          <div class="company-calendar-shell">
+            <article class="company-card">
+              <div class="company-calendar-toolbar">
+                <div class="company-calendar-title" id="companyCalendarTitle">캘린더</div>
+                <div class="company-calendar-actions">
+                  <button class="crm-mini-button" type="button" id="companyCalendarPrev" aria-label="이전 달"><i data-lucide="chevron-left"></i></button>
+                  <button class="crm-mini-button" type="button" id="companyCalendarToday">오늘</button>
+                  <button class="crm-mini-button" type="button" id="companyCalendarNext" aria-label="다음 달"><i data-lucide="chevron-right"></i></button>
+                  <button class="crm-mini-button" type="button" id="companyCalendarRefresh">새로고침</button>
+                </div>
+              </div>
+              <div class="company-calendar-legend" aria-label="캘린더 항목 구분">
+                <span><i class="calendar-legend-dot project"></i>프로젝트</span>
+                <span><i class="calendar-legend-dot task"></i>업무 마감</span>
+                <span><i class="calendar-legend-dot leave"></i>연차</span>
+                <span><i class="calendar-legend-dot pending"></i>승인대기</span>
+              </div>
+              <div class="company-calendar-weekdays" aria-hidden="true">
+                <div>월</div><div>화</div><div>수</div><div>목</div><div>금</div><div>토</div><div>일</div>
+              </div>
+              <div class="company-calendar-grid" id="companyCalendarGrid" role="grid" aria-label="회사 일정 월간 캘린더">
+                <div class="calendar-empty">캘린더를 불러오는 중입니다.</div>
+              </div>
+            </article>
+            <aside class="company-calendar-side">
+              <article class="company-card">
+                <div class="company-card-head"><span>선택한 날짜</span><button class="crm-mini-button" type="button" data-open="crm" data-crm-nav-tab="tasks">업무보드</button></div>
+                <div class="company-card-body">
+                  <div class="calendar-side-date" id="companyCalendarSelectedDate">오늘</div>
+                  <div class="calendar-side-list" id="companyCalendarSelectedList">
+                    <div class="calendar-empty">날짜를 선택하면 일정이 표시됩니다.</div>
+                  </div>
+                </div>
+              </article>
+              <article class="company-card">
+                <div class="company-card-head"><span>이번 달 요약</span></div>
+                <div class="company-card-body">
+                  <div class="company-mini-grid">
+                    <div><span>프로젝트</span><strong id="companyCalendarProjectCount">0건</strong></div>
+                    <div><span>업무 마감</span><strong id="companyCalendarTaskCount">0건</strong></div>
+                    <div><span>연차</span><strong id="companyCalendarLeaveCount">0건</strong></div>
+                    <div><span>지연/높음</span><strong id="companyCalendarRiskCount">0건</strong></div>
+                  </div>
+                </div>
+              </article>
+            </aside>
+          </div>
+        </section>
+
+        <section class="company-panel" data-company-panel="rules">
+          <div class="company-rule-grid">
+            <article class="company-card">
+              <div class="company-card-head"><span>근무/휴가</span></div>
+              <div class="company-card-body">출퇴근, 연차 신청, 반차/시간 단위 사용 기준을 정리할 영역입니다.</div>
+            </article>
+            <article class="company-card">
+              <div class="company-card-head"><span>비용/정산</span></div>
+              <div class="company-card-body">법인카드, 영수증, 물류비, 기타 비용 승인 기준을 정리할 영역입니다.</div>
+            </article>
+            <article class="company-card">
+              <div class="company-card-head"><span>보안/계정</span></div>
+              <div class="company-card-body">업무 계정, 비밀번호, 파일 공유, 외부 전달 주의사항을 정리할 영역입니다.</div>
+            </article>
+            <article class="company-card">
+              <div class="company-card-head"><span>업무 처리 기준</span></div>
+              <div class="company-card-body">발주, CS, 거래처 응대, 업무 지시 처리 기준을 정리할 영역입니다.</div>
+            </article>
+          </div>
+        </section>
+
+        <section class="company-panel" data-company-panel="staff">
+          <div class="company-staff-layout">
+            <article class="company-card">
+              <div class="company-card-head"><span>직원 조직도</span><button class="crm-mini-button" type="button" id="companyStaffRefresh">새로고침</button></div>
+              <div class="company-org" id="companyOrgBody">
+                <div class="company-org-empty">직원 조직도를 불러오는 중입니다.</div>
+              </div>
+            </article>
+            <article class="company-card">
+              <div class="company-card-head"><span>내 자리</span><button class="crm-mini-button" type="button" data-open="crm" data-crm-nav-tab="mine">전체 보기</button></div>
+              <div class="company-card-body">
+                <div class="company-mini-grid">
+                  <div><span>오늘 마감</span><strong id="companyStaffDueToday">0건</strong></div>
+                  <div><span>공지</span><strong id="companyStaffNoticeTitle">등록 전</strong></div>
+                </div>
+                <div class="company-task-list" id="companyStaffTaskBody">내 업무를 불러오는 중입니다.</div>
+                <div class="company-quick-links">
+                  <button class="workspace-button" type="button" data-open="crm" data-crm-nav-tab="tasks">업무보드</button>
+                  <button class="workspace-button" type="button" data-open="management">통합관리대장</button>
+                  <button class="workspace-button" type="button" data-open="ledger">CS 처리대장</button>
+                </div>
+              </div>
+            </article>
+          </div>
+        </section>
+
+        <section class="company-panel" data-company-panel="chat">
+          <div class="company-grid">
+            <article class="company-card">
+              <div class="company-card-head"><span>사내 메신저</span><button class="crm-mini-button" type="button" id="internalChatRefresh">새로고침</button></div>
+              <div class="internal-chat">
+                <div class="internal-chat-rooms" id="internalChatRoomList">
+                  <button class="internal-chat-room active" type="button" data-chat-room="global"><span>전체방</span><small>공지/공유</small></button>
+                  <div class="internal-chat-empty">직원 목록을 불러오는 중입니다.</div>
+                </div>
+                <div class="internal-chat-main">
+                  <div class="internal-chat-head">
+                    <div>
+                      <div class="internal-chat-title" id="internalChatTitle">전체방</div>
+                      <div class="internal-chat-hint" id="internalChatHint">/업무 @직원 업무내용 / 기한 으로 바로 업무 지시 가능</div>
+                    </div>
+                  </div>
+                  <div class="internal-chat-list" id="internalChatList">
+                    <div class="internal-chat-empty">메시지를 불러오는 중입니다.</div>
+                  </div>
+                  <form class="internal-chat-form" id="internalChatForm">
+                    <textarea id="internalChatBody" placeholder="/업무 @관리자 샘플 업무 / 오늘 5시 또는 일반 메시지를 입력해줘."></textarea>
+                    <button class="crm-mini-button primary" type="submit">보내기</button>
+                  </form>
+                </div>
+              </div>
+            </article>
+            <article class="company-card">
+              <div class="company-card-head"><span>메신저 방향</span></div>
+              <div class="company-card-body">
+                <p class="crm-help">전체 공유는 전체방, 특정 지시는 직원 DM에서 처리합니다. 어느 방에서든 /업무 @직원 업무내용 / 기한 형식으로 바로 업무를 만들 수 있습니다.</p>
+                <div class="internal-chat-side">
+                  <div><span>채널</span><strong>전체방 + 직원 DM</strong></div>
+                  <div><span>저장</span><strong>앱 DB</strong></div>
+                  <div><span>업무화</span><strong>/업무 명령</strong></div>
+                </div>
+                <div class="company-quick-links">
+                  <button class="workspace-button" type="button" data-open="crm" data-crm-nav-tab="tasks">업무보드</button>
+                  <button class="workspace-button" type="button" data-view="dashboard" data-company-tab="staff">조직도</button>
+                </div>
+              </div>
+            </article>
+          </div>
+        </section>
+      </section>
+
+      <section class="workspace-view" id="importWorkspace">
+        <div class="workspace-head">
+          <div class="workspace-title">수출입 업무</div>
+          <div class="workspace-actions">
+            <button class="workspace-button" type="button" id="importShipmentWorkspaceOpen">수입제품 출고 진행 입력</button>
+            <button class="workspace-button" type="button" id="importShipmentRefresh">새로고침</button>
+          </div>
+        </div>
+        <section class="import-progress-card open" id="importProgressCard">
           <div class="import-progress-head">
             <button class="import-progress-title" type="button" id="importShipmentTreeToggle">
               <i data-lucide="chevron-right"></i>
               <span>수입제품 출고 진행 상황</span>
             </button>
             <div class="import-progress-summary" id="importShipmentSummary">진행 0건</div>
-          </div>
-          <div class="import-progress-actions">
-            <button class="workspace-button" type="button" id="importShipmentRefresh">새로고침</button>
           </div>
           <div class="import-table-wrap">
             <table class="import-table">
@@ -2125,73 +4053,6 @@ HTML = r"""<!doctype html>
             </table>
           </div>
         </section>
-
-        <section class="dashboard-card">
-          <div class="dashboard-head">
-            <div class="dashboard-title">빠른 실행</div>
-          </div>
-          <div class="action-grid">
-          <article class="card action-card">
-            <div class="action-icon blue"><i data-lucide="file-text"></i></div>
-            <div class="action-main">
-                <span class="action-kicker blue">텍스트</span>
-              <h2 class="action-title">개별 택배건 정리</h2>
-              <p class="action-sub">주소일브릿지 엑셀을 전달용 텍스트로 변환합니다.</p>
-              <button class="action-button" data-open="delivery">엑셀 업로드</button>
-            </div>
-          </article>
-
-          <article class="card action-card">
-            <div class="action-icon green"><i data-lucide="file-spreadsheet"></i></div>
-            <div class="action-main">
-                <span class="action-kicker green">엑셀</span>
-              <h2 class="action-title">송장번호 추출</h2>
-              <p class="action-sub">출고송장 엑셀에서 수하인별 송장번호 엑셀을 생성합니다.</p>
-              <button class="action-button green" data-open="invoice">엑셀 업로드</button>
-            </div>
-          </article>
-
-          <article class="card action-card">
-            <div class="action-icon orange"><i data-lucide="clipboard-list"></i></div>
-            <div class="action-main">
-                <span class="action-kicker orange">양식</span>
-              <h2 class="action-title">롯데택배 발주서 변환</h2>
-              <p class="action-sub">주소일브릿지 원본을 업로드해 지정 양식으로 출력합니다.</p>
-              <button class="action-button orange" data-open="lotte">엑셀 업로드</button>
-            </div>
-          </article>
-
-          <article class="card action-card">
-            <div class="action-icon purple"><i data-lucide="truck"></i></div>
-            <div class="action-main">
-                <span class="action-kicker purple">직접입력</span>
-              <h2 class="action-title">차량인수증 생성</h2>
-              <p class="action-sub">직접 입력한 제품 내역을 인수증 양식으로 출력합니다.</p>
-              <button class="action-button purple" data-open="vehicle">인수증 입력</button>
-            </div>
-          </article>
-
-          <article class="card action-card">
-            <div class="action-icon blue"><i data-lucide="mail"></i></div>
-            <div class="action-main">
-                <span class="action-kicker blue">메일</span>
-              <h2 class="action-title">업체 CS 요청</h2>
-              <p class="action-sub">업체별 CS 요청 내용을 작성해 네이버 메일로 전송합니다.</p>
-              <button class="action-button" data-open="cs">메일 작성</button>
-            </div>
-          </article>
-
-          <article class="card action-card">
-            <div class="action-icon green"><i data-lucide="clipboard-check"></i></div>
-            <div class="action-main">
-                <span class="action-kicker green">DB</span>
-              <h2 class="action-title">CS 처리대장</h2>
-              <p class="action-sub">자동화 DB에 저장된 CS건을 처리대장 형태로 조회합니다.</p>
-              <button class="action-button green" data-open="ledger">처리대장 보기</button>
-            </div>
-          </article>
-          </div>
-        </section>
       </section>
       <section class="workspace-view" id="managementWorkspace">
         <div class="workspace-head">
@@ -2214,6 +4075,217 @@ HTML = r"""<!doctype html>
           </div>
         </div>
         <div class="workspace-mount" id="ledgerWorkspaceMount"></div>
+      </section>
+      <section class="workspace-view" id="crmWorkspace">
+        <div class="workspace-head">
+          <div class="workspace-title">업무관리</div>
+          <div class="workspace-actions">
+            <button class="workspace-button" type="button" id="crmRefresh">새로고침</button>
+            <button class="workspace-button" type="button" id="crmAccountQuick">직원 보기</button>
+            <button class="workspace-button" type="button" id="crmTaskQuick">업무 등록</button>
+            <button class="workspace-button" type="button" data-open-window="crm">새창으로 열기</button>
+          </div>
+        </div>
+        <div class="crm-tabs" role="tablist" aria-label="CRM 메뉴">
+          <button class="crm-tab active" type="button" role="tab" id="crmTabDashboard" aria-selected="true" aria-controls="crmPanelDashboard" tabindex="0" data-crm-tab="dashboard">대시보드</button>
+          <button class="crm-tab" type="button" role="tab" id="crmTabMine" aria-selected="false" aria-controls="crmPanelMine" tabindex="-1" data-crm-tab="mine">내 업무</button>
+          <button class="crm-tab" type="button" role="tab" id="crmTabTasks" aria-selected="false" aria-controls="crmPanelTasks" tabindex="-1" data-crm-tab="tasks">업무보드</button>
+          <button class="crm-tab" type="button" role="tab" id="crmTabAccounts" aria-selected="false" aria-controls="crmPanelAccounts" tabindex="-1" data-crm-tab="accounts">직원</button>
+          <button class="crm-tab" type="button" role="tab" id="crmMessagesTab" aria-selected="false" aria-controls="crmPanelMessages" tabindex="-1" data-crm-tab="messages">메신저 연동</button>
+        </div>
+        <div class="crm-message" id="crmMessage" role="status" aria-live="polite"></div>
+
+        <section class="crm-panel active" role="tabpanel" id="crmPanelDashboard" aria-labelledby="crmTabDashboard" tabindex="0" data-crm-panel="dashboard">
+          <div class="crm-stat-grid">
+            <article class="crm-stat"><div class="crm-stat-label">활성 직원</div><div class="crm-stat-value" id="crmStatAccounts">0</div></article>
+            <article class="crm-stat"><div class="crm-stat-label">진행 업무</div><div class="crm-stat-value" id="crmStatOpenTasks">0</div></article>
+            <article class="crm-stat"><div class="crm-stat-label">오늘 마감</div><div class="crm-stat-value" id="crmStatDueToday">0</div></article>
+            <article class="crm-stat"><div class="crm-stat-label">지연 업무</div><div class="crm-stat-value" id="crmStatOverdue">0</div></article>
+          </div>
+          <article class="crm-card crm-project-card">
+            <div class="crm-card-head"><span>프로젝트별 진행상황</span><button class="crm-mini-button" type="button" data-crm-go="tasks">업무보드 보기</button></div>
+            <div class="crm-card-body">
+              <div class="crm-project-tracker" id="crmProjectProgressBody">
+                <div class="crm-project-empty">프로젝트 진행상황을 불러오는 중입니다.</div>
+              </div>
+            </div>
+          </article>
+          <div class="crm-grid-2">
+            <article class="crm-card">
+              <div class="crm-card-head"><span>우선 처리 업무</span><button class="crm-mini-button" type="button" data-crm-go="tasks">전체 보기</button></div>
+              <div class="crm-table-wrap">
+                <table class="crm-table">
+                  <thead><tr><th>번호</th><th>업무 구분</th><th>업무</th><th>담당자</th><th>기한</th><th>상태</th></tr></thead>
+                  <tbody id="crmPriorityTaskBody"></tbody>
+                </table>
+              </div>
+            </article>
+            <article class="crm-card">
+              <div class="crm-card-head"><span>최근 메신저 처리</span><button class="crm-mini-button" type="button" data-crm-go="messages">로그 보기</button></div>
+              <div class="crm-table-wrap">
+                <table class="crm-table">
+                  <thead><tr><th>일시</th><th>발신자</th><th>결과</th><th>내용</th></tr></thead>
+                  <tbody id="crmRecentMessageBody"></tbody>
+                </table>
+              </div>
+            </article>
+          </div>
+        </section>
+
+        <section class="crm-panel" role="tabpanel" id="crmPanelMine" aria-labelledby="crmTabMine" tabindex="0" data-crm-panel="mine">
+          <div class="crm-task-board-stats" id="crmMineStats"></div>
+          <div class="crm-table-wrap">
+            <table class="crm-table">
+              <thead><tr><th>번호</th><th>업무 구분</th><th>업무</th><th>마감</th><th>상태</th><th>우선순위</th><th>처리</th></tr></thead>
+              <tbody id="crmMineTaskBody"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="crm-panel" role="tabpanel" id="crmPanelAccounts" aria-labelledby="crmTabAccounts" tabindex="0" data-crm-panel="accounts">
+          <article class="crm-card">
+            <div class="crm-card-head"><span>직원별 업무 현황</span><button class="crm-mini-button" type="button" id="crmStaffRefresh">새로고침</button></div>
+            <div class="crm-card-body">
+              <div class="crm-staff-list" id="crmStaffBody">
+                <div class="internal-chat-empty">직원 업무 현황을 불러오는 중입니다.</div>
+              </div>
+            </div>
+          </article>
+          <div hidden>
+          <form class="crm-card" id="crmAccountForm">
+            <div class="crm-card-head"><span>거래처 등록/수정</span><button class="crm-mini-button primary" type="submit">저장</button></div>
+            <div class="crm-card-body crm-form-grid">
+              <input id="crmAccountId" type="hidden" />
+              <input class="crm-input" id="crmAccountName" type="text" placeholder="거래처명" />
+              <input class="crm-input" id="crmAccountType" type="text" placeholder="구분 예) 판매사" />
+              <input class="crm-input" id="crmAccountContact" type="text" placeholder="담당자/대표" />
+              <input class="crm-input" id="crmAccountPhone" type="text" placeholder="연락처" />
+              <input class="crm-input" id="crmAccountEmail" type="email" placeholder="이메일" />
+              <input class="crm-input wide" id="crmAccountMemo" type="text" placeholder="메모" />
+              <button class="crm-mini-button" type="button" id="crmAccountReset">초기화</button>
+            </div>
+          </form>
+          <div class="crm-toolbar">
+            <input class="crm-input" id="crmAccountSearch" type="text" placeholder="거래처, 담당자, 메모 검색" />
+            <button class="crm-mini-button primary" type="button" id="crmAccountSearchButton">조회</button>
+          </div>
+          <div class="crm-table-wrap">
+            <table class="crm-table">
+              <thead><tr><th>거래처</th><th>구분</th><th>담당자</th><th>연락처</th><th>이메일</th><th>진행 업무</th><th>관리</th></tr></thead>
+              <tbody id="crmAccountBody"></tbody>
+            </table>
+          </div>
+          </div>
+        </section>
+
+        <section class="crm-panel" role="tabpanel" id="crmPanelTasks" aria-labelledby="crmTabTasks" tabindex="0" data-crm-panel="tasks">
+          <form class="crm-card crm-task-form collapsed" id="crmTaskForm">
+            <div class="crm-card-head">
+              <span>업무 등록/수정</span>
+              <span class="crm-mini-actions">
+                <button class="crm-mini-button" type="button" id="crmTaskFormToggle">입력 열기</button>
+                <button class="crm-mini-button primary" type="submit" id="crmTaskSave">저장</button>
+              </span>
+            </div>
+            <div class="crm-card-body crm-form-grid">
+              <input id="crmTaskId" type="hidden" />
+              <select class="crm-select" id="crmTaskAccount"></select>
+              <input class="crm-input wide" id="crmTaskAccountName" type="text" placeholder="선택 업무 구분/거래처명 (선택)" />
+              <input class="crm-input wide" id="crmTaskTitle" type="text" placeholder="업무 제목" />
+              <select class="crm-select" id="crmTaskAssignee"></select>
+              <input class="crm-input" id="crmTaskDue" type="text" placeholder="기한 예) 오늘 5시" />
+              <select class="crm-select" id="crmTaskPriority"><option>보통</option><option>높음</option><option>낮음</option></select>
+              <select class="crm-select" id="crmTaskStatus"><option>대기</option><option>진행중</option><option>완료</option><option>보류</option></select>
+              <textarea class="crm-textarea full" id="crmTaskDescription" placeholder="상세 내용"></textarea>
+              <button class="crm-mini-button" type="button" id="crmTaskReset">초기화</button>
+            </div>
+          </form>
+          <div class="crm-view-strip" id="crmTaskPresetList" aria-label="업무 빠른 보기"></div>
+          <div class="crm-toolbar crm-task-toolbar" aria-label="업무 필터">
+            <label class="sr-only" for="crmTaskViewSelect">저장뷰</label>
+            <select class="crm-select" id="crmTaskViewSelect"><option value="">저장뷰 선택</option></select>
+            <label class="sr-only" for="crmTaskViewName">저장뷰 이름</label>
+            <input class="crm-input" id="crmTaskViewName" type="text" placeholder="저장뷰 이름" />
+            <button class="crm-mini-button" type="button" id="crmTaskViewSave">현재 보기 저장</button>
+            <button class="crm-mini-button" type="button" id="crmTaskViewDelete">저장뷰 삭제</button>
+            <label class="sr-only" for="crmTaskSearch">업무 검색</label>
+            <input class="crm-input" id="crmTaskSearch" type="search" placeholder="업무, 직원, 번호 검색" />
+            <label class="sr-only" for="crmTaskStatusFilter">상태</label>
+            <select class="crm-select" id="crmTaskStatusFilter"><option value="">상태 전체</option><option>대기</option><option>진행중</option><option>완료</option><option>보류</option></select>
+            <label class="sr-only" for="crmTaskAssigneeFilter">담당자</label>
+            <select class="crm-select" id="crmTaskAssigneeFilter"><option value="">담당자 전체</option></select>
+            <label class="sr-only" for="crmTaskPriorityFilter">우선순위</label>
+            <select class="crm-select" id="crmTaskPriorityFilter"><option value="">우선순위 전체</option><option>높음</option><option>보통</option><option>낮음</option></select>
+            <label class="sr-only" for="crmTaskDueFilter">마감</label>
+            <select class="crm-select" id="crmTaskDueFilter"><option value="">마감 전체</option><option value="today">오늘 마감</option><option value="overdue">지연</option><option value="upcoming">향후 마감</option><option value="none">기한 없음</option></select>
+            <label class="sr-only" for="crmTaskSourceFilter">출처</label>
+            <select class="crm-select" id="crmTaskSourceFilter"><option value="">출처 전체</option><option value="app">직접 등록</option><option value="internal_message">사내 메신저</option><option value="messenger">외부 메신저</option></select>
+            <label class="sr-only" for="crmTaskSort">정렬</label>
+            <select class="crm-select" id="crmTaskSort"><option value="smart">추천순</option><option value="due">마감순</option><option value="updated">최근 수정순</option></select>
+            <label class="crm-filter-check"><input type="checkbox" id="crmTaskOpenOnly" checked /> 미완료만</label>
+            <button class="crm-mini-button primary" type="button" id="crmTaskSearchButton">조회</button>
+            <button class="crm-mini-button" type="button" id="crmTaskFilterReset">초기화</button>
+          </div>
+          <div class="crm-task-board-stats" id="crmTaskBoardStats"></div>
+          <div class="crm-task-layout">
+            <div class="crm-kanban" id="crmTaskBody"></div>
+            <aside class="crm-task-detail" id="crmTaskDetail">
+              <div class="crm-task-detail-empty">업무 카드를 선택하면 상세 정보와 처리 버튼이 표시됩니다.</div>
+            </aside>
+          </div>
+        </section>
+
+        <section class="crm-panel" role="tabpanel" id="crmPanelMessages" aria-labelledby="crmMessagesTab" tabindex="0" data-crm-panel="messages">
+          <article class="crm-card">
+            <div class="crm-card-head"><span>카카오 공식 연동 준비</span></div>
+            <div class="crm-card-body crm-webhook-setup">
+              <p class="crm-help">카카오 챗봇 스킬 또는 공통 웹훅에서 아래 엔드포인트로 POST 요청을 보내면 CRM 업무에 반영됩니다. 실제 연결 시 공개 HTTPS 도메인과 헤더 토큰이 필요합니다.</p>
+              <div class="crm-token"><span>전체 수신 URL</span><code id="crmWebhookUrl">도메인 설정 후 표시됩니다.</code><button class="crm-mini-button" type="button" id="crmWebhookUrlCopy">복사</button></div>
+              <div class="crm-token"><span>헤더 이름</span><code id="crmWebhookHeader">X-Workhub-Webhook-Token</code><button class="crm-mini-button" type="button" id="crmWebhookHeaderCopy">복사</button></div>
+              <div class="crm-token"><span>현재 토큰</span><code id="crmWebhookToken">권한이 있으면 표시됩니다.</code><button class="crm-mini-button" type="button" id="crmWebhookTokenCopy">복사</button></div>
+              <div class="crm-token"><span>토큰 관리</span><div class="crm-token-actions"><button class="crm-mini-button primary" type="button" id="crmWebhookTokenRotate">토큰 재발급</button><span>재발급 즉시 이전 토큰은 사용할 수 없습니다.</span></div></div>
+              <div class="crm-sample-grid">
+                <div>
+                  <div class="crm-sample-title">카카오 스킬 테스트 payload</div>
+                  <pre class="crm-code-block" id="crmWebhookSamplePayload"></pre>
+                </div>
+                <div>
+                  <div class="crm-sample-title">curl 테스트</div>
+                  <pre class="crm-code-block" id="crmWebhookCurl"></pre>
+                </div>
+              </div>
+            </div>
+          </article>
+          <form class="crm-card" id="crmMessengerForm">
+            <div class="crm-card-head"><span>메신저 사용자 매핑</span><button class="crm-mini-button primary" type="submit">저장</button></div>
+            <div class="crm-card-body crm-form-grid">
+              <select class="crm-select" id="crmMessengerPlatform"><option value="kakao">kakao</option><option value="generic">generic</option></select>
+              <input class="crm-input wide" id="crmMessengerSenderKey" type="text" placeholder="카카오/메신저 사용자 키" />
+              <input class="crm-input" id="crmMessengerDisplayName" type="text" placeholder="표시 이름" />
+              <select class="crm-select" id="crmMessengerUser"></select>
+            </div>
+          </form>
+          <div class="crm-grid-2">
+            <article class="crm-card">
+              <div class="crm-card-head"><span>등록 직원 매핑</span></div>
+              <div class="crm-table-wrap">
+                <table class="crm-table">
+                  <thead><tr><th>플랫폼</th><th>사용자 키</th><th>표시 이름</th><th>Workhub 사용자</th></tr></thead>
+                  <tbody id="crmMessengerUserBody"></tbody>
+                </table>
+              </div>
+            </article>
+            <article class="crm-card">
+              <div class="crm-card-head"><span>연동 로그</span></div>
+              <div class="crm-table-wrap">
+                <table class="crm-table">
+                  <thead><tr><th>일시</th><th>플랫폼</th><th>발신자</th><th>결과</th><th>내용</th><th>오류</th><th>관리</th></tr></thead>
+                  <tbody id="crmMessageEventBody"></tbody>
+                </table>
+              </div>
+            </article>
+          </div>
+        </section>
       </section>
       __LEAVE_WORKSPACE__
       __ADMIN_WORKSPACE__
@@ -2245,6 +4317,20 @@ HTML = r"""<!doctype html>
         </div>
       </div>
     </div>
+  </div>
+
+  <div class="focus-widget-backdrop" id="focusWidget" aria-hidden="true">
+    <section class="focus-widget" role="dialog" aria-modal="true" aria-labelledby="focusWidgetTitle">
+      <div class="focus-widget-head">
+        <div>
+          <div class="focus-widget-kicker" id="focusWidgetKicker">크게 보기</div>
+          <div class="focus-widget-title" id="focusWidgetTitle">상세 보기</div>
+          <div class="focus-widget-subtitle" id="focusWidgetSubtitle"></div>
+        </div>
+        <button class="focus-widget-close" id="focusWidgetClose" type="button" aria-label="닫기"><i data-lucide="x"></i></button>
+      </div>
+      <div class="focus-widget-body" id="focusWidgetBody"></div>
+    </section>
   </div>
 
   <div class="notice-popup-backdrop" id="importShipmentPopup">
@@ -2534,7 +4620,6 @@ HTML = r"""<!doctype html>
                 <button type="button" data-management-download="year">년별 다운로드</button>
                 <button type="button" data-management-download="month">월별 다운로드</button>
                 <button type="button" data-management-download="selected">선택 다운로드</button>
-                <button type="button" data-management-download="template">통합관리대장 양식</button>
               </div>
             </div>
           </div>
@@ -2602,11 +4687,51 @@ HTML = r"""<!doctype html>
   <script type="module">
     import { createIcons, BriefcaseBusiness, Home, MessageCircle, Info, ChevronDown, ChevronRight, PlusSquare, RefreshCw, Ellipsis, Headphones, Package, ClipboardCheck, CircleDollarSign, FileText, FileSpreadsheet, ClipboardList, BarChart3, CopyCheck, Bell, Download, Truck, Mail, Upload, Database, CalendarDays, X, Settings } from "/lucide/dist/esm/lucide.js";
     createIcons({ icons: { BriefcaseBusiness, Home, MessageCircle, Info, ChevronDown, ChevronRight, PlusSquare, RefreshCw, Ellipsis, Headphones, Package, ClipboardCheck, CircleDollarSign, FileText, FileSpreadsheet, ClipboardList, BarChart3, CopyCheck, Bell, Download, Truck, Mail, Upload, Database, CalendarDays, X, Settings } });
+    function applyDaisyUiClasses() {
+      document.querySelectorAll(".workspace-button, .crm-mini-button, .action-button, .logout-button, .top-button").forEach((element) => {
+        element.classList.add("btn", "btn-sm");
+      });
+      document.querySelectorAll(".icon-button").forEach((element) => {
+        element.classList.add("btn", "btn-square", "btn-sm", "btn-ghost");
+      });
+      document.querySelectorAll(".crm-card, .company-card, .notice-board, .import-progress-card, .card").forEach((element) => {
+        element.classList.add("card");
+      });
+      document.querySelectorAll(".crm-input, .notice-template input, .text-field input, .ledger-toolbar input, .ledger-edit, .management-edit").forEach((element) => {
+        element.classList.add("input", "input-sm");
+      });
+      document.querySelectorAll(".crm-select, .notice-template select, .text-field select, .ledger-toolbar select, .ledger-status-select").forEach((element) => {
+        element.classList.add("select", "select-sm");
+      });
+      document.querySelectorAll(".crm-textarea, .notice-template textarea, .text-field textarea").forEach((element) => {
+        element.classList.add("textarea", "textarea-sm");
+      });
+      document.querySelectorAll(".crm-table, .import-table, .ledger-table").forEach((element) => {
+        element.classList.add("table", "table-sm");
+      });
+      document.querySelectorAll(".crm-status, .crm-priority").forEach((element) => {
+        element.classList.add("badge", "badge-sm");
+      });
+      document.querySelectorAll(".crm-tabs, .company-tabs").forEach((element) => {
+        element.classList.add("tabs", "tabs-border");
+      });
+      document.querySelectorAll(".crm-tab, .company-tab").forEach((element) => {
+        element.classList.add("tab");
+      });
+    }
+    applyDaisyUiClasses();
     if (new URLSearchParams(window.location.search).get("standalone") === "1") {
       document.body.classList.add("standalone");
     }
+    const currentUser = __CURRENT_USER__;
     const currentUserPermissions = new Set(__USER_PERMISSIONS__);
     const permissionLabels = __PERMISSION_LABELS__;
+    const sidebarSearchInput = document.querySelector("#sidebarSearchInput");
+    let sidebarSearchUserTyped = false;
+    const sidebarSearchAutofillValues = new Set([
+      String(currentUser.username || "").trim().toLowerCase(),
+      String(currentUser.display_name || "").trim().toLowerCase(),
+    ].filter(Boolean));
 
     function can(permission) {
       return currentUserPermissions.has(permission);
@@ -2635,6 +4760,15 @@ HTML = r"""<!doctype html>
       setHidden(document.querySelector("#distributionMailNavGroup"), !can("mail_send"));
       document.querySelectorAll('[data-open="cs"]').forEach((button) => setHidden(button, !can("mail_send")));
       setHidden(importShipmentInputOpen, !can("import_shipment_manage"));
+      setHidden(importShipmentWorkspaceOpen, !can("import_shipment_manage"));
+      document.querySelectorAll('[data-open="crm"]').forEach((button) => setHidden(button, !can("crm_view")));
+      setHidden(document.querySelector('.nav-subitem[data-crm-nav-tab="messages"]'), !can("crm_message_manage"));
+      setHidden(crmAccountQuick, !can("crm_view"));
+      setHidden(crmTaskQuick, !can("crm_manage"));
+      setHidden(crmAccountForm, !can("crm_manage"));
+      setHidden(crmTaskForm, !can("crm_manage"));
+      setHidden(crmMessagesTab, !can("crm_message_manage"));
+      setHidden(crmMessengerForm, !can("crm_message_manage"));
       if (!can("notice_manage")) {
         setHidden(noticeSaveButton, true);
         setHidden(noticeClearButton, true);
@@ -2742,6 +4876,33 @@ HTML = r"""<!doctype html>
     const submitButton = document.querySelector("#submitButton");
     const pageTitle = document.querySelector(".title");
     const dashboardContent = document.querySelector("#dashboardContent");
+    const companyTabs = Array.from(document.querySelectorAll(".company-tab"));
+    const companyNavTabs = Array.from(document.querySelectorAll(".nav-subitem[data-company-tab]"));
+    const companyPanels = Array.from(document.querySelectorAll("[data-company-panel]"));
+    const companyOrgBody = document.querySelector("#companyOrgBody");
+    const companyStaffRefresh = document.querySelector("#companyStaffRefresh");
+    const companyStaffTaskBody = document.querySelector("#companyStaffTaskBody");
+    const companyStaffDueToday = document.querySelector("#companyStaffDueToday");
+    const companyStaffNoticeTitle = document.querySelector("#companyStaffNoticeTitle");
+    const companyCalendarTitle = document.querySelector("#companyCalendarTitle");
+    const companyCalendarGrid = document.querySelector("#companyCalendarGrid");
+    const companyCalendarPrev = document.querySelector("#companyCalendarPrev");
+    const companyCalendarToday = document.querySelector("#companyCalendarToday");
+    const companyCalendarNext = document.querySelector("#companyCalendarNext");
+    const companyCalendarRefresh = document.querySelector("#companyCalendarRefresh");
+    const companyCalendarSelectedDate = document.querySelector("#companyCalendarSelectedDate");
+    const companyCalendarSelectedList = document.querySelector("#companyCalendarSelectedList");
+    const companyCalendarProjectCount = document.querySelector("#companyCalendarProjectCount");
+    const companyCalendarTaskCount = document.querySelector("#companyCalendarTaskCount");
+    const companyCalendarLeaveCount = document.querySelector("#companyCalendarLeaveCount");
+    const companyCalendarRiskCount = document.querySelector("#companyCalendarRiskCount");
+    const internalChatRoomList = document.querySelector("#internalChatRoomList");
+    const internalChatTitle = document.querySelector("#internalChatTitle");
+    const internalChatHint = document.querySelector("#internalChatHint");
+    const internalChatList = document.querySelector("#internalChatList");
+    const internalChatForm = document.querySelector("#internalChatForm");
+    const internalChatBody = document.querySelector("#internalChatBody");
+    const internalChatRefresh = document.querySelector("#internalChatRefresh");
     const noticeDateInput = document.querySelector("#noticeDateInput");
     const noticeTitleInput = document.querySelector("#noticeTitleInput");
     const noticeOwnerInput = document.querySelector("#noticeOwnerInput");
@@ -2752,12 +4913,19 @@ HTML = r"""<!doctype html>
     const sidebarNoticePreview = document.querySelector("#sidebarNoticePreview");
     const noticePopup = document.querySelector("#noticePopup");
     const noticePopupClose = document.querySelector("#noticePopupClose");
+    const focusWidget = document.querySelector("#focusWidget");
+    const focusWidgetKicker = document.querySelector("#focusWidgetKicker");
+    const focusWidgetTitle = document.querySelector("#focusWidgetTitle");
+    const focusWidgetSubtitle = document.querySelector("#focusWidgetSubtitle");
+    const focusWidgetBody = document.querySelector("#focusWidgetBody");
+    const focusWidgetClose = document.querySelector("#focusWidgetClose");
     const importShipmentBody = document.querySelector("#importShipmentBody");
     const importProgressCard = document.querySelector("#importProgressCard");
     const importShipmentTreeToggle = document.querySelector("#importShipmentTreeToggle");
     const importShipmentSummary = document.querySelector("#importShipmentSummary");
     const importShipmentRefresh = document.querySelector("#importShipmentRefresh");
     const importShipmentInputOpen = document.querySelector("#importShipmentInputOpen");
+    const importShipmentWorkspaceOpen = document.querySelector("#importShipmentWorkspaceOpen");
     const importShipmentPopup = document.querySelector("#importShipmentPopup");
     const importShipmentClose = document.querySelector("#importShipmentClose");
     const importShipmentSave = document.querySelector("#importShipmentSave");
@@ -2776,6 +4944,7 @@ HTML = r"""<!doctype html>
     const importWarehouseDueDate = document.querySelector("#importWarehouseDueDate");
     const managementWorkspace = document.querySelector("#managementWorkspace");
     const ledgerWorkspace = document.querySelector("#ledgerWorkspace");
+    const importWorkspace = document.querySelector("#importWorkspace");
     const leaveWorkspace = document.querySelector("#leaveWorkspace");
     const userAdminWorkspace = document.querySelector("#userAdminWorkspace");
     const backupWorkspace = document.querySelector("#backupWorkspace");
@@ -2832,6 +5001,83 @@ HTML = r"""<!doctype html>
     const systemUpdateState = document.querySelector("#systemUpdateState");
     const systemUpdateMessage = document.querySelector("#systemUpdateMessage");
     const systemUpdateHistoryBody = document.querySelector("#systemUpdateHistoryBody");
+    const crmWorkspace = document.querySelector("#crmWorkspace");
+    const crmRefresh = document.querySelector("#crmRefresh");
+    const crmAccountQuick = document.querySelector("#crmAccountQuick");
+    const crmTaskQuick = document.querySelector("#crmTaskQuick");
+    const crmTabs = Array.from(document.querySelectorAll("[data-crm-tab]"));
+    const crmPanels = Array.from(document.querySelectorAll("[data-crm-panel]"));
+    const crmMessagesTab = document.querySelector("#crmMessagesTab");
+    const crmMessage = document.querySelector("#crmMessage");
+    const crmStatAccounts = document.querySelector("#crmStatAccounts");
+    const crmStatOpenTasks = document.querySelector("#crmStatOpenTasks");
+    const crmStatDueToday = document.querySelector("#crmStatDueToday");
+    const crmStatOverdue = document.querySelector("#crmStatOverdue");
+    const crmProjectProgressBody = document.querySelector("#crmProjectProgressBody");
+    const crmPriorityTaskBody = document.querySelector("#crmPriorityTaskBody");
+    const crmRecentMessageBody = document.querySelector("#crmRecentMessageBody");
+    const crmAccountForm = document.querySelector("#crmAccountForm");
+    const crmAccountId = document.querySelector("#crmAccountId");
+    const crmAccountName = document.querySelector("#crmAccountName");
+    const crmAccountType = document.querySelector("#crmAccountType");
+    const crmAccountContact = document.querySelector("#crmAccountContact");
+    const crmAccountPhone = document.querySelector("#crmAccountPhone");
+    const crmAccountEmail = document.querySelector("#crmAccountEmail");
+    const crmAccountMemo = document.querySelector("#crmAccountMemo");
+    const crmAccountReset = document.querySelector("#crmAccountReset");
+    const crmAccountSearch = document.querySelector("#crmAccountSearch");
+    const crmAccountSearchButton = document.querySelector("#crmAccountSearchButton");
+    const crmAccountBody = document.querySelector("#crmAccountBody");
+    const crmStaffRefresh = document.querySelector("#crmStaffRefresh");
+    const crmStaffBody = document.querySelector("#crmStaffBody");
+    const crmTaskForm = document.querySelector("#crmTaskForm");
+    const crmTaskId = document.querySelector("#crmTaskId");
+    const crmTaskAccount = document.querySelector("#crmTaskAccount");
+    const crmTaskAccountName = document.querySelector("#crmTaskAccountName");
+    const crmTaskTitle = document.querySelector("#crmTaskTitle");
+    const crmTaskAssignee = document.querySelector("#crmTaskAssignee");
+    const crmTaskDue = document.querySelector("#crmTaskDue");
+    const crmTaskPriority = document.querySelector("#crmTaskPriority");
+    const crmTaskStatus = document.querySelector("#crmTaskStatus");
+    const crmTaskDescription = document.querySelector("#crmTaskDescription");
+    const crmTaskReset = document.querySelector("#crmTaskReset");
+    const crmTaskFormToggle = document.querySelector("#crmTaskFormToggle");
+    const crmTaskPresetList = document.querySelector("#crmTaskPresetList");
+    const crmTaskViewSelect = document.querySelector("#crmTaskViewSelect");
+    const crmTaskViewName = document.querySelector("#crmTaskViewName");
+    const crmTaskViewSave = document.querySelector("#crmTaskViewSave");
+    const crmTaskViewDelete = document.querySelector("#crmTaskViewDelete");
+    const crmTaskSearch = document.querySelector("#crmTaskSearch");
+    const crmTaskStatusFilter = document.querySelector("#crmTaskStatusFilter");
+    const crmTaskAssigneeFilter = document.querySelector("#crmTaskAssigneeFilter");
+    const crmTaskPriorityFilter = document.querySelector("#crmTaskPriorityFilter");
+    const crmTaskDueFilter = document.querySelector("#crmTaskDueFilter");
+    const crmTaskSourceFilter = document.querySelector("#crmTaskSourceFilter");
+    const crmTaskSort = document.querySelector("#crmTaskSort");
+    const crmTaskOpenOnly = document.querySelector("#crmTaskOpenOnly");
+    const crmTaskSearchButton = document.querySelector("#crmTaskSearchButton");
+    const crmTaskFilterReset = document.querySelector("#crmTaskFilterReset");
+    const crmTaskBoardStats = document.querySelector("#crmTaskBoardStats");
+    const crmTaskBody = document.querySelector("#crmTaskBody");
+    const crmTaskDetail = document.querySelector("#crmTaskDetail");
+    const crmMineStats = document.querySelector("#crmMineStats");
+    const crmMineTaskBody = document.querySelector("#crmMineTaskBody");
+    const crmWebhookUrl = document.querySelector("#crmWebhookUrl");
+    const crmWebhookUrlCopy = document.querySelector("#crmWebhookUrlCopy");
+    const crmWebhookHeader = document.querySelector("#crmWebhookHeader");
+    const crmWebhookHeaderCopy = document.querySelector("#crmWebhookHeaderCopy");
+    const crmWebhookToken = document.querySelector("#crmWebhookToken");
+    const crmWebhookTokenCopy = document.querySelector("#crmWebhookTokenCopy");
+    const crmWebhookTokenRotate = document.querySelector("#crmWebhookTokenRotate");
+    const crmWebhookSamplePayload = document.querySelector("#crmWebhookSamplePayload");
+    const crmWebhookCurl = document.querySelector("#crmWebhookCurl");
+    const crmMessengerForm = document.querySelector("#crmMessengerForm");
+    const crmMessengerPlatform = document.querySelector("#crmMessengerPlatform");
+    const crmMessengerSenderKey = document.querySelector("#crmMessengerSenderKey");
+    const crmMessengerDisplayName = document.querySelector("#crmMessengerDisplayName");
+    const crmMessengerUser = document.querySelector("#crmMessengerUser");
+    const crmMessengerUserBody = document.querySelector("#crmMessengerUserBody");
+    const crmMessageEventBody = document.querySelector("#crmMessageEventBody");
     let currentMode = "dashboard";
     let vendorContacts = [];
     let ledgerCases = [];
@@ -2839,6 +5085,39 @@ HTML = r"""<!doctype html>
     let managementPeriods = [];
     let importShipments = [];
     let userAccounts = [];
+    let crmAccounts = [];
+    let crmTasks = [];
+    let crmMineTasks = [];
+    let crmProjectProgress = [];
+    let crmUsers = [];
+    let internalChatUsers = [];
+    let internalChatRoom = { type: "global", userId: "" };
+    let companyActiveTab = "notice";
+    let companyCalendarMonth = todayString().slice(0, 7);
+    let companyCalendarSelectedDay = todayString();
+    let companyCalendarEvents = [];
+    let companyCalendarSummary = {};
+    let crmActiveTab = "dashboard";
+    let crmSelectedTaskId = "";
+    const CRM_TASK_STATUSES = ["대기", "진행중", "보류", "완료"];
+    const CRM_TASK_BUILTIN_VIEWS = [
+      { id: "open", name: "전체 미완료", filters: { open_only: "1", sort: "smart" } },
+      { id: "today", name: "오늘 마감", filters: { due: "today", open_only: "1", sort: "due" } },
+      { id: "overdue", name: "지연", filters: { due: "overdue", open_only: "1", sort: "due" } },
+      { id: "mine", name: "내 업무", filters: { assignee_user_id: String(currentUser.id || ""), open_only: "1", sort: "due" } },
+      { id: "messages", name: "메신저 지시", filters: { source: "internal_message", open_only: "1", sort: "updated" } },
+    ];
+    let crmSavedViews = [];
+    let crmActiveTaskViewId = "builtin:open";
+    const crmTaskComments = {};
+    const crmTaskCommentLoads = {};
+    let companyStaffPayloadCache = null;
+    let companyStaffTaskCache = [];
+    let crmStaffPayloadCache = null;
+    let crmStaffTaskCache = [];
+    let focusWidgetLastFocus = null;
+    let focusWidgetTaskId = "";
+    let focusWidgetEmployeeId = "";
     let activeLedgerFilterField = "";
     let activeManagementFilterField = "";
     const activeCellEditors = {
@@ -2853,6 +5132,12 @@ HTML = r"""<!doctype html>
     if (ledgerWorkspaceMount && ledgerFields) ledgerWorkspaceMount.appendChild(ledgerFields);
     if (ledgerFilterPopover) document.body.appendChild(ledgerFilterPopover);
     if (ledgerYearFilter && ledgerMonthFilter) fillPeriodSelects(ledgerYearFilter, ledgerMonthFilter);
+    document.querySelectorAll('.company-panel[data-company-panel="rules"] .company-card').forEach((card) => {
+      const label = card.querySelector(".company-card-head span")?.textContent?.trim() || "사규 카드";
+      card.setAttribute("role", "button");
+      card.setAttribute("tabindex", "0");
+      card.setAttribute("aria-label", `${label} 크게 보기`);
+    });
     renderManagementPeriodControls();
     applyStaticPermissions();
     loadNoticeTemplate();
@@ -2976,7 +5261,9 @@ HTML = r"""<!doctype html>
     }
 
     function roleText(role) {
-      return role === "admin" ? "관리자" : "사용자";
+      if (role === "admin") return "관리자";
+      if (role === "sub_admin") return "부관리자";
+      return "사용자";
     }
 
     function resetUserAdminForm() {
@@ -2989,9 +5276,9 @@ HTML = r"""<!doctype html>
       userAdminPassword.value = "";
       userAdminActive.checked = true;
       userAdminPermissionChecks.forEach((checkbox) => {
-        checkbox.checked = ["ledger_edit", "excel_download", "cs_receive", "leave_view"].includes(checkbox.value);
+        checkbox.checked = ["ledger_edit", "excel_download", "cs_receive", "leave_view", "crm_view"].includes(checkbox.value);
       });
-      userAdminMessage.textContent = "신규 사용자는 아이디와 비밀번호를 입력한 뒤 저장하세요.";
+      userAdminMessage.textContent = "신규 사용자는 10자 이상 비밀번호를 입력한 뒤 저장하세요. 가입 요청 사용자는 활성화하면 로그인할 수 있습니다.";
     }
 
     function syncPermissionChecksForRole() {
@@ -3000,13 +5287,38 @@ HTML = r"""<!doctype html>
         userAdminPermissionChecks.forEach((checkbox) => {
           checkbox.checked = true;
         });
+      } else if (userAdminRole.value === "sub_admin") {
+        const defaults = new Set([
+          "ledger_delete",
+          "notice_manage",
+          "ledger_edit",
+          "excel_upload",
+          "excel_download",
+          "cs_receive",
+          "mail_send",
+          "import_shipment_manage",
+          "leave_view",
+          "leave_approve",
+          "leave_manage",
+          "crm_view",
+          "crm_manage",
+          "crm_message_manage",
+        ]);
+        userAdminPermissionChecks.forEach((checkbox) => {
+          checkbox.checked = defaults.has(checkbox.value);
+        });
+      } else {
+        const defaults = new Set(["ledger_edit", "excel_download", "cs_receive", "leave_view", "crm_view"]);
+        userAdminPermissionChecks.forEach((checkbox) => {
+          checkbox.checked = defaults.has(checkbox.value);
+        });
       }
     }
 
     function renderUserAccounts() {
       if (!userAdminBody) return;
       if (!userAccounts.length) {
-        userAdminBody.innerHTML = `<tr><td colspan="7">등록된 사용자가 없습니다.</td></tr>`;
+        userAdminBody.innerHTML = `<tr><td colspan="8">등록된 사용자가 없습니다.</td></tr>`;
         return;
       }
       userAdminBody.innerHTML = userAccounts.map((user) => `
@@ -3015,9 +5327,10 @@ HTML = r"""<!doctype html>
           <td>${escapeHtml(user.display_name)}</td>
           <td>${roleText(user.role)}</td>
           <td>${(user.permissions || []).map((permission) => permissionLabel(permission)).join(", ")}</td>
-          <td>${user.active ? "사용" : "중지"}</td>
+          <td>${user.active ? "사용" : (user.approved_at ? "중지" : "승인대기")}</td>
           <td>${escapeHtml(user.created_at || "")}</td>
-          <td><button class="admin-action" type="button" data-user-edit="${user.id}">수정</button></td>
+          <td>${escapeHtml(user.last_login_at || "없음")}</td>
+          <td><button class="admin-action" type="button" data-user-edit="${user.id}">${user.active ? "수정" : "승인/수정"}</button></td>
         </tr>
       `).join("");
     }
@@ -3036,8 +5349,8 @@ HTML = r"""<!doctype html>
       userAdminPermissionChecks.forEach((checkbox) => {
         checkbox.checked = permissions.has(checkbox.value);
       });
-      userAdminMessage.textContent = `${user.username} 계정 수정 중입니다. 비밀번호는 변경할 때만 입력하세요.`;
-      userAdminUsername.focus();
+      userAdminMessage.textContent = `${user.username} 계정 수정 중입니다. ${user.active ? "비밀번호는 변경할 때만 입력하세요." : "사용을 체크하고 저장하면 승인됩니다."}`;
+      userAdminUsername?.focus();
     }
 
     async function loadUserAccounts() {
@@ -3402,6 +5715,7 @@ HTML = r"""<!doctype html>
         leaveReasonInput.value = "";
         leaveMessage.textContent = data.message || "연차 신청이 저장되었습니다.";
         await loadLeaveData();
+        if (companyActiveTab === "calendar") await loadCompanyCalendar().catch(() => {});
         setLeaveTab("mine");
       } catch (error) {
         leaveMessage.textContent = error.message;
@@ -3430,6 +5744,7 @@ HTML = r"""<!doctype html>
         if (!response.ok) throw new Error(data.error || "연차 신청 처리에 실패했습니다.");
         leaveMessage.textContent = data.message || "처리되었습니다.";
         await loadLeaveData();
+        if (companyActiveTab === "calendar") await loadCompanyCalendar().catch(() => {});
       } catch (error) {
         leaveMessage.textContent = error.message;
       }
@@ -3474,6 +5789,7 @@ HTML = r"""<!doctype html>
         leaveUsageNoteInput.value = "";
         leaveMessage.textContent = data.message || "기존 사용 연차를 등록했습니다.";
         await loadLeaveData();
+        if (companyActiveTab === "calendar") await loadCompanyCalendar().catch(() => {});
       } catch (error) {
         leaveMessage.textContent = error.message;
       }
@@ -3509,7 +5825,7 @@ HTML = r"""<!doctype html>
         sidebarNoticePreview.innerHTML = `
           <div class="notice-board-kicker">금일 공지사항</div>
           <div class="notice-board-title">등록된 공지 없음</div>
-          <div class="notice-board-body">공지사항 입력 메뉴를 눌러 내용을 입력해주세요.</div>
+          <div class="notice-board-body">공지사항 입력 버튼을 눌러 내용을 입력해주세요.</div>
         `;
         return;
       }
@@ -3534,7 +5850,7 @@ HTML = r"""<!doctype html>
       }
       loadNoticeTemplate();
       noticePopup.classList.add("open");
-      setTimeout(() => noticeTitleInput.focus(), 0);
+      setTimeout(() => noticeTitleInput?.focus(), 0);
     }
 
     function closeNoticePopup() {
@@ -3549,6 +5865,7 @@ HTML = r"""<!doctype html>
       const payload = noticePayload();
       localStorage.setItem("workhub_notice_template", JSON.stringify(payload));
       renderNoticePreview();
+      if (companyStaffNoticeTitle) companyStaffNoticeTitle.textContent = payload.title || "등록 전";
       notice.textContent = "공지사항을 저장했습니다.";
       closeNoticePopup();
     }
@@ -3564,6 +5881,7 @@ HTML = r"""<!doctype html>
       noticeBodyInput.value = "";
       noticeDateInput.value = todayString();
       renderNoticePreview();
+      if (companyStaffNoticeTitle) companyStaffNoticeTitle.textContent = "등록 전";
       notice.textContent = "공지사항 입력 내용을 초기화했습니다.";
     }
 
@@ -3608,7 +5926,7 @@ HTML = r"""<!doctype html>
       }
       resetImportShipmentForm(record);
       importShipmentPopup.classList.add("open");
-      setTimeout(() => importDepartureDate.focus(), 0);
+      setTimeout(() => importDepartureDate?.focus(), 0);
     }
 
     function closeImportShipmentPopup() {
@@ -3885,11 +6203,1709 @@ HTML = r"""<!doctype html>
     }
 
     function escapeHtml(value) {
-      return String(value || "")
+      return String(value ?? "")
         .replaceAll("&", "&amp;")
         .replaceAll("<", "&lt;")
         .replaceAll(">", "&gt;")
         .replaceAll('"', "&quot;");
+    }
+
+    function crmStatusClass(status) {
+      if (status === "완료") return "done";
+      if (status === "진행중") return "progress";
+      if (status === "보류") return "hold";
+      return "wait";
+    }
+
+    function crmStatusBadge(status) {
+      const label = status || "대기";
+      return `<span class="crm-status badge badge-sm ${crmStatusClass(label)}">${escapeHtml(label)}</span>`;
+    }
+
+    function setCrmMessage(text, isError = false) {
+      if (!crmMessage) return;
+      crmMessage.textContent = text || "";
+      crmMessage.classList.toggle("open", Boolean(text));
+      crmMessage.classList.toggle("error", Boolean(isError));
+    }
+
+    async function copyCrmText(text, label = "값") {
+      const value = String(text || "").trim();
+      if (!value) {
+        setCrmMessage(`${label}이 비어 있습니다.`, true);
+        return;
+      }
+      try {
+        await navigator.clipboard.writeText(value);
+        setCrmMessage(`${label}을 복사했습니다.`);
+      } catch (error) {
+        setCrmMessage(`${label}: ${value}`);
+      }
+    }
+
+    async function crmFetchJson(url, options = {}) {
+      const response = await fetch(url, options);
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || "CRM 요청 처리에 실패했습니다.");
+      return data;
+    }
+
+    function syncCompanyNavState() {
+      companyTabs.forEach((button) => button.classList.toggle("active", button.dataset.companyTab === companyActiveTab));
+      companyNavTabs.forEach((button) => button.classList.toggle("active", button.dataset.companyTab === companyActiveTab));
+    }
+
+    function setCompanyTab(tabName) {
+      companyActiveTab = tabName || "notice";
+      companyPanels.forEach((panel) => panel.classList.toggle("active", panel.dataset.companyPanel === companyActiveTab));
+      syncCompanyNavState();
+      if (companyActiveTab === "staff") {
+        loadCompanyStaffDashboard().catch(() => {});
+      } else if (companyActiveTab === "calendar") {
+        loadCompanyCalendar().catch(() => {
+          if (companyCalendarGrid) companyCalendarGrid.innerHTML = `<div class="calendar-empty">캘린더를 불러오지 못했습니다.</div>`;
+        });
+      } else if (companyActiveTab === "chat") {
+        loadInternalChatUsers()
+          .then(() => loadInternalMessages())
+          .catch(() => {
+          if (internalChatList) internalChatList.innerHTML = `<div class="internal-chat-empty">메시지를 불러오지 못했습니다.</div>`;
+        });
+      }
+    }
+
+    function parseLocalDate(value) {
+      const match = String(value || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
+      if (!match) return null;
+      return new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+    }
+
+    function localDateString(dateValue) {
+      const year = dateValue.getFullYear();
+      const month = String(dateValue.getMonth() + 1).padStart(2, "0");
+      const day = String(dateValue.getDate()).padStart(2, "0");
+      return `${year}-${month}-${day}`;
+    }
+
+    function monthTitle(monthText) {
+      const [year, month] = String(monthText || todayString().slice(0, 7)).split("-");
+      return `${year}년 ${Number(month)}월`;
+    }
+
+    function shiftCalendarMonth(delta) {
+      const base = parseLocalDate(`${companyCalendarMonth}-01`) || parseLocalDate(`${todayString().slice(0, 7)}-01`);
+      base.setMonth(base.getMonth() + delta);
+      companyCalendarMonth = localDateString(base).slice(0, 7);
+      companyCalendarSelectedDay = localDateString(base);
+      return loadCompanyCalendar();
+    }
+
+    function calendarEventLabel(event) {
+      if (event.type === "project") return `프로젝트 · ${event.subtitle || ""}`;
+      if (event.type === "leave") return `연차 · ${event.subtitle || ""}`;
+      if (event.type === "pending") return `승인대기 · ${event.subtitle || ""}`;
+      return `업무 · ${event.subtitle || ""}`;
+    }
+
+    function eventsForDay(dayText) {
+      return companyCalendarEvents.filter((event) => event.date === dayText);
+    }
+
+    function renderCalendarEvent(event, compact = true) {
+      const title = compact ? event.title : `${event.title} · ${event.subtitle || ""}`;
+      return `
+        <button class="calendar-event ${escapeHtml(event.type || "task")}" type="button" data-calendar-event-id="${escapeHtml(event.id)}" aria-label="${escapeHtml(calendarEventLabel(event))}">
+          ${escapeHtml(title || "일정")}
+        </button>
+      `;
+    }
+
+    function renderCompanyCalendarSelectedDay() {
+      if (!companyCalendarSelectedDate || !companyCalendarSelectedList) return;
+      const selected = parseLocalDate(companyCalendarSelectedDay);
+      companyCalendarSelectedDate.textContent = selected ? shortKoreanDate(companyCalendarSelectedDay) : companyCalendarSelectedDay;
+      const items = eventsForDay(companyCalendarSelectedDay);
+      if (!items.length) {
+        companyCalendarSelectedList.innerHTML = `<div class="calendar-empty">선택한 날짜에 표시할 일정이 없습니다.</div>`;
+        return;
+      }
+      companyCalendarSelectedList.innerHTML = items.map((event) => `
+        <div class="company-task-item" role="button" tabindex="0" data-calendar-event-id="${escapeHtml(event.id)}" aria-label="${escapeHtml(calendarEventLabel(event))}">
+          <div>
+            <div class="company-task-title">${escapeHtml(event.title || "일정")}</div>
+            <div class="company-task-meta">${escapeHtml(calendarEventLabel(event))}</div>
+          </div>
+          <span class="calendar-event ${escapeHtml(event.type || "task")}">${escapeHtml(event.type === "project" ? "프로젝트" : event.type === "task" ? "업무" : event.type === "pending" ? "대기" : "연차")}</span>
+        </div>
+      `).join("");
+    }
+
+    function renderCompanyCalendar(payload = {}) {
+      if (!companyCalendarGrid) return;
+      companyCalendarMonth = payload.month || companyCalendarMonth;
+      companyCalendarEvents = payload.events || [];
+      companyCalendarSummary = payload.summary || companyCalendarSummary || {};
+      const monthStart = parseLocalDate(`${companyCalendarMonth}-01`) || parseLocalDate(`${todayString().slice(0, 7)}-01`);
+      const gridStart = new Date(monthStart);
+      gridStart.setDate(1 - ((monthStart.getDay() + 6) % 7));
+      const today = todayString();
+      if (companyCalendarTitle) companyCalendarTitle.textContent = monthTitle(companyCalendarMonth);
+      const summary = companyCalendarSummary;
+      if (companyCalendarProjectCount) companyCalendarProjectCount.textContent = `${summary.project || 0}건`;
+      if (companyCalendarTaskCount) companyCalendarTaskCount.textContent = `${summary.task || 0}건`;
+      if (companyCalendarLeaveCount) companyCalendarLeaveCount.textContent = `${summary.leave || 0}건`;
+      if (companyCalendarRiskCount) companyCalendarRiskCount.textContent = `${summary.risk || 0}건`;
+      const cells = [];
+      for (let index = 0; index < 42; index += 1) {
+        const day = new Date(gridStart);
+        day.setDate(gridStart.getDate() + index);
+        const dayText = localDateString(day);
+        const events = eventsForDay(dayText);
+        const visibleEvents = events.slice(0, 4);
+        const classes = [
+          "calendar-day",
+          day.getMonth() === monthStart.getMonth() ? "" : "other-month",
+          dayText === today ? "today" : "",
+          dayText === companyCalendarSelectedDay ? "selected" : "",
+        ].filter(Boolean).join(" ");
+        cells.push(`
+          <div class="${classes}" role="gridcell" tabindex="0" data-calendar-day="${escapeHtml(dayText)}" aria-label="${escapeHtml(`${shortKoreanDate(dayText)} 일정 ${events.length}건`)}">
+            <span class="calendar-date">
+              <span>${escapeHtml(day.getDate())}</span>
+              ${events.length ? `<span class="calendar-date-count">${escapeHtml(events.length)}</span>` : ""}
+            </span>
+            <span class="calendar-event-list">
+              ${visibleEvents.map((event) => renderCalendarEvent(event)).join("")}
+              ${events.length > visibleEvents.length ? `<span class="calendar-more">+${escapeHtml(events.length - visibleEvents.length)} 더보기</span>` : ""}
+            </span>
+          </div>
+        `);
+      }
+      companyCalendarGrid.innerHTML = cells.join("");
+      renderCompanyCalendarSelectedDay();
+    }
+
+    async function loadCompanyCalendar() {
+      if (!companyCalendarGrid) return;
+      if (!can("crm_view")) {
+        companyCalendarGrid.innerHTML = `<div class="calendar-empty">CRM 조회 권한이 없어 캘린더를 볼 수 없습니다.</div>`;
+        return;
+      }
+      companyCalendarGrid.innerHTML = `<div class="calendar-empty">캘린더를 불러오는 중입니다.</div>`;
+      const data = await crmFetchJson(`/api/company-calendar-events?month=${encodeURIComponent(companyCalendarMonth)}`);
+      renderCompanyCalendar(data);
+    }
+
+    function openCalendarEventWidget(eventId) {
+      const event = companyCalendarEvents.find((item) => String(item.id) === String(eventId));
+      if (!event) return;
+      if (event.type === "task" && event.task_id) {
+        openCrmTaskWidget(event.task_id).catch((error) => setCrmMessage(error.message, true));
+        return;
+      }
+      const stateText = event.type === "project"
+        ? `${event.progress || 0}% 완료`
+        : event.type === "pending"
+          ? "승인대기"
+          : event.status || "승인";
+      openFocusWidget({
+        kicker: event.type === "project" ? "프로젝트 일정" : event.type === "pending" ? "승인대기 연차" : "연차 일정",
+        title: event.title || "일정",
+        subtitle: [shortKoreanDate(event.date), event.subtitle].filter(Boolean).join(" · "),
+        body: `
+          <div class="focus-widget-grid">
+            ${focusWidgetMetric("구분", event.type === "project" ? "프로젝트" : event.type === "pending" ? "승인대기" : "연차")}
+            ${focusWidgetMetric("일자", shortKoreanDate(event.date))}
+            ${focusWidgetMetric("상태", stateText)}
+          </div>
+          <section class="focus-widget-section">
+            <div class="focus-widget-section-title">상세</div>
+            <p class="focus-widget-text">${escapeHtml(event.reason || event.assignees || event.subtitle || "상세 내용이 없습니다.")}</p>
+          </section>
+        `,
+      });
+    }
+
+    function renderCompanyStaffTasks(tasks) {
+      if (!companyStaffTaskBody) return;
+      companyStaffTaskCache = tasks || [];
+      const openTasks = (tasks || []).filter((task) => task.status !== "완료");
+      const today = todayString();
+      const dueToday = openTasks.filter((task) => crmDueDateOnly(task) === today).length;
+      if (companyStaffDueToday) companyStaffDueToday.textContent = `${dueToday}건`;
+      if (!openTasks.length) {
+        companyStaffTaskBody.innerHTML = `<div>현재 배정된 미완료 업무가 없습니다.</div>`;
+        return;
+      }
+      companyStaffTaskBody.innerHTML = openTasks.slice(0, 5).map((task) => `
+        <div class="company-task-item" role="button" tabindex="0" aria-label="${escapeHtml(`${task.public_id || ""} ${task.title || ""} 크게 보기`)}" data-company-task-id="${escapeHtml(task.id)}">
+          <div>
+            <div class="company-task-title">${escapeHtml(task.title)}</div>
+            <div class="company-task-meta">${escapeHtml(task.public_id || "")} · ${escapeHtml(crmTaskContextLabel(task))} · ${escapeHtml(crmDueDateText(task))}</div>
+          </div>
+          ${crmStatusBadge(task.status)}
+        </div>
+      `).join("");
+    }
+
+    function personInitials(user) {
+      const label = (user.display_name || user.username || "?").trim();
+      const compact = label.replace(/\s+/g, "");
+      if (!compact) return "?";
+      return Array.from(compact).slice(0, 2).join("");
+    }
+
+    function renderCompanyOrg(payload) {
+      if (!companyOrgBody) return;
+      const staff = payload.staff || [];
+      if (!staff.length) {
+        companyOrgBody.innerHTML = `<div class="company-org-empty">표시할 직원 계정이 없습니다.</div>`;
+        return;
+      }
+      const leads = staff.filter((user) => user.role === "admin");
+      const subLeads = staff.filter((user) => user.role === "sub_admin");
+      const members = staff.filter((user) => !["admin", "sub_admin"].includes(user.role));
+      const renderPerson = (user, lead = false) => `
+        <article class="company-person-card${lead ? " lead" : ""}${String(user.id) === String(currentUser.id) ? " me" : ""}" role="button" tabindex="0" aria-label="${escapeHtml(`${user.display_name || user.username} 직원 크게 보기`)}" data-company-person-card="${escapeHtml(user.id)}">
+          <div class="company-person-top">
+            <div class="company-person-avatar">${escapeHtml(personInitials(user))}</div>
+            <div>
+              <div class="company-person-name">${escapeHtml(user.display_name || user.username)}</div>
+              <div class="company-person-role">${escapeHtml(user.team_label || roleText(user.role))} · ${escapeHtml(user.username)}</div>
+            </div>
+          </div>
+          <div class="company-person-meta">
+            <span>진행<strong>${escapeHtml(user.open_tasks || 0)}</strong></span>
+            <span>오늘<strong>${escapeHtml(user.due_today || 0)}</strong></span>
+            <span>지연<strong>${escapeHtml(user.overdue || 0)}</strong></span>
+          </div>
+        </article>
+      `;
+      companyOrgBody.innerHTML = `
+        <div class="company-org-tree">
+          <div class="company-org-level lead">
+            ${(leads.length ? leads : staff.slice(0, 1)).map((user) => renderPerson(user, true)).join("")}
+          </div>
+          ${subLeads.length ? `<div class="company-org-level staff">${subLeads.map((user) => renderPerson(user, true)).join("")}</div>` : ""}
+          <div class="company-org-level staff">
+            ${(members.length ? members : staff.filter((user) => !leads.includes(user) && !subLeads.includes(user))).map((user) => renderPerson(user)).join("")}
+          </div>
+        </div>
+      `;
+    }
+
+    async function loadCompanyStaffDashboard() {
+      let saved = {};
+      try {
+        saved = JSON.parse(localStorage.getItem("workhub_notice_template") || "{}");
+      } catch {
+        saved = {};
+      }
+      if (companyStaffNoticeTitle) companyStaffNoticeTitle.textContent = saved.title || "등록 전";
+      if (!can("crm_view")) {
+        renderCompanyStaffTasks([]);
+        if (companyOrgBody) companyOrgBody.innerHTML = `<div class="company-org-empty">CRM 조회 권한이 없어 조직도 업무 현황을 볼 수 없습니다.</div>`;
+        return;
+      }
+      const [staffData, myTaskData] = await Promise.all([
+        crmFetchJson("/api/company-staff-dashboard"),
+        crmFetchJson("/api/crm-tasks?mine=1&limit=6"),
+      ]);
+      companyStaffPayloadCache = staffData;
+      renderCompanyOrg(staffData);
+      renderCompanyStaffTasks(myTaskData.tasks || []);
+    }
+
+    function internalChatRoomLabel() {
+      if (internalChatRoom.type === "dm") {
+        const user = internalChatUsers.find((item) => String(item.id) === String(internalChatRoom.userId));
+        return user ? `${user.display_name || user.username} DM` : "직원 DM";
+      }
+      return "전체방";
+    }
+
+    function renderInternalChatRooms() {
+      if (!internalChatRoomList) return;
+      const globalActive = internalChatRoom.type === "global";
+      const rows = [`<button class="internal-chat-room${globalActive ? " active" : ""}" type="button" data-chat-room="global"><span>전체방</span><small>공지/공유</small></button>`];
+      internalChatUsers.forEach((user) => {
+        if (String(user.id) === String(currentUser.id)) return;
+        const active = internalChatRoom.type === "dm" && String(internalChatRoom.userId) === String(user.id);
+        rows.push(`
+          <button class="internal-chat-room${active ? " active" : ""}" type="button" data-chat-room="dm" data-chat-user-id="${escapeHtml(user.id)}">
+            <span>${escapeHtml(user.display_name || user.username)}</span>
+            <small>${escapeHtml(roleText(user.role))}</small>
+          </button>
+        `);
+      });
+      internalChatRoomList.innerHTML = rows.join("");
+      if (internalChatTitle) internalChatTitle.textContent = internalChatRoomLabel();
+      if (internalChatHint) {
+        internalChatHint.textContent = internalChatRoom.type === "dm"
+          ? "DM에서도 /업무 @직원 업무내용 / 기한 으로 업무 지시 가능"
+          : "전체방 공유와 /업무 @직원 업무내용 / 기한 명령을 지원";
+      }
+    }
+
+    async function loadInternalChatUsers() {
+      if (!can("crm_view")) {
+        internalChatUsers = [];
+        renderInternalChatRooms();
+        return;
+      }
+      const data = await crmFetchJson("/api/company-staff-dashboard");
+      internalChatUsers = data.staff || [];
+      renderInternalChatRooms();
+    }
+
+    function internalMessageClass(message) {
+      if (message.command_error) return " command-error";
+      if (message.command_result) return " command-ok";
+      return "";
+    }
+
+    function renderInternalMessages(messages) {
+      if (!internalChatList) return;
+      const rows = messages || [];
+      if (!rows.length) {
+        internalChatList.innerHTML = `<div class="internal-chat-empty">아직 메시지가 없습니다. 첫 공유나 DM을 남겨줘.</div>`;
+        return;
+      }
+      internalChatList.innerHTML = rows.map((message) => {
+        const isMine = String(message.user_id) === String(currentUser.id);
+        return `
+          <article class="internal-message${isMine ? " mine" : ""}${internalMessageClass(message)}">
+            <div class="internal-message-meta">
+              <span class="internal-message-name">${escapeHtml(message.display_name || message.username || "직원")}</span>
+              <span>${escapeHtml(message.created_at || "")}</span>
+            </div>
+            <div class="internal-message-body">${escapeHtml(message.body || "")}</div>
+            ${message.command_result ? `<div class="internal-message-meta"><span>${escapeHtml(message.command_result)}</span></div>` : ""}
+            ${message.command_error ? `<div class="internal-message-meta"><span>${escapeHtml(message.command_error)}</span></div>` : ""}
+          </article>
+        `;
+      }).join("");
+      internalChatList.scrollTop = internalChatList.scrollHeight;
+    }
+
+    async function loadInternalMessages() {
+      renderInternalChatRooms();
+      const params = new URLSearchParams({ limit: "100", room: internalChatRoom.type });
+      if (internalChatRoom.type === "dm" && internalChatRoom.userId) params.set("user_id", internalChatRoom.userId);
+      const data = await crmFetchJson(`/api/internal-messages?${params.toString()}`);
+      renderInternalMessages(data.messages || []);
+    }
+
+    async function setInternalChatRoom(type, userId = "") {
+      internalChatRoom = { type: type === "dm" ? "dm" : "global", userId: type === "dm" ? String(userId || "") : "" };
+      renderInternalChatRooms();
+      await loadInternalMessages();
+      internalChatBody?.focus();
+    }
+
+    async function sendInternalMessage(event) {
+      event.preventDefault();
+      if (!internalChatBody) return;
+      const body = internalChatBody.value.trim();
+      if (!body) {
+        internalChatBody?.focus();
+        return;
+      }
+      await crmFetchJson("/api/internal-message-save", {
+        method: "POST",
+        body: JSON.stringify({
+          body,
+          room_type: internalChatRoom.type,
+          recipient_user_id: internalChatRoom.type === "dm" ? internalChatRoom.userId : "",
+        }),
+      });
+      internalChatBody.value = "";
+      await loadInternalMessages();
+      if (body.startsWith("/업무")) {
+        await Promise.all([
+          loadCrmTasks().catch(() => {}),
+          loadCrmMineTasks().catch(() => {}),
+          loadCrmStaffDashboard().catch(() => {}),
+          loadCompanyStaffDashboard().catch(() => {}),
+          loadCompanyCalendar().catch(() => {}),
+          loadCrmDashboard().catch(() => {}),
+        ]);
+      }
+      internalChatBody?.focus();
+    }
+
+    function setCrmTab(tabName) {
+      if (tabName === "messages" && !can("crm_message_manage")) tabName = "dashboard";
+      crmActiveTab = tabName;
+      crmTabs.forEach((button) => {
+        const active = button.dataset.crmTab === tabName;
+        button.classList.toggle("active", active);
+        button.setAttribute("aria-selected", active ? "true" : "false");
+        button.tabIndex = active ? 0 : -1;
+      });
+      crmPanels.forEach((panel) => {
+        const active = panel.dataset.crmPanel === tabName;
+        panel.classList.toggle("active", active);
+        panel.hidden = !active;
+      });
+      syncCrmNavState();
+      if (tabName === "accounts") {
+        loadCrmStaffDashboard().catch((error) => setCrmMessage(error.message, true));
+      } else if (tabName === "mine") {
+        loadCrmMineTasks().catch((error) => setCrmMessage(error.message, true));
+      } else if (tabName === "tasks") {
+        loadCrmTasks().catch((error) => setCrmMessage(error.message, true));
+      } else if (tabName === "messages") {
+        loadCrmMessenger().catch((error) => setCrmMessage(error.message, true));
+      } else {
+        loadCrmDashboard().catch((error) => setCrmMessage(error.message, true));
+      }
+    }
+
+    function crmTaskFilterDefaults() {
+      return { q: "", status: "", assignee_user_id: "", priority: "", due: "", source: "", open_only: "1", sort: "smart" };
+    }
+
+    function normalizeCrmTaskFilters(filters = {}) {
+      const defaults = crmTaskFilterDefaults();
+      const normalized = { ...defaults };
+      Object.keys(defaults).forEach((key) => {
+        if (Object.prototype.hasOwnProperty.call(filters, key)) normalized[key] = String(filters[key] || "");
+      });
+      normalized.open_only = normalized.open_only === "1" || normalized.open_only === "true" ? "1" : "";
+      if (normalized.status === "완료") normalized.open_only = "";
+      if (!["smart", "due", "updated"].includes(normalized.sort)) normalized.sort = "smart";
+      return normalized;
+    }
+
+    function readCrmTaskFilters() {
+      return normalizeCrmTaskFilters({
+        q: crmTaskSearch?.value.trim() || "",
+        status: crmTaskStatusFilter?.value || "",
+        assignee_user_id: crmTaskAssigneeFilter?.value || "",
+        priority: crmTaskPriorityFilter?.value || "",
+        due: crmTaskDueFilter?.value || "",
+        source: crmTaskSourceFilter?.value || "",
+        open_only: crmTaskOpenOnly?.checked ? "1" : "",
+        sort: crmTaskSort?.value || "smart",
+      });
+    }
+
+    function writeCrmTaskFilters(filters = {}) {
+      const normalized = normalizeCrmTaskFilters(filters);
+      if (crmTaskSearch) crmTaskSearch.value = normalized.q;
+      if (crmTaskStatusFilter) crmTaskStatusFilter.value = normalized.status;
+      if (crmTaskAssigneeFilter) crmTaskAssigneeFilter.value = normalized.assignee_user_id;
+      if (crmTaskPriorityFilter) crmTaskPriorityFilter.value = normalized.priority;
+      if (crmTaskDueFilter) crmTaskDueFilter.value = normalized.due;
+      if (crmTaskSourceFilter) crmTaskSourceFilter.value = normalized.source;
+      if (crmTaskOpenOnly) crmTaskOpenOnly.checked = normalized.open_only === "1";
+      if (crmTaskSort) crmTaskSort.value = normalized.sort;
+    }
+
+    function crmBuiltinTaskView(viewId) {
+      const id = String(viewId || "").replace(/^builtin:/, "");
+      return CRM_TASK_BUILTIN_VIEWS.find((view) => view.id === id);
+    }
+
+    function crmSavedTaskView(viewId) {
+      const id = String(viewId || "").replace(/^saved:/, "");
+      return crmSavedViews.find((view) => String(view.id) === id);
+    }
+
+    function renderCrmSavedViews() {
+      if (!crmTaskViewSelect || !crmTaskPresetList) return;
+      const savedOptions = crmSavedViews.map((view) => (
+        `<option value="saved:${escapeHtml(view.id)}">${escapeHtml(view.name)}</option>`
+      )).join("");
+      crmTaskViewSelect.innerHTML = [
+        `<option value="">저장뷰 선택</option>`,
+        `<optgroup label="기본 보기">${CRM_TASK_BUILTIN_VIEWS.map((view) => (
+          `<option value="builtin:${escapeHtml(view.id)}">${escapeHtml(view.name)}</option>`
+        )).join("")}</optgroup>`,
+        savedOptions ? `<optgroup label="내 저장뷰">${savedOptions}</optgroup>` : "",
+      ].join("");
+      crmTaskViewSelect.value = Array.from(crmTaskViewSelect.options).some((option) => option.value === crmActiveTaskViewId) ? crmActiveTaskViewId : "";
+      crmTaskPresetList.innerHTML = CRM_TASK_BUILTIN_VIEWS.map((view) => {
+        const active = crmActiveTaskViewId === `builtin:${view.id}`;
+        return `<button class="crm-view-pill${active ? " active" : ""}" type="button" data-crm-task-view="builtin:${escapeHtml(view.id)}">${escapeHtml(view.name)}</button>`;
+      }).join("");
+      if (crmTaskViewName && document.activeElement !== crmTaskViewName) {
+        const selectedSaved = crmSavedTaskView(crmActiveTaskViewId);
+        crmTaskViewName.value = selectedSaved?.name || "";
+      }
+      if (crmTaskViewDelete) crmTaskViewDelete.disabled = !crmActiveTaskViewId.startsWith("saved:");
+    }
+
+    function applyCrmTaskView(viewId, load = true) {
+      const viewKey = String(viewId || "");
+      const builtin = crmBuiltinTaskView(viewKey);
+      const saved = crmSavedTaskView(viewKey);
+      if (!builtin && !saved) return;
+      crmActiveTaskViewId = builtin ? `builtin:${builtin.id}` : `saved:${saved.id}`;
+      writeCrmTaskFilters(builtin ? builtin.filters : saved.filters || {});
+      renderCrmSavedViews();
+      if (load) loadCrmTasks().catch((error) => setCrmMessage(error.message, true));
+    }
+
+    function markCrmTaskFiltersDirty() {
+      crmActiveTaskViewId = "";
+      renderCrmSavedViews();
+    }
+
+    async function loadCrmSavedViews() {
+      if (!can("crm_view")) return;
+      const data = await crmFetchJson("/api/crm-saved-views?scope=tasks");
+      crmSavedViews = data.views || [];
+      renderCrmSavedViews();
+    }
+
+    async function saveCurrentCrmTaskView() {
+      const filters = readCrmTaskFilters();
+      const selected = crmSavedTaskView(crmActiveTaskViewId);
+      const name = String(crmTaskViewName?.value || selected?.name || "").trim();
+      if (!name) {
+        setCrmMessage("저장뷰 이름을 입력해줘.", true);
+        crmTaskViewName?.focus();
+        return;
+      }
+      const data = await crmFetchJson("/api/crm-saved-view-save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: selected?.id || "",
+          scope: "tasks",
+          name: name.trim(),
+          filters,
+          sort_key: filters.sort,
+        }),
+      });
+      crmSavedViews = data.views || [];
+      crmActiveTaskViewId = `saved:${data.view_id}`;
+      if (crmTaskViewName) crmTaskViewName.value = name.trim();
+      renderCrmSavedViews();
+      setCrmMessage(data.message || "저장뷰를 저장했습니다.");
+    }
+
+    async function deleteCurrentCrmTaskView() {
+      const selected = crmSavedTaskView(crmActiveTaskViewId);
+      if (!selected) {
+        setCrmMessage("삭제할 내 저장뷰를 선택해줘.", true);
+        return;
+      }
+      if (!confirm(`'${selected.name}' 저장뷰를 삭제할까요?`)) return;
+      const data = await crmFetchJson("/api/crm-saved-view-delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: selected.id, scope: "tasks" }),
+      });
+      crmSavedViews = data.views || [];
+      crmActiveTaskViewId = "builtin:open";
+      writeCrmTaskFilters(crmBuiltinTaskView("open")?.filters || {});
+      renderCrmSavedViews();
+      setCrmMessage(data.message || "저장뷰를 삭제했습니다.");
+      await loadCrmTasks();
+    }
+
+    function renderCrmUserOptions() {
+      const options = [`<option value="">담당자 선택</option>`].concat(
+        crmUsers.map((user) => `<option value="${escapeHtml(user.id)}">${escapeHtml(user.display_name || user.username)}</option>`)
+      ).join("");
+      if (crmTaskAssignee) crmTaskAssignee.innerHTML = options;
+      if (crmMessengerUser) crmMessengerUser.innerHTML = options;
+      if (crmTaskAssigneeFilter) {
+        const current = crmTaskAssigneeFilter.value;
+        crmTaskAssigneeFilter.innerHTML = [`<option value="">담당자 전체</option>`].concat(
+          crmUsers.map((user) => `<option value="${escapeHtml(user.id)}">${escapeHtml(user.display_name || user.username)}</option>`)
+        ).join("");
+        crmTaskAssigneeFilter.value = Array.from(crmTaskAssigneeFilter.options).some((option) => option.value === current) ? current : "";
+      }
+    }
+
+    function renderCrmAccountOptions() {
+      if (!crmTaskAccount) return;
+      crmTaskAccount.innerHTML = [`<option value="">업무 구분/거래처 선택</option>`].concat(
+        crmAccounts.map((account) => `<option value="${escapeHtml(account.id)}">${escapeHtml(account.name)}</option>`)
+      ).join("");
+    }
+
+    function projectProgressLabel(project) {
+      if ((project.overdue || 0) > 0) return "지연 확인";
+      if ((project.due_today || 0) > 0) return "오늘 마감";
+      if ((project.open_tasks || 0) === 0) return "완료";
+      if ((project.progress_tasks || 0) > 0) return "진행중";
+      return "대기";
+    }
+
+    function projectProgressPercent(project) {
+      const value = Number(project.progress_percent || 0);
+      return Math.max(0, Math.min(100, Number.isFinite(value) ? value : 0));
+    }
+
+    function renderCrmProjectProgress(projects) {
+      if (!crmProjectProgressBody) return;
+      if (!projects.length) {
+        crmProjectProgressBody.innerHTML = `<div class="crm-project-empty">등록된 프로젝트 업무가 없습니다.</div>`;
+        return;
+      }
+      crmProjectProgressBody.innerHTML = projects.map((project) => {
+        const percent = projectProgressPercent(project);
+        const assignees = String(project.assignee_names || "").split(",").map((name) => name.trim()).filter(Boolean);
+        const ownerText = assignees.length ? assignees.slice(0, 4).join(", ") : "담당자 미정";
+        const label = projectProgressLabel(project);
+        return `
+          <article class="crm-project-row" role="button" tabindex="0" aria-label="${escapeHtml(`${project.project_name || "프로젝트"} 진행상황 크게 보기`)}" data-crm-project-key="${escapeHtml(project.project_key || "")}">
+            <div class="crm-project-main">
+              <div class="crm-project-title">${escapeHtml(project.project_name || "프로젝트 미지정")}</div>
+              <div class="crm-project-meta">${escapeHtml(ownerText)} · 다음 마감 ${escapeHtml(project.next_due_at || "없음")}</div>
+            </div>
+            <div class="crm-project-progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${escapeHtml(percent)}" aria-label="${escapeHtml(project.project_name || "프로젝트")} 완료율">
+              <div class="crm-project-progress-top"><span>${escapeHtml(label)}</span><strong>${escapeHtml(percent)}%</strong></div>
+              <div class="crm-project-bar"><span style="width: ${escapeHtml(percent)}%"></span></div>
+            </div>
+            <div class="crm-project-metrics">
+              <span class="crm-project-pill">${escapeHtml(project.open_tasks || 0)}건 진행</span>
+              <span class="crm-project-pill">${escapeHtml(project.completed_tasks || 0)}/${escapeHtml(project.total_tasks || 0)} 완료</span>
+              ${(project.due_today || 0) > 0 ? `<span class="crm-project-pill today">오늘 ${escapeHtml(project.due_today)}건</span>` : ""}
+              ${(project.overdue || 0) > 0 ? `<span class="crm-project-pill danger">지연 ${escapeHtml(project.overdue)}건</span>` : ""}
+            </div>
+          </article>
+        `;
+      }).join("");
+    }
+
+    function renderCrmDashboard(data) {
+      const stats = data.stats || {};
+      crmStatAccounts.textContent = crmUsers.length || stats.accounts || 0;
+      crmStatOpenTasks.textContent = stats.open_tasks || 0;
+      crmStatDueToday.textContent = stats.due_today || 0;
+      crmStatOverdue.textContent = stats.overdue || 0;
+      crmProjectProgress = data.project_progress || [];
+      renderCrmProjectProgress(crmProjectProgress);
+      const tasks = data.priority_tasks || [];
+      crmPriorityTaskBody.innerHTML = tasks.length ? tasks.map((task) => `
+        <tr>
+          <td>${escapeHtml(task.public_id)}</td>
+          <td>${escapeHtml(crmTaskContextLabel(task))}</td>
+          <td class="left">${escapeHtml(task.title)}</td>
+          <td>${escapeHtml(task.assignee_name)}</td>
+          <td>${escapeHtml(task.due_at)}</td>
+          <td>${crmStatusBadge(task.status)}</td>
+        </tr>
+      `).join("") : `<tr><td colspan="6">우선 처리할 CRM 업무가 없습니다.</td></tr>`;
+      const events = data.recent_events || [];
+      crmRecentMessageBody.innerHTML = events.length ? events.map((event) => `
+        <tr>
+          <td>${escapeHtml(event.created_at)}</td>
+          <td>${escapeHtml(event.sender_name || event.sender_key)}</td>
+          <td>${escapeHtml(event.result)}</td>
+          <td class="left">${escapeHtml(event.text)}</td>
+        </tr>
+      `).join("") : `<tr><td colspan="4">최근 메신저 처리 로그가 없습니다.</td></tr>`;
+    }
+
+    async function loadCrmDashboard() {
+      if (!can("crm_view")) return;
+      const data = await crmFetchJson("/api/crm-dashboard");
+      renderCrmDashboard(data);
+    }
+
+    function resetCrmAccountForm() {
+      crmAccountId.value = "";
+      crmAccountName.value = "";
+      crmAccountType.value = "";
+      crmAccountContact.value = "";
+      crmAccountPhone.value = "";
+      crmAccountEmail.value = "";
+      crmAccountMemo.value = "";
+    }
+
+    function fillCrmAccountForm(account) {
+      setCrmTab("accounts");
+      crmAccountId.value = account.id || "";
+      crmAccountName.value = account.name || "";
+      crmAccountType.value = account.account_type || "";
+      crmAccountContact.value = account.contact_name || "";
+      crmAccountPhone.value = account.phone || "";
+      crmAccountEmail.value = account.email || "";
+      crmAccountMemo.value = account.memo || "";
+      crmAccountName?.focus();
+    }
+
+    function renderCrmAccounts() {
+      renderCrmAccountOptions();
+      crmAccountBody.innerHTML = crmAccounts.length ? crmAccounts.map((account) => `
+        <tr>
+          <td class="left"><strong>${escapeHtml(account.name)}</strong><div>${escapeHtml(account.memo)}</div></td>
+          <td>${escapeHtml(account.account_type)}</td>
+          <td>${escapeHtml(account.contact_name)}</td>
+          <td>${escapeHtml(account.phone)}</td>
+          <td>${escapeHtml(account.email)}</td>
+          <td>${escapeHtml(account.open_task_count || 0)}건</td>
+          <td><button class="crm-mini-button" type="button" data-crm-account-edit="${escapeHtml(account.id)}">수정</button></td>
+        </tr>
+      `).join("") : `<tr><td colspan="7">등록된 CRM 거래처가 없습니다.</td></tr>`;
+    }
+
+    function latestTaskForUser(tasks, userId) {
+      return (tasks || []).find((task) => String(task.assignee_user_id || "") === String(userId || "") && task.status !== "완료");
+    }
+
+    function renderCrmStaffDashboard(payload, tasks) {
+      if (!crmStaffBody) return;
+      crmStaffPayloadCache = payload || null;
+      crmStaffTaskCache = tasks || [];
+      const staff = payload?.staff || [];
+      const rows = tasks || [];
+      if (!staff.length) {
+        crmStaffBody.innerHTML = `<div class="internal-chat-empty">표시할 직원 계정이 없습니다.</div>`;
+        return;
+      }
+      crmStaffBody.innerHTML = staff.map((user) => {
+        const latest = latestTaskForUser(rows, user.id);
+        return `
+          <article class="crm-staff-row" role="button" tabindex="0" aria-label="${escapeHtml(`${user.display_name || user.username} 직원 업무 크게 보기`)}" data-crm-staff-card="${escapeHtml(user.id)}">
+            <div class="crm-staff-person">
+              <div class="crm-staff-avatar">${escapeHtml(personInitials(user))}</div>
+              <div>
+                <div class="crm-staff-name">${escapeHtml(user.display_name || user.username)}</div>
+                <div class="crm-staff-role">${escapeHtml(roleText(user.role))} · ${escapeHtml(user.username)}</div>
+              </div>
+            </div>
+            <div class="crm-staff-metric"><span>진행</span><strong>${escapeHtml(user.open_tasks || 0)}</strong></div>
+            <div class="crm-staff-metric"><span>오늘</span><strong>${escapeHtml(user.due_today || 0)}</strong></div>
+            <div class="crm-staff-metric"><span>지연</span><strong>${escapeHtml(user.overdue || 0)}</strong></div>
+            <div class="crm-staff-latest">${latest ? `${escapeHtml(latest.public_id || "")} · ${escapeHtml(latest.title || "")} · ${escapeHtml(crmDueDateText(latest))}` : "최근 미완료 업무 없음"}</div>
+          </article>
+        `;
+      }).join("");
+    }
+
+    async function loadCrmStaffDashboard() {
+      if (!can("crm_view")) return;
+      const [staffPayload, taskPayload] = await Promise.all([
+        crmFetchJson("/api/company-staff-dashboard"),
+        crmFetchJson("/api/crm-tasks?limit=2000"),
+      ]);
+      crmUsers = staffPayload.staff || crmUsers;
+      renderCrmUserOptions();
+      renderCrmStaffDashboard(staffPayload, taskPayload.tasks || []);
+    }
+
+    async function loadCrmAccounts() {
+      if (!can("crm_view")) return;
+      const params = new URLSearchParams();
+      if (crmAccountSearch?.value) params.set("q", crmAccountSearch.value.trim());
+      const data = await crmFetchJson(`/api/crm-accounts?${params.toString()}`);
+      crmAccounts = data.accounts || [];
+      renderCrmAccounts();
+    }
+
+    async function saveCrmAccountForm(event) {
+      event.preventDefault();
+      if (!can("crm_manage")) return;
+      const payload = {
+        id: crmAccountId.value,
+        name: crmAccountName.value.trim(),
+        account_type: crmAccountType.value.trim(),
+        contact_name: crmAccountContact.value.trim(),
+        phone: crmAccountPhone.value.trim(),
+        email: crmAccountEmail.value.trim(),
+        memo: crmAccountMemo.value.trim(),
+      };
+      const data = await crmFetchJson("/api/crm-account-save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      setCrmMessage(data.message || "거래처를 저장했습니다.");
+      resetCrmAccountForm();
+      await loadCrmAccounts();
+      await loadCrmDashboard();
+    }
+
+    function setCrmTaskFormOpen(open) {
+      if (!crmTaskForm) return;
+      crmTaskForm.classList.toggle("collapsed", !open);
+      if (crmTaskFormToggle) crmTaskFormToggle.textContent = open ? "입력 닫기" : "입력 열기";
+    }
+
+    function resetCrmTaskForm() {
+      crmTaskId.value = "";
+      crmTaskAccount.value = "";
+      crmTaskAccountName.value = "";
+      crmTaskTitle.value = "";
+      crmTaskAssignee.value = "";
+      crmTaskDue.value = "";
+      crmTaskPriority.value = "보통";
+      crmTaskStatus.value = "대기";
+      crmTaskDescription.value = "";
+    }
+
+    function fillCrmTaskForm(task) {
+      setCrmTaskFormOpen(true);
+      setCrmTab("tasks");
+      crmTaskId.value = task.id || "";
+      crmTaskAccount.value = task.account_id || "";
+      crmTaskAccountName.value = task.account_name || "";
+      crmTaskTitle.value = task.title || "";
+      crmTaskAssignee.value = task.assignee_user_id || "";
+      crmTaskDue.value = task.due_at || "";
+      crmTaskPriority.value = task.priority || "보통";
+      crmTaskStatus.value = task.status || "대기";
+      crmTaskDescription.value = task.description || "";
+      crmTaskTitle?.focus();
+    }
+
+    function crmPriorityClass(priority) {
+      if (priority === "높음") return "high";
+      if (priority === "낮음") return "low";
+      return "normal";
+    }
+
+    function crmPriorityBadge(priority) {
+      const label = priority || "보통";
+      return `<span class="crm-priority badge badge-sm ${crmPriorityClass(label)}">${escapeHtml(label)}</span>`;
+    }
+
+    function crmDueDateText(task) {
+      return task?.due_at || "기한 없음";
+    }
+
+    function crmTaskContextLabel(task) {
+      return task?.account_name || "직원 지시 업무";
+    }
+
+    function crmSourceLabel(source) {
+      const value = String(source || "app");
+      if (value === "internal_message") return "사내 메신저";
+      if (value.startsWith("messenger:")) return "외부 메신저";
+      if (value === "app") return "직접 등록";
+      return value;
+    }
+
+    function crmDueDateOnly(task) {
+      const due = task?.due_at || "";
+      return due.length >= 10 ? due.slice(0, 10) : "";
+    }
+
+    function renderCrmTaskBoardStats() {
+      if (!crmTaskBoardStats) return;
+      const today = todayString();
+      const openTasks = crmTasks.filter((task) => task.status !== "완료");
+      const dueToday = openTasks.filter((task) => crmDueDateOnly(task) === today).length;
+      const overdue = openTasks.filter((task) => {
+        const day = crmDueDateOnly(task);
+        return day && day < today;
+      }).length;
+      const highPriority = openTasks.filter((task) => task.priority === "높음").length;
+      const holdTasks = crmTasks.filter((task) => task.status === "보류").length;
+      const stats = [
+        ["진행 업무", openTasks.length, "OPEN"],
+        ["오늘 마감", dueToday, "DUE"],
+        ["지연 업무", overdue, "LATE"],
+        ["높음/보류", `${highPriority}/${holdTasks}`, "HOT"],
+      ];
+      crmTaskBoardStats.innerHTML = stats.map(([label, value, icon]) => `
+        <article class="crm-board-stat">
+          <div><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></div>
+          <i>${escapeHtml(icon)}</i>
+        </article>
+      `).join("");
+    }
+
+    function renderCrmTaskCard(task) {
+      const isActive = String(task.id) === String(crmSelectedTaskId);
+      const canEdit = can("crm_manage");
+      return `
+        <article class="crm-task-card ${isActive ? "active" : ""}" role="button" tabindex="0" aria-pressed="${isActive ? "true" : "false"}" aria-label="${escapeHtml(`${task.public_id || ""} ${task.title || ""}`)}" data-crm-task-card="${escapeHtml(task.id)}">
+          <div class="crm-task-card-top">
+            ${crmPriorityBadge(task.priority)}
+            <span class="crm-status ${crmStatusClass(task.status)}">${escapeHtml(task.status || "대기")}</span>
+          </div>
+          <div>
+            <div class="crm-task-card-title">${escapeHtml(task.title)}</div>
+            <div class="crm-task-card-sub">${escapeHtml(crmTaskContextLabel(task))}</div>
+          </div>
+          <div class="crm-task-card-sub">${escapeHtml(task.description || "상세 내용이 없습니다.")}</div>
+          <div class="crm-task-card-meta">
+            <span>${escapeHtml(task.assignee_name || "담당자 미정")}</span>
+            <span class="crm-due-text">${escapeHtml(crmDueDateText(task))}</span>
+          </div>
+          <div class="crm-task-card-actions">
+            <span>${escapeHtml(task.public_id || "")}</span>
+            <span class="crm-mini-actions">
+              ${canEdit ? `<button class="crm-mini-button" type="button" data-crm-task-edit="${escapeHtml(task.id)}">수정</button>` : ""}
+              <button class="crm-mini-button primary" type="button" data-crm-task-status="${escapeHtml(task.id)}" data-status="진행중">확인</button>
+              <button class="crm-mini-button primary" type="button" data-crm-task-status="${escapeHtml(task.id)}" data-status="완료">완료</button>
+            </span>
+          </div>
+        </article>
+      `;
+    }
+
+    function crmTimelineTypeLabel(type) {
+      if (type === "status") return "상태 변경";
+      if (type === "messenger") return "메신저";
+      return "댓글";
+    }
+
+    function renderCrmTaskTimeline(task) {
+      const key = String(task.id || "");
+      const comments = crmTaskComments[key];
+      const loading = crmTaskCommentLoads[key];
+      const creation = {
+        label: "업무 생성",
+        created_at: task.created_at || "",
+        author_name: task.requester_name || "시스템",
+        body: `${crmSourceLabel(task.source)}에서 생성됐습니다.`,
+      };
+      const commentItems = (comments || []).map((comment) => ({
+        label: crmTimelineTypeLabel(comment.comment_type),
+        created_at: comment.created_at || "",
+        author_name: comment.author_name || "직원",
+        body: comment.body || "",
+      }));
+      const items = commentItems.concat([creation]);
+      if (!comments && loading) {
+        items.unshift({
+          label: "불러오는 중",
+          created_at: "",
+          author_name: "",
+          body: "활동 이력을 불러오고 있습니다.",
+        });
+      } else if (comments && !comments.length) {
+        items.unshift({
+          label: "활동 없음",
+          created_at: "",
+          author_name: "",
+          body: "아직 댓글이나 상태 변경 이력이 없습니다.",
+        });
+      }
+      return `
+        <div>
+          <div class="crm-timeline-title">활동 이력</div>
+          <ol class="crm-timeline" aria-label="업무 활동 이력">
+            ${items.map((item) => `
+              <li class="crm-timeline-item">
+                <div class="crm-timeline-head">
+                  <span>${escapeHtml(item.label)}${item.author_name ? ` · ${escapeHtml(item.author_name)}` : ""}</span>
+                  <span>${escapeHtml(item.created_at)}</span>
+                </div>
+                <div class="crm-timeline-body">${escapeHtml(item.body)}</div>
+              </li>
+            `).join("")}
+          </ol>
+        </div>
+      `;
+    }
+
+    function renderCrmTaskDetail(task) {
+      if (!crmTaskDetail) return;
+      if (!task) {
+        crmTaskDetail.innerHTML = `<div class="crm-task-detail-empty">업무 카드를 선택하면 상세 정보와 처리 버튼이 표시됩니다.</div>`;
+        return;
+      }
+      const canEdit = can("crm_manage");
+      const commentId = `crmTaskCommentBody-${task.id}`;
+      crmTaskDetail.innerHTML = `
+        <div class="crm-task-detail-inner">
+          <div>
+            <div class="crm-task-detail-kicker">${escapeHtml(crmTaskContextLabel(task))} · ${escapeHtml(task.public_id || "")}</div>
+            <div class="crm-task-detail-title">${escapeHtml(task.title)}</div>
+          </div>
+          <div class="crm-task-detail-desc">${escapeHtml(task.description || "상세 내용이 없습니다.")}</div>
+          <div class="crm-detail-grid">
+            <div class="crm-detail-cell"><span>담당자</span><strong>${escapeHtml(task.assignee_name || "미정")}</strong></div>
+            <div class="crm-detail-cell"><span>요청자</span><strong>${escapeHtml(task.requester_name || "미정")}</strong></div>
+            <div class="crm-detail-cell"><span>마감</span><strong>${escapeHtml(crmDueDateText(task))}</strong></div>
+            <div class="crm-detail-cell"><span>상태</span><strong>${escapeHtml(task.status || "대기")}</strong></div>
+            <div class="crm-detail-cell"><span>우선순위</span><strong>${escapeHtml(task.priority || "보통")}</strong></div>
+            <div class="crm-detail-cell"><span>출처</span><strong>${escapeHtml(crmSourceLabel(task.source))}</strong></div>
+          </div>
+          <div class="crm-detail-actions">
+            ${canEdit ? `<button class="crm-mini-button" type="button" data-crm-task-edit="${escapeHtml(task.id)}">수정</button>` : ""}
+            <button class="crm-mini-button primary" type="button" data-crm-task-status="${escapeHtml(task.id)}" data-status="진행중">확인</button>
+            <button class="crm-mini-button primary" type="button" data-crm-task-status="${escapeHtml(task.id)}" data-status="완료">완료</button>
+            <button class="crm-mini-button" type="button" data-crm-task-status="${escapeHtml(task.id)}" data-status="보류">보류</button>
+            <button class="crm-mini-button" type="button" data-crm-task-comment="${escapeHtml(task.id)}">댓글</button>
+          </div>
+          <form class="crm-detail-comment-form" data-crm-comment-form="${escapeHtml(task.id)}">
+            <label for="${escapeHtml(commentId)}">댓글</label>
+            <textarea class="crm-textarea" id="${escapeHtml(commentId)}" data-crm-comment-body placeholder="처리 내용이나 다음 액션을 남겨줘."></textarea>
+            <button class="crm-mini-button primary" type="submit">댓글 등록</button>
+          </form>
+          ${renderCrmTaskTimeline(task)}
+        </div>
+      `;
+    }
+
+    function focusCrmTaskCommentForm(taskId) {
+      const escapedTaskId = window.CSS?.escape ? CSS.escape(String(taskId || "")) : String(taskId || "").replaceAll('"', '\\"');
+      const textarea = crmTaskDetail?.querySelector(`[data-crm-comment-form="${escapedTaskId}"] [data-crm-comment-body]`);
+      if (textarea) textarea.focus();
+    }
+
+    async function ensureCrmTaskComments(taskId, force = false) {
+      const key = String(taskId || "");
+      if (!key || (!force && crmTaskComments[key])) return;
+      if (crmTaskCommentLoads[key]) return crmTaskCommentLoads[key];
+      crmTaskCommentLoads[key] = crmFetchJson(`/api/crm-task-comments?task_id=${encodeURIComponent(key)}`)
+        .then((data) => {
+          crmTaskComments[key] = data.comments || [];
+          delete crmTaskCommentLoads[key];
+          const selected = crmTasks.find((task) => String(task.id) === String(crmSelectedTaskId));
+          if (selected && String(selected.id) === key) renderCrmTaskDetail(selected);
+        })
+        .catch((error) => {
+          delete crmTaskCommentLoads[key];
+          setCrmMessage(error.message, true);
+        });
+      return crmTaskCommentLoads[key];
+    }
+
+    function selectCrmTask(taskId) {
+      crmSelectedTaskId = String(taskId || "");
+      renderCrmTasks();
+      ensureCrmTaskComments(crmSelectedTaskId).catch(() => {});
+    }
+
+    function focusWidgetMetric(label, value, raw = false) {
+      const text = value === undefined || value === null || value === "" ? "-" : value;
+      return `
+        <div class="focus-widget-metric">
+          <span>${escapeHtml(label)}</span>
+          <strong>${raw ? text : escapeHtml(text)}</strong>
+        </div>
+      `;
+    }
+
+    function openFocusWidget({ kicker = "크게 보기", title = "상세 보기", subtitle = "", body = "" } = {}) {
+      if (!focusWidget || !focusWidgetBody) return;
+      const wasOpen = focusWidget.classList.contains("open");
+      if (!wasOpen) focusWidgetLastFocus = document.activeElement;
+      focusWidgetKicker.textContent = kicker;
+      focusWidgetTitle.textContent = title;
+      focusWidgetSubtitle.textContent = subtitle || "";
+      focusWidgetBody.innerHTML = body;
+      focusWidget.classList.add("open");
+      focusWidget.setAttribute("aria-hidden", "false");
+      if (!wasOpen) setTimeout(() => focusWidgetClose?.focus(), 0);
+    }
+
+    function closeFocusWidget() {
+      if (!focusWidget) return;
+      focusWidget.classList.remove("open");
+      focusWidget.setAttribute("aria-hidden", "true");
+      focusWidgetBody.innerHTML = "";
+      focusWidgetTaskId = "";
+      focusWidgetEmployeeId = "";
+      if (focusWidgetLastFocus && typeof focusWidgetLastFocus.focus === "function") {
+        const returnFocusTarget = focusWidgetLastFocus;
+        setTimeout(() => returnFocusTarget.focus(), 0);
+      }
+      focusWidgetLastFocus = null;
+    }
+
+    function focusWidgetTaskBody(task) {
+      const canEdit = can("crm_manage");
+      const commentId = `focusWidgetComment-${String(task.id || "").replace(/[^a-zA-Z0-9_-]/g, "-")}`;
+      return `
+        <div class="focus-widget-grid">
+          ${focusWidgetMetric("상태", crmStatusBadge(task.status), true)}
+          ${focusWidgetMetric("우선순위", crmPriorityBadge(task.priority), true)}
+          ${focusWidgetMetric("마감", crmDueDateText(task))}
+          ${focusWidgetMetric("담당자", task.assignee_name || "담당자 미정")}
+          ${focusWidgetMetric("요청자", task.requester_name || "요청자 미정")}
+          ${focusWidgetMetric("출처", crmSourceLabel(task.source))}
+        </div>
+        <section class="focus-widget-section">
+          <div class="focus-widget-section-title">업무 내용</div>
+          <p class="focus-widget-text">${escapeHtml(task.description || "상세 내용이 없습니다.")}</p>
+        </section>
+        <div class="focus-widget-actions">
+          ${canEdit ? `<button class="crm-mini-button" type="button" data-crm-task-edit="${escapeHtml(task.id)}">수정</button>` : ""}
+          <button class="crm-mini-button primary" type="button" data-crm-task-status="${escapeHtml(task.id)}" data-status="진행중">확인</button>
+          <button class="crm-mini-button primary" type="button" data-crm-task-status="${escapeHtml(task.id)}" data-status="완료">완료</button>
+          <button class="crm-mini-button" type="button" data-crm-task-status="${escapeHtml(task.id)}" data-status="보류">보류</button>
+        </div>
+        <form class="crm-detail-comment-form" data-focus-widget-comment-form="${escapeHtml(task.id)}">
+          <label for="${escapeHtml(commentId)}">댓글</label>
+          <textarea class="crm-textarea" id="${escapeHtml(commentId)}" data-focus-widget-comment-body placeholder="처리 내용이나 다음 액션을 남겨줘."></textarea>
+          <button class="crm-mini-button primary" type="submit">댓글 등록</button>
+        </form>
+        ${renderCrmTaskTimeline(task)}
+      `;
+    }
+
+    function renderFocusWidgetTask(task) {
+      openFocusWidget({
+        kicker: "업무 크게 보기",
+        title: task.title || "제목 없음",
+        subtitle: [task.public_id || "", crmTaskContextLabel(task), crmSourceLabel(task.source)].filter(Boolean).join(" · "),
+        body: focusWidgetTaskBody(task),
+      });
+    }
+
+    async function openCrmTaskWidget(taskId) {
+      const task = findCrmTaskById(taskId);
+      if (!task) {
+        openFocusWidget({
+          kicker: "업무 크게 보기",
+          title: "업무를 찾지 못했습니다",
+          subtitle: "",
+          body: `<p class="focus-widget-text">현재 화면에 로드된 업무 목록에서 해당 업무를 찾지 못했습니다. 업무보드를 새로고침한 뒤 다시 시도해줘.</p>`,
+        });
+        return;
+      }
+      focusWidgetTaskId = String(task.id || "");
+      focusWidgetEmployeeId = "";
+      renderFocusWidgetTask(task);
+      await ensureCrmTaskComments(task.id);
+      const refreshed = findCrmTaskById(task.id) || task;
+      if (focusWidget?.classList.contains("open") && focusWidgetTaskId === String(task.id || "")) {
+        renderFocusWidgetTask(refreshed);
+      }
+    }
+
+    function findStaffUserById(userId) {
+      const sources = [
+        companyStaffPayloadCache?.staff || [],
+        crmStaffPayloadCache?.staff || [],
+        crmUsers || [],
+        internalChatUsers || [],
+      ];
+      for (const source of sources) {
+        const found = source.find((user) => String(user.id) === String(userId));
+        if (found) return found;
+      }
+      return null;
+    }
+
+    function tasksForAssignee(userId, rows) {
+      return (rows || []).filter((task) => String(task.assignee_user_id || "") === String(userId || ""));
+    }
+
+    function focusWidgetEmployeeBody(user, tasks) {
+      const openTasks = (tasks || []).filter((task) => task.status !== "완료");
+      const today = todayString();
+      const dueToday = openTasks.filter((task) => crmDueDateOnly(task) === today).length;
+      const overdue = openTasks.filter((task) => {
+        const day = crmDueDateOnly(task);
+        return day && day < today;
+      }).length;
+      const rows = openTasks.slice(0, 20);
+      return `
+        <div class="focus-widget-grid">
+          ${focusWidgetMetric("진행 업무", user.open_tasks ?? openTasks.length)}
+          ${focusWidgetMetric("오늘 마감", user.due_today ?? dueToday)}
+          ${focusWidgetMetric("지연 업무", user.overdue ?? overdue)}
+          ${focusWidgetMetric("역할", user.team_label || roleText(user.role))}
+          ${focusWidgetMetric("계정", user.username || "-")}
+          ${focusWidgetMetric("상태", user.is_active === 0 ? "비활성" : "활성")}
+        </div>
+        <section class="focus-widget-section">
+          <div class="focus-widget-section-title">최근 배정 업무</div>
+          <div class="focus-widget-table-wrap">
+            <table class="focus-widget-table">
+              <thead><tr><th>번호</th><th>업무</th><th>마감</th><th>상태</th><th>우선순위</th><th>보기</th></tr></thead>
+              <tbody>
+                ${rows.length ? rows.map((task) => `
+                  <tr>
+                    <td>${escapeHtml(task.public_id || "")}</td>
+                    <td>${escapeHtml(task.title || "")}<div>${escapeHtml(crmTaskContextLabel(task))}</div></td>
+                    <td>${escapeHtml(crmDueDateText(task))}</td>
+                    <td>${crmStatusBadge(task.status)}</td>
+                    <td>${crmPriorityBadge(task.priority)}</td>
+                    <td><button class="crm-mini-button" type="button" data-focus-open-task="${escapeHtml(task.id)}">열기</button></td>
+                  </tr>
+                `).join("") : `<tr><td colspan="6">현재 표시할 미완료 업무가 없습니다.</td></tr>`}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      `;
+    }
+
+    async function openEmployeeWidget(userId) {
+      const user = findStaffUserById(userId);
+      if (!user) {
+        openFocusWidget({
+          kicker: "직원 크게 보기",
+          title: "직원을 찾지 못했습니다",
+          body: `<p class="focus-widget-text">현재 화면에 로드된 직원 목록에서 해당 직원을 찾지 못했습니다.</p>`,
+        });
+        return;
+      }
+      focusWidgetEmployeeId = String(userId || "");
+      focusWidgetTaskId = "";
+      const cachedTasks = tasksForAssignee(userId, crmStaffTaskCache.concat(companyStaffTaskCache));
+      openFocusWidget({
+        kicker: "직원 크게 보기",
+        title: user.display_name || user.username || "직원",
+        subtitle: `${user.team_label || roleText(user.role)} · ${user.username || ""}`,
+        body: focusWidgetEmployeeBody(user, cachedTasks),
+      });
+      if (!can("crm_view")) return;
+      try {
+        const data = await crmFetchJson(`/api/crm-tasks?assignee_user_id=${encodeURIComponent(userId)}&open_only=1&sort=due&limit=20`);
+        const latestTasks = data.tasks || [];
+        crmStaffTaskCache = crmStaffTaskCache
+          .filter((task) => String(task.assignee_user_id || "") !== String(userId))
+          .concat(latestTasks);
+        if (focusWidget?.classList.contains("open") && focusWidgetEmployeeId === String(userId || "")) {
+          openFocusWidget({
+            kicker: "직원 크게 보기",
+            title: user.display_name || user.username || "직원",
+            subtitle: `${user.team_label || roleText(user.role)} · ${user.username || ""}`,
+            body: focusWidgetEmployeeBody(user, latestTasks),
+          });
+        }
+      } catch (error) {
+        setCrmMessage(error.message, true);
+      }
+    }
+
+    function findCrmProjectByKey(projectKey) {
+      return crmProjectProgress.find((project) => String(project.project_key || "") === String(projectKey || ""));
+    }
+
+    function focusWidgetProjectBody(project) {
+      const percent = projectProgressPercent(project);
+      const tasks = project.tasks || [];
+      const assignees = String(project.assignee_names || "").split(",").map((name) => name.trim()).filter(Boolean);
+      return `
+        <div class="focus-widget-grid">
+          ${focusWidgetMetric("완료율", `${percent}%`)}
+          ${focusWidgetMetric("진행 업무", `${project.open_tasks || 0}건`)}
+          ${focusWidgetMetric("전체 업무", `${project.total_tasks || 0}건`)}
+          ${focusWidgetMetric("오늘 마감", `${project.due_today || 0}건`)}
+          ${focusWidgetMetric("지연 업무", `${project.overdue || 0}건`)}
+          ${focusWidgetMetric("높은 우선순위", `${project.high_priority || 0}건`)}
+        </div>
+        <section class="focus-widget-section">
+          <div class="focus-widget-section-title">프로젝트 상태</div>
+          <div class="crm-project-progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${escapeHtml(percent)}" aria-label="${escapeHtml(project.project_name || "프로젝트")} 완료율">
+            <div class="crm-project-progress-top"><span>${escapeHtml(projectProgressLabel(project))}</span><strong>${escapeHtml(percent)}%</strong></div>
+            <div class="crm-project-bar"><span style="width: ${escapeHtml(percent)}%"></span></div>
+          </div>
+          <p class="focus-widget-text">담당자: ${escapeHtml(assignees.length ? assignees.join(", ") : "담당자 미정")}\n다음 마감: ${escapeHtml(project.next_due_at || "없음")}</p>
+        </section>
+        <div class="focus-widget-actions">
+          <button class="crm-mini-button primary" type="button" data-focus-filter-project="${escapeHtml(project.project_key || "")}">업무보드에서 보기</button>
+        </div>
+        <section class="focus-widget-section">
+          <div class="focus-widget-section-title">관련 업무</div>
+          <div class="focus-widget-table-wrap">
+            <table class="focus-widget-table">
+              <thead><tr><th>번호</th><th>업무</th><th>담당자</th><th>마감</th><th>상태</th><th>우선순위</th><th>보기</th></tr></thead>
+              <tbody>
+                ${tasks.length ? tasks.map((task) => `
+                  <tr>
+                    <td>${escapeHtml(task.public_id || "")}</td>
+                    <td>${escapeHtml(task.title || "")}<div>${escapeHtml(task.description || "")}</div></td>
+                    <td>${escapeHtml(task.assignee_name || "미정")}</td>
+                    <td>${escapeHtml(crmDueDateText(task))}</td>
+                    <td>${crmStatusBadge(task.status)}</td>
+                    <td>${crmPriorityBadge(task.priority)}</td>
+                    <td><button class="crm-mini-button" type="button" data-focus-open-task="${escapeHtml(task.id)}">열기</button></td>
+                  </tr>
+                `).join("") : `<tr><td colspan="7">표시할 관련 업무가 없습니다.</td></tr>`}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      `;
+    }
+
+    function openCrmProjectWidget(projectKey) {
+      const project = findCrmProjectByKey(projectKey);
+      if (!project) {
+        openFocusWidget({
+          kicker: "프로젝트 추적기",
+          title: "프로젝트를 찾지 못했습니다",
+          body: `<p class="focus-widget-text">현재 대시보드에 로드된 프로젝트 목록에서 찾지 못했습니다. 대시보드를 새로고침한 뒤 다시 시도해줘.</p>`,
+        });
+        return;
+      }
+      focusWidgetTaskId = "";
+      focusWidgetEmployeeId = "";
+      openFocusWidget({
+        kicker: "프로젝트 추적기",
+        title: project.project_name || "프로젝트 미지정",
+        subtitle: `${projectProgressLabel(project)} · ${project.open_tasks || 0}건 진행 · ${project.total_tasks || 0}건 전체`,
+        body: focusWidgetProjectBody(project),
+      });
+    }
+
+    function applyCrmProjectFilter(projectKey) {
+      const project = findCrmProjectByKey(projectKey);
+      if (!project) return;
+      crmActiveTaskViewId = "";
+      writeCrmTaskFilters({
+        ...crmTaskFilterDefaults(),
+        q: project.project_name || "",
+        open_only: "",
+        sort: "due",
+      });
+      renderCrmSavedViews();
+      closeFocusWidget();
+      setCrmTab("tasks");
+      loadCrmTasks().catch((error) => setCrmMessage(error.message, true));
+    }
+
+    function openNoticeWidget() {
+      const payload = noticePayload();
+      focusWidgetTaskId = "";
+      focusWidgetEmployeeId = "";
+      const meta = [shortKoreanDate(payload.date), payload.owner ? `담당 ${payload.owner}` : ""].filter(Boolean).join(" / ");
+      openFocusWidget({
+        kicker: "공지사항",
+        title: payload.title || "등록된 공지 없음",
+        subtitle: meta,
+        body: `
+          <section class="focus-widget-section">
+            <div class="focus-widget-section-title">공지 내용</div>
+            <p class="focus-widget-text">${escapeHtml(payload.body || "공지사항 입력 버튼을 눌러 내용을 입력해주세요.")}</p>
+          </section>
+        `,
+      });
+    }
+
+    function openCompanyCardWidget(card) {
+      const title = card.querySelector(".company-card-head span")?.textContent?.trim() || "상세 보기";
+      const body = card.querySelector(".company-card-body")?.textContent?.trim() || "표시할 내용이 없습니다.";
+      focusWidgetTaskId = "";
+      focusWidgetEmployeeId = "";
+      openFocusWidget({
+        kicker: "사규/가이드",
+        title,
+        body: `<p class="focus-widget-text">${escapeHtml(body)}</p>`,
+      });
+    }
+
+    function isInteractiveTarget(target) {
+      return Boolean(target?.closest("button, a, input, textarea, select, label, [contenteditable='true']"));
+    }
+
+    function isCardActivationKey(event) {
+      return ["Enter", " "].includes(event.key);
+    }
+
+    function renderCrmTasks() {
+      renderCrmTaskBoardStats();
+      if (!crmTasks.length) {
+        crmSelectedTaskId = "";
+        crmTaskBody.innerHTML = CRM_TASK_STATUSES.map((status) => `
+          <section class="crm-kanban-column">
+            <div class="crm-kanban-head"><span>${escapeHtml(status)}</span><span class="crm-kanban-count">0</span></div>
+            <div class="crm-kanban-list"><div class="crm-kanban-empty">조회된 업무가 없습니다.</div></div>
+          </section>
+        `).join("");
+        renderCrmTaskDetail(null);
+        return;
+      }
+      if (!crmTasks.some((task) => String(task.id) === String(crmSelectedTaskId))) {
+        crmSelectedTaskId = String(crmTasks[0].id);
+      }
+      crmTaskBody.innerHTML = CRM_TASK_STATUSES.map((status) => {
+        const items = crmTasks.filter((task) => (task.status || "대기") === status);
+        return `
+          <section class="crm-kanban-column">
+            <div class="crm-kanban-head"><span>${escapeHtml(status)}</span><span class="crm-kanban-count">${escapeHtml(items.length)}</span></div>
+            <div class="crm-kanban-list">
+              ${items.length ? items.map(renderCrmTaskCard).join("") : `<div class="crm-kanban-empty">${escapeHtml(status)} 업무가 없습니다.</div>`}
+            </div>
+          </section>
+        `;
+      }).join("");
+      const selectedTask = crmTasks.find((task) => String(task.id) === String(crmSelectedTaskId));
+      renderCrmTaskDetail(selectedTask);
+      if (selectedTask) ensureCrmTaskComments(selectedTask.id).catch(() => {});
+    }
+
+    function renderCrmMineTasks() {
+      if (!crmMineTaskBody) return;
+      const today = todayString();
+      const openTasks = crmMineTasks.filter((task) => task.status !== "완료");
+      const dueToday = openTasks.filter((task) => crmDueDateOnly(task) === today).length;
+      const overdue = openTasks.filter((task) => {
+        const day = crmDueDateOnly(task);
+        return day && day < today;
+      }).length;
+      if (crmMineStats) {
+        crmMineStats.innerHTML = [
+          ["내 미완료", openTasks.length, "OPEN"],
+          ["오늘 마감", dueToday, "DUE"],
+          ["지연", overdue, "LATE"],
+          ["전체 배정", crmMineTasks.length, "ALL"],
+        ].map(([label, value, icon]) => `
+          <article class="crm-board-stat">
+            <div><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></div>
+            <i>${escapeHtml(icon)}</i>
+          </article>
+        `).join("");
+      }
+      crmMineTaskBody.innerHTML = openTasks.length ? openTasks.map((task) => `
+        <tr>
+          <td>${escapeHtml(task.public_id || "")}</td>
+          <td class="left">${escapeHtml(crmTaskContextLabel(task))}</td>
+          <td class="left">${escapeHtml(task.title)}</td>
+          <td>${escapeHtml(crmDueDateText(task))}</td>
+          <td>${crmStatusBadge(task.status)}</td>
+          <td>${crmPriorityBadge(task.priority)}</td>
+          <td>
+            <span class="crm-mini-actions">
+              <button class="crm-mini-button primary" type="button" data-crm-task-status="${escapeHtml(task.id)}" data-status="진행중">확인</button>
+              <button class="crm-mini-button primary" type="button" data-crm-task-status="${escapeHtml(task.id)}" data-status="완료">완료</button>
+              <button class="crm-mini-button" type="button" data-crm-task-status="${escapeHtml(task.id)}" data-status="보류">보류</button>
+              <button class="crm-mini-button" type="button" data-crm-task-comment="${escapeHtml(task.id)}">댓글</button>
+            </span>
+          </td>
+        </tr>
+      `).join("") : `<tr><td colspan="7">내 미완료 업무가 없습니다.</td></tr>`;
+    }
+
+    async function loadCrmTasks() {
+      if (!can("crm_view")) return;
+      const filters = readCrmTaskFilters();
+      const params = new URLSearchParams({ limit: "2000" });
+      if (filters.q) params.set("q", filters.q);
+      if (filters.status) params.set("status", filters.status);
+      if (filters.assignee_user_id) params.set("assignee_user_id", filters.assignee_user_id);
+      if (filters.priority) params.set("priority", filters.priority);
+      if (filters.due) params.set("due", filters.due);
+      if (filters.source) params.set("source", filters.source);
+      if (filters.open_only) params.set("open_only", "1");
+      if (filters.sort) params.set("sort", filters.sort);
+      const data = await crmFetchJson(`/api/crm-tasks?${params.toString()}`);
+      crmTasks = data.tasks || [];
+      renderCrmTasks();
+    }
+
+    async function loadCrmMineTasks() {
+      if (!can("crm_view")) return;
+      const data = await crmFetchJson("/api/crm-tasks?mine=1&open_only=1&sort=due&limit=300");
+      crmMineTasks = data.tasks || [];
+      renderCrmMineTasks();
+    }
+
+    async function saveCrmTaskForm(event) {
+      event.preventDefault();
+      if (!can("crm_manage")) return;
+      const selectedAccount = crmAccounts.find((account) => String(account.id) === String(crmTaskAccount.value));
+      const selectedUser = crmUsers.find((user) => String(user.id) === String(crmTaskAssignee.value));
+      const payload = {
+        id: crmTaskId.value,
+        account_id: crmTaskAccount.value,
+        account_name: crmTaskAccountName.value.trim() || selectedAccount?.name || "",
+        title: crmTaskTitle.value.trim(),
+        assignee_user_id: crmTaskAssignee.value,
+        assignee_name: selectedUser?.display_name || "",
+        due_at: crmTaskDue.value.trim(),
+        priority: crmTaskPriority.value,
+        status: crmTaskStatus.value,
+        description: crmTaskDescription.value.trim(),
+      };
+      const data = await crmFetchJson("/api/crm-task-save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      setCrmMessage(data.message || "업무를 저장했습니다.");
+      resetCrmTaskForm();
+      setCrmTaskFormOpen(false);
+      await loadCrmAccounts();
+      await loadCrmTasks();
+      if (crmActiveTab === "mine") await loadCrmMineTasks();
+      if (companyActiveTab === "staff") await loadCompanyStaffDashboard().catch(() => {});
+      if (companyActiveTab === "calendar") await loadCompanyCalendar().catch(() => {});
+      await loadCrmDashboard();
+    }
+
+    async function updateCrmTaskStatus(taskId, status) {
+      const data = await crmFetchJson("/api/crm-task-status", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: taskId, status }),
+      });
+      setCrmMessage(data.message || "업무 상태를 저장했습니다.");
+      delete crmTaskComments[String(taskId || "")];
+      await loadCrmTasks();
+      await ensureCrmTaskComments(taskId, true);
+      if (crmActiveTab === "mine") await loadCrmMineTasks();
+      if (companyActiveTab === "staff") await loadCompanyStaffDashboard().catch(() => {});
+      if (companyActiveTab === "calendar") await loadCompanyCalendar().catch(() => {});
+      await loadCrmDashboard();
+    }
+
+    function openCrmTaskComment(taskId) {
+      const task = findCrmTaskById(taskId);
+      crmSelectedTaskId = String(taskId || "");
+      if (crmActiveTab !== "tasks") {
+        if (task) {
+          crmActiveTaskViewId = "";
+          writeCrmTaskFilters({
+            ...crmTaskFilterDefaults(),
+            q: task.public_id || task.title || "",
+            open_only: task.status === "완료" ? "" : "1",
+          });
+          renderCrmSavedViews();
+        }
+        setCrmTab("tasks");
+      }
+      else renderCrmTasks();
+      ensureCrmTaskComments(taskId).finally(() => setTimeout(() => focusCrmTaskCommentForm(taskId), 0));
+    }
+
+    async function addCrmTaskComment(taskId, body) {
+      const text = String(body || "").trim();
+      if (!text) {
+        focusCrmTaskCommentForm(taskId);
+        return;
+      }
+      const data = await crmFetchJson("/api/crm-task-comment", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: taskId, body: text }),
+      });
+      setCrmMessage(data.message || "댓글을 저장했습니다.");
+      delete crmTaskComments[String(taskId || "")];
+      await loadCrmTasks();
+      await ensureCrmTaskComments(taskId, true);
+      if (crmActiveTab === "mine") await loadCrmMineTasks();
+      if (companyActiveTab === "staff") await loadCompanyStaffDashboard().catch(() => {});
+      await loadCrmDashboard();
+    }
+
+    function renderCrmMessengerUsers(payload) {
+      crmUsers = payload.users || crmUsers;
+      renderCrmUserOptions();
+      const mappings = payload.mappings || [];
+      crmMessengerUserBody.innerHTML = mappings.length ? mappings.map((item) => `
+        <tr>
+          <td>${escapeHtml(item.platform)}</td>
+          <td class="left">${escapeHtml(item.sender_key)}</td>
+          <td>${escapeHtml(item.display_name)}</td>
+          <td>${escapeHtml(item.workhub_display_name || item.username)}</td>
+        </tr>
+      `).join("") : `<tr><td colspan="4">등록된 메신저 사용자 매핑이 없습니다.</td></tr>`;
+    }
+
+    function crmWebhookSamplePayloadText() {
+      return JSON.stringify({
+        userRequest: {
+          utterance: "도움말",
+          user: {
+            id: "kakao-test-user-key",
+            properties: {
+              nickname: "테스트 직원",
+            },
+          },
+        },
+      }, null, 2);
+    }
+
+    function renderCrmWebhookSetup(payload) {
+      const webhook = payload.webhook || {};
+      const webhookUrl = webhook.url || webhook.path || "/api/crm-messenger-webhook";
+      const webhookToken = webhook.token || "";
+      const samplePayload = crmWebhookSamplePayloadText();
+      if (crmWebhookUrl) crmWebhookUrl.textContent = webhookUrl;
+      if (crmWebhookToken) crmWebhookToken.textContent = webhookToken || "토큰을 불러오지 못했습니다.";
+      if (crmWebhookSamplePayload) crmWebhookSamplePayload.textContent = samplePayload;
+      if (crmWebhookCurl) {
+        crmWebhookCurl.textContent = [
+          `curl -X POST "${webhookUrl}"`,
+          `  -H "Content-Type: application/json"`,
+          `  -H "X-Workhub-Webhook-Token: ${webhookToken}"`,
+          `  -d '${samplePayload.replaceAll("\n", "")}'`,
+        ].join(" \\\n");
+      }
+    }
+
+    function renderCrmMessageEvents(payload) {
+      const events = payload.events || [];
+      renderCrmWebhookSetup(payload);
+      crmMessageEventBody.innerHTML = events.length ? events.map((event) => `
+        <tr>
+          <td>${escapeHtml(event.created_at)}</td>
+          <td>${escapeHtml(event.platform)}</td>
+          <td>${escapeHtml(event.sender_name || event.sender_key)}</td>
+          <td>${escapeHtml(event.result)}</td>
+          <td class="left">${escapeHtml(event.text)}</td>
+          <td class="left">${escapeHtml(event.error)}</td>
+          <td>
+            <span class="crm-mini-actions">
+              ${event.sender_key ? `<button class="crm-mini-button" type="button" data-crm-copy-text="${escapeHtml(event.sender_key)}">키 복사</button>` : ""}
+              ${event.result === "거절" && event.sender_key ? `<button class="crm-mini-button primary" type="button" data-crm-map-sender="${escapeHtml(event.sender_key)}" data-platform="${escapeHtml(event.platform || "kakao")}" data-sender-name="${escapeHtml(event.sender_name || "")}">매핑</button>` : ""}
+            </span>
+          </td>
+        </tr>
+      `).join("") : `<tr><td colspan="7">메신저 연동 기록이 없습니다.</td></tr>`;
+    }
+
+    async function loadCrmMessenger() {
+      if (!can("crm_message_manage")) return;
+      const [usersPayload, eventsPayload] = await Promise.all([
+        crmFetchJson("/api/crm-messenger-users"),
+        crmFetchJson("/api/crm-message-events"),
+      ]);
+      renderCrmMessengerUsers(usersPayload);
+      renderCrmMessageEvents(eventsPayload);
+    }
+
+    async function saveCrmMessengerForm(event) {
+      event.preventDefault();
+      if (!can("crm_message_manage")) return;
+      const payload = {
+        platform: crmMessengerPlatform.value,
+        sender_key: crmMessengerSenderKey.value.trim(),
+        display_name: crmMessengerDisplayName.value.trim(),
+        user_id: crmMessengerUser.value,
+      };
+      const data = await crmFetchJson("/api/crm-messenger-user-save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      setCrmMessage(data.message || "메신저 사용자 매핑을 저장했습니다.");
+      crmMessengerSenderKey.value = "";
+      crmMessengerDisplayName.value = "";
+      await loadCrmMessenger();
+    }
+
+    async function rotateCrmWebhookToken() {
+      if (!can("crm_message_manage")) return;
+      if (!confirm("웹훅 토큰을 재발급할까요? 기존 카카오 스킬 헤더 값은 즉시 실패합니다.")) return;
+      const data = await crmFetchJson("/api/crm-webhook-token-rotate", { method: "POST" });
+      setCrmMessage(data.message || "웹훅 토큰을 재발급했습니다.");
+      renderCrmWebhookSetup(data);
+      await loadCrmMessenger();
+    }
+
+    async function loadCrmUsersForForms() {
+      if (!can("crm_view")) return;
+      const data = await crmFetchJson("/api/crm-messenger-users");
+      crmUsers = data.users || [];
+      renderCrmUserOptions();
+      renderCrmMessengerUsers(data);
+      if (crmStatAccounts) crmStatAccounts.textContent = crmUsers.length || 0;
+    }
+
+    async function loadCrmAll() {
+      if (!can("crm_view")) return;
+      setCrmMessage("");
+      renderCrmSavedViews();
+      await Promise.all([
+        loadCrmDashboard(),
+        loadCrmAccounts(),
+        loadCrmTasks(),
+        loadCrmSavedViews().catch(() => {}),
+        loadCrmUsersForForms().catch(() => {}),
+      ]);
+      if (crmActiveTab === "mine") await loadCrmMineTasks();
+      if (crmActiveTab === "messages" && can("crm_message_manage")) await loadCrmMessenger();
     }
 
     function todayStatusDate() {
@@ -4085,7 +8101,7 @@ HTML = r"""<!doctype html>
       ledgerFilterPopover.style.left = `${Math.min(rect.left, window.innerWidth - 280)}px`;
       ledgerFilterPopover.style.top = `${Math.min(rect.bottom + 6, window.innerHeight - 410)}px`;
       ledgerFilterPopover.classList.add("open");
-      ledgerFilterSearch.focus();
+      ledgerFilterSearch?.focus();
       ledgerFilterSearch.select();
     }
 
@@ -4099,7 +8115,7 @@ HTML = r"""<!doctype html>
       ledgerFilterPopover.style.left = `${Math.min(rect.left, window.innerWidth - 280)}px`;
       ledgerFilterPopover.style.top = `${Math.min(rect.bottom + 6, window.innerHeight - 410)}px`;
       ledgerFilterPopover.classList.add("open");
-      ledgerFilterSearch.focus();
+      ledgerFilterSearch?.focus();
       ledgerFilterSearch.select();
     }
 
@@ -4229,7 +8245,7 @@ HTML = r"""<!doctype html>
       cell.classList.add("selected-cell");
       activeCellEditors[scope] = { cell, control };
       setTimeout(() => {
-        control.focus();
+        control?.focus();
         if (control.select) control.select();
       }, 0);
     }
@@ -4321,7 +8337,7 @@ HTML = r"""<!doctype html>
       loadVendorContacts();
       loadCsCases();
       notice.textContent = "새 CS 내용을 입력한 뒤 CS건 DB 저장을 눌러주세요.";
-      setTimeout(() => vendorNameInput.focus(), 0);
+      setTimeout(() => vendorNameInput?.focus(), 0);
     }
 
     function closeLedgerCsPopup() {
@@ -4886,13 +8902,6 @@ HTML = r"""<!doctype html>
         }
         payload.year = period.year;
         fallbackName = `통합관리대장_${payload.year}년.xlsx`;
-      } else if (scope === "template") {
-        const period = selectedManagementPeriod();
-        if (period.year) payload.year = period.year;
-        const today = new Date();
-        const ymd = `${today.getFullYear()}${String(today.getMonth() + 1).padStart(2, "0")}${String(today.getDate()).padStart(2, "0")}`;
-        const filenameYear = payload.year || String(today.getFullYear());
-        fallbackName = `통합관리대장 양식 ${filenameYear}년 ${ymd}.xlsx`;
       } else {
         fallbackName = "통합관리대장_전체.xlsx";
       }
@@ -5237,9 +9246,34 @@ HTML = r"""<!doctype html>
       }
     }
 
+    function syncCrmNavState() {
+      document.querySelectorAll("[data-crm-nav-tab]").forEach((item) => {
+        if (item.classList.contains("nav-subitem")) {
+          item.classList.toggle("active", item.dataset.crmNavTab === crmActiveTab);
+        }
+      });
+    }
+
     function setActiveNav(mode) {
-      document.querySelectorAll(".nav-item").forEach((item) => item.classList.remove("active"));
-      const selector = mode === "dashboard" ? '[data-view="dashboard"]' : `[data-open="${mode}"]`;
+      document.querySelectorAll(".nav-item, .nav-subitem").forEach((item) => item.classList.remove("active"));
+      if (mode === "crm") {
+        document.querySelector("#crmNavToggle")?.classList.add("active");
+        document.querySelector("#crmNavGroup")?.classList.add("open");
+        syncCrmNavState();
+        return;
+      }
+      if (mode === "dashboard") {
+        document.querySelector("#companyNavToggle")?.classList.add("active");
+        document.querySelector("#companyNavGroup")?.classList.add("open");
+        syncCompanyNavState();
+        return;
+      }
+      if (mode === "import") {
+        document.querySelector("#importNavToggle")?.classList.add("active");
+        document.querySelector("#importNavGroup")?.classList.add("open");
+        return;
+      }
+      const selector = `[data-open="${mode}"]`;
       const activeItem = document.querySelector(selector);
       if (activeItem) activeItem.classList.add("active");
     }
@@ -5250,16 +9284,21 @@ HTML = r"""<!doctype html>
       if (mode === "leave" && !leaveWorkspace) mode = "dashboard";
       if (mode === "backup" && !backupWorkspace) mode = "dashboard";
       if (mode === "systemUpdate" && !systemUpdateWorkspace) mode = "dashboard";
+      if (mode === "crm" && !can("crm_view")) mode = "dashboard";
       currentMode = mode;
+      const showImport = mode === "import";
       const showManagement = mode === "management";
       const showLedger = mode === "ledger";
+      const showCrm = mode === "crm";
       const showLeave = mode === "leave";
       const showUserAdmin = mode === "userAdmin" && Boolean(userAdminWorkspace);
       const showBackup = mode === "backup" && Boolean(backupWorkspace);
       const showSystemUpdate = mode === "systemUpdate" && Boolean(systemUpdateWorkspace);
       dashboardContent.style.display = mode === "dashboard" ? "" : "none";
+      if (importWorkspace) importWorkspace.classList.toggle("active", showImport);
       managementWorkspace.classList.toggle("active", showManagement);
       ledgerWorkspace.classList.toggle("active", showLedger);
+      crmWorkspace.classList.toggle("active", showCrm);
       if (leaveWorkspace) leaveWorkspace.classList.toggle("active", showLeave);
       if (userAdminWorkspace) userAdminWorkspace.classList.toggle("active", showUserAdmin);
       if (backupWorkspace) backupWorkspace.classList.toggle("active", showBackup);
@@ -5282,6 +9321,14 @@ HTML = r"""<!doctype html>
         Object.keys(ledgerFilters).forEach((key) => delete ledgerFilters[key]);
         closeLedgerFilter();
         loadLedgerCases();
+      } else if (showCrm) {
+        setPageTitle("업무관리");
+        closeLedgerFilter();
+        loadCrmAll().catch((error) => setCrmMessage(error.message, true));
+      } else if (showImport) {
+        setPageTitle("수출입 업무");
+        closeLedgerFilter();
+        loadImportShipments();
       } else if (showLeave) {
         setPageTitle(leaveWorkspace.querySelector(".workspace-title")?.textContent || "연차");
         closeLedgerFilter();
@@ -5301,9 +9348,9 @@ HTML = r"""<!doctype html>
         loadSystemUpdateStatus();
       } else {
         currentMode = "dashboard";
-        setPageTitle("금일 공지사항");
+        setPageTitle("회사 포털");
         closeLedgerFilter();
-        loadImportShipments();
+        if (companyActiveTab === "staff") loadCompanyStaffDashboard().catch(() => {});
       }
     }
 
@@ -5314,10 +9361,76 @@ HTML = r"""<!doctype html>
       window.open(url.toString(), "_blank", "width=1480,height=920");
     }
 
+    function applySidebarSearch() {
+      let rawQuery = (sidebarSearchInput?.value || "").trim();
+      if (sidebarSearchAutofillValues.has(rawQuery.toLowerCase())) {
+        sidebarSearchInput.value = "";
+        rawQuery = "";
+      }
+      const query = rawQuery.toLowerCase();
+      const sidebar = document.querySelector(".sidebar");
+      if (!sidebar) return;
+      const directItems = Array.from(sidebar.querySelectorAll(":scope > .nav-item"));
+      const groups = Array.from(sidebar.querySelectorAll(":scope > .nav-group"));
+      directItems.forEach((item) => { item.style.display = ""; });
+      groups.forEach((group) => {
+        group.style.display = "";
+        group.querySelectorAll(".nav-subitem").forEach((subitem) => { subitem.style.display = ""; });
+      });
+      if (!query) return;
+      directItems.forEach((item) => {
+        const text = item.innerText.toLowerCase();
+        item.style.display = text.includes(query) ? "" : "none";
+      });
+      groups.forEach((group) => {
+        if (group.classList.contains("permission-hidden")) return;
+        const toggle = group.querySelector(".nav-item");
+        const groupText = (toggle?.innerText || "").toLowerCase();
+        let hasMatch = groupText.includes(query);
+        group.querySelectorAll(".nav-subitem").forEach((subitem) => {
+          const matched = subitem.innerText.toLowerCase().includes(query) || hasMatch;
+          subitem.style.display = matched ? "" : "none";
+          hasMatch = hasMatch || matched;
+        });
+        group.style.display = hasMatch ? "" : "none";
+        if (hasMatch) group.classList.add("open");
+      });
+    }
+    function guardSidebarSearchAutofill() {
+      const rawQuery = (sidebarSearchInput?.value || "").trim().toLowerCase();
+      if (!sidebarSearchInput || !sidebarSearchAutofillValues.has(rawQuery)) return;
+      sidebarSearchInput.value = "";
+      applySidebarSearch();
+    }
+    function scheduleSidebarSearchAutofillGuard() {
+      [0, 50, 150, 500, 1000, 2000, 4000].forEach((delay) => {
+        window.setTimeout(guardSidebarSearchAutofill, delay);
+      });
+    }
+    if (sidebarSearchInput) {
+      sidebarSearchInput.value = "";
+      applySidebarSearch();
+      scheduleSidebarSearchAutofillGuard();
+      window.setInterval(guardSidebarSearchAutofill, 500);
+    }
+
     document.querySelectorAll("[data-open]").forEach((button) => {
       button.addEventListener("click", () => {
+        scheduleSidebarSearchAutofillGuard();
         const mode = button.dataset.open;
-        if (mode === "management" || mode === "ledger" || mode === "userAdmin" || mode === "leave" || mode === "backup" || mode === "systemUpdate") {
+        if (mode === "crm") {
+          const crmGroup = document.querySelector("#crmNavGroup");
+          const wasCrmGroupOpen = Boolean(crmGroup?.classList.contains("open"));
+          showWorkspace("crm");
+          if (button.dataset.crmNavTab) setCrmTab(button.dataset.crmNavTab);
+          if (button.id === "crmNavToggle") {
+            crmGroup?.classList.toggle("open", !wasCrmGroupOpen);
+          } else {
+            crmGroup?.classList.add("open");
+          }
+          return;
+        }
+        if (mode === "management" || mode === "ledger" || mode === "crm" || mode === "import" || mode === "userAdmin" || mode === "leave" || mode === "backup" || mode === "systemUpdate") {
           showWorkspace(mode);
           return;
         }
@@ -5327,11 +9440,413 @@ HTML = r"""<!doctype html>
     document.querySelectorAll("[data-view]").forEach((button) => {
       button.addEventListener("click", () => {
         showWorkspace(button.dataset.view);
-        if (button.id === "noticeNavToggle") document.querySelector("#noticeNavGroup").classList.toggle("open");
+        if (button.dataset.companyTab) setCompanyTab(button.dataset.companyTab);
+        if (button.id === "companyNavToggle") {
+          document.querySelector("#companyNavGroup").classList.toggle("open");
+        } else if (button.dataset.companyTab) {
+          document.querySelector("#companyNavGroup")?.classList.add("open");
+        }
       });
     });
     document.querySelectorAll("[data-open-window]").forEach((button) => {
       button.addEventListener("click", () => openWorkspaceWindow(button.dataset.openWindow));
+    });
+    crmTabs.forEach((button) => {
+      button.addEventListener("click", () => setCrmTab(button.dataset.crmTab));
+      button.addEventListener("keydown", (event) => {
+        const keys = ["ArrowLeft", "ArrowRight", "Home", "End"];
+        if (!keys.includes(event.key)) return;
+        event.preventDefault();
+        const availableTabs = crmTabs.filter((tab) => !tab.classList.contains("permission-hidden"));
+        const currentIndex = availableTabs.indexOf(button);
+        let nextIndex = currentIndex;
+        if (event.key === "ArrowRight") nextIndex = (currentIndex + 1) % availableTabs.length;
+        if (event.key === "ArrowLeft") nextIndex = (currentIndex - 1 + availableTabs.length) % availableTabs.length;
+        if (event.key === "Home") nextIndex = 0;
+        if (event.key === "End") nextIndex = availableTabs.length - 1;
+        const nextTab = availableTabs[nextIndex];
+        if (nextTab) {
+          setCrmTab(nextTab.dataset.crmTab);
+          nextTab?.focus();
+        }
+      });
+    });
+    companyTabs.forEach((button) => {
+      button.addEventListener("click", () => setCompanyTab(button.dataset.companyTab));
+    });
+    companyCalendarPrev?.addEventListener("click", () => shiftCalendarMonth(-1).catch(() => {
+      if (companyCalendarGrid) companyCalendarGrid.innerHTML = `<div class="calendar-empty">이전 달 캘린더를 불러오지 못했습니다.</div>`;
+    }));
+    companyCalendarNext?.addEventListener("click", () => shiftCalendarMonth(1).catch(() => {
+      if (companyCalendarGrid) companyCalendarGrid.innerHTML = `<div class="calendar-empty">다음 달 캘린더를 불러오지 못했습니다.</div>`;
+    }));
+    companyCalendarToday?.addEventListener("click", () => {
+      companyCalendarMonth = todayString().slice(0, 7);
+      companyCalendarSelectedDay = todayString();
+      loadCompanyCalendar().catch(() => {
+        if (companyCalendarGrid) companyCalendarGrid.innerHTML = `<div class="calendar-empty">오늘 캘린더를 불러오지 못했습니다.</div>`;
+      });
+    });
+    companyCalendarRefresh?.addEventListener("click", () => loadCompanyCalendar().catch(() => {
+      if (companyCalendarGrid) companyCalendarGrid.innerHTML = `<div class="calendar-empty">캘린더를 새로고침하지 못했습니다.</div>`;
+    }));
+    companyCalendarGrid?.addEventListener("click", (event) => {
+      const eventButton = event.target.closest("[data-calendar-event-id]");
+      if (eventButton) {
+        event.stopPropagation();
+        openCalendarEventWidget(eventButton.dataset.calendarEventId);
+        return;
+      }
+      const dayCell = event.target.closest("[data-calendar-day]");
+      if (!dayCell) return;
+      companyCalendarSelectedDay = dayCell.dataset.calendarDay;
+      renderCompanyCalendar({ month: companyCalendarMonth, events: companyCalendarEvents, summary: companyCalendarSummary });
+    });
+    companyCalendarGrid?.addEventListener("keydown", (event) => {
+      if (!isCardActivationKey(event)) return;
+      const eventButton = event.target.closest("[data-calendar-event-id]");
+      if (eventButton) {
+        event.preventDefault();
+        openCalendarEventWidget(eventButton.dataset.calendarEventId);
+        return;
+      }
+      const dayCell = event.target.closest("[data-calendar-day]");
+      if (!dayCell) return;
+      event.preventDefault();
+      companyCalendarSelectedDay = dayCell.dataset.calendarDay;
+      renderCompanyCalendar({ month: companyCalendarMonth, events: companyCalendarEvents, summary: companyCalendarSummary });
+    });
+    companyCalendarSelectedList?.addEventListener("click", (event) => {
+      const row = event.target.closest("[data-calendar-event-id]");
+      if (!row) return;
+      openCalendarEventWidget(row.dataset.calendarEventId);
+    });
+    companyCalendarSelectedList?.addEventListener("keydown", (event) => {
+      if (!isCardActivationKey(event)) return;
+      const row = event.target.closest("[data-calendar-event-id]");
+      if (!row) return;
+      event.preventDefault();
+      openCalendarEventWidget(row.dataset.calendarEventId);
+    });
+    if (companyStaffRefresh) {
+      companyStaffRefresh.addEventListener("click", () => loadCompanyStaffDashboard().catch((error) => {
+        if (companyOrgBody) companyOrgBody.innerHTML = `<div class="company-org-empty">${escapeHtml(error.message)}</div>`;
+      }));
+    }
+    sidebarNoticePreview?.addEventListener("click", () => openNoticeWidget());
+    sidebarNoticePreview?.addEventListener("keydown", (event) => {
+      if (!isCardActivationKey(event)) return;
+      event.preventDefault();
+      openNoticeWidget();
+    });
+    noticePreview?.addEventListener("click", () => openNoticeWidget());
+    companyOrgBody?.addEventListener("click", (event) => {
+      if (isInteractiveTarget(event.target)) return;
+      const card = event.target.closest("[data-company-person-card]");
+      if (!card) return;
+      openEmployeeWidget(card.dataset.companyPersonCard).catch((error) => setCrmMessage(error.message, true));
+    });
+    companyOrgBody?.addEventListener("keydown", (event) => {
+      if (!isCardActivationKey(event)) return;
+      if (isInteractiveTarget(event.target)) return;
+      const card = event.target.closest("[data-company-person-card]");
+      if (!card) return;
+      event.preventDefault();
+      openEmployeeWidget(card.dataset.companyPersonCard).catch((error) => setCrmMessage(error.message, true));
+    });
+    companyStaffTaskBody?.addEventListener("click", (event) => {
+      if (isInteractiveTarget(event.target)) return;
+      const card = event.target.closest("[data-company-task-id]");
+      if (!card) return;
+      openCrmTaskWidget(card.dataset.companyTaskId).catch((error) => setCrmMessage(error.message, true));
+    });
+    companyStaffTaskBody?.addEventListener("keydown", (event) => {
+      if (!isCardActivationKey(event)) return;
+      if (isInteractiveTarget(event.target)) return;
+      const card = event.target.closest("[data-company-task-id]");
+      if (!card) return;
+      event.preventDefault();
+      openCrmTaskWidget(card.dataset.companyTaskId).catch((error) => setCrmMessage(error.message, true));
+    });
+    dashboardContent?.addEventListener("click", (event) => {
+      if (isInteractiveTarget(event.target)) return;
+      const card = event.target.closest('.company-panel[data-company-panel="rules"] .company-card');
+      if (!card) return;
+      openCompanyCardWidget(card);
+    });
+    dashboardContent?.addEventListener("keydown", (event) => {
+      if (!isCardActivationKey(event)) return;
+      if (isInteractiveTarget(event.target)) return;
+      const card = event.target.closest('.company-panel[data-company-panel="rules"] .company-card');
+      if (!card) return;
+      event.preventDefault();
+      openCompanyCardWidget(card);
+    });
+    if (internalChatForm) {
+      internalChatForm.addEventListener("submit", (event) => {
+        sendInternalMessage(event).catch(() => {
+          if (internalChatList) internalChatList.innerHTML = `<div class="internal-chat-empty">메시지를 저장하지 못했습니다.</div>`;
+        });
+      });
+    }
+    if (internalChatRoomList) {
+      internalChatRoomList.addEventListener("click", (event) => {
+        const button = event.target.closest("[data-chat-room]");
+        if (!button) return;
+        setInternalChatRoom(button.dataset.chatRoom, button.dataset.chatUserId || "").catch(() => {
+          if (internalChatList) internalChatList.innerHTML = `<div class="internal-chat-empty">메시지를 불러오지 못했습니다.</div>`;
+        });
+      });
+    }
+    if (internalChatRefresh) {
+      internalChatRefresh.addEventListener("click", () => loadInternalChatUsers().then(() => loadInternalMessages()).catch(() => {
+        if (internalChatList) internalChatList.innerHTML = `<div class="internal-chat-empty">메시지를 불러오지 못했습니다.</div>`;
+      }));
+    }
+    if (sidebarSearchInput) {
+      sidebarSearchInput.addEventListener("keydown", () => {
+        sidebarSearchUserTyped = true;
+      });
+      sidebarSearchInput.addEventListener("paste", () => {
+        sidebarSearchUserTyped = true;
+      });
+      sidebarSearchInput.addEventListener("search", () => {
+        if (!sidebarSearchInput.value) sidebarSearchUserTyped = false;
+      });
+      sidebarSearchInput.addEventListener("input", () => {
+        const rawQuery = (sidebarSearchInput.value || "").trim().toLowerCase();
+        if (document.activeElement === sidebarSearchInput && !sidebarSearchAutofillValues.has(rawQuery)) {
+          sidebarSearchUserTyped = true;
+        }
+        applySidebarSearch();
+      });
+    }
+    document.querySelectorAll("[data-crm-go]").forEach((button) => {
+      button.addEventListener("click", () => setCrmTab(button.dataset.crmGo));
+    });
+    crmProjectProgressBody?.addEventListener("click", (event) => {
+      if (isInteractiveTarget(event.target)) return;
+      const row = event.target.closest("[data-crm-project-key]");
+      if (!row) return;
+      openCrmProjectWidget(row.dataset.crmProjectKey);
+    });
+    crmProjectProgressBody?.addEventListener("keydown", (event) => {
+      if (!isCardActivationKey(event)) return;
+      if (isInteractiveTarget(event.target)) return;
+      const row = event.target.closest("[data-crm-project-key]");
+      if (!row) return;
+      event.preventDefault();
+      openCrmProjectWidget(row.dataset.crmProjectKey);
+    });
+    crmRefresh.addEventListener("click", () => loadCrmAll().catch((error) => setCrmMessage(error.message, true)));
+    crmAccountQuick.addEventListener("click", () => {
+      setCrmTab("accounts");
+    });
+    crmStaffRefresh?.addEventListener("click", () => loadCrmStaffDashboard().catch((error) => setCrmMessage(error.message, true)));
+    crmStaffBody?.addEventListener("click", (event) => {
+      if (isInteractiveTarget(event.target)) return;
+      const card = event.target.closest("[data-crm-staff-card]");
+      if (!card) return;
+      openEmployeeWidget(card.dataset.crmStaffCard).catch((error) => setCrmMessage(error.message, true));
+    });
+    crmStaffBody?.addEventListener("keydown", (event) => {
+      if (!isCardActivationKey(event)) return;
+      if (isInteractiveTarget(event.target)) return;
+      const card = event.target.closest("[data-crm-staff-card]");
+      if (!card) return;
+      event.preventDefault();
+      openEmployeeWidget(card.dataset.crmStaffCard).catch((error) => setCrmMessage(error.message, true));
+    });
+    crmTaskQuick.addEventListener("click", () => {
+      resetCrmTaskForm();
+      setCrmTaskFormOpen(true);
+      setCrmTab("tasks");
+      crmTaskTitle?.focus();
+    });
+    crmAccountForm.addEventListener("submit", (event) => {
+      saveCrmAccountForm(event).catch((error) => setCrmMessage(error.message, true));
+    });
+    crmAccountReset.addEventListener("click", resetCrmAccountForm);
+    crmAccountSearchButton.addEventListener("click", () => loadCrmAccounts().catch((error) => setCrmMessage(error.message, true)));
+    crmAccountSearch.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        loadCrmAccounts().catch((error) => setCrmMessage(error.message, true));
+      }
+    });
+    crmAccountBody.addEventListener("click", (event) => {
+      const editButton = event.target.closest("[data-crm-account-edit]");
+      if (!editButton) return;
+      const account = crmAccounts.find((item) => String(item.id) === String(editButton.dataset.crmAccountEdit));
+      if (account) fillCrmAccountForm(account);
+    });
+    crmTaskAccount.addEventListener("change", () => {
+      const account = crmAccounts.find((item) => String(item.id) === String(crmTaskAccount.value));
+      if (account) crmTaskAccountName.value = account.name;
+    });
+    crmTaskForm.addEventListener("submit", (event) => {
+      saveCrmTaskForm(event).catch((error) => setCrmMessage(error.message, true));
+    });
+    crmTaskReset.addEventListener("click", resetCrmTaskForm);
+    crmTaskFormToggle?.addEventListener("click", () => {
+      setCrmTaskFormOpen(crmTaskForm.classList.contains("collapsed"));
+    });
+    crmTaskPresetList?.addEventListener("click", (event) => {
+      const button = event.target.closest("[data-crm-task-view]");
+      if (!button) return;
+      applyCrmTaskView(button.dataset.crmTaskView);
+    });
+    crmTaskViewSelect?.addEventListener("change", () => {
+      if (crmTaskViewSelect.value) applyCrmTaskView(crmTaskViewSelect.value);
+    });
+    crmTaskViewSave?.addEventListener("click", () => {
+      saveCurrentCrmTaskView().catch((error) => setCrmMessage(error.message, true));
+    });
+    crmTaskViewDelete?.addEventListener("click", () => {
+      deleteCurrentCrmTaskView().catch((error) => setCrmMessage(error.message, true));
+    });
+    crmTaskSearchButton.addEventListener("click", () => {
+      markCrmTaskFiltersDirty();
+      loadCrmTasks().catch((error) => setCrmMessage(error.message, true));
+    });
+    crmTaskSearch.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        markCrmTaskFiltersDirty();
+        loadCrmTasks().catch((error) => setCrmMessage(error.message, true));
+      }
+    });
+    crmTaskSearch?.addEventListener("input", markCrmTaskFiltersDirty);
+    [
+      crmTaskStatusFilter,
+      crmTaskAssigneeFilter,
+      crmTaskPriorityFilter,
+      crmTaskDueFilter,
+      crmTaskSourceFilter,
+      crmTaskSort,
+      crmTaskOpenOnly,
+    ].forEach((control) => {
+      control?.addEventListener("change", () => {
+        if (crmTaskStatusFilter?.value === "완료" && crmTaskOpenOnly) crmTaskOpenOnly.checked = false;
+        markCrmTaskFiltersDirty();
+        loadCrmTasks().catch((error) => setCrmMessage(error.message, true));
+      });
+    });
+    crmTaskFilterReset?.addEventListener("click", () => {
+      crmActiveTaskViewId = "builtin:open";
+      writeCrmTaskFilters(crmBuiltinTaskView("open")?.filters || {});
+      renderCrmSavedViews();
+      loadCrmTasks().catch((error) => setCrmMessage(error.message, true));
+    });
+    function findCrmTaskById(taskId) {
+      return crmTasks.find((item) => String(item.id) === String(taskId))
+        || crmMineTasks.find((item) => String(item.id) === String(taskId))
+        || companyStaffTaskCache.find((item) => String(item.id) === String(taskId))
+        || crmStaffTaskCache.find((item) => String(item.id) === String(taskId))
+        || crmProjectProgress.flatMap((project) => project.tasks || []).find((item) => String(item.id) === String(taskId));
+    }
+    function handleCrmTaskAction(event) {
+      const editButton = event.target.closest("[data-crm-task-edit]");
+      const statusButton = event.target.closest("[data-crm-task-status]");
+      const commentButton = event.target.closest("[data-crm-task-comment]");
+      if (editButton) {
+        const task = findCrmTaskById(editButton.dataset.crmTaskEdit);
+        if (task) fillCrmTaskForm(task);
+        return true;
+      }
+      if (statusButton) {
+        crmSelectedTaskId = String(statusButton.dataset.crmTaskStatus || crmSelectedTaskId);
+        updateCrmTaskStatus(statusButton.dataset.crmTaskStatus, statusButton.dataset.status).catch((error) => setCrmMessage(error.message, true));
+        return true;
+      }
+      if (commentButton) {
+        openCrmTaskComment(commentButton.dataset.crmTaskComment);
+        return true;
+      }
+      return false;
+    }
+    crmTaskBody.addEventListener("click", (event) => {
+      if (handleCrmTaskAction(event)) return;
+      const card = event.target.closest("[data-crm-task-card]");
+      if (card) {
+        selectCrmTask(card.dataset.crmTaskCard);
+        openCrmTaskWidget(card.dataset.crmTaskCard).catch((error) => setCrmMessage(error.message, true));
+      }
+    });
+    crmTaskBody.addEventListener("keydown", (event) => {
+      if (!isCardActivationKey(event)) return;
+      if (event.target.closest("button")) return;
+      const card = event.target.closest("[data-crm-task-card]");
+      if (!card) return;
+      event.preventDefault();
+      selectCrmTask(card.dataset.crmTaskCard);
+      openCrmTaskWidget(card.dataset.crmTaskCard).catch((error) => setCrmMessage(error.message, true));
+    });
+    focusWidgetClose?.addEventListener("click", closeFocusWidget);
+    focusWidget?.addEventListener("click", (event) => {
+      if (event.target === focusWidget) closeFocusWidget();
+    });
+    focusWidgetBody?.addEventListener("click", (event) => {
+      const openTaskButton = event.target.closest("[data-focus-open-task]");
+      if (openTaskButton) {
+        openCrmTaskWidget(openTaskButton.dataset.focusOpenTask).catch((error) => setCrmMessage(error.message, true));
+        return;
+      }
+      const filterProjectButton = event.target.closest("[data-focus-filter-project]");
+      if (filterProjectButton) {
+        applyCrmProjectFilter(filterProjectButton.dataset.focusFilterProject);
+        return;
+      }
+      if (handleCrmTaskAction(event)) closeFocusWidget();
+    });
+    focusWidgetBody?.addEventListener("submit", (event) => {
+      const form = event.target.closest("[data-focus-widget-comment-form]");
+      if (!form) return;
+      event.preventDefault();
+      const textarea = form.querySelector("[data-focus-widget-comment-body]");
+      addCrmTaskComment(form.dataset.focusWidgetCommentForm, textarea?.value || "")
+        .then(() => openCrmTaskWidget(form.dataset.focusWidgetCommentForm))
+        .catch((error) => setCrmMessage(error.message, true));
+    });
+    crmMineTaskBody?.addEventListener("click", (event) => {
+      handleCrmTaskAction(event);
+    });
+    crmTaskDetail?.addEventListener("click", (event) => {
+      handleCrmTaskAction(event);
+    });
+    crmTaskDetail?.addEventListener("submit", (event) => {
+      const form = event.target.closest("[data-crm-comment-form]");
+      if (!form) return;
+      event.preventDefault();
+      const textarea = form.querySelector("[data-crm-comment-body]");
+      addCrmTaskComment(form.dataset.crmCommentForm, textarea?.value || "")
+        .then(() => {
+          if (textarea) textarea.value = "";
+        })
+        .catch((error) => setCrmMessage(error.message, true));
+    });
+    crmMessengerForm.addEventListener("submit", (event) => {
+      saveCrmMessengerForm(event).catch((error) => setCrmMessage(error.message, true));
+    });
+    crmWebhookUrlCopy?.addEventListener("click", () => copyCrmText(crmWebhookUrl?.textContent, "수신 URL"));
+    crmWebhookHeaderCopy?.addEventListener("click", () => copyCrmText(crmWebhookHeader?.textContent, "헤더 이름"));
+    crmWebhookTokenCopy?.addEventListener("click", () => copyCrmText(crmWebhookToken?.textContent, "웹훅 토큰"));
+    crmWebhookTokenRotate?.addEventListener("click", () => {
+      rotateCrmWebhookToken().catch((error) => setCrmMessage(error.message, true));
+    });
+    crmMessageEventBody?.addEventListener("click", (event) => {
+      const copyButton = event.target.closest("[data-crm-copy-text]");
+      if (copyButton) {
+        copyCrmText(copyButton.dataset.crmCopyText, "발신자 키");
+        return;
+      }
+      const mapButton = event.target.closest("[data-crm-map-sender]");
+      if (!mapButton) return;
+      crmMessengerPlatform.value = mapButton.dataset.platform || "kakao";
+      crmMessengerSenderKey.value = mapButton.dataset.crmMapSender || "";
+      crmMessengerDisplayName.value = mapButton.dataset.senderName || "";
+      crmMessengerUser?.focus();
+      setCrmMessage("Workhub 사용자를 선택한 뒤 저장하면 이 발신자가 등록 직원으로 매핑됩니다.");
     });
     document.querySelector("#orderNavToggle").addEventListener("click", () => {
       document.querySelector("#orderNavGroup").classList.toggle("open");
@@ -5346,14 +9861,23 @@ HTML = r"""<!doctype html>
       document.querySelector("#adminNavGroup")?.classList.toggle("open");
     });
     document.querySelector("#noticeInputOpen").addEventListener("click", openNoticePopup);
-    importShipmentInputOpen.addEventListener("click", () => openImportShipmentPopup());
+    importShipmentInputOpen.addEventListener("click", () => {
+      showWorkspace("import");
+      openImportShipmentPopup();
+    });
     managementImportOpen?.addEventListener("click", () => managementImportInput.click());
     ledgerImportOpen?.addEventListener("click", () => ledgerImportInput.click());
     noticePopupClose.addEventListener("click", closeNoticePopup);
     noticePopup.addEventListener("click", (event) => {
       if (event.target === noticePopup) closeNoticePopup();
     });
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape" && focusWidget?.classList.contains("open")) {
+        closeFocusWidget();
+      }
+    });
     importShipmentRefresh.addEventListener("click", loadImportShipments);
+    importShipmentWorkspaceOpen?.addEventListener("click", () => openImportShipmentPopup());
     importShipmentTreeToggle.addEventListener("click", () => {
       importProgressCard.classList.toggle("open");
     });
@@ -5748,7 +10272,7 @@ HTML = r"""<!doctype html>
     });
 
     const initialView = new URLSearchParams(window.location.search).get("view");
-    showWorkspace(["management", "ledger", "leave", "userAdmin", "backup", "systemUpdate"].includes(initialView) ? initialView : "dashboard");
+    showWorkspace(["management", "ledger", "crm", "import", "leave", "userAdmin", "backup", "systemUpdate"].includes(initialView) ? initialView : "dashboard");
   </script>
 </body>
 </html>
@@ -5760,7 +10284,6 @@ LOGIN_HTML = r"""<!doctype html>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>(주)소일브릿지 업무자동화 로그인</title>
-  <link rel="stylesheet" href="/static/workhub.css" />
   <style>
     :root {
       --bg: #f5f7fb;
@@ -5785,7 +10308,7 @@ LOGIN_HTML = r"""<!doctype html>
       color: var(--text);
     }
     .login-shell {
-      width: min(420px, calc(100vw - 32px));
+      width: min(760px, calc(100vw - 32px));
       background: var(--panel);
       border: 1px solid var(--line);
       border-radius: 14px;
@@ -5828,7 +10351,6 @@ LOGIN_HTML = r"""<!doctype html>
       box-shadow: 0 0 0 3px rgba(37, 99, 235, .13);
     }
     .error {
-      display: __ERROR_DISPLAY__;
       margin: 0 0 14px;
       padding: 11px 12px;
       border-radius: 8px;
@@ -5836,6 +10358,36 @@ LOGIN_HTML = r"""<!doctype html>
       color: #b42318;
       font-size: 13px;
       font-weight: 850;
+    }
+    .success {
+      margin: 0 0 14px;
+      padding: 11px 12px;
+      border-radius: 8px;
+      background: #dcfce7;
+      color: #047857;
+      font-size: 13px;
+      font-weight: 850;
+    }
+    .login-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      gap: 24px;
+      align-items: start;
+    }
+    .login-panel {
+      min-width: 0;
+    }
+    .register-panel {
+      min-width: 0;
+      padding: 18px;
+      border: 1px solid #e5e7eb;
+      border-radius: 10px;
+      background: #fbfcff;
+    }
+    .register-panel h2 {
+      margin: 0 0 8px;
+      font-size: 18px;
+      line-height: 1.25;
     }
     button {
       width: 100%;
@@ -5860,6 +10412,10 @@ LOGIN_HTML = r"""<!doctype html>
       line-height: 1.55;
     }
     .hint strong { color: #111827; }
+    @media (max-width: 720px) {
+      .login-grid { grid-template-columns: 1fr; }
+      .login-shell { padding: 26px 22px 24px; }
+    }
   </style>
 </head>
 <body>
@@ -5868,22 +10424,46 @@ LOGIN_HTML = r"""<!doctype html>
       <div class="brand-mark">SB</div>
       <div>
         <div class="brand-title">(주)소일브릿지<br>업무자동화</div>
-        <div class="brand-sub">관리자 / 사용자 로그인</div>
+        <div class="brand-sub">관리자 / 부관리자 / 사용자 로그인</div>
       </div>
     </div>
-    <h1>로그인</h1>
-    <p class="lead">업무 화면을 사용하려면 계정으로 로그인해주세요.</p>
-    <div class="error">아이디 또는 비밀번호가 올바르지 않습니다.</div>
-    <form method="post" action="/login">
-      <label for="username">아이디</label>
-      <input id="username" name="username" type="text" autocomplete="username" autofocus />
-      <label for="password">비밀번호</label>
-      <input id="password" name="password" type="password" autocomplete="current-password" />
-      <button type="submit">로그인</button>
-    </form>
-    <div class="hint">
-      기본 계정: <strong>admin / admin1234</strong><br>
-      사용자 계정: <strong>user / user1234</strong>
+    <div class="success" style="display: __LOGIN_MESSAGE_DISPLAY__;">__LOGIN_MESSAGE__</div>
+    <div class="login-grid">
+      <section class="login-panel">
+        <h1>로그인</h1>
+        <p class="lead">업무 화면을 사용하려면 승인된 계정으로 로그인해주세요.</p>
+        <div class="error" style="display: __LOGIN_ERROR_DISPLAY__;">__LOGIN_ERROR__</div>
+        <form method="post" action="/login">
+          <label for="username">아이디</label>
+          <input id="username" name="username" type="text" autocomplete="username" autofocus />
+          <label for="password">비밀번호</label>
+          <input id="password" name="password" type="password" autocomplete="current-password" />
+          <button type="submit">로그인</button>
+        </form>
+        <div class="hint">
+          로그인 실패가 반복되면 잠시 제한됩니다.<br>
+          계정은 관리자 승인 후 사용할 수 있습니다.
+        </div>
+      </section>
+      <section class="register-panel">
+        <h2>계정 등록 요청</h2>
+        <p class="lead">신규 직원은 요청을 남기고, 관리자가 승인하면 로그인할 수 있습니다.</p>
+        <div class="error" style="display: __REGISTER_ERROR_DISPLAY__;">__REGISTER_ERROR__</div>
+        <form method="post" action="/register">
+          <label for="registerUsername">아이디</label>
+          <input id="registerUsername" name="username" type="text" autocomplete="username" placeholder="영문/숫자 3~32자" />
+          <label for="registerDisplayName">표시 이름</label>
+          <input id="registerDisplayName" name="display_name" type="text" autocomplete="name" placeholder="예) 홍길동" />
+          <label for="registerPassword">비밀번호</label>
+          <input id="registerPassword" name="password" type="password" autocomplete="new-password" placeholder="10자 이상" />
+          <label for="registerPasswordConfirm">비밀번호 확인</label>
+          <input id="registerPasswordConfirm" name="password_confirm" type="password" autocomplete="new-password" />
+          <button type="submit">등록 요청</button>
+        </form>
+        <div class="hint">
+          비밀번호는 10자 이상, 기본/반복/아이디 포함 패턴은 사용할 수 없습니다.
+        </div>
+      </section>
     </div>
   </main>
 </body>
@@ -6035,20 +10615,22 @@ ADMIN_WORKSPACE_HTML = r"""
               </label>
               <label>권한
                 <select id="userAdminRole">
-                  <option value="user">사용자</option>
                   <option value="admin">관리자</option>
+                  <option value="sub_admin">부관리자</option>
+                  <option value="user">사용자</option>
                 </select>
               </label>
               <label>비밀번호
                 <input id="userAdminPassword" type="password" placeholder="신규/변경 시 입력" />
               </label>
-              <label class="admin-check"><input id="userAdminActive" type="checkbox" checked /> 사용</label>
+              <label class="admin-check"><input id="userAdminActive" type="checkbox" checked /> 사용/승인</label>
               <button class="workspace-button" type="button" id="userAdminSave">저장</button>
             </div>
             <div class="permission-grid" id="userAdminPermissions">
               __PERMISSION_CHECKBOXES__
             </div>
             <div class="admin-message" id="userAdminMessage"></div>
+            <div class="admin-message">가입 요청 계정은 기본적으로 승인대기 상태입니다. 내용을 확인한 뒤 사용을 체크하고 저장하면 로그인할 수 있습니다.</div>
             <div class="admin-table-wrap">
               <table class="admin-table">
                 <thead>
@@ -6059,6 +10641,7 @@ ADMIN_WORKSPACE_HTML = r"""
                     <th>세부권한</th>
                     <th>상태</th>
                     <th>생성일</th>
+                    <th>마지막 로그인</th>
                     <th>수정</th>
                   </tr>
                 </thead>
@@ -6270,6 +10853,37 @@ def now_text() -> str:
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
 
+def crm_webhook_token() -> str:
+    env_token = os.environ.get("WORKHUB_CRM_WEBHOOK_TOKEN", "").strip()
+    return env_token or ensure_webhook_token(CRM_WEBHOOK_TOKEN_PATH)
+
+
+def rotate_crm_webhook_token() -> str:
+    if os.environ.get("WORKHUB_CRM_WEBHOOK_TOKEN", "").strip():
+        raise ValueError("환경변수 WORKHUB_CRM_WEBHOOK_TOKEN 사용 중에는 화면에서 토큰을 재발급할 수 없습니다.")
+    return rotate_webhook_token(CRM_WEBHOOK_TOKEN_PATH)
+
+
+def crm_public_base_url(handler: BaseHTTPRequestHandler | None = None) -> str:
+    configured = os.environ.get("WORKHUB_PUBLIC_BASE_URL", "").strip().rstrip("/")
+    if configured:
+        return configured
+    if not handler:
+        return ""
+    host = handler.headers.get("X-Forwarded-Host") or handler.headers.get("Host", "")
+    if not host:
+        return ""
+    proto = handler.headers.get("X-Forwarded-Proto")
+    if not proto:
+        proto = "https" if isinstance(handler.request, ssl.SSLSocket) else "http"
+    return f"{proto}://{host}".rstrip("/")
+
+
+def crm_webhook_public_url(handler: BaseHTTPRequestHandler | None = None) -> str:
+    base_url = crm_public_base_url(handler)
+    return f"{base_url}/api/crm-messenger-webhook" if base_url else "/api/crm-messenger-webhook"
+
+
 def clean_payload_text(payload: dict, key: str) -> str:
     return str(payload.get(key, "") or "").strip()
 
@@ -6300,7 +10914,57 @@ def permissions_html() -> str:
 
 
 def role_label(role: str) -> str:
-    return "관리자" if role == "admin" else "사용자"
+    if role == "admin":
+        return "관리자"
+    if role == "sub_admin":
+        return "부관리자"
+    return "사용자"
+
+
+def security_time_text(timestamp: float | int | None) -> str:
+    if not timestamp:
+        return ""
+    return datetime.fromtimestamp(float(timestamp)).strftime("%Y-%m-%d %H:%M:%S")
+
+
+def normalize_username(value: object) -> str:
+    return str(value or "").strip()
+
+
+def validate_username(username: str) -> None:
+    if not re.fullmatch(r"[A-Za-z0-9_.-]{3,32}", username):
+        raise ValueError("아이디는 영문/숫자/._- 조합 3~32자로 입력해주세요.")
+
+
+def validate_password_policy(password: str, username: str, display_name: str = "") -> None:
+    if len(password) < PASSWORD_MIN_LENGTH:
+        raise ValueError(f"비밀번호는 {PASSWORD_MIN_LENGTH}자 이상으로 입력해주세요.")
+    if len(password) > PASSWORD_MAX_LENGTH:
+        raise ValueError(f"비밀번호는 {PASSWORD_MAX_LENGTH}자 이내로 입력해주세요.")
+    lowered = password.lower()
+    blocked = {
+        "admin1234",
+        "user1234",
+        "password",
+        "password123",
+        "qwer1234",
+        "qwerasdf",
+        "1234567890",
+        "soillbridge",
+        "workhub1234",
+    }
+    if lowered in blocked:
+        raise ValueError("초기/추측 쉬운 비밀번호는 사용할 수 없습니다.")
+    for value in (username, display_name):
+        compact = str(value or "").strip().lower().replace(" ", "")
+        if compact and len(compact) >= 3 and compact in lowered.replace(" ", ""):
+            raise ValueError("비밀번호에 아이디나 표시 이름을 그대로 넣을 수 없습니다.")
+    if len(set(password)) < 4:
+        raise ValueError("반복 문자만 있는 비밀번호는 사용할 수 없습니다.")
+
+
+def login_attempt_key(username: str, ip_address: str) -> str:
+    return f"{normalize_username(username).lower()}|{ip_address or 'local'}"
 
 
 def render_app_html(user: dict[str, str]) -> str:
@@ -6320,6 +10984,12 @@ def render_app_html(user: dict[str, str]) -> str:
     return (
         HTML
         .replace("__USER_DISPLAY__", html_escape(display))
+        .replace("__CURRENT_USER__", json.dumps({
+            "id": int(user.get("id") or 0),
+            "username": user.get("username", ""),
+            "display_name": display_name,
+            "role": user.get("role", "user"),
+        }, ensure_ascii=False))
         .replace("__LEAVE_NAV__", leave_nav)
         .replace("__LEAVE_WORKSPACE__", leave_workspace)
         .replace("__ADMIN_TOOLS_NAV__", admin_tools_nav)
@@ -6331,8 +11001,16 @@ def render_app_html(user: dict[str, str]) -> str:
     )
 
 
-def render_login_html(show_error: bool = False) -> str:
-    return LOGIN_HTML.replace("__ERROR_DISPLAY__", "block" if show_error else "none")
+def render_login_html(show_error: bool = False, login_error: str = "", message: str = "", register_error: str = "") -> str:
+    return (
+        LOGIN_HTML
+        .replace("__LOGIN_ERROR_DISPLAY__", "block" if show_error or login_error else "none")
+        .replace("__LOGIN_ERROR__", html_escape(login_error or "아이디 또는 비밀번호가 올바르지 않습니다."))
+        .replace("__LOGIN_MESSAGE_DISPLAY__", "block" if message else "none")
+        .replace("__LOGIN_MESSAGE__", html_escape(message))
+        .replace("__REGISTER_ERROR_DISPLAY__", "block" if register_error else "none")
+        .replace("__REGISTER_ERROR__", html_escape(register_error))
+    )
 
 
 def password_hash(password: str, salt: str | None = None) -> str:
@@ -6439,16 +11117,85 @@ def init_db() -> None:
         }
         if "permissions" not in user_columns:
             connection.execute("ALTER TABLE users ADD COLUMN permissions TEXT")
+        user_extra_columns = {
+            "last_login_at": "TEXT",
+            "password_changed_at": "TEXT",
+            "created_by": "INTEGER",
+            "approved_by": "INTEGER",
+            "approved_at": "TEXT",
+        }
+        for column, column_type in user_extra_columns.items():
+            if column not in user_columns:
+                connection.execute(f"ALTER TABLE users ADD COLUMN {column} {column_type}")
         connection.execute(
             """
             CREATE TABLE IF NOT EXISTS login_sessions (
                 token_hash TEXT PRIMARY KEY,
                 username TEXT NOT NULL,
                 created_at REAL NOT NULL,
-                expires_at REAL NOT NULL
+                expires_at REAL NOT NULL,
+                last_seen_at REAL,
+                absolute_expires_at REAL
             )
             """
         )
+        session_columns = {
+            row["name"] for row in connection.execute("PRAGMA table_info(login_sessions)").fetchall()
+        }
+        if "last_seen_at" not in session_columns:
+            connection.execute("ALTER TABLE login_sessions ADD COLUMN last_seen_at REAL")
+        if "absolute_expires_at" not in session_columns:
+            connection.execute("ALTER TABLE login_sessions ADD COLUMN absolute_expires_at REAL")
+        connection.execute(
+            """
+            UPDATE login_sessions
+               SET last_seen_at = COALESCE(last_seen_at, created_at),
+                   absolute_expires_at = COALESCE(absolute_expires_at, created_at + ?)
+             WHERE last_seen_at IS NULL OR absolute_expires_at IS NULL
+            """,
+            (SESSION_SECONDS,),
+        )
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS login_attempts (
+                identifier TEXT PRIMARY KEY,
+                failed_count INTEGER NOT NULL DEFAULT 0,
+                first_failed_at REAL NOT NULL,
+                last_failed_at REAL NOT NULL,
+                locked_until REAL
+            )
+            """
+        )
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS internal_messages (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                recipient_user_id INTEGER,
+                room_type TEXT NOT NULL DEFAULT 'global',
+                body TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                task_id INTEGER,
+                command_result TEXT,
+                command_error TEXT
+            )
+            """
+        )
+        internal_message_columns = {
+            row["name"] for row in connection.execute("PRAGMA table_info(internal_messages)").fetchall()
+        }
+        if "recipient_user_id" not in internal_message_columns:
+            connection.execute("ALTER TABLE internal_messages ADD COLUMN recipient_user_id INTEGER")
+        if "room_type" not in internal_message_columns:
+            connection.execute("ALTER TABLE internal_messages ADD COLUMN room_type TEXT NOT NULL DEFAULT 'global'")
+        if "task_id" not in internal_message_columns:
+            connection.execute("ALTER TABLE internal_messages ADD COLUMN task_id INTEGER")
+        if "command_result" not in internal_message_columns:
+            connection.execute("ALTER TABLE internal_messages ADD COLUMN command_result TEXT")
+        if "command_error" not in internal_message_columns:
+            connection.execute("ALTER TABLE internal_messages ADD COLUMN command_error TEXT")
+        connection.execute("CREATE INDEX IF NOT EXISTS idx_internal_messages_created ON internal_messages(created_at)")
+        connection.execute("CREATE INDEX IF NOT EXISTS idx_internal_messages_room ON internal_messages(room_type, recipient_user_id, user_id)")
         connection.execute(
             """
             CREATE TABLE IF NOT EXISTS system_update_history (
@@ -6496,7 +11243,17 @@ def init_db() -> None:
                     row["username"],
                 ),
             )
-        connection.execute("DELETE FROM login_sessions WHERE expires_at < ?", (time.time(),))
+        for row in connection.execute("SELECT username, role, permissions FROM users WHERE role != 'admin'").fetchall():
+            permissions = normalize_permissions(row["permissions"], row["role"])
+            if "crm_view" not in permissions:
+                permissions.append("crm_view")
+                ordered_permissions = [key for key in ALL_PERMISSIONS if key in set(permissions)]
+                connection.execute(
+                    "UPDATE users SET permissions = ?, updated_at = ? WHERE username = ?",
+                    (json.dumps(ordered_permissions, ensure_ascii=False), now, row["username"]),
+                )
+        connection.execute("DELETE FROM login_sessions WHERE expires_at < ? OR COALESCE(absolute_expires_at, expires_at) < ?", (time.time(), time.time()))
+        connection.execute("DELETE FROM login_attempts WHERE last_failed_at < ? AND COALESCE(locked_until, 0) < ?", (time.time() - 24 * 60 * 60, time.time()))
         connection.execute(
             """
             CREATE TABLE IF NOT EXISTS cs_cases (
@@ -6712,6 +11469,70 @@ def init_db() -> None:
             )
         connection.execute("CREATE INDEX IF NOT EXISTS idx_leave_requests_user ON leave_requests(user_id)")
         connection.execute("CREATE INDEX IF NOT EXISTS idx_leave_requests_status ON leave_requests(status)")
+        init_crm_db(connection)
+        connection.commit()
+    finally:
+        connection.close()
+
+
+def login_lock_status(username: str, ip_address: str) -> tuple[bool, str]:
+    init_db()
+    key = login_attempt_key(username, ip_address)
+    now = time.time()
+    connection = connect_db()
+    try:
+        row = connection.execute(
+            "SELECT locked_until FROM login_attempts WHERE identifier = ?",
+            (key,),
+        ).fetchone()
+        if not row or not row["locked_until"] or float(row["locked_until"]) <= now:
+            return False, ""
+        minutes = max(1, int((float(row["locked_until"]) - now + 59) // 60))
+        return True, f"로그인 시도가 잠시 제한됐습니다. 약 {minutes}분 후 다시 시도해주세요."
+    finally:
+        connection.close()
+
+
+def record_login_failure(username: str, ip_address: str) -> None:
+    init_db()
+    key = login_attempt_key(username, ip_address)
+    now = time.time()
+    connection = connect_db()
+    try:
+        row = connection.execute(
+            "SELECT failed_count, first_failed_at FROM login_attempts WHERE identifier = ?",
+            (key,),
+        ).fetchone()
+        if not row or now - float(row["first_failed_at"]) > LOGIN_FAILURE_WINDOW_SECONDS:
+            failed_count = 1
+            first_failed_at = now
+        else:
+            failed_count = int(row["failed_count"] or 0) + 1
+            first_failed_at = float(row["first_failed_at"])
+        locked_until = now + LOGIN_LOCK_SECONDS if failed_count >= LOGIN_MAX_FAILURES else None
+        connection.execute(
+            """
+            INSERT INTO login_attempts (identifier, failed_count, first_failed_at, last_failed_at, locked_until)
+            VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(identifier) DO UPDATE SET
+                failed_count = excluded.failed_count,
+                first_failed_at = excluded.first_failed_at,
+                last_failed_at = excluded.last_failed_at,
+                locked_until = excluded.locked_until
+            """,
+            (key, failed_count, first_failed_at, now, locked_until),
+        )
+        connection.commit()
+    finally:
+        connection.close()
+
+
+def clear_login_failures(username: str, ip_address: str) -> None:
+    init_db()
+    key = login_attempt_key(username, ip_address)
+    connection = connect_db()
+    try:
+        connection.execute("DELETE FROM login_attempts WHERE identifier = ?", (key,))
         connection.commit()
     finally:
         connection.close()
@@ -6719,7 +11540,7 @@ def init_db() -> None:
 
 def authenticate_user(username: str, password: str) -> dict[str, str] | None:
     init_db()
-    normalized = username.strip()
+    normalized = normalize_username(username)
     if not normalized or not password:
         return None
     connection = connect_db()
@@ -6734,6 +11555,8 @@ def authenticate_user(username: str, password: str) -> dict[str, str] | None:
         ).fetchone()
         if not row or not verify_password(password, row["password_hash"]):
             return None
+        connection.execute("UPDATE users SET last_login_at = ?, updated_at = ? WHERE id = ?", (now_text(), now_text(), int(row["id"])))
+        connection.commit()
         return {
             "id": str(row["id"]),
             "username": row["username"],
@@ -6749,14 +11572,16 @@ def create_login_session(username: str) -> str:
     init_db()
     token = secrets.token_urlsafe(32)
     now = time.time()
+    idle_expires_at = now + SESSION_IDLE_SECONDS
+    absolute_expires_at = now + SESSION_SECONDS
     connection = connect_db()
     try:
         connection.execute(
             """
-            INSERT INTO login_sessions (token_hash, username, created_at, expires_at)
-            VALUES (?, ?, ?, ?)
+            INSERT INTO login_sessions (token_hash, username, created_at, expires_at, last_seen_at, absolute_expires_at)
+            VALUES (?, ?, ?, ?, ?, ?)
             """,
-            (token_digest(token), username, now, now + SESSION_SECONDS),
+            (token_digest(token), username, now, min(idle_expires_at, absolute_expires_at), now, absolute_expires_at),
         )
         connection.commit()
         return token
@@ -6772,20 +11597,30 @@ def current_user_from_token(token: str) -> dict[str, str] | None:
     try:
         row = connection.execute(
             """
-            SELECT users.id, users.username, users.display_name, users.role, users.permissions, login_sessions.expires_at
+            SELECT users.id, users.username, users.display_name, users.role, users.permissions,
+                   login_sessions.expires_at,
+                   COALESCE(login_sessions.last_seen_at, login_sessions.created_at) AS last_seen_at,
+                   COALESCE(login_sessions.absolute_expires_at, login_sessions.created_at + ?) AS absolute_expires_at
               FROM login_sessions
               JOIN users ON users.username = login_sessions.username
              WHERE login_sessions.token_hash = ?
                AND users.active = 1
             """,
-            (token_digest(token),),
+            (SESSION_SECONDS, token_digest(token)),
         ).fetchone()
         if not row:
             return None
-        if float(row["expires_at"]) < time.time():
+        now = time.time()
+        if float(row["expires_at"]) < now or float(row["absolute_expires_at"]) < now:
             connection.execute("DELETE FROM login_sessions WHERE token_hash = ?", (token_digest(token),))
             connection.commit()
             return None
+        next_expires_at = min(now + SESSION_IDLE_SECONDS, float(row["absolute_expires_at"]))
+        connection.execute(
+            "UPDATE login_sessions SET last_seen_at = ?, expires_at = ? WHERE token_hash = ?",
+            (now, next_expires_at, token_digest(token)),
+        )
+        connection.commit()
         return {
             "id": str(row["id"]),
             "username": row["username"],
@@ -6815,9 +11650,11 @@ def list_users() -> list[dict[str, str | int]]:
     try:
         rows = connection.execute(
             """
-            SELECT id, username, display_name, role, permissions, active, created_at, updated_at
+            SELECT id, username, display_name, role, permissions, active, created_at, updated_at,
+                   last_login_at, password_changed_at, approved_at
               FROM users
-             ORDER BY role = 'admin' DESC, username COLLATE NOCASE
+             ORDER BY CASE role WHEN 'admin' THEN 0 WHEN 'sub_admin' THEN 1 ELSE 2 END,
+                      username COLLATE NOCASE
             """
         ).fetchall()
         users = []
@@ -6830,28 +11667,384 @@ def list_users() -> list[dict[str, str | int]]:
         connection.close()
 
 
+def company_staff_dashboard_payload(current_user: dict[str, str]) -> dict:
+    init_db()
+    connection = connect_db()
+    try:
+        today = date.today().isoformat()
+        rows = connection.execute(
+            """
+            SELECT users.id,
+                   users.username,
+                   users.display_name,
+                   users.role,
+                   COUNT(tasks.id) AS task_count,
+                   SUM(CASE WHEN tasks.status != '완료' THEN 1 ELSE 0 END) AS open_tasks,
+                   SUM(CASE WHEN tasks.status != '완료' AND substr(tasks.due_at, 1, 10) = ? THEN 1 ELSE 0 END) AS due_today,
+                   SUM(CASE WHEN tasks.status != '완료'
+                              AND length(tasks.due_at) >= 10
+                              AND substr(tasks.due_at, 1, 10) < ? THEN 1 ELSE 0 END) AS overdue
+              FROM users
+              LEFT JOIN crm_tasks tasks ON tasks.assignee_user_id = users.id
+             WHERE users.active = 1
+             GROUP BY users.id
+             ORDER BY CASE users.role WHEN 'admin' THEN 0 WHEN 'sub_admin' THEN 1 ELSE 2 END,
+                      users.display_name COLLATE NOCASE,
+                      users.username COLLATE NOCASE
+            """,
+            (today, today),
+        ).fetchall()
+        staff = []
+        for row in rows:
+            item = dict(row)
+            role = str(item.get("role") or "user")
+            item["team_label"] = "운영 리드" if role == "admin" else ("부운영 리드" if role == "sub_admin" else "업무 담당")
+            item["task_count"] = int(item.get("task_count") or 0)
+            item["open_tasks"] = int(item.get("open_tasks") or 0)
+            item["due_today"] = int(item.get("due_today") or 0)
+            item["overdue"] = int(item.get("overdue") or 0)
+            staff.append(item)
+        return {
+            "current_user_id": int(current_user.get("id") or 0),
+            "staff": staff,
+        }
+    finally:
+        connection.close()
+
+
+def month_bounds(month_text: str) -> tuple[date, date]:
+    today = date.today()
+    match = re.match(r"^(\d{4})-(\d{2})$", str(month_text or "").strip())
+    if match:
+        year = int(match.group(1))
+        month = int(match.group(2))
+        if not 1 <= month <= 12:
+            raise ValueError("캘린더 월 형식이 올바르지 않습니다.")
+        start = date(year, month, 1)
+    else:
+        start = date(today.year, today.month, 1)
+    next_month = date(start.year + (1 if start.month == 12 else 0), 1 if start.month == 12 else start.month + 1, 1)
+    return start, next_month - timedelta(days=1)
+
+
+def company_calendar_payload(user: dict[str, str], month_text: str) -> dict:
+    init_db()
+    start, end = month_bounds(month_text)
+    start_text = start.isoformat()
+    end_text = end.isoformat()
+    today_text = date.today().isoformat()
+    can_see_leave = any(user_has_permission(user, permission) for permission in ("leave_view", "leave_approve", "leave_manage"))
+    can_see_team_leave = user_has_permission(user, "leave_approve") or user_has_permission(user, "leave_manage")
+    user_id = int(user.get("id") or 0)
+    connection = connect_db()
+    try:
+        task_rows = connection.execute(
+            """
+            SELECT id, public_id, title, description, account_name, assignee_user_id, assignee_name,
+                   requester_name, due_at, priority, status, source, updated_at
+              FROM crm_tasks
+             WHERE due_at IS NOT NULL
+               AND due_at != ''
+               AND substr(due_at, 1, 10) BETWEEN ? AND ?
+             ORDER BY substr(due_at, 1, 10), priority = '높음' DESC, due_at
+            """,
+            (start_text, end_text),
+        ).fetchall()
+        project_rows = connection.execute(
+            """
+            SELECT COALESCE(NULLIF(account_name, ''), '직원 지시 업무') AS project_name,
+                   MIN(substr(due_at, 1, 10)) AS event_date,
+                   COUNT(*) AS total_tasks,
+                   SUM(CASE WHEN status != '완료' THEN 1 ELSE 0 END) AS open_tasks,
+                   SUM(CASE WHEN status = '완료' THEN 1 ELSE 0 END) AS completed_tasks,
+                   SUM(CASE WHEN priority = '높음' AND status != '완료' THEN 1 ELSE 0 END) AS high_priority,
+                   GROUP_CONCAT(DISTINCT NULLIF(assignee_name, '')) AS assignee_names
+              FROM crm_tasks
+             WHERE due_at IS NOT NULL
+               AND due_at != ''
+               AND substr(due_at, 1, 10) BETWEEN ? AND ?
+             GROUP BY COALESCE(NULLIF(account_name, ''), '직원 지시 업무')
+             ORDER BY event_date, open_tasks DESC
+             LIMIT 80
+            """,
+            (start_text, end_text),
+        ).fetchall()
+        leave_rows = []
+        if can_see_leave:
+            leave_conditions = ["leave_requests.start_date <= ?", "leave_requests.end_date >= ?"]
+            leave_params: list[object] = [end_text, start_text]
+            if can_see_team_leave:
+                leave_conditions.append("leave_requests.status IN ('APPROVED', 'PENDING')")
+            else:
+                leave_conditions.append("(leave_requests.status = 'APPROVED' OR leave_requests.user_id = ?)")
+                leave_params.append(user_id)
+            leave_rows = connection.execute(
+                f"""
+                SELECT leave_requests.*, leave_types.name AS leave_type_name, users.display_name
+                  FROM leave_requests
+                  JOIN leave_types ON leave_types.id = leave_requests.leave_type_id
+                  JOIN users ON users.id = leave_requests.user_id
+                 WHERE {' AND '.join(leave_conditions)}
+                 ORDER BY leave_requests.start_date, users.display_name
+                """,
+                tuple(leave_params),
+            ).fetchall()
+    finally:
+        connection.close()
+
+    events: list[dict[str, object]] = []
+    for row in project_rows:
+        total_tasks = int(row["total_tasks"] or 0)
+        completed_tasks = int(row["completed_tasks"] or 0)
+        progress = round((completed_tasks / total_tasks) * 100) if total_tasks else 0
+        events.append({
+            "id": f"project:{row['project_name']}",
+            "type": "project",
+            "date": row["event_date"],
+            "title": row["project_name"],
+            "subtitle": f"{progress}% 완료 · 진행 {int(row['open_tasks'] or 0)}건",
+            "project_name": row["project_name"],
+            "assignees": row["assignee_names"] or "",
+            "high_priority": int(row["high_priority"] or 0),
+            "progress": progress,
+        })
+    for row in task_rows:
+        due_day = str(row["due_at"] or "")[:10]
+        risk = row["status"] != "완료" and due_day < today_text
+        events.append({
+            "id": f"task:{row['id']}",
+            "type": "task",
+            "date": due_day,
+            "title": row["title"] or row["public_id"],
+            "subtitle": f"{row['public_id']} · {row['assignee_name'] or '담당자 미정'} · {row['status']}",
+            "task_id": row["id"],
+            "public_id": row["public_id"],
+            "priority": row["priority"],
+            "status": row["status"],
+            "risk": risk or row["priority"] == "높음",
+        })
+    for row in leave_rows:
+        leave_start = max(parse_iso_date(row["start_date"]), start)
+        leave_end = min(parse_iso_date(row["end_date"]), end)
+        cursor = leave_start
+        while cursor <= leave_end:
+            status = row["status"] or "PENDING"
+            events.append({
+                "id": f"leave:{row['id']}:{cursor.isoformat()}",
+                "type": "pending" if status == "PENDING" else "leave",
+                "date": cursor.isoformat(),
+                "title": f"{row['display_name']} {row['leave_type_name']}",
+                "subtitle": f"{leave_status_label(status)} · {row['unit'] == 'HALF_DAY' and '반차' or '연차'}",
+                "leave_id": row["id"],
+                "user_id": row["user_id"],
+                "status": status,
+                "requested_days": round(float(row["requested_days"] or 0), 2),
+                "reason": row["reason"] or "",
+            })
+            cursor += timedelta(days=1)
+    summary = {
+        "project": sum(1 for event in events if event["type"] == "project"),
+        "task": sum(1 for event in events if event["type"] == "task"),
+        "leave": sum(1 for event in events if event["type"] in {"leave", "pending"}),
+        "risk": sum(1 for event in events if event.get("risk") or (event["type"] == "pending")),
+    }
+    return {
+        "month": start.strftime("%Y-%m"),
+        "start": start_text,
+        "end": end_text,
+        "today": today_text,
+        "can_see_team_leave": can_see_team_leave,
+        "summary": summary,
+        "events": sorted(events, key=lambda item: (str(item["date"]), {"project": 0, "leave": 1, "pending": 2, "task": 3}.get(str(item["type"]), 9), str(item["title"]))),
+    }
+
+
+def list_internal_messages(
+    limit: int = 100,
+    room_type: str = "global",
+    current_user_id: int = 0,
+    other_user_id: int = 0,
+) -> list[dict[str, str | int]]:
+    init_db()
+    safe_limit = max(1, min(int(limit), 300))
+    room = "dm" if room_type == "dm" else "global"
+    connection = connect_db()
+    try:
+        conditions = ["COALESCE(internal_messages.room_type, 'global') = ?"]
+        params: list[object] = [room]
+        if room == "dm":
+            if not current_user_id or not other_user_id:
+                return []
+            conditions.append(
+                "((internal_messages.user_id = ? AND internal_messages.recipient_user_id = ?) "
+                "OR (internal_messages.user_id = ? AND internal_messages.recipient_user_id = ?))"
+            )
+            params.extend([current_user_id, other_user_id, other_user_id, current_user_id])
+        where_sql = " AND ".join(conditions)
+        rows = connection.execute(
+            f"""
+            SELECT internal_messages.id,
+                   internal_messages.user_id,
+                   internal_messages.recipient_user_id,
+                   COALESCE(internal_messages.room_type, 'global') AS room_type,
+                   internal_messages.body,
+                   internal_messages.created_at,
+                   internal_messages.task_id,
+                   internal_messages.command_result,
+                   internal_messages.command_error,
+                   users.username,
+                   users.display_name
+              FROM internal_messages
+              LEFT JOIN users ON users.id = internal_messages.user_id
+             WHERE {where_sql}
+             ORDER BY internal_messages.id DESC
+             LIMIT ?
+            """,
+            tuple(params + [safe_limit]),
+        ).fetchall()
+        return [dict(row) for row in reversed(rows)]
+    finally:
+        connection.close()
+
+
+def find_internal_command_assignee(connection: sqlite3.Connection, mention: str) -> dict[str, str | int]:
+    mention_text = mention.strip().lstrip("@")
+    if not mention_text:
+        raise ValueError("@직원을 입력해주세요.")
+    rows = connection.execute(
+        """
+        SELECT id, username, display_name
+          FROM users
+         WHERE active = 1
+           AND (username = ? COLLATE NOCASE OR display_name = ? COLLATE NOCASE)
+         ORDER BY id
+        """,
+        (mention_text, mention_text),
+    ).fetchall()
+    if not rows:
+        raise ValueError(f"직원 '{mention_text}'를 찾지 못했습니다.")
+    if len(rows) > 1:
+        names = ", ".join(row["display_name"] or row["username"] for row in rows[:5])
+        raise ValueError(f"'{mention_text}'에 해당하는 직원이 여러 명입니다: {names}")
+    return dict(rows[0])
+
+
+def parse_internal_task_command(body: str) -> tuple[str, str, str]:
+    match = re.match(r"^/업무\s+@([^\s/]+)\s+(.+?)\s*/\s*(.+)$", body.strip())
+    if not match:
+        raise ValueError("업무 지시 형식: /업무 @직원 업무내용 / 기한")
+    assignee_text, title, due_at = [part.strip() for part in match.groups()]
+    if not title:
+        raise ValueError("업무내용을 입력해주세요.")
+    if not due_at:
+        raise ValueError("기한을 입력해주세요.")
+    return assignee_text, title, due_at
+
+
+def task_public_id(task_id: int) -> str:
+    connection = connect_db()
+    try:
+        row = connection.execute("SELECT public_id FROM crm_tasks WHERE id = ?", (task_id,)).fetchone()
+        return str(row["public_id"] if row else f"TASK-{task_id:04d}")
+    finally:
+        connection.close()
+
+
+def save_internal_message(payload: dict, user: dict[str, str]) -> int:
+    body = clean_payload_text(payload, "body")
+    if not body:
+        raise ValueError("메시지 내용을 입력해주세요.")
+    if len(body) > 2000:
+        raise ValueError("메시지는 2,000자 이하로 입력해주세요.")
+    room_type = "dm" if clean_payload_text(payload, "room_type") == "dm" else "global"
+    recipient_user_id = int(payload.get("recipient_user_id") or 0) if room_type == "dm" else 0
+    init_db()
+    if room_type == "dm":
+        validation_connection = connect_db()
+        try:
+            recipient = validation_connection.execute(
+                "SELECT id FROM users WHERE id = ? AND active = 1",
+                (recipient_user_id,),
+            ).fetchone()
+            if not recipient:
+                raise ValueError("DM 대상 직원을 찾지 못했습니다.")
+        finally:
+            validation_connection.close()
+    task_id: int | None = None
+    command_result = ""
+    command_error = ""
+    if body.startswith("/업무"):
+        try:
+            assignee_text, title, due_at = parse_internal_task_command(body)
+            assignee_connection = connect_db()
+            try:
+                assignee = find_internal_command_assignee(assignee_connection, assignee_text)
+            finally:
+                assignee_connection.close()
+            task_id = save_crm_task(DB_PATH, {
+                "account_id": "",
+                "account_name": "",
+                "title": title,
+                "description": body,
+                "assignee_user_id": assignee["id"],
+                "assignee_name": assignee["display_name"] or assignee["username"],
+                "due_at": due_at,
+                "priority": "보통",
+                "status": "대기",
+                "source": "internal_message",
+            }, user)
+            public_id = task_public_id(task_id)
+            command_result = f"{public_id} 업무가 등록됐습니다."
+        except Exception as exc:  # noqa: BLE001
+            command_error = str(exc)
+    connection = connect_db()
+    try:
+        cursor = connection.execute(
+            """
+            INSERT INTO internal_messages
+                (user_id, recipient_user_id, room_type, body, created_at, task_id, command_result, command_error)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                int(user.get("id") or 0),
+                recipient_user_id or None,
+                room_type,
+                body,
+                now_text(),
+                task_id,
+                command_result,
+                command_error,
+            ),
+        )
+        connection.commit()
+        return int(cursor.lastrowid)
+    finally:
+        connection.close()
+
+
 def save_user_account(payload: dict, actor: dict[str, str]) -> int:
     init_db()
     user_id = int(payload.get("id", 0) or 0)
-    username = clean_payload_text(payload, "username")
+    username = normalize_username(payload.get("username"))
     display_name = clean_payload_text(payload, "display_name")
     role = clean_payload_text(payload, "role") or "user"
     password = str(payload.get("password", "") or "")
     active = 1 if payload.get("active", True) else 0
     permissions = normalize_permissions(payload.get("permissions", []), role)
-    if role not in {"admin", "user"}:
-        raise ValueError("권한은 관리자 또는 사용자만 선택할 수 있습니다.")
-    if not re.fullmatch(r"[A-Za-z0-9_.-]{3,32}", username):
-        raise ValueError("아이디는 영문/숫자/._- 조합 3~32자로 입력해주세요.")
+    if role not in {"admin", "sub_admin", "user"}:
+        raise ValueError("권한은 관리자, 부관리자, 사용자 중 하나만 선택할 수 있습니다.")
+    validate_username(username)
     if not display_name:
         display_name = username
     if not user_id and not password:
         raise ValueError("신규 사용자는 비밀번호를 입력해주세요.")
+    if password:
+        validate_password_policy(password, username, display_name)
     now = now_text()
     connection = connect_db()
     try:
         if user_id:
-            existing = connection.execute("SELECT username FROM users WHERE id = ?", (user_id,)).fetchone()
+            existing = connection.execute("SELECT username, active FROM users WHERE id = ?", (user_id,)).fetchone()
             if not existing:
                 raise ValueError("수정할 사용자를 찾지 못했습니다.")
             if existing["username"] == actor.get("username") and not active:
@@ -6868,22 +12061,79 @@ def save_user_account(payload: dict, actor: dict[str, str]) -> int:
             if password:
                 columns.append("password_hash = ?")
                 values.append(password_hash(password))
+                columns.append("password_changed_at = ?")
+                values.append(now)
+            if active and not int(existing["active"] or 0):
+                columns.append("approved_by = ?")
+                columns.append("approved_at = ?")
+                values.extend([int(actor.get("id") or 0) or None, now])
             values.append(user_id)
             connection.execute(f"UPDATE users SET {', '.join(columns)} WHERE id = ?", values)
             saved_id = user_id
         else:
             cursor = connection.execute(
                 """
-                INSERT INTO users (username, display_name, role, permissions, password_hash, active, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO users
+                    (username, display_name, role, permissions, password_hash, active,
+                     created_at, updated_at, password_changed_at, created_by, approved_by, approved_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
-                (username, display_name, role, json.dumps(permissions, ensure_ascii=False), password_hash(password), active, now, now),
+                (
+                    username,
+                    display_name,
+                    role,
+                    json.dumps(permissions, ensure_ascii=False),
+                    password_hash(password),
+                    active,
+                    now,
+                    now,
+                    now,
+                    int(actor.get("id") or 0) or None,
+                    int(actor.get("id") or 0) if active else None,
+                    now if active else None,
+                ),
             )
             saved_id = int(cursor.lastrowid)
         connection.commit()
         return saved_id
     except sqlite3.IntegrityError as exc:
         raise ValueError("이미 사용 중인 아이디입니다.") from exc
+    finally:
+        connection.close()
+
+
+def register_user_request(payload: dict[str, str]) -> int:
+    init_db()
+    username = normalize_username(payload.get("username"))
+    display_name = clean_payload_text(payload, "display_name")
+    password = str(payload.get("password", "") or "")
+    password_confirm = str(payload.get("password_confirm", "") or "")
+    validate_username(username)
+    if not display_name:
+        raise ValueError("표시 이름을 입력해주세요.")
+    if password != password_confirm:
+        raise ValueError("비밀번호 확인이 일치하지 않습니다.")
+    validate_password_policy(password, username, display_name)
+    now = now_text()
+    permissions = default_permissions_for_role("user")
+    connection = connect_db()
+    try:
+        existing = connection.execute("SELECT id, active FROM users WHERE username = ?", (username,)).fetchone()
+        if existing:
+            if not int(existing["active"] or 0):
+                raise ValueError("이미 등록 요청된 아이디입니다. 관리자 승인을 기다려주세요.")
+            raise ValueError("이미 사용 중인 아이디입니다.")
+        cursor = connection.execute(
+            """
+            INSERT INTO users
+                (username, display_name, role, permissions, password_hash, active,
+                 created_at, updated_at, password_changed_at)
+            VALUES (?, ?, 'user', ?, ?, 0, ?, ?, ?)
+            """,
+            (username, display_name, json.dumps(permissions, ensure_ascii=False), password_hash(password), now, now, now),
+        )
+        connection.commit()
+        return int(cursor.lastrowid)
     finally:
         connection.close()
 
@@ -6897,6 +12147,7 @@ RESTORE_ALLOWED_FILES = {
     "config/mail_settings.json": MAIL_SETTINGS_PATH,
     "config/vendor_contacts.json": VENDOR_CONTACTS_PATH,
     "config/secret.key": SECRET_KEY_PATH,
+    "config/crm_webhook_token.txt": CRM_WEBHOOK_TOKEN_PATH,
 }
 
 
@@ -6963,7 +12214,7 @@ def create_workhub_backup(reason: str = "manual") -> dict[str, str | int]:
         safe_sqlite_copy(temp_db)
         with zipfile.ZipFile(output_path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
             archive.write(temp_db, "config/workhub.db")
-            for path in (MAIL_SETTINGS_PATH, VENDOR_CONTACTS_PATH, SECRET_KEY_PATH):
+            for path in (MAIL_SETTINGS_PATH, VENDOR_CONTACTS_PATH, SECRET_KEY_PATH, CRM_WEBHOOK_TOKEN_PATH):
                 if path.exists() and path.is_file():
                     archive.write(path, f"config/{path.name}")
             archive.writestr(
@@ -6979,6 +12230,7 @@ def create_workhub_backup(reason: str = "manual") -> dict[str, str | int]:
                             "config/mail_settings.json",
                             "config/vendor_contacts.json",
                             "config/secret.key",
+                            "config/crm_webhook_token.txt",
                         ],
                     },
                     ensure_ascii=False,
@@ -7924,7 +13176,6 @@ def management_query_conditions(query: str = "", year: str = "", month: str = ""
     where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
     return where, params
 
-
 def list_management_records(query: str = "", limit: int | None = 300, year: str = "", month: str = "") -> list[dict[str, str | int]]:
     init_db()
     where, params = management_query_conditions(query, year, month)
@@ -7952,7 +13203,6 @@ def list_management_records(query: str = "", limit: int | None = 300, year: str 
         connection.close()
     return [dict(row) for row in rows]
 
-
 def list_management_records_by_ids(record_ids: list[int]) -> list[dict[str, str | int]]:
     init_db()
     if not record_ids:
@@ -7977,7 +13227,6 @@ def list_management_records_by_ids(record_ids: list[int]) -> list[dict[str, str 
     finally:
         connection.close()
     return [dict(row) for row in rows]
-
 
 def list_management_periods() -> list[dict[str, str | int]]:
     init_db()
@@ -8138,7 +13387,6 @@ def get_management_record(record_id: int) -> dict[str, str | int]:
         raise ValueError("통합관리대장 행을 찾지 못했습니다.")
     return dict(row)
 
-
 def update_management_record(record_id: int, payload: dict) -> None:
     init_db()
     values = [clean_payload_text(payload, column) for column in MANAGEMENT_EDIT_COLUMNS]
@@ -8277,6 +13525,7 @@ MANAGEMENT_EXPORT_COLUMNS = [
     ("customer_option", "고객선택옵션"),
 ]
 
+
 MANAGEMENT_TEMPLATE_HEADER_ROW = 1
 MANAGEMENT_TEMPLATE_DATA_ROW = 2
 
@@ -8370,13 +13619,6 @@ def clear_management_template_sheet(worksheet, style_row: list[dict], row_height
     for column_index, style in enumerate(style_row, start=1):
         apply_cell_style(worksheet.cell(MANAGEMENT_TEMPLATE_DATA_ROW, column_index), style)
 
-
-def management_export_cell_value(row: dict, key: str, sequence: int) -> str:
-    if key == "sequence":
-        return clean_cell(row.get(key, "")) or str(sequence)
-    return clean_cell(row.get(key, ""))
-
-
 def populate_management_template_sheet(worksheet, title: str, rows: list[dict], style_row: list[dict], row_height: float | None) -> None:
     worksheet.title = title[:31]
     for sequence, row in enumerate(rows, start=1):
@@ -8391,6 +13633,33 @@ def populate_management_template_sheet(worksheet, title: str, rows: list[dict], 
     worksheet.auto_filter.ref = f"A{MANAGEMENT_TEMPLATE_HEADER_ROW}:{last_column}{last_row}"
     worksheet.freeze_panes = f"A{MANAGEMENT_TEMPLATE_DATA_ROW}"
 
+def management_export_cell_value(row: dict, key: str, sequence: int) -> str:
+    if key == "sequence":
+        return clean_cell(row.get(key, "")) or str(sequence)
+    return clean_cell(row.get(key, ""))
+
+def management_year_from_rows(rows: list[dict], fallback: str = "") -> str:
+    for row in rows:
+        year_month = extract_year_month(row.get("order_date"), row.get("ship_date"))
+        if year_month:
+            return year_month[0]
+    return fallback
+
+def management_template_filename_stem(
+    rows: list[dict],
+    payload: dict,
+    now: datetime | None = None,
+) -> str:
+    now = now or datetime.now()
+    requested_year = clean_payload_text(payload, "year")
+    year = requested_year if re.fullmatch(r"\d{4}", requested_year) else management_year_from_rows(rows, str(now.year))
+    return f"통합관리대장 양식 {year}년 {now.strftime('%Y%m%d')}"
+
+def management_export_filename(filename_stem: str, payload: dict) -> str:
+    scope = clean_payload_text(payload, "scope")
+    if scope == "template":
+        return f"{filename_stem}.xlsx"
+    return f"{filename_stem}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
 
 def management_workbook_bytes_from_template(rows: list[dict]) -> bytes:
     if not MANAGEMENT_EXPORT_TEMPLATE.exists():
@@ -8416,39 +13685,8 @@ def management_workbook_bytes_from_template(rows: list[dict]) -> bytes:
     workbook.save(stream)
     return stream.getvalue()
 
-
-def management_year_from_rows(rows: list[dict], fallback: str = "") -> str:
-    for row in rows:
-        year_month = extract_year_month(row.get("order_date"), row.get("ship_date"))
-        if year_month:
-            return year_month[0]
-    return fallback
-
-
-def management_template_filename_stem(
-    rows: list[dict],
-    payload: dict,
-    now: datetime | None = None,
-) -> str:
-    now = now or datetime.now()
-    requested_year = clean_payload_text(payload, "year")
-    year = requested_year if re.fullmatch(r"\d{4}", requested_year) else management_year_from_rows(rows, str(now.year))
-    return f"통합관리대장 양식 {year}년 {now.strftime('%Y%m%d')}"
-
-
-def management_export_filename(filename_stem: str, payload: dict) -> str:
-    scope = clean_payload_text(payload, "scope")
-    if scope == "template":
-        return f"{filename_stem}.xlsx"
-    return f"{filename_stem}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
-
-
 def management_export_rows_from_payload(payload: dict) -> tuple[list[dict], str]:
     scope = clean_payload_text(payload, "scope") or "selected"
-    if scope == "template":
-        year = clean_payload_text(payload, "year")
-        rows = list_management_records(limit=None, year=year if re.fullmatch(r"\d{4}", year) else "")
-        return rows, management_template_filename_stem(rows, payload)
     if scope == "selected":
         rows = payload.get("rows", [])
         if isinstance(rows, list) and rows:
@@ -8567,7 +13805,6 @@ def management_header_indexes(headers: list[str]) -> dict[str, int | None]:
         "customer_option": find_header(headers, {"고객선택옵션"}),
     }
 
-
 def find_management_header_row(worksheet, max_scan_rows: int = 10) -> tuple[int, dict[str, int | None]] | None:
     for row_number, row in enumerate(
         worksheet.iter_rows(min_row=1, max_row=max_scan_rows, max_col=80, values_only=True),
@@ -8578,7 +13815,6 @@ def find_management_header_row(worksheet, max_scan_rows: int = 10) -> tuple[int,
         if indexes["receiver_name"] is not None and indexes["product_name"] is not None:
             return row_number, indexes
     return None
-
 
 def import_management_workbook(path: Path) -> tuple[int, int]:
     init_db()
@@ -8664,7 +13900,6 @@ def import_management_workbook(path: Path) -> tuple[int, int]:
         connection.close()
         workbook.close()
     return inserted, skipped
-
 
 def import_cs_cases_from_workbook(path: Path) -> tuple[int, int]:
     init_db()
@@ -9094,22 +14329,34 @@ class WorkhubHandler(BaseHTTPRequestHandler):
     def current_user(self) -> dict[str, str] | None:
         return current_user_from_token(self.cookie_value(SESSION_COOKIE_NAME))
 
+    def client_ip(self) -> str:
+        forwarded = self.headers.get("X-Forwarded-For", "").split(",", 1)[0].strip()
+        return forwarded or str(self.client_address[0] if self.client_address else "local")
+
+    def is_secure_request(self) -> bool:
+        return isinstance(self.request, ssl.SSLSocket) or self.headers.get("X-Forwarded-Proto", "").lower() == "https"
+
     def send_redirect(self, location: str, status: int = 303) -> None:
         self.send_response(status)
         self.send_header("Location", location)
         self.send_header("Cache-Control", "no-store")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("X-Frame-Options", "DENY")
+        self.send_header("Referrer-Policy", "same-origin")
         self.end_headers()
 
     def set_session_cookie(self, token: str) -> None:
+        secure = "; Secure" if self.is_secure_request() else ""
         self.send_header(
             "Set-Cookie",
-            f"{SESSION_COOKIE_NAME}={quote(token)}; Path=/; Max-Age={SESSION_SECONDS}; HttpOnly; SameSite=Lax",
+            f"{SESSION_COOKIE_NAME}={quote(token)}; Path=/; Max-Age={SESSION_SECONDS}; HttpOnly; SameSite=Lax{secure}",
         )
 
     def clear_session_cookie(self) -> None:
+        secure = "; Secure" if self.is_secure_request() else ""
         self.send_header(
             "Set-Cookie",
-            f"{SESSION_COOKIE_NAME}=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax",
+            f"{SESSION_COOKIE_NAME}=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax{secure}",
         )
 
     def require_permission(self, user: dict[str, str], permission: str, label: str) -> bool:
@@ -9125,16 +14372,6 @@ class WorkhubHandler(BaseHTTPRequestHandler):
         return False
 
     def do_GET(self) -> None:
-        if self.path.startswith("/static/"):
-            relative = unquote(urlsplit(self.path).path.removeprefix("/static/"))
-            target = (STATIC_DIR / relative).resolve()
-            if STATIC_DIR.resolve() in target.parents and target.is_file():
-                content_type = mimetypes.guess_type(str(target))[0] or "application/octet-stream"
-                self.send_bytes(target.read_bytes(), content_type)
-                return
-            self.send_error(404)
-            return
-
         if self.path.startswith("/lucide/"):
             relative = unquote(self.path.removeprefix("/lucide/"))
             target = (LUCIDE_DIR / relative).resolve()
@@ -9149,7 +14386,19 @@ class WorkhubHandler(BaseHTTPRequestHandler):
         if self.path.startswith("/login"):
             parsed = urlsplit(self.path)
             params = parse_qs(parsed.query)
-            self.send_bytes(render_login_html(show_error=params.get("error", [""])[0] == "1").encode("utf-8"), "text/html; charset=utf-8")
+            message = ""
+            login_error = ""
+            error_code = params.get("error", [""])[0]
+            if params.get("registered", [""])[0] == "1":
+                message = "계정 등록 요청이 접수됐습니다. 관리자가 승인하면 로그인할 수 있습니다."
+            if error_code == "locked":
+                login_error = "로그인 시도가 잠시 제한됐습니다. 잠시 후 다시 시도해주세요."
+            elif error_code:
+                login_error = "아이디 또는 비밀번호가 올바르지 않습니다."
+            self.send_bytes(
+                render_login_html(show_error=bool(error_code), login_error=login_error, message=message).encode("utf-8"),
+                "text/html; charset=utf-8",
+            )
             return
 
         if self.path == "/logout":
@@ -9272,6 +14521,143 @@ class WorkhubHandler(BaseHTTPRequestHandler):
             self.send_json({"periods": list_management_periods()})
             return
 
+        if self.path == "/api/company-staff-dashboard":
+            if not self.require_permission(user, "crm_view", "CRM 조회"):
+                return
+            self.send_json(company_staff_dashboard_payload(user))
+            return
+
+        if self.path.startswith("/api/company-calendar-events"):
+            if not self.require_permission(user, "crm_view", "CRM 조회"):
+                return
+            parsed = urlsplit(self.path)
+            params = parse_qs(parsed.query)
+            try:
+                self.send_json(company_calendar_payload(user, params.get("month", [""])[0]))
+            except ValueError as exc:
+                self.send_json({"error": str(exc)}, status=400)
+            return
+
+        if self.path.startswith("/api/internal-messages"):
+            parsed = urlsplit(self.path)
+            params = parse_qs(parsed.query)
+            try:
+                limit = min(max(int(params.get("limit", ["100"])[0]), 1), 300)
+            except ValueError:
+                limit = 100
+            try:
+                other_user_id = int(params.get("user_id", ["0"])[0] or 0)
+            except ValueError:
+                other_user_id = 0
+            self.send_json({
+                "messages": list_internal_messages(
+                    limit=limit,
+                    room_type=params.get("room", ["global"])[0],
+                    current_user_id=int(user.get("id") or 0),
+                    other_user_id=other_user_id,
+                )
+            })
+            return
+
+        if self.path == "/api/crm-dashboard":
+            if not self.require_permission(user, "crm_view", "CRM 조회"):
+                return
+            self.send_json(crm_dashboard_payload(DB_PATH))
+            return
+
+        if self.path.startswith("/api/crm-accounts"):
+            if not self.require_permission(user, "crm_view", "CRM 조회"):
+                return
+            parsed = urlsplit(self.path)
+            params = parse_qs(parsed.query)
+            try:
+                limit = min(max(int(params.get("limit", ["200"])[0]), 1), 1000)
+            except ValueError:
+                limit = 200
+            self.send_json({"accounts": list_crm_accounts(DB_PATH, query=params.get("q", [""])[0], limit=limit)})
+            return
+
+        if self.path.startswith("/api/crm-tasks"):
+            if not self.require_permission(user, "crm_view", "CRM 조회"):
+                return
+            parsed = urlsplit(self.path)
+            params = parse_qs(parsed.query)
+            try:
+                limit = min(max(int(params.get("limit", ["300"])[0]), 1), 2000)
+            except ValueError:
+                limit = 300
+            try:
+                filter_assignee_user_id = int(params.get("assignee_user_id", ["0"])[0] or 0) or None
+            except ValueError:
+                filter_assignee_user_id = None
+            if params.get("mine", [""])[0] == "1":
+                filter_assignee_user_id = int(user.get("id") or 0)
+            self.send_json({
+                "tasks": list_crm_tasks(
+                    DB_PATH,
+                    query=params.get("q", [""])[0],
+                    status=params.get("status", [""])[0],
+                    assignee=params.get("assignee", [""])[0],
+                    assignee_user_id=filter_assignee_user_id,
+                    priority=params.get("priority", [""])[0],
+                    due=params.get("due", [""])[0],
+                    source=params.get("source", [""])[0],
+                    open_only=params.get("open_only", [""])[0] == "1",
+                    sort=params.get("sort", ["smart"])[0],
+                    limit=limit,
+                )
+            })
+            return
+
+        if self.path.startswith("/api/crm-task-comments"):
+            if not self.require_permission(user, "crm_view", "CRM 조회"):
+                return
+            parsed = urlsplit(self.path)
+            params = parse_qs(parsed.query)
+            self.send_json({
+                "comments": list_crm_task_comments(
+                    DB_PATH,
+                    int(params.get("task_id", ["0"])[0] or 0),
+                )
+            })
+            return
+
+        if self.path.startswith("/api/crm-saved-views"):
+            if not self.require_permission(user, "crm_view", "CRM 조회"):
+                return
+            parsed = urlsplit(self.path)
+            params = parse_qs(parsed.query)
+            self.send_json({
+                "views": list_crm_saved_views(
+                    DB_PATH,
+                    int(user.get("id") or 0),
+                    scope=params.get("scope", ["tasks"])[0],
+                )
+            })
+            return
+
+        if self.path == "/api/crm-message-events":
+            if not self.require_permission(user, "crm_message_manage", "CRM 메신저 연동"):
+                return
+            self.send_json({
+                "events": list_crm_message_events(DB_PATH),
+                "webhook": {
+                    "path": "/api/crm-messenger-webhook",
+                    "url": crm_webhook_public_url(self),
+                    "token": crm_webhook_token(),
+                },
+            })
+            return
+
+        if self.path == "/api/crm-messenger-users":
+            if not self.require_permission(user, "crm_view", "CRM 조회"):
+                return
+            payload = list_crm_messenger_users(DB_PATH)
+            if not user_has_permission(user, "crm_message_manage"):
+                payload["mappings"] = []
+            self.send_json(payload)
+            return
+
         if self.path == "/api/import-shipments":
             self.send_json({"shipments": list_import_shipments()})
             return
@@ -9284,24 +14670,170 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                 length = int(self.headers.get("Content-Length", "0"))
                 raw_body = self.rfile.read(length).decode("utf-8")
                 payload = parse_qs(raw_body)
+                username = payload.get("username", [""])[0]
+                password = payload.get("password", [""])[0]
+                locked, lock_message = login_lock_status(username, self.client_ip())
+                if locked:
+                    self.send_bytes(
+                        render_login_html(show_error=True, login_error=lock_message).encode("utf-8"),
+                        "text/html; charset=utf-8",
+                        status=429,
+                    )
+                    return
                 user = authenticate_user(
-                    payload.get("username", [""])[0],
-                    payload.get("password", [""])[0],
+                    username,
+                    password,
                 )
                 if not user:
+                    record_login_failure(username, self.client_ip())
                     self.send_redirect("/login?error=1")
                     return
+                clear_login_failures(username, self.client_ip())
                 token = create_login_session(user["username"])
                 self.send_response(303)
                 self.set_session_cookie(token)
                 self.send_header("Location", "/")
                 self.send_header("Cache-Control", "no-store")
+                self.send_header("X-Content-Type-Options", "nosniff")
+                self.send_header("X-Frame-Options", "DENY")
+                self.send_header("Referrer-Policy", "same-origin")
                 self.end_headers()
+                return
+
+            if self.path == "/register":
+                length = int(self.headers.get("Content-Length", "0"))
+                raw_body = self.rfile.read(length).decode("utf-8")
+                payload = {key: values[0] if values else "" for key, values in parse_qs(raw_body).items()}
+                try:
+                    register_user_request(payload)
+                except ValueError as exc:
+                    self.send_bytes(
+                        render_login_html(register_error=str(exc)).encode("utf-8"),
+                        "text/html; charset=utf-8",
+                        status=400,
+                    )
+                    return
+                self.send_redirect("/login?registered=1")
+                return
+
+            if self.path == "/api/crm-messenger-webhook":
+                expected_token = crm_webhook_token()
+                received_token = self.headers.get("X-Workhub-Webhook-Token", "")
+                if not hmac.compare_digest(received_token, expected_token):
+                    self.send_json({"error": "웹훅 토큰이 올바르지 않습니다."}, status=403)
+                    return
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(length).decode("utf-8") or "{}")
+                self.send_json(handle_crm_messenger_webhook(DB_PATH, payload))
                 return
 
             user = self.current_user()
             if not user:
                 self.send_json({"error": "로그인이 필요합니다."}, status=401)
+                return
+
+            if self.path == "/api/internal-message-save":
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(length).decode("utf-8") or "{}")
+                message_id = save_internal_message(payload, user)
+                self.send_json({"message": "메시지를 저장했습니다.", "message_id": message_id})
+                return
+
+            if self.path == "/api/crm-account-save":
+                if not self.require_permission(user, "crm_manage", "CRM 관리"):
+                    return
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(length).decode("utf-8"))
+                account_id = save_crm_account(DB_PATH, payload)
+                self.send_json({"message": "CRM 거래처를 저장했습니다.", "account_id": account_id})
+                return
+
+            if self.path == "/api/crm-task-save":
+                if not self.require_permission(user, "crm_manage", "CRM 관리"):
+                    return
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(length).decode("utf-8"))
+                task_id = save_crm_task(DB_PATH, payload, user)
+                self.send_json({"message": "CRM 업무를 저장했습니다.", "task_id": task_id})
+                return
+
+            if self.path == "/api/crm-task-status":
+                if not self.require_permission(user, "crm_view", "CRM 조회"):
+                    return
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(length).decode("utf-8"))
+                task_id = change_crm_task_status(
+                    DB_PATH,
+                    int(payload.get("id") or 0),
+                    str(payload.get("status") or ""),
+                    user,
+                    comment=str(payload.get("comment") or ""),
+                    can_manage=user_has_permission(user, "crm_manage"),
+                )
+                self.send_json({"message": "CRM 업무 상태를 저장했습니다.", "task_id": task_id})
+                return
+
+            if self.path == "/api/crm-task-comment":
+                if not self.require_permission(user, "crm_view", "CRM 조회"):
+                    return
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(length).decode("utf-8"))
+                task_id = add_crm_task_comment(
+                    DB_PATH,
+                    int(payload.get("id") or 0),
+                    str(payload.get("body") or ""),
+                    user,
+                    can_manage=user_has_permission(user, "crm_manage"),
+                )
+                self.send_json({"message": "CRM 업무 댓글을 저장했습니다.", "task_id": task_id})
+                return
+
+            if self.path == "/api/crm-saved-view-save":
+                if not self.require_permission(user, "crm_view", "CRM 조회"):
+                    return
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(length).decode("utf-8"))
+                view_id = save_crm_saved_view(DB_PATH, payload, user)
+                self.send_json({
+                    "message": "CRM 저장뷰를 저장했습니다.",
+                    "view_id": view_id,
+                    "views": list_crm_saved_views(DB_PATH, int(user.get("id") or 0), scope=str(payload.get("scope") or "tasks")),
+                })
+                return
+
+            if self.path == "/api/crm-saved-view-delete":
+                if not self.require_permission(user, "crm_view", "CRM 조회"):
+                    return
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(length).decode("utf-8"))
+                delete_crm_saved_view(DB_PATH, int(payload.get("id") or 0), user)
+                self.send_json({
+                    "message": "CRM 저장뷰를 삭제했습니다.",
+                    "views": list_crm_saved_views(DB_PATH, int(user.get("id") or 0), scope=str(payload.get("scope") or "tasks")),
+                })
+                return
+
+            if self.path == "/api/crm-messenger-user-save":
+                if not self.require_permission(user, "crm_message_manage", "CRM 메신저 연동"):
+                    return
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(length).decode("utf-8"))
+                mapping_id = save_crm_messenger_user(DB_PATH, payload)
+                self.send_json({"message": "메신저 사용자 매핑을 저장했습니다.", "mapping_id": mapping_id})
+                return
+
+            if self.path == "/api/crm-webhook-token-rotate":
+                if not self.require_permission(user, "crm_message_manage", "CRM 메신저 연동"):
+                    return
+                token = rotate_crm_webhook_token()
+                self.send_json({
+                    "message": "웹훅 토큰을 재발급했습니다. 이전 토큰은 즉시 사용할 수 없습니다.",
+                    "webhook": {
+                        "path": "/api/crm-messenger-webhook",
+                        "url": crm_webhook_public_url(self),
+                        "token": token,
+                    },
+                })
                 return
 
             if self.path == "/api/users-save":
@@ -9677,6 +15209,8 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                 return
 
             self.send_error(404)
+        except PermissionError as exc:
+            self.send_json({"error": str(exc)}, status=403)
         except Exception as exc:  # noqa: BLE001
             self.send_json({"error": str(exc)}, status=400)
 
@@ -9692,6 +15226,9 @@ class WorkhubHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", content_type)
         self.send_header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
         self.send_header("Pragma", "no-cache")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("X-Frame-Options", "DENY")
+        self.send_header("Referrer-Policy", "same-origin")
         self.send_header("Content-Length", str(len(data)))
         self.end_headers()
         self.wfile.write(data)
