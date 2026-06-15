@@ -29,6 +29,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, quote, unquote, urlsplit
 
 from openpyxl import Workbook, load_workbook
+from openpyxl.utils import get_column_letter
 
 from delivery_text_summary import summarize_workbook
 from invoice_number_exporter import export_invoice_numbers, extract_invoice_rows
@@ -2533,6 +2534,7 @@ HTML = r"""<!doctype html>
                 <button type="button" data-management-download="year">년별 다운로드</button>
                 <button type="button" data-management-download="month">월별 다운로드</button>
                 <button type="button" data-management-download="selected">선택 다운로드</button>
+                <button type="button" data-management-download="template">통합관리대장 양식</button>
               </div>
             </div>
           </div>
@@ -4884,6 +4886,13 @@ HTML = r"""<!doctype html>
         }
         payload.year = period.year;
         fallbackName = `통합관리대장_${payload.year}년.xlsx`;
+      } else if (scope === "template") {
+        const period = selectedManagementPeriod();
+        if (period.year) payload.year = period.year;
+        const today = new Date();
+        const ymd = `${today.getFullYear()}${String(today.getMonth() + 1).padStart(2, "0")}${String(today.getDate()).padStart(2, "0")}`;
+        const filenameYear = payload.year || String(today.getFullYear());
+        fallbackName = `통합관리대장 양식 ${filenameYear}년 ${ymd}.xlsx`;
       } else {
         fallbackName = "통합관리대장_전체.xlsx";
       }
@@ -6577,6 +6586,10 @@ def init_db() -> None:
                 courier TEXT,
                 invoice_number TEXT,
                 memo TEXT,
+                order_item_id TEXT,
+                product_code TEXT,
+                order_number TEXT,
+                customer_option TEXT,
                 cs_received_at TEXT
             )
             """
@@ -6584,8 +6597,16 @@ def init_db() -> None:
         management_columns = {
             row["name"] for row in connection.execute("PRAGMA table_info(management_records)").fetchall()
         }
-        if "cs_received_at" not in management_columns:
-            connection.execute("ALTER TABLE management_records ADD COLUMN cs_received_at TEXT")
+        management_extra_columns = {
+            "order_item_id": "TEXT",
+            "product_code": "TEXT",
+            "order_number": "TEXT",
+            "customer_option": "TEXT",
+            "cs_received_at": "TEXT",
+        }
+        for column, column_type in management_extra_columns.items():
+            if column not in management_columns:
+                connection.execute(f"ALTER TABLE management_records ADD COLUMN {column} {column_type}")
         connection.execute("CREATE INDEX IF NOT EXISTS idx_management_invoice ON management_records(invoice_number)")
         connection.execute("CREATE INDEX IF NOT EXISTS idx_management_receiver_phone ON management_records(receiver_phone)")
         connection.execute("CREATE INDEX IF NOT EXISTS idx_management_order_date ON management_records(order_date)")
@@ -7888,10 +7909,14 @@ def management_query_conditions(query: str = "", year: str = "", month: str = ""
                 OR courier LIKE ?
                 OR invoice_number LIKE ?
                 OR memo LIKE ?
+                OR order_item_id LIKE ?
+                OR product_code LIKE ?
+                OR order_number LIKE ?
+                OR customer_option LIKE ?
             )
             """
         )
-        params = [pattern] * 15
+        params = [pattern] * 19
     period_condition, period_params = date_period_condition(["order_date", "ship_date"], year, month)
     if period_condition:
         conditions.append(period_condition)
@@ -7914,7 +7939,8 @@ def list_management_records(query: str = "", limit: int | None = 300, year: str 
             SELECT id, created_at, source_file, source_sheet, source_row, purchase_vendor,
                    sales_vendor, transaction_type, ledger_checked, order_date, ship_date,
                    orderer_name, sender_phone, receiver_name, receiver_phone, product_name,
-                   quantity, receiver_address, courier, invoice_number, memo, cs_received_at
+                   quantity, receiver_address, courier, invoice_number, memo, order_item_id,
+                   product_code, order_number, customer_option, cs_received_at
               FROM management_records
               {where}
              ORDER BY order_date DESC, id DESC
@@ -7940,7 +7966,8 @@ def list_management_records_by_ids(record_ids: list[int]) -> list[dict[str, str 
             SELECT id, created_at, source_file, source_sheet, source_row, purchase_vendor,
                    sales_vendor, transaction_type, ledger_checked, order_date, ship_date,
                    orderer_name, sender_phone, receiver_name, receiver_phone, product_name,
-                   quantity, receiver_address, courier, invoice_number, memo, cs_received_at
+                   quantity, receiver_address, courier, invoice_number, memo, order_item_id,
+                   product_code, order_number, customer_option, cs_received_at
               FROM management_records
              WHERE id IN ({placeholders})
              ORDER BY CASE id {order_case} END
@@ -8098,7 +8125,8 @@ def get_management_record(record_id: int) -> dict[str, str | int]:
             SELECT id, created_at, source_file, source_sheet, source_row, purchase_vendor,
                    sales_vendor, transaction_type, ledger_checked, order_date, ship_date,
                    orderer_name, sender_phone, receiver_name, receiver_phone, product_name,
-                   quantity, receiver_address, courier, invoice_number, memo, cs_received_at
+                   quantity, receiver_address, courier, invoice_number, memo, order_item_id,
+                   product_code, order_number, customer_option, cs_received_at
               FROM management_records
              WHERE id = ?
             """,
@@ -8226,11 +8254,12 @@ def clean_cell(value: object) -> str:
 
 
 MANAGEMENT_EXPORT_COLUMNS = [
+    ("sequence", "순서"),
     ("purchase_vendor", "매입거래처"),
     ("sales_vendor", "매출거래처"),
     ("transaction_type", "거래구분"),
     ("ledger_checked", "장부입력확인"),
-    ("order_date", "주문일자"),
+    ("order_date", "주문일"),
     ("ship_date", "출고일"),
     ("orderer_name", "주문자"),
     ("sender_phone", "발신자연락처"),
@@ -8239,10 +8268,17 @@ MANAGEMENT_EXPORT_COLUMNS = [
     ("product_name", "제 품 명"),
     ("quantity", "수량"),
     ("receiver_address", "상 세 주 소"),
-    ("courier", "택배사"),
-    ("invoice_number", "운송장번호"),
-    ("memo", "특이사항"),
+    ("courier", "택배사**"),
+    ("invoice_number", "배송번호"),
+    ("memo", "특이(요청)사항"),
+    ("order_item_id", "주문상품고유번호"),
+    ("product_code", "상품코드"),
+    ("order_number", "주문번호"),
+    ("customer_option", "고객선택옵션"),
 ]
+
+MANAGEMENT_TEMPLATE_HEADER_ROW = 1
+MANAGEMENT_TEMPLATE_DATA_ROW = 2
 
 
 LEDGER_EXPORT_COLUMNS = [
@@ -8325,28 +8361,35 @@ def apply_cell_style(cell, style: dict) -> None:
 
 
 def clear_management_template_sheet(worksheet, style_row: list[dict], row_height: float | None) -> None:
-    if worksheet.max_row > 2:
-        worksheet.delete_rows(3, worksheet.max_row - 2)
+    if worksheet.max_row >= MANAGEMENT_TEMPLATE_DATA_ROW:
+        worksheet.delete_rows(MANAGEMENT_TEMPLATE_DATA_ROW, worksheet.max_row - MANAGEMENT_TEMPLATE_DATA_ROW + 1)
     for column_index, (_, header) in enumerate(MANAGEMENT_EXPORT_COLUMNS, start=1):
-        worksheet.cell(2, column_index, header)
+        worksheet.cell(MANAGEMENT_TEMPLATE_HEADER_ROW, column_index, header)
     if row_height:
-        worksheet.row_dimensions[3].height = row_height
+        worksheet.row_dimensions[MANAGEMENT_TEMPLATE_DATA_ROW].height = row_height
     for column_index, style in enumerate(style_row, start=1):
-        apply_cell_style(worksheet.cell(3, column_index), style)
+        apply_cell_style(worksheet.cell(MANAGEMENT_TEMPLATE_DATA_ROW, column_index), style)
+
+
+def management_export_cell_value(row: dict, key: str, sequence: int) -> str:
+    if key == "sequence":
+        return clean_cell(row.get(key, "")) or str(sequence)
+    return clean_cell(row.get(key, ""))
 
 
 def populate_management_template_sheet(worksheet, title: str, rows: list[dict], style_row: list[dict], row_height: float | None) -> None:
     worksheet.title = title[:31]
-    worksheet.cell(1, 1, "(주)소일브릿지(SOILBRIDGE) 월별 발주 리스트")
-    for row_offset, row in enumerate(rows, start=3):
+    for sequence, row in enumerate(rows, start=1):
+        row_offset = MANAGEMENT_TEMPLATE_DATA_ROW + sequence - 1
         if row_height:
             worksheet.row_dimensions[row_offset].height = row_height
         for column_index, (key, _) in enumerate(MANAGEMENT_EXPORT_COLUMNS, start=1):
-            cell = worksheet.cell(row_offset, column_index, clean_cell(row.get(key, "")))
+            cell = worksheet.cell(row_offset, column_index, management_export_cell_value(row, key, sequence))
             apply_cell_style(cell, style_row[column_index - 1])
-    last_row = max(2, len(rows) + 2)
-    worksheet.auto_filter.ref = f"A2:P{last_row}"
-    worksheet.freeze_panes = "A3"
+    last_row = max(MANAGEMENT_TEMPLATE_HEADER_ROW, len(rows) + MANAGEMENT_TEMPLATE_DATA_ROW - 1)
+    last_column = get_column_letter(len(MANAGEMENT_EXPORT_COLUMNS))
+    worksheet.auto_filter.ref = f"A{MANAGEMENT_TEMPLATE_HEADER_ROW}:{last_column}{last_row}"
+    worksheet.freeze_panes = f"A{MANAGEMENT_TEMPLATE_DATA_ROW}"
 
 
 def management_workbook_bytes_from_template(rows: list[dict]) -> bytes:
@@ -8355,8 +8398,11 @@ def management_workbook_bytes_from_template(rows: list[dict]) -> bytes:
     workbook = load_workbook(MANAGEMENT_EXPORT_TEMPLATE)
     base_sheet = workbook.worksheets[0]
     max_columns = len(MANAGEMENT_EXPORT_COLUMNS)
-    style_row = [cell_style_snapshot(base_sheet.cell(3, column_index)) for column_index in range(1, max_columns + 1)]
-    row_height = base_sheet.row_dimensions[3].height
+    style_row = [
+        cell_style_snapshot(base_sheet.cell(MANAGEMENT_TEMPLATE_DATA_ROW, column_index))
+        for column_index in range(1, max_columns + 1)
+    ]
+    row_height = base_sheet.row_dimensions[MANAGEMENT_TEMPLATE_DATA_ROW].height
     for sheet in list(workbook.worksheets)[1:]:
         workbook.remove(sheet)
     clear_management_template_sheet(base_sheet, style_row, row_height)
@@ -8371,8 +8417,38 @@ def management_workbook_bytes_from_template(rows: list[dict]) -> bytes:
     return stream.getvalue()
 
 
+def management_year_from_rows(rows: list[dict], fallback: str = "") -> str:
+    for row in rows:
+        year_month = extract_year_month(row.get("order_date"), row.get("ship_date"))
+        if year_month:
+            return year_month[0]
+    return fallback
+
+
+def management_template_filename_stem(
+    rows: list[dict],
+    payload: dict,
+    now: datetime | None = None,
+) -> str:
+    now = now or datetime.now()
+    requested_year = clean_payload_text(payload, "year")
+    year = requested_year if re.fullmatch(r"\d{4}", requested_year) else management_year_from_rows(rows, str(now.year))
+    return f"통합관리대장 양식 {year}년 {now.strftime('%Y%m%d')}"
+
+
+def management_export_filename(filename_stem: str, payload: dict) -> str:
+    scope = clean_payload_text(payload, "scope")
+    if scope == "template":
+        return f"{filename_stem}.xlsx"
+    return f"{filename_stem}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+
+
 def management_export_rows_from_payload(payload: dict) -> tuple[list[dict], str]:
     scope = clean_payload_text(payload, "scope") or "selected"
+    if scope == "template":
+        year = clean_payload_text(payload, "year")
+        rows = list_management_records(limit=None, year=year if re.fullmatch(r"\d{4}", year) else "")
+        return rows, management_template_filename_stem(rows, payload)
     if scope == "selected":
         rows = payload.get("rows", [])
         if isinstance(rows, list) and rows:
@@ -8473,7 +8549,7 @@ def management_header_indexes(headers: list[str]) -> dict[str, int | None]:
         "sales_vendor": find_header(headers, {"매출거래처"}),
         "transaction_type": find_header(headers, {"거래구분"}),
         "ledger_checked": find_header(headers, {"장부입력확인"}),
-        "order_date": find_header(headers, {"주문일자"}),
+        "order_date": find_header(headers, {"주문일자", "주문일"}),
         "ship_date": find_header(headers, {"출고일"}),
         "orderer_name": find_header(headers, {"주문자"}),
         "sender_phone": find_header(headers, {"발신자연락처", "주문자연락처"}),
@@ -8482,10 +8558,26 @@ def management_header_indexes(headers: list[str]) -> dict[str, int | None]:
         "product_name": find_header(headers, {"제품명", "상품명", "품명"}),
         "quantity": find_header(headers, {"수량"}),
         "receiver_address": find_header(headers, {"상세주소", "주소"}),
-        "courier": find_header(headers, {"택배사"}),
-        "invoice_number": find_header(headers, {"운송장번호", "송장번호"}),
-        "memo": find_header(headers, {"특이사항", "배송메세지", "배송메시지", "비고"}),
+        "courier": find_header_contains(headers, "택배사"),
+        "invoice_number": find_header(headers, {"운송장번호", "송장번호", "배송번호"}),
+        "memo": find_header(headers, {"특이사항", "특이(요청)사항", "배송메세지", "배송메시지", "비고"}),
+        "order_item_id": find_header(headers, {"주문상품고유번호"}),
+        "product_code": find_header(headers, {"상품코드"}),
+        "order_number": find_header(headers, {"주문번호"}),
+        "customer_option": find_header(headers, {"고객선택옵션"}),
     }
+
+
+def find_management_header_row(worksheet, max_scan_rows: int = 10) -> tuple[int, dict[str, int | None]] | None:
+    for row_number, row in enumerate(
+        worksheet.iter_rows(min_row=1, max_row=max_scan_rows, max_col=80, values_only=True),
+        start=1,
+    ):
+        headers = [normalized_header(value) for value in row]
+        indexes = management_header_indexes(headers)
+        if indexes["receiver_name"] is not None and indexes["product_name"] is not None:
+            return row_number, indexes
+    return None
 
 
 def import_management_workbook(path: Path) -> tuple[int, int]:
@@ -8516,21 +8608,21 @@ def import_management_workbook(path: Path) -> tuple[int, int]:
         "courier",
         "invoice_number",
         "memo",
+        "order_item_id",
+        "product_code",
+        "order_number",
+        "customer_option",
     ]
     placeholders = ", ".join("?" for _ in columns)
     connection = connect_db()
     try:
         for worksheet in workbook.worksheets:
-            rows = worksheet.iter_rows(max_col=80, values_only=True)
-            next(rows, None)
-            header_row = next(rows, None)
-            if not header_row:
+            header_match = find_management_header_row(worksheet)
+            if header_match is None:
                 continue
-            headers = [normalized_header(value) for value in header_row]
-            indexes = management_header_indexes(headers)
-            if indexes["receiver_name"] is None or indexes["product_name"] is None:
-                continue
-            for excel_row_number, row in enumerate(rows, start=3):
+            header_row_number, indexes = header_match
+            rows = worksheet.iter_rows(min_row=header_row_number + 1, max_col=80, values_only=True)
+            for excel_row_number, row in enumerate(rows, start=header_row_number + 1):
                 record = {
                     "created_at": timestamp,
                     "source_file": source_file,
@@ -8552,6 +8644,10 @@ def import_management_workbook(path: Path) -> tuple[int, int]:
                     "courier": row_value(row, indexes["courier"]),
                     "invoice_number": row_value(row, indexes["invoice_number"]),
                     "memo": row_value(row, indexes["memo"]),
+                    "order_item_id": row_value(row, indexes["order_item_id"]),
+                    "product_code": row_value(row, indexes["product_code"]),
+                    "order_number": row_value(row, indexes["order_number"]),
+                    "customer_option": row_value(row, indexes["customer_option"]),
                 }
                 if not any(record[key] for key in ("receiver_name", "product_name", "invoice_number", "receiver_address")):
                     continue
@@ -9402,7 +9498,7 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                 if not rows:
                     raise ValueError("엑셀로 다운로드할 통합관리대장 데이터가 없습니다.")
                 data = management_workbook_bytes_from_template(rows)
-                filename = quote(f"{filename_stem}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx")
+                filename = quote(management_export_filename(filename_stem, payload))
                 self.send_response(200)
                 self.send_header("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
                 self.send_header("Content-Disposition", f"attachment; filename*=UTF-8''{filename}")
