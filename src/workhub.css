@@ -5,3 +5,4 @@
 }
 
 @source "../scripts/workhub_delivery_app.py";
+@source "../_workhub_zip_inspect/scripts/workhub_delivery_app.py";

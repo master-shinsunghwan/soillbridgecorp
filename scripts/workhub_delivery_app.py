@@ -76,6 +76,7 @@ VENDOR_CONTACTS_PATH = CONFIG_DIR / "vendor_contacts.json"
 CRM_WEBHOOK_TOKEN_PATH = CONFIG_DIR / "crm_webhook_token.txt"
 BACKUP_DIR = Path(os.environ.get("WORKHUB_BACKUP_DIR", str(RUNTIME_ROOT / "backups")))
 LUCIDE_DIR = ROOT / "node_modules" / "lucide"
+STATIC_DIR = ROOT / "static"
 LOTTE_TEMPLATE = ROOT / "templates" / "lotte_order_form_template.xlsx"
 MANAGEMENT_EXPORT_TEMPLATE = ROOT / "templates" / "management_ledger_export_template.xlsx"
 NAVER_SMTP_HOST = "smtp.naver.com"
@@ -177,6 +178,7 @@ HTML = r"""<!doctype html>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>(주)소일브릿지 발주 업무자동화</title>
+  <link rel="stylesheet" href="/static/workhub.css" />
   <link href="https://cdn.jsdelivr.net/npm/daisyui@5" rel="stylesheet" type="text/css" />
   <style>
     :root {
@@ -10563,6 +10565,7 @@ LOGIN_HTML = r"""<!doctype html>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>(주)소일브릿지 업무자동화 로그인</title>
+  <link rel="stylesheet" href="/static/workhub.css" />
   <style>
     :root {
       --bg: #f5f7fb;
@@ -14651,6 +14654,14 @@ class WorkhubHandler(BaseHTTPRequestHandler):
         return False
 
     def do_GET(self) -> None:
+        if self.path.startswith("/static/"):
+            relative = unquote(self.path.removeprefix("/static/"))
+            target = (STATIC_DIR / relative).resolve()
+            if STATIC_DIR.resolve() in target.parents and target.is_file():
+                content_type = mimetypes.guess_type(str(target))[0] or "application/octet-stream"
+                self.send_bytes(target.read_bytes(), content_type)
+                return
+
         if self.path.startswith("/lucide/"):
             relative = unquote(self.path.removeprefix("/lucide/"))
             target = (LUCIDE_DIR / relative).resolve()
