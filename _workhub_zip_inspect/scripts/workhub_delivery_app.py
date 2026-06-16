@@ -15375,12 +15375,19 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                 return
             parsed = urlsplit(self.path)
             params = parse_qs(parsed.query)
-            self.send_json({
-                "comments": list_crm_task_comments(
-                    DB_PATH,
-                    int(params.get("task_id", ["0"])[0] or 0),
-                )
-            })
+            raw_task_id = (params.get("task_id", [""])[0] or "").strip()
+            if not raw_task_id:
+                self.send_json({"error": "task_id를 지정해주세요."}, status=400)
+                return
+            try:
+                task_id = int(raw_task_id)
+            except ValueError:
+                self.send_json({"error": "task_id는 정수로 전달해야 합니다."}, status=400)
+                return
+            try:
+                self.send_json({"comments": list_crm_task_comments(DB_PATH, task_id)})
+            except ValueError as exc:
+                self.send_json({"error": str(exc)}, status=404)
             return
 
         if self.path.startswith("/api/crm-saved-views"):
