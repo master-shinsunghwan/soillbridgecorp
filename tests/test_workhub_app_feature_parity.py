@@ -76,6 +76,19 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         self.assertIn("function showOrderWorkspace(mode)", html_source)
         self.assertIn('orderWorkspace.classList.toggle("active"', html_source)
 
+    def test_upload_dialog_does_not_use_daisyui_modal_class(self) -> None:
+        for app_file in (
+            ROOT / "scripts" / "workhub_delivery_app.py",
+            ROOT / "_workhub_zip_inspect" / "scripts" / "workhub_delivery_app.py",
+        ):
+            html_source = app_file.read_text(encoding="utf-8")
+
+            self.assertIn('class="workhub-modal" role="dialog"', html_source)
+            self.assertIn('modal.querySelector(".workhub-modal")', html_source)
+            self.assertNotIn('class="modal" role="dialog"', html_source)
+            self.assertNotIn(".modal-backdrop.open .modal *", html_source)
+            self.assertNotIn(".workhub-modal-backdrop.open .workhub-modal *", html_source)
+
 
 if __name__ == "__main__":
     unittest.main()

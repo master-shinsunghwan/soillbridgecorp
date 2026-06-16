@@ -854,18 +854,18 @@ HTML = r"""<!doctype html>
     .status { padding: 8px 13px; border-radius: 7px; background: #dff5e7; color: #0a6c3a; font-weight: 800; }
     .status.warn { background: #ffe1e1; color: #d20c1c; }
 
-    .modal-backdrop {
+    .workhub-modal-backdrop {
       position: fixed; inset: 0; display: none; place-items: center;
       background: rgba(249, 250, 252, .42);
       z-index: 2000;
     }
-    .modal-backdrop.open { display: grid; }
-    .modal-backdrop.open,
-    .modal-backdrop.open .modal,
-    .modal-backdrop.open .modal * {
+    .workhub-modal-backdrop.open { display: grid; }
+    .workhub-modal-backdrop.open,
+    .workhub-modal-backdrop.open > .workhub-modal {
       visibility: visible !important;
     }
-    .modal {
+    .workhub-modal {
+      display: block;
       width: min(620px, calc(100vw - 38px));
       max-height: calc(100vh - 38px);
       overflow-y: auto;
@@ -874,21 +874,22 @@ HTML = r"""<!doctype html>
       position: relative;
       color: #1a2230;
       opacity: 1;
+      pointer-events: auto;
     }
-    .modal.ledger-modal {
+    .workhub-modal.ledger-modal {
       width: calc(100vw - 18px);
       height: calc(100vh - 18px);
       max-height: calc(100vh - 18px);
       padding: 18px 18px 20px;
       overflow: hidden;
     }
-    .modal.ledger-modal #uploadForm {
+    .workhub-modal.ledger-modal #uploadForm {
       height: calc(100% - 54px);
       display: flex;
       flex-direction: column;
       min-height: 0;
     }
-    .modal-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; }
+    .workhub-modal-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; }
     .modal-title { font-size: 25px; font-weight: 850; color: #1a2230; }
     .close { border: 0; background: transparent; color: #3f4650; cursor: pointer; padding: 4px; }
     .field-label { display: block; font-size: 18px; font-weight: 750; margin-bottom: 10px; color: #1a2230; }
@@ -905,13 +906,13 @@ HTML = r"""<!doctype html>
     }
     .drop-main { font-size: 17px; font-weight: 750; color: #1a2230; }
     .drop-sub { font-size: 14px; color: var(--muted); }
-    .modal-backdrop.open .modal,
-    .modal-backdrop.open .modal .modal-title,
-    .modal-backdrop.open .modal .field-label,
-    .modal-backdrop.open .modal .drop-main {
+    .workhub-modal-backdrop.open .workhub-modal,
+    .workhub-modal-backdrop.open .workhub-modal .modal-title,
+    .workhub-modal-backdrop.open .workhub-modal .field-label,
+    .workhub-modal-backdrop.open .workhub-modal .drop-main {
       color: #1a2230 !important;
     }
-    .modal-backdrop.open .modal .drop-sub {
+    .workhub-modal-backdrop.open .workhub-modal .drop-sub {
       color: #667085 !important;
     }
     input[type="file"] { display: none; }
@@ -1283,7 +1284,7 @@ HTML = r"""<!doctype html>
     .ledger-fields { display: none; }
     .management-fields { display: none; }
     .ledger-cs-popup-head { display: none; }
-    .modal.ledger-modal .cs-fields.ledger-cs-popup {
+    .workhub-modal.ledger-modal .cs-fields.ledger-cs-popup {
       position: absolute;
       z-index: 35;
       top: 70px;
@@ -1298,7 +1299,7 @@ HTML = r"""<!doctype html>
       background: white;
       box-shadow: 0 18px 44px rgba(15, 23, 42, .28);
     }
-    .modal.ledger-modal .cs-fields.ledger-cs-popup .ledger-cs-popup-head {
+    .workhub-modal.ledger-modal .cs-fields.ledger-cs-popup .ledger-cs-popup-head {
       position: sticky;
       top: -18px;
       z-index: 2;
@@ -1614,24 +1615,24 @@ HTML = r"""<!doctype html>
       background: white;
       scrollbar-gutter: stable both-edges;
     }
-    .modal.ledger-modal.ledger-view .ledger-fields {
+    .workhub-modal.ledger-modal.ledger-view .ledger-fields {
       display: flex !important;
       flex-direction: column;
       flex: 1;
       min-height: 0;
     }
-    .modal.ledger-modal.management-view .management-fields {
+    .workhub-modal.ledger-modal.management-view .management-fields {
       display: flex !important;
       flex-direction: column;
       flex: 1;
       min-height: 0;
     }
-    .modal.ledger-modal .ledger-wrap {
+    .workhub-modal.ledger-modal .ledger-wrap {
       flex: 1;
       min-height: 0;
       max-height: none;
     }
-    .modal.ledger-modal .management-wrap {
+    .workhub-modal.ledger-modal .management-wrap {
       flex: 1;
       min-height: 0;
       max-height: none;
@@ -4540,9 +4541,9 @@ HTML = r"""<!doctype html>
     </div>
   </div>
 
-  <div class="modal-backdrop" id="modal">
-    <div class="modal" role="dialog" aria-modal="true">
-      <div class="modal-head">
+  <div class="workhub-modal-backdrop" id="modal">
+    <div class="workhub-modal" role="dialog" aria-modal="true">
+      <div class="workhub-modal-head">
         <div class="modal-title" id="modalTitle">파일 업로드</div>
         <button class="close" id="closeModal" aria-label="닫기"><i data-lucide="x"></i></button>
       </div>
@@ -9235,7 +9236,7 @@ HTML = r"""<!doctype html>
       currentMode = mode;
       closeLedgerCsPopup();
       modal.classList.add("open");
-      const modalPanel = modal.querySelector(".modal");
+      const modalPanel = modal.querySelector(".workhub-modal");
       modal.style.visibility = "visible";
       modalPanel.style.visibility = "visible";
       modalPanel.style.color = "#1a2230";
