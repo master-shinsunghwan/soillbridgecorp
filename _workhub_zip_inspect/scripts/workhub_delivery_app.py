@@ -91,6 +91,9 @@ LOGIN_FAILURE_WINDOW_SECONDS = 15 * 60
 LOGIN_LOCK_SECONDS = 15 * 60
 PASSWORD_MIN_LENGTH = 10
 PASSWORD_MAX_LENGTH = 128
+MAX_FORM_BODY_BYTES = 128 * 1024
+MAX_JSON_BODY_BYTES = 1024 * 1024
+MAX_MULTIPART_BODY_BYTES = 50 * 1024 * 1024
 BACKUP_RETENTION_DAYS = 90
 AUTO_BACKUP_HOUR = 3
 _BACKUP_SCHEDULER_STARTED = False
@@ -3259,13 +3262,23 @@ HTML = r"""<!doctype html>
     }
     .crm-task-toolbar {
       display: grid;
-      grid-template-columns: minmax(150px, .9fr) minmax(140px, .9fr) auto auto minmax(180px, 1.2fr) repeat(5, minmax(128px, .8fr)) auto auto auto;
+      grid-template-columns: minmax(150px, .9fr) minmax(180px, 1.2fr) auto auto auto;
       align-items: center;
     }
     .crm-task-toolbar .crm-input,
     .crm-task-toolbar .crm-select {
       width: 100%;
       min-width: 0;
+    }
+    .crm-advanced-filters {
+      grid-column: 1 / -1;
+      display: grid;
+      grid-template-columns: repeat(6, minmax(126px, 1fr));
+      gap: 8px;
+      padding-top: 2px;
+    }
+    .crm-advanced-filters[hidden] {
+      display: none;
     }
     .crm-filter-check {
       min-height: 32px;
@@ -3720,6 +3733,7 @@ HTML = r"""<!doctype html>
       .company-calendar-shell { grid-template-columns: 1fr; }
       .company-staff-layout { grid-template-columns: 1fr; }
       .crm-task-toolbar { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+      .crm-advanced-filters { grid-template-columns: repeat(3, minmax(0, 1fr)); }
       .crm-project-row { grid-template-columns: 1fr; }
       .crm-project-metrics { justify-content: flex-start; }
     }
@@ -3746,6 +3760,7 @@ HTML = r"""<!doctype html>
       .calendar-day { min-height: 92px; padding: 6px; }
       .internal-chat-form { grid-template-columns: 1fr; }
       .crm-task-toolbar { grid-template-columns: 1fr; }
+      .crm-advanced-filters { grid-template-columns: 1fr; }
     }
     .crm-help {
       margin: 0;
@@ -4157,17 +4172,16 @@ HTML = r"""<!doctype html>
         <i data-lucide="search"></i>
         <input id="sidebarSearchInput" name="workhub-menu-search" type="search" placeholder="메뉴 검색" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" />
       </label>
-      <div class="nav-section">MAIN</div>
+      <div class="nav-section">오늘 업무</div>
       <div class="nav-group open" id="companyNavGroup">
         <button class="nav-item active" id="companyNavToggle" type="button" data-view="dashboard" data-company-tab="notice">
           <span class="nav-label"><i data-lucide="home"></i> <span>회사 포털</span></span>
           <i class="nav-chevron" data-lucide="chevron-right"></i>
         </button>
         <div class="nav-submenu">
-          <button class="nav-subitem active" type="button" data-view="dashboard" data-company-tab="notice">공지사항</button>
+          <button class="nav-subitem active" type="button" data-view="dashboard" data-company-tab="notice">업무 홈</button>
           <button class="nav-subitem" type="button" data-view="dashboard" data-company-tab="calendar">캘린더</button>
-          <button class="nav-subitem" type="button" data-view="dashboard" data-company-tab="rules">사규/가이드</button>
-          <button class="nav-subitem" type="button" data-view="dashboard" data-company-tab="staff">직원 대시보드</button>
+          <button class="nav-subitem" type="button" data-view="dashboard" data-company-tab="staff">직원 현황</button>
           <button class="nav-subitem" type="button" data-view="dashboard" data-company-tab="chat">사내 메신저</button>
         </div>
       </div>
@@ -4193,11 +4207,10 @@ HTML = r"""<!doctype html>
           <i class="nav-chevron" data-lucide="chevron-right"></i>
         </button>
         <div class="nav-submenu">
-          <button class="nav-subitem" type="button" data-open="crm" data-crm-nav-tab="dashboard">대시보드</button>
+          <button class="nav-subitem" type="button" data-open="crm" data-crm-nav-tab="dashboard">업무 현황</button>
           <button class="nav-subitem" type="button" data-open="crm" data-crm-nav-tab="mine">내 업무</button>
           <button class="nav-subitem" type="button" data-open="crm" data-crm-nav-tab="tasks">업무보드</button>
-          <button class="nav-subitem" type="button" data-open="crm" data-crm-nav-tab="accounts">직원</button>
-          <button class="nav-subitem" type="button" data-open="crm" data-crm-nav-tab="messages">메신저 연동</button>
+          <button class="nav-subitem" type="button" data-open="crm" data-crm-nav-tab="accounts">직원 현황</button>
         </div>
       </div>
       <div class="nav-group" id="distributionMailNavGroup">
@@ -4214,7 +4227,7 @@ HTML = r"""<!doctype html>
       </div>
       __LEAVE_NAV__
       __ADMIN_TOOLS_NAV__
-      <div class="nav-section">TOOLS</div>
+      <div class="nav-section">보조 도구</div>
       <button class="nav-item" type="button" data-open="invoice"><i data-lucide="file-spreadsheet"></i> <span>송장 추출</span></button>
       <button class="nav-item" type="button" data-open="vehicle"><i data-lucide="truck"></i> <span>차량인수증</span></button>
     </aside>
@@ -4222,10 +4235,10 @@ HTML = r"""<!doctype html>
     <main>
       <header class="topbar">
         <div class="title-wrap">
-          <div class="title">회사 포털 <i data-lucide="chevron-down"></i></div>
-          <p class="subtitle">공지사항, 사규, 직원 현황을 한 곳에서 확인합니다.</p>
+          <div class="title">업무 홈 <i data-lucide="chevron-down"></i></div>
+          <p class="subtitle">오늘 확인할 공지, 일정, 업무를 먼저 보여줍니다.</p>
         </div>
-        <div class="top-search"><i data-lucide="file-text"></i> 파일명, 수령인, 송장번호, CS내용 검색</div>
+        <div class="top-search"><i data-lucide="file-text"></i> 왼쪽 검색창에서 메뉴를 빠르게 찾을 수 있습니다</div>
         <div class="top-tools">
           <button class="icon-button" type="button"><i data-lucide="bell"></i><span>알림</span></button>
           <button class="icon-button" type="button"><i data-lucide="refresh-cw"></i><span>새로고침</span></button>
@@ -4236,34 +4249,13 @@ HTML = r"""<!doctype html>
 
       <section class="content company-portal" id="dashboardContent">
         <div class="company-tabs">
-          <button class="company-tab active" type="button" data-company-tab="notice">공지사항</button>
-          <button class="company-tab" type="button" data-company-tab="calendar">캘린더</button>
-          <button class="company-tab" type="button" data-company-tab="rules">사규/가이드</button>
-          <button class="company-tab" type="button" data-company-tab="staff">직원 대시보드</button>
-          <button class="company-tab" type="button" data-company-tab="chat">사내 메신저</button>
+          <button class="company-tab active" type="button" data-view="dashboard" data-company-tab="notice">업무 홈</button>
+          <button class="company-tab" type="button" data-view="dashboard" data-company-tab="calendar">캘린더</button>
+          <button class="company-tab" type="button" data-view="dashboard" data-company-tab="staff">직원 현황</button>
+          <button class="company-tab" type="button" data-view="dashboard" data-company-tab="chat">사내 메신저</button>
         </div>
 
         <section class="company-panel active" data-company-panel="notice">
-          <div class="company-grid">
-            <section class="notice-board company-notice" id="sidebarNoticePreview" role="button" tabindex="0" aria-label="공지사항 크게 보기">
-              <div class="notice-board-kicker">금일 공지사항</div>
-              <div class="notice-board-title">등록된 공지 없음</div>
-              <div class="notice-board-body">공지사항 입력 버튼을 눌러 내용을 입력해주세요.</div>
-            </section>
-            <article class="company-card">
-              <div class="company-card-head">
-                <span>공지 관리</span>
-                <button class="workspace-button" id="noticeInputOpen" type="button">공지사항 입력</button>
-              </div>
-              <div class="company-card-body">
-                <p>오늘 공유해야 할 출고 마감, 업체 회신 필요 건, 내부 전달사항을 이곳에서 관리합니다.</p>
-                <div class="company-mini-grid">
-                  <div><span>저장 방식</span><strong>브라우저 localStorage</strong></div>
-                  <div><span>권한</span><strong>공지사항 관리</strong></div>
-                </div>
-              </div>
-            </article>
-          </div>
           <div class="company-overview">
             <article class="company-card">
               <div class="company-card-head"><span>오늘 한눈에 보기</span><button class="crm-mini-button" type="button" data-view="dashboard" data-company-tab="calendar">캘린더</button></div>
@@ -4282,8 +4274,28 @@ HTML = r"""<!doctype html>
                 <div class="company-quick-actions" aria-label="회사 포털 빠른 실행">
                   <button class="company-quick-button" type="button" data-open="crm" data-crm-nav-tab="tasks"><i data-lucide="kanban-square"></i><span>업무보드<small>상태와 마감 확인</small></span></button>
                   <button class="company-quick-button" type="button" data-open="crm" data-crm-nav-tab="mine"><i data-lucide="check-circle-2"></i><span>내 업무<small>내가 처리할 일</small></span></button>
-                  <button class="company-quick-button" type="button" data-view="dashboard" data-company-tab="staff"><i data-lucide="network"></i><span>직원 보기<small>조직도와 담당 업무</small></span></button>
+                  <button class="company-quick-button" type="button" data-view="dashboard" data-company-tab="staff"><i data-lucide="network"></i><span>직원 현황<small>조직도와 담당 업무</small></span></button>
                   <button class="company-quick-button" type="button" data-view="dashboard" data-company-tab="chat"><i data-lucide="message-square-text"></i><span>사내 메신저<small>전체방과 직원 DM</small></span></button>
+                </div>
+              </div>
+            </article>
+          </div>
+          <div class="company-grid">
+            <section class="notice-board company-notice" id="sidebarNoticePreview" role="button" tabindex="0" aria-label="공지사항 크게 보기">
+              <div class="notice-board-kicker">금일 공지사항</div>
+              <div class="notice-board-title">등록된 공지 없음</div>
+              <div class="notice-board-body">공지사항 입력 버튼을 눌러 내용을 입력해주세요.</div>
+            </section>
+            <article class="company-card">
+              <div class="company-card-head">
+                <span>공지 관리</span>
+                <button class="workspace-button" id="noticeInputOpen" type="button">공지 입력</button>
+              </div>
+              <div class="company-card-body">
+                <p>출고 마감, 업체 회신 필요 건, 내부 전달사항을 공유합니다.</p>
+                <div class="company-mini-grid">
+                  <div><span>저장</span><strong>workhub.db</strong></div>
+                  <div><span>권한</span><strong>공지 관리</strong></div>
                 </div>
               </div>
             </article>
@@ -4312,8 +4324,8 @@ HTML = r"""<!doctype html>
           </article>
           <article class="company-card">
             <div class="company-card-head">
-              <span>기본 위젯</span>
-              <button class="crm-mini-button" type="button" data-open="crm" data-crm-nav-tab="dashboard">업무관리</button>
+              <span>운영 요약</span>
+              <button class="crm-mini-button" type="button" data-open="crm" data-crm-nav-tab="dashboard">업무 현황</button>
             </div>
             <div class="company-card-body">
               <div class="company-default-widgets" aria-label="회사 포털 기본 위젯">
@@ -4323,10 +4335,10 @@ HTML = r"""<!doctype html>
                 <div class="company-default-widget"><span>주의 필요</span><strong id="companyWidgetRisk">0건</strong><small>지연, 높음, 승인대기</small></div>
               </div>
               <div class="company-widget-actions" aria-label="기본 위젯 빠른 이동">
-                <button class="company-widget-button" type="button" data-open="crm" data-crm-nav-tab="tasks"><i data-lucide="list-checks"></i>업무 보기</button>
+                <button class="company-widget-button" type="button" data-open="crm" data-crm-nav-tab="tasks"><i data-lucide="list-checks"></i>업무보드</button>
                 <button class="company-widget-button" type="button" data-view="dashboard" data-company-tab="calendar"><i data-lucide="calendar-days"></i>캘린더</button>
                 <button class="company-widget-button" type="button" data-open="leave"><i data-lucide="umbrella"></i>연차</button>
-                <button class="company-widget-button" type="button" data-view="dashboard" data-company-tab="chat"><i data-lucide="message-circle"></i>메신저</button>
+                <button class="company-widget-button" type="button" data-view="dashboard" data-company-tab="chat"><i data-lucide="message-circle"></i>사내 메신저</button>
               </div>
             </div>
           </article>
@@ -4466,7 +4478,7 @@ HTML = r"""<!doctype html>
                 </div>
                 <div class="company-quick-links">
                   <button class="workspace-button" type="button" data-open="crm" data-crm-nav-tab="tasks">업무보드</button>
-                  <button class="workspace-button" type="button" data-view="dashboard" data-company-tab="staff">조직도</button>
+                  <button class="workspace-button" type="button" data-view="dashboard" data-company-tab="staff">직원 현황</button>
                 </div>
               </div>
             </article>
@@ -4621,20 +4633,20 @@ HTML = r"""<!doctype html>
       </section>
       <section class="workspace-view" id="crmWorkspace">
         <div class="workspace-head">
-          <div class="workspace-title">업무관리</div>
+          <div class="workspace-title">업무 현황</div>
           <div class="workspace-actions">
             <button class="workspace-button" type="button" id="crmRefresh">새로고침</button>
-            <button class="workspace-button" type="button" id="crmAccountQuick">직원 보기</button>
+            <button class="workspace-button" type="button" id="crmAccountQuick">직원 현황</button>
             <button class="workspace-button" type="button" id="crmTaskQuick">업무 등록</button>
             <button class="workspace-button" type="button" data-open-window="crm">새창으로 열기</button>
           </div>
         </div>
         <div class="crm-tabs" role="tablist" aria-label="CRM 메뉴">
-          <button class="crm-tab active" type="button" role="tab" id="crmTabDashboard" aria-selected="true" aria-controls="crmPanelDashboard" tabindex="0" data-crm-tab="dashboard">대시보드</button>
+          <button class="crm-tab active" type="button" role="tab" id="crmTabDashboard" aria-selected="true" aria-controls="crmPanelDashboard" tabindex="0" data-crm-tab="dashboard">업무 현황</button>
           <button class="crm-tab" type="button" role="tab" id="crmTabMine" aria-selected="false" aria-controls="crmPanelMine" tabindex="-1" data-crm-tab="mine">내 업무</button>
           <button class="crm-tab" type="button" role="tab" id="crmTabTasks" aria-selected="false" aria-controls="crmPanelTasks" tabindex="-1" data-crm-tab="tasks">업무보드</button>
-          <button class="crm-tab" type="button" role="tab" id="crmTabAccounts" aria-selected="false" aria-controls="crmPanelAccounts" tabindex="-1" data-crm-tab="accounts">직원</button>
-          <button class="crm-tab" type="button" role="tab" id="crmMessagesTab" aria-selected="false" aria-controls="crmPanelMessages" tabindex="-1" data-crm-tab="messages">메신저 연동</button>
+          <button class="crm-tab" type="button" role="tab" id="crmTabAccounts" aria-selected="false" aria-controls="crmPanelAccounts" tabindex="-1" data-crm-tab="accounts">직원 현황</button>
+          <button class="crm-tab" type="button" role="tab" id="crmMessagesTab" aria-selected="false" aria-controls="crmPanelMessages" tabindex="-1" data-crm-tab="messages">연동 로그</button>
         </div>
         <div class="crm-message" id="crmMessage" role="status" aria-live="polite"></div>
 
@@ -4747,12 +4759,16 @@ HTML = r"""<!doctype html>
           <div class="crm-toolbar crm-task-toolbar" aria-label="업무 필터">
             <label class="sr-only" for="crmTaskViewSelect">저장뷰</label>
             <select class="crm-select" id="crmTaskViewSelect"><option value="">저장뷰 선택</option></select>
+            <label class="sr-only" for="crmTaskSearch">업무 검색</label>
+            <input class="crm-input" id="crmTaskSearch" type="search" placeholder="업무, 직원, 번호 검색" />
+            <button class="crm-mini-button primary" type="button" id="crmTaskSearchButton">조회</button>
+            <button class="crm-mini-button" type="button" id="crmTaskAdvancedToggle" aria-expanded="false" aria-controls="crmAdvancedFilters">고급 필터</button>
+            <button class="crm-mini-button" type="button" id="crmTaskFilterReset">초기화</button>
+            <div class="crm-advanced-filters" id="crmAdvancedFilters" hidden>
             <label class="sr-only" for="crmTaskViewName">저장뷰 이름</label>
             <input class="crm-input" id="crmTaskViewName" type="text" placeholder="저장뷰 이름" />
             <button class="crm-mini-button" type="button" id="crmTaskViewSave">현재 보기 저장</button>
             <button class="crm-mini-button" type="button" id="crmTaskViewDelete">저장뷰 삭제</button>
-            <label class="sr-only" for="crmTaskSearch">업무 검색</label>
-            <input class="crm-input" id="crmTaskSearch" type="search" placeholder="업무, 직원, 번호 검색" />
             <label class="sr-only" for="crmTaskStatusFilter">상태</label>
             <select class="crm-select" id="crmTaskStatusFilter"><option value="">상태 전체</option><option>대기</option><option>진행중</option><option>완료</option><option>보류</option></select>
             <label class="sr-only" for="crmTaskAssigneeFilter">담당자</label>
@@ -4766,8 +4782,7 @@ HTML = r"""<!doctype html>
             <label class="sr-only" for="crmTaskSort">정렬</label>
             <select class="crm-select" id="crmTaskSort"><option value="smart">추천순</option><option value="due">마감순</option><option value="updated">최근 수정순</option></select>
             <label class="crm-filter-check"><input type="checkbox" id="crmTaskOpenOnly" checked /> 미완료만</label>
-            <button class="crm-mini-button primary" type="button" id="crmTaskSearchButton">조회</button>
-            <button class="crm-mini-button" type="button" id="crmTaskFilterReset">초기화</button>
+            </div>
           </div>
           <div class="crm-task-board-stats" id="crmTaskBoardStats"></div>
           <div class="crm-task-layout">
@@ -5420,6 +5435,7 @@ HTML = r"""<!doctype html>
     const submitButton = document.querySelector("#submitButton");
     const pageTitle = document.querySelector(".title");
     const dashboardContent = document.querySelector("#dashboardContent");
+    const companyTabsContainer = document.querySelector(".company-tabs");
     const companyTabs = Array.from(document.querySelectorAll(".company-tab"));
     const companyNavTabs = Array.from(document.querySelectorAll(".nav-subitem[data-company-tab]"));
     const companyPanels = Array.from(document.querySelectorAll("[data-company-panel]"));
@@ -5614,6 +5630,8 @@ HTML = r"""<!doctype html>
     const crmTaskSort = document.querySelector("#crmTaskSort");
     const crmTaskOpenOnly = document.querySelector("#crmTaskOpenOnly");
     const crmTaskSearchButton = document.querySelector("#crmTaskSearchButton");
+    const crmTaskAdvancedToggle = document.querySelector("#crmTaskAdvancedToggle");
+    const crmAdvancedFilters = document.querySelector("#crmAdvancedFilters");
     const crmTaskFilterReset = document.querySelector("#crmTaskFilterReset");
     const crmTaskBoardStats = document.querySelector("#crmTaskBoardStats");
     const crmTaskBody = document.querySelector("#crmTaskBody");
@@ -5699,7 +5717,10 @@ HTML = r"""<!doctype html>
     });
     renderManagementPeriodControls();
     applyStaticPermissions();
-    loadNoticeTemplate();
+    loadNoticeTemplate().catch((error) => {
+      notice.textContent = error.message;
+      renderNoticePreview();
+    });
     loadImportShipments();
 
     function addProductRow(productName = "", quantity = "", packQuantity = "") {
@@ -6356,18 +6377,19 @@ HTML = r"""<!doctype html>
       }
     }
 
-    function loadNoticeTemplate() {
-      let saved = {};
-      try {
-        saved = JSON.parse(localStorage.getItem("workhub_notice_template") || "{}");
-      } catch {
-        saved = {};
-      }
+    function applyNoticePayload(saved = {}) {
       noticeDateInput.value = saved.date || todayString();
       noticeTitleInput.value = saved.title || "";
       noticeOwnerInput.value = saved.owner || "";
       noticeBodyInput.value = saved.body || "";
       renderNoticePreview();
+      if (companyStaffNoticeTitle) companyStaffNoticeTitle.textContent = saved.title || "등록 전";
+    }
+
+    async function loadNoticeTemplate() {
+      const data = await crmFetchJson("/api/company-notice");
+      applyNoticePayload(data.notice || {});
+      return data.notice || {};
     }
 
     function noticePayload() {
@@ -6404,12 +6426,12 @@ HTML = r"""<!doctype html>
       `;
     }
 
-    function openNoticePopup() {
+    async function openNoticePopup() {
       if (!can("notice_manage")) {
         notice.textContent = "공지사항 관리 권한이 없습니다.";
         return;
       }
-      loadNoticeTemplate();
+      await loadNoticeTemplate();
       noticePopup.classList.add("open");
       setTimeout(() => noticeTitleInput?.focus(), 0);
     }
@@ -6418,32 +6440,34 @@ HTML = r"""<!doctype html>
       noticePopup.classList.remove("open");
     }
 
-    function saveNoticeTemplate() {
+    async function saveNoticeTemplate() {
       if (!can("notice_manage")) {
         notice.textContent = "공지사항 관리 권한이 없습니다.";
         return;
       }
       const payload = noticePayload();
-      localStorage.setItem("workhub_notice_template", JSON.stringify(payload));
-      renderNoticePreview();
-      if (companyStaffNoticeTitle) companyStaffNoticeTitle.textContent = payload.title || "등록 전";
-      notice.textContent = "공지사항을 저장했습니다.";
+      const data = await crmFetchJson("/api/company-notice-save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      applyNoticePayload(data.notice || payload);
+      notice.textContent = data.message || "공지사항을 저장했습니다.";
       closeNoticePopup();
     }
 
-    function clearNoticeTemplate() {
+    async function clearNoticeTemplate() {
       if (!can("notice_manage")) {
         notice.textContent = "공지사항 관리 권한이 없습니다.";
         return;
       }
-      localStorage.removeItem("workhub_notice_template");
-      noticeTitleInput.value = "";
-      noticeOwnerInput.value = "";
-      noticeBodyInput.value = "";
-      noticeDateInput.value = todayString();
-      renderNoticePreview();
-      if (companyStaffNoticeTitle) companyStaffNoticeTitle.textContent = "등록 전";
-      notice.textContent = "공지사항 입력 내용을 초기화했습니다.";
+      const data = await crmFetchJson("/api/company-notice-clear", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: "{}",
+      });
+      applyNoticePayload(data.notice || {});
+      notice.textContent = data.message || "공지사항 입력 내용을 초기화했습니다.";
     }
 
     function resetImportShipmentForm(record = null) {
@@ -7138,12 +7162,8 @@ HTML = r"""<!doctype html>
     }
 
     async function loadCompanyStaffDashboard() {
-      let saved = {};
-      try {
-        saved = JSON.parse(localStorage.getItem("workhub_notice_template") || "{}");
-      } catch {
-        saved = {};
-      }
+      const noticeData = await crmFetchJson("/api/company-notice").catch(() => ({ notice: {} }));
+      const saved = noticeData.notice || {};
       if (companyStaffNoticeTitle) companyStaffNoticeTitle.textContent = saved.title || "등록 전";
       if (!can("crm_view")) {
         renderCompanyStaffTasks([]);
@@ -9963,7 +9983,7 @@ HTML = r"""<!doctype html>
         closeLedgerFilter();
         loadLedgerCases();
       } else if (showCrm) {
-        setPageTitle("업무관리");
+        setPageTitle("업무 현황");
         closeLedgerFilter();
         loadCrmAll().catch((error) => setCrmMessage(error.message, true));
       } else if (showImport) {
@@ -9989,7 +10009,7 @@ HTML = r"""<!doctype html>
         loadSystemUpdateStatus();
       } else {
         currentMode = "dashboard";
-        setPageTitle("회사 포털");
+        setPageTitle("업무 홈");
         closeLedgerFilter();
         if (companyActiveTab === "staff") loadCompanyStaffDashboard().catch(() => {});
       }
@@ -10197,6 +10217,17 @@ HTML = r"""<!doctype html>
     });
     companyTabs.forEach((button) => {
       button.addEventListener("click", () => setCompanyTab(button.dataset.companyTab));
+    });
+    companyTabsContainer?.addEventListener("click", (event) => {
+      const directTab = event.target.closest?.(".company-tab");
+      let targetTab = directTab;
+      if (!targetTab) {
+        targetTab = companyTabs.find((button) => {
+          const rect = button.getBoundingClientRect();
+          return event.clientX >= rect.left && event.clientX <= rect.right && event.clientY >= rect.top && event.clientY <= rect.bottom;
+        });
+      }
+      if (targetTab?.dataset.companyTab) setCompanyTab(targetTab.dataset.companyTab);
     });
     companyMiniCalendarGrid?.addEventListener("click", (event) => {
       const dayButton = event.target.closest("[data-mini-calendar-day]");
@@ -10459,6 +10490,12 @@ HTML = r"""<!doctype html>
       markCrmTaskFiltersDirty();
       loadCrmTasks().catch((error) => setCrmMessage(error.message, true));
     });
+    crmTaskAdvancedToggle?.addEventListener("click", () => {
+      const open = Boolean(crmAdvancedFilters?.hidden);
+      if (crmAdvancedFilters) crmAdvancedFilters.hidden = !open;
+      crmTaskAdvancedToggle.setAttribute("aria-expanded", open ? "true" : "false");
+      crmTaskAdvancedToggle.textContent = open ? "필터 닫기" : "고급 필터";
+    });
     crmTaskSearch.addEventListener("keydown", (event) => {
       if (event.key === "Enter") {
         event.preventDefault();
@@ -10610,7 +10647,11 @@ HTML = r"""<!doctype html>
     document.querySelector("#adminNavToggle")?.addEventListener("click", () => {
       document.querySelector("#adminNavGroup")?.classList.toggle("open");
     });
-    document.querySelector("#noticeInputOpen").addEventListener("click", openNoticePopup);
+    document.querySelector("#noticeInputOpen").addEventListener("click", () => {
+      openNoticePopup().catch((error) => {
+        notice.textContent = error.message;
+      });
+    });
     importShipmentInputOpen.addEventListener("click", () => {
       showWorkspace("import");
       openImportShipmentPopup();
@@ -10709,8 +10750,16 @@ HTML = r"""<!doctype html>
       "업체명/메일주소 엑셀을 선택해주세요."
     );
     document.querySelector("#addProductRow").addEventListener("click", () => addProductRow());
-    noticeSaveButton.addEventListener("click", saveNoticeTemplate);
-    noticeClearButton.addEventListener("click", clearNoticeTemplate);
+    noticeSaveButton.addEventListener("click", () => {
+      saveNoticeTemplate().catch((error) => {
+        notice.textContent = error.message;
+      });
+    });
+    noticeClearButton.addEventListener("click", () => {
+      clearNoticeTemplate().catch((error) => {
+        notice.textContent = error.message;
+      });
+    });
     [noticeDateInput, noticeTitleInput, noticeOwnerInput, noticeBodyInput]
       .forEach((input) => input.addEventListener("input", renderNoticePreview));
     receiptTypeSelect.addEventListener("change", resetProductRows);
@@ -11504,19 +11553,62 @@ def safe_filename(filename: str) -> str:
     return filename or "upload.xlsx"
 
 
+def read_request_body_bytes(headers, rfile, *, max_bytes: int) -> bytes:
+    raw_length = headers.get("Content-Length", "0")
+    try:
+        length = int(raw_length)
+    except ValueError as exc:
+        raise ValueError("Content-Length 값이 올바르지 않습니다.") from exc
+    if length < 0:
+        raise ValueError("Content-Length 값이 음수입니다.")
+    if length > max_bytes:
+        raise ValueError("요청 본문이 너무 큽니다.")
+    data = rfile.read(length)
+    if len(data) < length:
+        raise ValueError("요청 본문이 완료되지 않았습니다.")
+    return data
+
+
+def parse_form_body(headers, rfile, *, max_bytes: int = MAX_FORM_BODY_BYTES, single_values: bool = False) -> dict[str, str | list[str]]:
+    raw_body = read_request_body_bytes(headers, rfile, max_bytes=max_bytes).decode("utf-8", errors="ignore")
+    parsed = parse_qs(raw_body)
+    if not single_values:
+        return parsed
+    return {key: values[0] if isinstance(values, list) and values else "" for key, values in parsed.items()}
+
+
+def parse_json_body(headers, rfile, *, max_bytes: int = MAX_JSON_BODY_BYTES) -> dict:
+    raw_body = read_request_body_bytes(headers, rfile, max_bytes=max_bytes).decode("utf-8", errors="ignore").strip()
+    if not raw_body:
+        return {}
+    try:
+        payload = json.loads(raw_body)
+    except json.JSONDecodeError as exc:
+        raise ValueError("요청 데이터(JSON) 형식이 올바르지 않습니다.") from exc
+    if not isinstance(payload, dict):
+        raise ValueError("요청 JSON은 객체 형태여야 합니다.")
+    return payload
+
+
 def original_uploaded_filename(filename: str) -> str:
     return re.sub(r"^\d{10,}_", "", filename)
 
 
-def parse_multipart(headers, rfile) -> dict[str, tuple[str, bytes] | str]:
+def parse_multipart(
+    headers,
+    rfile,
+    *,
+    max_bytes: int = MAX_MULTIPART_BODY_BYTES,
+) -> dict[str, tuple[str, bytes] | str]:
     content_type = headers.get("Content-Type", "")
     boundary_match = re.search(r"boundary=(.+)", content_type)
     if not boundary_match:
         raise ValueError("업로드 형식이 올바르지 않습니다.")
 
     boundary = boundary_match.group(1).strip().strip('"').encode()
-    length = int(headers.get("Content-Length", "0"))
-    body = rfile.read(length)
+    body = read_request_body_bytes(headers, rfile, max_bytes=max_bytes)
+    if not body:
+        return {}
     fields: dict[str, tuple[str, bytes] | str] = {}
 
     for part in body.split(b"--" + boundary):
@@ -11945,6 +12037,22 @@ def init_db() -> None:
             connection.execute("ALTER TABLE internal_messages ADD COLUMN command_error TEXT")
         connection.execute("CREATE INDEX IF NOT EXISTS idx_internal_messages_created ON internal_messages(created_at)")
         connection.execute("CREATE INDEX IF NOT EXISTS idx_internal_messages_room ON internal_messages(room_type, recipient_user_id, user_id)")
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS company_notices (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                notice_date TEXT NOT NULL,
+                title TEXT,
+                owner TEXT,
+                body TEXT,
+                created_by INTEGER,
+                updated_by INTEGER,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+            """
+        )
+        connection.execute("CREATE INDEX IF NOT EXISTS idx_company_notices_updated ON company_notices(updated_at)")
         connection.execute(
             """
             CREATE TABLE IF NOT EXISTS system_update_history (
@@ -12606,6 +12714,76 @@ def company_calendar_payload(user: dict[str, str], month_text: str) -> dict:
         "summary": summary,
         "events": sorted(events, key=lambda item: (str(item["date"]), {"project": 0, "leave": 1, "pending": 2, "task": 3}.get(str(item["type"]), 9), str(item["title"]))),
     }
+
+
+def latest_company_notice() -> dict[str, str | int]:
+    init_db()
+    connection = connect_db()
+    try:
+        row = connection.execute(
+            """
+            SELECT company_notices.id, company_notices.notice_date AS date,
+                   company_notices.title, company_notices.owner, company_notices.body,
+                   company_notices.created_at, company_notices.updated_at,
+                   COALESCE(updater.display_name, updater.username, '') AS updated_by_name
+              FROM company_notices
+              LEFT JOIN users updater ON updater.id = company_notices.updated_by
+             ORDER BY company_notices.updated_at DESC, company_notices.id DESC
+             LIMIT 1
+            """
+        ).fetchone()
+    finally:
+        connection.close()
+    if not row:
+        return {"id": 0, "date": date.today().isoformat(), "title": "", "owner": "", "body": ""}
+    return dict(row)
+
+
+def save_company_notice(payload: dict, user: dict[str, str]) -> int:
+    notice_date = clean_payload_text(payload, "date") or date.today().isoformat()
+    try:
+        date.fromisoformat(notice_date)
+    except ValueError as exc:
+        raise ValueError("공지 날짜 형식이 올바르지 않습니다.") from exc
+    title = clean_payload_text(payload, "title")
+    owner = clean_payload_text(payload, "owner")
+    body = clean_payload_text(payload, "body")
+    if not title and not body:
+        raise ValueError("공지 제목 또는 내용을 입력해주세요.")
+    user_id = int(user.get("id") or 0) or None
+    now = now_text()
+    connection = connect_db()
+    try:
+        cursor = connection.execute(
+            """
+            INSERT INTO company_notices
+                (notice_date, title, owner, body, created_by, updated_by, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (notice_date, title, owner, body, user_id, user_id, now, now),
+        )
+        connection.commit()
+        return int(cursor.lastrowid)
+    finally:
+        connection.close()
+
+
+def clear_company_notice(user: dict[str, str]) -> None:
+    user_id = int(user.get("id") or 0) or None
+    now = now_text()
+    connection = connect_db()
+    try:
+        connection.execute(
+            """
+            INSERT INTO company_notices
+                (notice_date, title, owner, body, created_by, updated_by, created_at, updated_at)
+            VALUES (?, '', '', '', ?, ?, ?, ?)
+            """,
+            (date.today().isoformat(), user_id, user_id, now, now),
+        )
+        connection.commit()
+    finally:
+        connection.close()
 
 
 def list_internal_messages(
@@ -15143,6 +15321,7 @@ class WorkhubHandler(BaseHTTPRequestHandler):
         return False
 
     def do_GET(self) -> None:
+        route_path = urlsplit(self.path).path
         if self.path.startswith("/lucide/"):
             relative = unquote(self.path.removeprefix("/lucide/"))
             target = (LUCIDE_DIR / relative).resolve()
@@ -15172,7 +15351,7 @@ class WorkhubHandler(BaseHTTPRequestHandler):
             )
             return
 
-        if self.path == "/logout":
+        if route_path == "/logout":
             delete_login_session(self.cookie_value(SESSION_COOKIE_NAME))
             self.send_response(303)
             self.clear_session_cookie()
@@ -15189,17 +15368,17 @@ class WorkhubHandler(BaseHTTPRequestHandler):
             self.send_redirect("/login")
             return
 
-        if self.path == "/" or self.path.startswith("/?"):
+        if route_path == "/" or self.path.startswith("/?"):
             self.send_bytes(render_app_html(user).encode("utf-8"), "text/html; charset=utf-8")
             return
 
-        if self.path == "/api/users":
+        if route_path == "/api/users":
             if not self.require_permission(user, "user_admin", "사용자 관리"):
                 return
             self.send_json({"users": list_users()})
             return
 
-        if self.path == "/api/backups":
+        if route_path == "/api/backups":
             if not self.require_permission(user, "backup_manage", "백업 관리"):
                 return
             backups = list_backup_files()
@@ -15212,7 +15391,7 @@ class WorkhubHandler(BaseHTTPRequestHandler):
             })
             return
 
-        if self.path == "/api/system-update":
+        if route_path == "/api/system-update":
             if not self.require_permission(user, "system_update", "시스템 업데이트"):
                 return
             self.send_json(system_update_payload(fetch=False))
@@ -15242,20 +15421,20 @@ class WorkhubHandler(BaseHTTPRequestHandler):
             self.wfile.write(data)
             return
 
-        if self.path == "/api/leaves":
+        if route_path == "/api/leaves":
             if not any(user_has_permission(user, permission) for permission in ("leave_view", "leave_approve", "leave_manage")):
                 self.send_json({"error": "연차 조회 권한이 없습니다."}, status=403)
                 return
             self.send_json(leave_payload(user))
             return
 
-        if self.path == "/api/mail-settings":
+        if route_path == "/api/mail-settings":
             if not self.require_permission(user, "mail_send", "메일 발송"):
                 return
             self.send_json(load_mail_settings(include_password=False))
             return
 
-        if self.path == "/api/vendor-contacts":
+        if route_path == "/api/vendor-contacts":
             if not self.require_permission(user, "mail_send", "메일 발송"):
                 return
             self.send_json({"contacts": load_vendor_contacts()})
@@ -15288,11 +15467,11 @@ class WorkhubHandler(BaseHTTPRequestHandler):
             self.send_json({"records": list_management_records(query=query, limit=limit, year=year, month=month)})
             return
 
-        if self.path == "/api/management-periods":
+        if route_path == "/api/management-periods":
             self.send_json({"periods": list_management_periods()})
             return
 
-        if self.path == "/api/company-staff-dashboard":
+        if route_path == "/api/company-staff-dashboard":
             if not self.require_permission(user, "crm_view", "CRM 조회"):
                 return
             self.send_json(company_staff_dashboard_payload(user))
@@ -15307,6 +15486,10 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                 self.send_json(company_calendar_payload(user, params.get("month", [""])[0]))
             except ValueError as exc:
                 self.send_json({"error": str(exc)}, status=400)
+            return
+
+        if route_path == "/api/company-notice":
+            self.send_json({"notice": latest_company_notice()})
             return
 
         if self.path.startswith("/api/internal-messages"):
@@ -15330,7 +15513,7 @@ class WorkhubHandler(BaseHTTPRequestHandler):
             })
             return
 
-        if self.path == "/api/crm-dashboard":
+        if route_path == "/api/crm-dashboard":
             if not self.require_permission(user, "crm_view", "CRM 조회"):
                 return
             self.send_json(crm_dashboard_payload(DB_PATH))
@@ -15414,7 +15597,7 @@ class WorkhubHandler(BaseHTTPRequestHandler):
             })
             return
 
-        if self.path == "/api/crm-message-events":
+        if route_path == "/api/crm-message-events":
             if not self.require_permission(user, "crm_message_manage", "CRM 메신저 연동"):
                 return
             self.send_json({
@@ -15427,7 +15610,7 @@ class WorkhubHandler(BaseHTTPRequestHandler):
             })
             return
 
-        if self.path == "/api/crm-messenger-users":
+        if route_path == "/api/crm-messenger-users":
             if not self.require_permission(user, "crm_view", "CRM 조회"):
                 return
             payload = list_crm_messenger_users(DB_PATH)
@@ -15436,20 +15619,19 @@ class WorkhubHandler(BaseHTTPRequestHandler):
             self.send_json(payload)
             return
 
-        if self.path == "/api/import-shipments":
+        if route_path == "/api/import-shipments":
             self.send_json({"shipments": list_import_shipments()})
             return
 
         self.send_error(404)
 
     def do_POST(self) -> None:
+        route_path = urlsplit(self.path).path
         try:
-            if self.path == "/login":
-                length = int(self.headers.get("Content-Length", "0"))
-                raw_body = self.rfile.read(length).decode("utf-8")
-                payload = parse_qs(raw_body)
-                username = payload.get("username", [""])[0]
-                password = payload.get("password", [""])[0]
+            if route_path == "/login":
+                payload = parse_form_body(self.headers, self.rfile, single_values=True)
+                username = payload.get("username", "")
+                password = payload.get("password", "")
                 locked, lock_message = login_lock_status(username, self.client_ip())
                 if locked:
                     self.send_bytes(
@@ -15478,10 +15660,8 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                 self.end_headers()
                 return
 
-            if self.path == "/register":
-                length = int(self.headers.get("Content-Length", "0"))
-                raw_body = self.rfile.read(length).decode("utf-8")
-                payload = {key: values[0] if values else "" for key, values in parse_qs(raw_body).items()}
+            if route_path == "/register":
+                payload = parse_form_body(self.headers, self.rfile, single_values=True)
                 try:
                     register_user_request(payload)
                 except ValueError as exc:
@@ -15494,14 +15674,13 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                 self.send_redirect("/login?registered=1")
                 return
 
-            if self.path == "/api/crm-messenger-webhook":
+            if route_path == "/api/crm-messenger-webhook":
                 expected_token = crm_webhook_token()
                 received_token = self.headers.get("X-Workhub-Webhook-Token", "")
                 if not hmac.compare_digest(received_token, expected_token):
                     self.send_json({"error": "웹훅 토큰이 올바르지 않습니다."}, status=403)
                     return
-                length = int(self.headers.get("Content-Length", "0"))
-                payload = json.loads(self.rfile.read(length).decode("utf-8") or "{}")
+                payload = parse_json_body(self.headers, self.rfile)
                 self.send_json(handle_crm_messenger_webhook(DB_PATH, payload))
                 return
 
@@ -15510,36 +15689,47 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                 self.send_json({"error": "로그인이 필요합니다."}, status=401)
                 return
 
-            if self.path == "/api/internal-message-save":
-                length = int(self.headers.get("Content-Length", "0"))
-                payload = json.loads(self.rfile.read(length).decode("utf-8") or "{}")
+            if route_path == "/api/internal-message-save":
+                payload = parse_json_body(self.headers, self.rfile)
                 message_id = save_internal_message(payload, user)
                 self.send_json({"message": "메시지를 저장했습니다.", "message_id": message_id})
                 return
 
-            if self.path == "/api/crm-account-save":
+            if route_path == "/api/company-notice-save":
+                if not self.require_permission(user, "notice_manage", "공지사항 관리"):
+                    return
+                payload = parse_json_body(self.headers, self.rfile)
+                notice_id = save_company_notice(payload, user)
+                self.send_json({"message": "공지사항을 저장했습니다.", "notice_id": notice_id, "notice": latest_company_notice()})
+                return
+
+            if route_path == "/api/company-notice-clear":
+                if not self.require_permission(user, "notice_manage", "공지사항 관리"):
+                    return
+                clear_company_notice(user)
+                self.send_json({"message": "공지사항 입력 내용을 초기화했습니다.", "notice": latest_company_notice()})
+                return
+
+            if route_path == "/api/crm-account-save":
                 if not self.require_permission(user, "crm_manage", "CRM 관리"):
                     return
-                length = int(self.headers.get("Content-Length", "0"))
-                payload = json.loads(self.rfile.read(length).decode("utf-8"))
+                payload = parse_json_body(self.headers, self.rfile)
                 account_id = save_crm_account(DB_PATH, payload)
                 self.send_json({"message": "CRM 거래처를 저장했습니다.", "account_id": account_id})
                 return
 
-            if self.path == "/api/crm-task-save":
+            if route_path == "/api/crm-task-save":
                 if not self.require_permission(user, "crm_manage", "CRM 관리"):
                     return
-                length = int(self.headers.get("Content-Length", "0"))
-                payload = json.loads(self.rfile.read(length).decode("utf-8"))
+                payload = parse_json_body(self.headers, self.rfile)
                 task_id = save_crm_task(DB_PATH, payload, user)
                 self.send_json({"message": "CRM 업무를 저장했습니다.", "task_id": task_id})
                 return
 
-            if self.path == "/api/crm-task-status":
+            if route_path == "/api/crm-task-status":
                 if not self.require_permission(user, "crm_view", "CRM 조회"):
                     return
-                length = int(self.headers.get("Content-Length", "0"))
-                payload = json.loads(self.rfile.read(length).decode("utf-8"))
+                payload = parse_json_body(self.headers, self.rfile)
                 task_id = change_crm_task_status(
                     DB_PATH,
                     clean_payload_int(payload, "id"),
@@ -15551,11 +15741,10 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                 self.send_json({"message": "CRM 업무 상태를 저장했습니다.", "task_id": task_id})
                 return
 
-            if self.path == "/api/crm-task-comment":
+            if route_path == "/api/crm-task-comment":
                 if not self.require_permission(user, "crm_view", "CRM 조회"):
                     return
-                length = int(self.headers.get("Content-Length", "0"))
-                payload = json.loads(self.rfile.read(length).decode("utf-8"))
+                payload = parse_json_body(self.headers, self.rfile)
                 task_id = add_crm_task_comment(
                     DB_PATH,
                     clean_payload_int(payload, "id"),
@@ -15566,11 +15755,10 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                 self.send_json({"message": "CRM 업무 댓글을 저장했습니다.", "task_id": task_id})
                 return
 
-            if self.path == "/api/crm-saved-view-save":
+            if route_path == "/api/crm-saved-view-save":
                 if not self.require_permission(user, "crm_view", "CRM 조회"):
                     return
-                length = int(self.headers.get("Content-Length", "0"))
-                payload = json.loads(self.rfile.read(length).decode("utf-8"))
+                payload = parse_json_body(self.headers, self.rfile)
                 view_id = save_crm_saved_view(DB_PATH, payload, user)
                 self.send_json({
                     "message": "CRM 저장뷰를 저장했습니다.",
@@ -15579,11 +15767,10 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                 })
                 return
 
-            if self.path == "/api/crm-saved-view-delete":
+            if route_path == "/api/crm-saved-view-delete":
                 if not self.require_permission(user, "crm_view", "CRM 조회"):
                     return
-                length = int(self.headers.get("Content-Length", "0"))
-                payload = json.loads(self.rfile.read(length).decode("utf-8"))
+                payload = parse_json_body(self.headers, self.rfile)
                 delete_crm_saved_view(DB_PATH, clean_payload_int(payload, "id"), user)
                 self.send_json({
                     "message": "CRM 저장뷰를 삭제했습니다.",
@@ -15591,16 +15778,15 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                 })
                 return
 
-            if self.path == "/api/crm-messenger-user-save":
+            if route_path == "/api/crm-messenger-user-save":
                 if not self.require_permission(user, "crm_message_manage", "CRM 메신저 연동"):
                     return
-                length = int(self.headers.get("Content-Length", "0"))
-                payload = json.loads(self.rfile.read(length).decode("utf-8"))
+                payload = parse_json_body(self.headers, self.rfile)
                 mapping_id = save_crm_messenger_user(DB_PATH, payload)
                 self.send_json({"message": "메신저 사용자 매핑을 저장했습니다.", "mapping_id": mapping_id})
                 return
 
-            if self.path == "/api/crm-webhook-token-rotate":
+            if route_path == "/api/crm-webhook-token-rotate":
                 if not self.require_permission(user, "crm_message_manage", "CRM 메신저 연동"):
                     return
                 token = rotate_crm_webhook_token()
@@ -15614,39 +15800,37 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                 })
                 return
 
-            if self.path == "/api/users-save":
+            if route_path == "/api/users-save":
                 if not self.require_permission(user, "user_admin", "사용자 관리"):
                     return
-                length = int(self.headers.get("Content-Length", "0"))
-                payload = json.loads(self.rfile.read(length).decode("utf-8"))
+                payload = parse_json_body(self.headers, self.rfile)
                 user_id = save_user_account(payload, user)
                 self.send_json({"message": "사용자 계정을 저장했습니다.", "user_id": user_id, "users": list_users()})
                 return
 
-            if self.path == "/api/backup-create":
+            if route_path == "/api/backup-create":
                 if not self.require_permission(user, "backup_manage", "백업 관리"):
                     return
                 backup = create_workhub_backup("manual")
                 self.send_json({"message": "백업 파일을 생성했습니다.", "backup": backup})
                 return
 
-            if self.path == "/api/system-update-check":
+            if route_path == "/api/system-update-check":
                 if not self.require_permission(user, "system_update", "시스템 업데이트"):
                     return
                 self.send_json(system_update_payload(fetch=True))
                 return
 
-            if self.path == "/api/system-update-apply":
+            if route_path == "/api/system-update-apply":
                 if not self.require_permission(user, "system_update", "시스템 업데이트"):
                     return
                 self.send_json(apply_system_update())
                 return
 
-            if self.path == "/api/backup-delete":
+            if route_path == "/api/backup-delete":
                 if not self.require_permission(user, "backup_manage", "백업 관리"):
                     return
-                length = int(self.headers.get("Content-Length", "0"))
-                payload = json.loads(self.rfile.read(length).decode("utf-8"))
+                payload = parse_json_body(self.headers, self.rfile)
                 path = backup_path_from_name(clean_payload_text(payload, "name"))
                 if not path.exists():
                     raise FileNotFoundError("삭제할 백업 파일을 찾지 못했습니다.")
@@ -15654,32 +15838,29 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                 self.send_json({"message": "백업 파일을 삭제했습니다.", "name": path.name})
                 return
 
-            if self.path == "/api/backup-restore":
+            if route_path == "/api/backup-restore":
                 if not self.require_permission(user, "backup_manage", "백업 관리"):
                     return
-                length = int(self.headers.get("Content-Length", "0"))
-                payload = json.loads(self.rfile.read(length).decode("utf-8"))
+                payload = parse_json_body(self.headers, self.rfile)
                 path = backup_path_from_name(clean_payload_text(payload, "name"))
                 if not path.exists():
                     raise FileNotFoundError("복원할 백업 파일을 찾지 못했습니다.")
                 self.send_json(restore_workhub_backup(path))
                 return
 
-            if self.path == "/api/leave-request":
+            if route_path == "/api/leave-request":
                 if not self.require_permission(user, "leave_view", "연차 조회"):
                     return
-                length = int(self.headers.get("Content-Length", "0"))
-                payload = json.loads(self.rfile.read(length).decode("utf-8"))
+                payload = parse_json_body(self.headers, self.rfile)
                 request_id = create_leave_request(user, payload)
                 self.send_json({"message": "연차 신청이 저장되었습니다.", "request_id": request_id})
                 return
 
-            if self.path == "/api/leave-decision":
+            if route_path == "/api/leave-decision":
                 if not (user_has_permission(user, "leave_approve") or user_has_permission(user, "leave_manage")):
                     self.send_json({"error": "연차 승인 권한이 없습니다."}, status=403)
                     return
-                length = int(self.headers.get("Content-Length", "0"))
-                payload = json.loads(self.rfile.read(length).decode("utf-8"))
+                payload = parse_json_body(self.headers, self.rfile)
                 decide_leave_request(
                     clean_payload_int(payload, "request_id"),
                     user,
@@ -15689,48 +15870,43 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                 self.send_json({"message": "연차 신청을 처리했습니다."})
                 return
 
-            if self.path == "/api/leave-balance":
+            if route_path == "/api/leave-balance":
                 if not self.require_permission(user, "leave_manage", "연차 관리"):
                     return
-                length = int(self.headers.get("Content-Length", "0"))
-                payload = json.loads(self.rfile.read(length).decode("utf-8"))
+                payload = parse_json_body(self.headers, self.rfile)
                 set_leave_balance(payload, user)
                 self.send_json({"message": "직원 연차 기준을 저장했습니다."})
                 return
 
-            if self.path == "/api/leave-historical":
+            if route_path == "/api/leave-historical":
                 if not self.require_permission(user, "leave_manage", "연차 관리"):
                     return
-                length = int(self.headers.get("Content-Length", "0"))
-                payload = json.loads(self.rfile.read(length).decode("utf-8"))
+                payload = parse_json_body(self.headers, self.rfile)
                 count = add_historical_leave_usage(payload, user)
                 self.send_json({"message": f"기존 사용 연차 {count}건을 등록했습니다.", "count": count})
                 return
 
-            if self.path == "/api/cs-mail":
+            if route_path == "/api/cs-mail":
                 if not self.require_permission(user, "mail_send", "메일 발송"):
                     return
-                length = int(self.headers.get("Content-Length", "0"))
-                payload = json.loads(self.rfile.read(length).decode("utf-8"))
+                payload = parse_json_body(self.headers, self.rfile)
                 send_cs_mail(payload)
                 case_id = save_cs_case(payload, status="메일발송", mail_sent=True)
                 self.send_json({"message": "CS 요청 메일 전송 및 DB 저장이 완료되었습니다.", "case_id": case_id})
                 return
 
-            if self.path == "/api/cs-case":
+            if route_path == "/api/cs-case":
                 if not self.require_permission(user, "ledger_edit", "대장 수정"):
                     return
-                length = int(self.headers.get("Content-Length", "0"))
-                payload = json.loads(self.rfile.read(length).decode("utf-8"))
+                payload = parse_json_body(self.headers, self.rfile)
                 case_id = save_cs_case(payload, status=clean_payload_text(payload, "status") or "접수")
                 self.send_json({"message": "CS건을 DB에 저장했습니다.", "case_id": case_id})
                 return
 
-            if self.path == "/api/cs-case-update":
+            if route_path == "/api/cs-case-update":
                 if not self.require_permission(user, "ledger_edit", "대장 수정"):
                     return
-                length = int(self.headers.get("Content-Length", "0"))
-                payload = json.loads(self.rfile.read(length).decode("utf-8"))
+                payload = parse_json_body(self.headers, self.rfile)
                 case_id = clean_payload_int(payload, "id")
                 if not case_id:
                     raise ValueError("수정할 CS건 ID가 없습니다.")
@@ -15738,11 +15914,10 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                 self.send_json({"message": "CS 처리내용을 저장했습니다.", "case_id": case_id})
                 return
 
-            if self.path == "/api/cs-cases-delete":
+            if route_path == "/api/cs-cases-delete":
                 if not self.require_permission(user, "ledger_delete", "대장 삭제"):
                     return
-                length = int(self.headers.get("Content-Length", "0"))
-                payload = json.loads(self.rfile.read(length).decode("utf-8"))
+                payload = parse_json_body(self.headers, self.rfile)
                 case_ids = [int(value) for value in payload.get("ids", []) if str(value).isdigit()]
                 if not case_ids:
                     raise ValueError("삭제할 CS 처리대장 행이 없습니다.")
@@ -15750,11 +15925,10 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                 self.send_json({"message": f"CS 처리대장 선택 주문 {deleted}건을 삭제했습니다.", "deleted": deleted})
                 return
 
-            if self.path == "/api/management-record-update":
+            if route_path == "/api/management-record-update":
                 if not self.require_permission(user, "ledger_edit", "대장 수정"):
                     return
-                length = int(self.headers.get("Content-Length", "0"))
-                payload = json.loads(self.rfile.read(length).decode("utf-8"))
+                payload = parse_json_body(self.headers, self.rfile)
                 record_id = clean_payload_int(payload, "id")
                 if not record_id:
                     raise ValueError("수정할 통합관리대장 행 ID가 없습니다.")
@@ -15762,11 +15936,10 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                 self.send_json({"message": "통합관리대장 행을 저장했습니다.", "record_id": record_id})
                 return
 
-            if self.path == "/api/management-records-delete":
+            if route_path == "/api/management-records-delete":
                 if not self.require_permission(user, "ledger_delete", "대장 삭제"):
                     return
-                length = int(self.headers.get("Content-Length", "0"))
-                payload = json.loads(self.rfile.read(length).decode("utf-8"))
+                payload = parse_json_body(self.headers, self.rfile)
                 record_ids = [int(value) for value in payload.get("ids", []) if str(value).isdigit()]
                 if not record_ids:
                     raise ValueError("삭제할 통합관리대장 행이 없습니다.")
@@ -15774,11 +15947,10 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                 self.send_json({"message": f"통합관리대장 선택 주문 {deleted}건을 삭제했습니다.", "deleted": deleted})
                 return
 
-            if self.path == "/api/management-to-cs":
+            if route_path == "/api/management-to-cs":
                 if not self.require_permission(user, "cs_receive", "CS접수"):
                     return
-                length = int(self.headers.get("Content-Length", "0"))
-                payload = json.loads(self.rfile.read(length).decode("utf-8"))
+                payload = parse_json_body(self.headers, self.rfile)
                 record_id = clean_payload_int(payload, "id")
                 if not record_id:
                     raise ValueError("CS접수할 통합관리대장 행 ID가 없습니다.")
@@ -15786,29 +15958,26 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                 self.send_json({"message": "CS 처리대장에 접수했습니다.", "case_id": case_id})
                 return
 
-            if self.path == "/api/import-shipment-save":
+            if route_path == "/api/import-shipment-save":
                 if not self.require_permission(user, "import_shipment_manage", "수입제품 진행 관리"):
                     return
-                length = int(self.headers.get("Content-Length", "0"))
-                payload = json.loads(self.rfile.read(length).decode("utf-8"))
+                payload = parse_json_body(self.headers, self.rfile)
                 shipment_id = save_import_shipment(payload)
                 self.send_json({"message": "수입제품 출고 진행 상황을 저장했습니다.", "shipment_id": shipment_id})
                 return
 
-            if self.path == "/api/import-shipment-complete":
+            if route_path == "/api/import-shipment-complete":
                 if not self.require_permission(user, "import_shipment_manage", "수입제품 진행 관리"):
                     return
-                length = int(self.headers.get("Content-Length", "0"))
-                payload = json.loads(self.rfile.read(length).decode("utf-8"))
+                payload = parse_json_body(self.headers, self.rfile)
                 complete_import_shipment(clean_payload_int(payload, "id"))
                 self.send_json({"message": "수입제품 출고 진행 건을 완료 처리했습니다."})
                 return
 
-            if self.path == "/api/management-export":
+            if route_path == "/api/management-export":
                 if not self.require_permission(user, "excel_download", "엑셀 다운로드"):
                     return
-                length = int(self.headers.get("Content-Length", "0"))
-                payload = json.loads(self.rfile.read(length).decode("utf-8"))
+                payload = parse_json_body(self.headers, self.rfile)
                 rows, filename_stem = management_export_rows_from_payload(payload)
                 if not rows:
                     raise ValueError("엑셀로 다운로드할 통합관리대장 데이터가 없습니다.")
@@ -15822,11 +15991,10 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                 self.wfile.write(data)
                 return
 
-            if self.path == "/api/cs-cases-export":
+            if route_path == "/api/cs-cases-export":
                 if not self.require_permission(user, "excel_download", "엑셀 다운로드"):
                     return
-                length = int(self.headers.get("Content-Length", "0"))
-                payload = json.loads(self.rfile.read(length).decode("utf-8"))
+                payload = parse_json_body(self.headers, self.rfile)
                 rows, filename_stem = ledger_export_rows_from_payload(payload)
                 if not rows:
                     raise ValueError("엑셀로 다운로드할 CS 처리대장 데이터가 없습니다.")
@@ -15840,11 +16008,10 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                 self.wfile.write(data)
                 return
 
-            if self.path == "/api/vendor-contact":
+            if route_path == "/api/vendor-contact":
                 if not self.require_permission(user, "mail_send", "메일 발송"):
                     return
-                length = int(self.headers.get("Content-Length", "0"))
-                payload = json.loads(self.rfile.read(length).decode("utf-8"))
+                payload = parse_json_body(self.headers, self.rfile)
                 contacts = save_vendor_contact(
                     str(payload.get("vendor_name", "")),
                     str(payload.get("email", "")),
@@ -15852,11 +16019,10 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                 self.send_json({"message": "업체 메일 주소를 저장했습니다.", "contacts": contacts})
                 return
 
-            if self.path == "/api/vehicle-receipt":
+            if route_path == "/api/vehicle-receipt":
                 if not self.require_permission(user, "excel_download", "엑셀 다운로드"):
                     return
-                length = int(self.headers.get("Content-Length", "0"))
-                payload = json.loads(self.rfile.read(length).decode("utf-8"))
+                payload = parse_json_body(self.headers, self.rfile)
                 output_path = generate_vehicle_receipt(
                     supplier=payload.get("supplier", ""),
                     items=payload.get("items", []),
@@ -15884,16 +16050,27 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                 self.wfile.write(data)
                 return
 
-            fields = parse_multipart(self.headers, self.rfile)
+            if route_path in {
+                "/api/backup-restore-upload",
+                "/api/vendor-contacts-import",
+                "/api/cs-cases-import",
+                "/api/management-import",
+                "/api/delivery-summary",
+                "/api/invoice-export",
+                "/api/lotte-order-form",
+            }:
+                fields = parse_multipart(self.headers, self.rfile, max_bytes=MAX_MULTIPART_BODY_BYTES)
+            else:
+                fields = {}
 
-            if self.path == "/api/backup-restore-upload":
+            if route_path == "/api/backup-restore-upload":
                 if not self.require_permission(user, "backup_manage", "백업 관리"):
                     return
                 upload_path = save_uploaded_backup_zip(fields, "file")
                 self.send_json(restore_workhub_backup(upload_path))
                 return
 
-            if self.path == "/api/vendor-contacts-import":
+            if route_path == "/api/vendor-contacts-import":
                 if not self.require_permission(user, "excel_upload", "엑셀 업로드"):
                     return
                 upload_path = save_uploaded_file(fields, "file")
@@ -15905,7 +16082,7 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                 })
                 return
 
-            if self.path == "/api/cs-cases-import":
+            if route_path == "/api/cs-cases-import":
                 if not self.require_admin(user, "CS처리대장 업로드"):
                     return
                 upload_path = save_uploaded_file(fields, "file")
@@ -15917,7 +16094,7 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                 })
                 return
 
-            if self.path == "/api/management-import":
+            if route_path == "/api/management-import":
                 if not self.require_admin(user, "통합관리대장 업로드"):
                     return
                 upload_path = save_uploaded_file(fields, "file")
@@ -15929,7 +16106,7 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                 })
                 return
 
-            if self.path == "/api/delivery-summary":
+            if route_path == "/api/delivery-summary":
                 if not self.require_permission(user, "excel_upload", "엑셀 업로드"):
                     return
                 upload_path = save_uploaded_file(fields)
@@ -15941,7 +16118,7 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                 self.send_json({"text": text, "line_count": len(lines)})
                 return
 
-            if self.path == "/api/invoice-export":
+            if route_path == "/api/invoice-export":
                 if not self.require_permission(user, "excel_upload", "엑셀 업로드"):
                     return
                 if not self.require_permission(user, "excel_download", "엑셀 다운로드"):
@@ -15966,7 +16143,7 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                 self.wfile.write(data)
                 return
 
-            if self.path == "/api/lotte-order-form":
+            if route_path == "/api/lotte-order-form":
                 if not self.require_permission(user, "excel_upload", "엑셀 업로드"):
                     return
                 if not self.require_permission(user, "excel_download", "엑셀 다운로드"):
@@ -15994,6 +16171,9 @@ class WorkhubHandler(BaseHTTPRequestHandler):
             self.send_error(404)
         except PermissionError as exc:
             self.send_json({"error": str(exc)}, status=403)
+        except ValueError as exc:
+            status_code = 413 if "요청 본문이 너무 큽니다" in str(exc) else 400
+            self.send_json({"error": str(exc)}, status=status_code)
         except Exception as exc:  # noqa: BLE001
             self.send_json({"error": str(exc)}, status=400)
 
@@ -16014,7 +16194,10 @@ class WorkhubHandler(BaseHTTPRequestHandler):
         self.send_header("Referrer-Policy", "same-origin")
         self.send_header("Content-Length", str(len(data)))
         self.end_headers()
-        self.wfile.write(data)
+        try:
+            self.wfile.write(data)
+        except (BrokenPipeError, ConnectionAbortedError, ConnectionResetError):
+            return
 
     def log_message(self, format: str, *args) -> None:
         return
@@ -16033,3 +16216,4 @@ if __name__ == "__main__":
     selected_port = int(os.environ.get("WORKHUB_PORT", sys.argv[1] if len(sys.argv) > 1 else 8765))
     selected_host = os.environ.get("WORKHUB_HOST", "127.0.0.1")
     run(host=selected_host, port=selected_port)
+
