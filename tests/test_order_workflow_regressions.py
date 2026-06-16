@@ -3,9 +3,11 @@ from __future__ import annotations
 import importlib.util
 import tempfile
 import unittest
+from datetime import date
 from pathlib import Path
 
 from openpyxl import Workbook, load_workbook
+from openpyxl.styles import Border, Side
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -75,6 +77,30 @@ def create_invoice_workbook(path: Path) -> None:
     workbook.save(path)
 
 
+def create_lotte_source_workbook(path: Path, source_headers: list[str]) -> None:
+    workbook = Workbook()
+    worksheet = workbook.active
+    worksheet.title = "Source"
+    worksheet.append(source_headers)
+    worksheet.append([f"테스트{idx}" for idx, _ in enumerate(source_headers, start=1)])
+    workbook.save(path)
+
+
+def create_lotte_template_workbook(path: Path, template_headers: list[str]) -> None:
+    workbook = Workbook()
+    worksheet = workbook.active
+    worksheet.title = "Template"
+    worksheet.append(template_headers)
+    worksheet.append(["" for _ in template_headers])
+
+    left_border = Side(style="thin", color="000000")
+    for column in range(2, 6):
+        cell = worksheet.cell(2, column)
+        cell.border = Border(left=left_border)
+
+    workbook.save(path)
+
+
 class OrderWorkflowRegressionTests(unittest.TestCase):
     def test_delivery_summary_accepts_receiver_headers_in_all_script_copies(self) -> None:
         with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
@@ -100,6 +126,38 @@ class OrderWorkflowRegressionTests(unittest.TestCase):
                     rows = module.extract_invoice_rows(workbook_path)
 
                     self.assertEqual(rows, [("\ud64d\uae38\ub3d9", "1234567890 / 1234567890")])
+
+    def test_lotte_order_export_removes_left_borders_from_columns_b_to_e(self) -> None:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+            temp_dir = Path(tmp)
+
+            for scripts_dir in MODULE_SETS:
+                with self.subTest(scripts_dir=scripts_dir):
+                    module = load_module(scripts_dir / "lotte_order_form_converter.py")
+                    source_path = temp_dir / f"source-{scripts_dir.name}.xlsx"
+                    template_path = temp_dir / f"template-{scripts_dir.name}.xlsx"
+                    output_dir = temp_dir / f"output-{scripts_dir.name}"
+
+                    create_lotte_source_workbook(source_path, list(module.SOURCE_TO_TEMPLATE.keys()))
+                    create_lotte_template_workbook(
+                        template_path,
+                        list(module.SOURCE_TO_TEMPLATE.values()),
+                    )
+
+                    output_path = module.convert_lotte_order_form(
+                        source_path,
+                        template_path,
+                        output_dir,
+                        output_date=date(2026, 6, 16),
+                    )
+                    workbook = load_workbook(output_path)
+                    worksheet = workbook.active
+
+                    for column in range(2, 6):
+                        self.assertIsNone(
+                            worksheet.cell(2, column).border.left.style,
+                            f"{worksheet.cell(2, column).coordinate} should not have a left border",
+                        )
 
     def test_vehicle_receipt_template_formatting_matches_print_requirements(self) -> None:
         red_values = {"FFFF0000", "00FF0000", "FF0000"}

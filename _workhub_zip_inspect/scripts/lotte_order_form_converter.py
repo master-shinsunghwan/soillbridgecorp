@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from openpyxl import load_workbook
+from openpyxl.styles import Border, Side
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -93,6 +94,36 @@ def copy_row_style(worksheet, source_row: int, target_row: int, max_col: int) ->
         worksheet.row_dimensions[target_row].height = worksheet.row_dimensions[source_row].height
 
 
+def border_without_left(border) -> Border:
+    return Border(
+        left=Side(style=None),
+        right=copy(border.right),
+        top=copy(border.top),
+        bottom=copy(border.bottom),
+        diagonal=copy(border.diagonal),
+        diagonal_direction=border.diagonal_direction,
+        diagonalUp=border.diagonalUp,
+        diagonalDown=border.diagonalDown,
+        outline=border.outline,
+        vertical=copy(border.vertical),
+        horizontal=copy(border.horizontal),
+        start=copy(border.start),
+        end=copy(border.end),
+    )
+
+
+def remove_left_borders_for_order_columns(
+    worksheet,
+    columns: range = range(2, 6),
+) -> None:
+    for row in range(1, worksheet.max_row + 1):
+        for column in columns:
+            if column > worksheet.max_column:
+                continue
+            cell = worksheet.cell(row, column)
+            cell.border = border_without_left(cell.border)
+
+
 def clear_template_body(worksheet, start_row: int = 2) -> None:
     for row in worksheet.iter_rows(min_row=start_row, max_row=worksheet.max_row):
         for cell in row:
@@ -166,6 +197,7 @@ def convert_lotte_order_form(
         copy_row_style(template_ws, style_row, row_offset, template_ws.max_column)
         for template_header, value in row_data.items():
             template_ws.cell(row_offset, template_columns[template_header]).value = value
+    remove_left_borders_for_order_columns(template_ws)
 
     output_dir.mkdir(parents=True, exist_ok=True)
     output_path = output_dir / dated_output_name(template_path, output_date or date.today())
