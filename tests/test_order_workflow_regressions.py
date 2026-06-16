@@ -124,8 +124,18 @@ class OrderWorkflowRegressionTests(unittest.TestCase):
                 with self.subTest(scripts_dir=scripts_dir):
                     module = load_module(scripts_dir / "invoice_number_exporter.py")
                     rows = module.extract_invoice_rows(workbook_path)
+                    output_path = module.export_invoice_numbers(
+                        workbook_path,
+                        Path(tmp) / f"invoice-output-{scripts_dir.name}",
+                    )
+                    workbook = load_workbook(output_path)
+                    worksheet = workbook.active
 
                     self.assertEqual(rows, [("\ud64d\uae38\ub3d9", "1234567890 / 1234567890")])
+                    self.assertTrue(output_path.exists())
+                    self.assertEqual(worksheet.max_row, 2)
+                    self.assertEqual(worksheet["A2"].value, "\ud64d\uae38\ub3d9")
+                    self.assertEqual(worksheet["B2"].value, "1234567890 / 1234567890")
 
     def test_lotte_order_export_removes_left_borders_from_columns_b_to_e(self) -> None:
         with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:

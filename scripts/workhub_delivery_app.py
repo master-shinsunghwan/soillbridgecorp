@@ -9073,15 +9073,7 @@ HTML = r"""<!doctype html>
           const data = await response.json();
           throw new Error(data.error || "엑셀 다운로드에 실패했습니다.");
         }
-        const blob = await response.blob();
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement("a");
-        link.href = url;
-        link.download = filenameFromResponse(response, fallbackName);
-        document.body.appendChild(link);
-        link.click();
-        link.remove();
-        URL.revokeObjectURL(url);
+        await downloadWorkbookResponse(response, fallbackName);
         notice.textContent = "엑셀 다운로드가 시작되었습니다.";
       } catch (error) {
         notice.textContent = error.message;
@@ -9132,15 +9124,7 @@ HTML = r"""<!doctype html>
           const data = await response.json();
           throw new Error(data.error || "통합관리대장 엑셀 다운로드에 실패했습니다.");
         }
-        const blob = await response.blob();
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement("a");
-        link.href = url;
-        link.download = filenameFromResponse(response, fallbackName);
-        document.body.appendChild(link);
-        link.click();
-        link.remove();
-        URL.revokeObjectURL(url);
+        await downloadWorkbookResponse(response, fallbackName);
         notice.textContent = "통합관리대장 엑셀 다운로드가 시작되었습니다.";
       } catch (error) {
         notice.textContent = error.message;
@@ -9191,15 +9175,7 @@ HTML = r"""<!doctype html>
           const data = await response.json();
           throw new Error(data.error || "CS 처리대장 엑셀 다운로드에 실패했습니다.");
         }
-        const blob = await response.blob();
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement("a");
-        link.href = url;
-        link.download = filenameFromResponse(response, fallbackName);
-        document.body.appendChild(link);
-        link.click();
-        link.remove();
-        URL.revokeObjectURL(url);
+        await downloadWorkbookResponse(response, fallbackName);
         notice.textContent = "CS 처리대장 엑셀 다운로드가 시작되었습니다.";
       } catch (error) {
         notice.textContent = error.message;
@@ -9250,6 +9226,19 @@ HTML = r"""<!doctype html>
       }
       const asciiMatch = disposition.match(/filename="?([^";]+)"?/i);
       return asciiMatch ? asciiMatch[1] : fallback;
+    }
+
+    async function downloadWorkbookResponse(response, fallbackName) {
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = filenameFromResponse(response, fallbackName);
+      link.style.display = "none";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
     }
 
     const mailPopupTitles = {
@@ -10511,15 +10500,7 @@ HTML = r"""<!doctype html>
             const data = await response.json();
             throw new Error(data.error || "처리에 실패했습니다.");
           }
-          const blob = await response.blob();
-          const url = URL.createObjectURL(blob);
-          const link = document.createElement("a");
-          link.href = url;
-          link.download = filenameFromResponse(response, "차량인수증.xlsx");
-          document.body.appendChild(link);
-          link.click();
-          link.remove();
-          URL.revokeObjectURL(url);
+          await downloadWorkbookResponse(response, "차량인수증.xlsx");
           notice.textContent = "차량인수증 다운로드가 시작되었습니다.";
         } else if (currentMode === "delivery") {
           if (!fileInput.files[0]) throw new Error("주소일브릿지 엑셀 파일을 선택해주세요.");
@@ -10539,18 +10520,10 @@ HTML = r"""<!doctype html>
             const data = await response.json();
             throw new Error(data.error || "처리에 실패했습니다.");
           }
-          const blob = await response.blob();
-          const url = URL.createObjectURL(blob);
-          const link = document.createElement("a");
-          link.href = url;
-          link.download = filenameFromResponse(
+          await downloadWorkbookResponse(
             response,
             currentMode === "invoice" ? "송장번호_추출.xlsx" : "롯데택배_발주서.xlsx"
           );
-          document.body.appendChild(link);
-          link.click();
-          link.remove();
-          URL.revokeObjectURL(url);
           notice.textContent = "엑셀 파일 다운로드가 시작되었습니다.";
         }
       } catch (error) {

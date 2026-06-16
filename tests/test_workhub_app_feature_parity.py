@@ -94,6 +94,21 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
             self.assertNotIn(".modal-backdrop.open .modal *", html_source)
             self.assertNotIn(".workhub-modal-backdrop.open .workhub-modal *", html_source)
 
+    def test_excel_downloads_keep_object_url_until_browser_starts_download(self) -> None:
+        for app_file in (
+            ROOT / "scripts" / "workhub_delivery_app.py",
+            ROOT / "_workhub_zip_inspect" / "scripts" / "workhub_delivery_app.py",
+        ):
+            html_source = app_file.read_text(encoding="utf-8")
+
+            self.assertIn("function downloadWorkbookResponse(response, fallbackName)", html_source)
+            self.assertIn("window.setTimeout(() => URL.revokeObjectURL(url), 1000)", html_source)
+            self.assertIn('await downloadWorkbookResponse(response, "차량인수증.xlsx")', html_source)
+            self.assertIn(
+                'await downloadWorkbookResponse(\n            response,\n            currentMode === "invoice" ? "송장번호_추출.xlsx" : "롯데택배_발주서.xlsx"\n          )',
+                html_source,
+            )
+
 
 if __name__ == "__main__":
     unittest.main()
