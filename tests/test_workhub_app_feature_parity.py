@@ -47,18 +47,21 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         self.assertIn("ORDER_MODAL_TITLES", html_source)
         self.assertIn("function openOrderModal(mode)", html_source)
         self.assertIn('data-open="order"', html_source)
-        self.assertIn('data-order-card="${escapeHtml(key)}"', html_source)
-        self.assertIn('data-order-execute="${escapeHtml(key)}"', html_source)
+        self.assertIn('data-order-card="delivery"', html_source)
+        self.assertIn('role="button" tabindex="0"', html_source)
+        self.assertIn('data-open="delivery">실행</button>', html_source)
         self.assertIn("setActiveNav(\"order\")", html_source)
         self.assertIn("setPageTitle(ORDER_MODAL_TITLES[currentOrderMode]", html_source)
         self.assertIn('sidebar.addEventListener("click"', html_source)
-        self.assertIn('event.target.closest("[data-order-execute]")', html_source)
+        self.assertIn('event.target.closest("[data-open]")', html_source)
+        self.assertIn('event.target.closest("[data-order-card]")', html_source)
+        self.assertIn('document.addEventListener("keydown"', html_source)
         self.assertIn("event.stopImmediatePropagation()", html_source)
 
     def test_delivery_modal_title_matches_menu_label(self) -> None:
         html_source = (SCRIPTS / "workhub_delivery_app.py").read_text(encoding="utf-8")
 
-        self.assertIn('data-order-execute="${escapeHtml(key)}">실행</button>', html_source)
+        self.assertIn('data-open="delivery">실행</button>', html_source)
         self.assertIn('modalTitle.textContent = "개별 택배건 정리";', html_source)
 
     def test_order_workspace_has_right_side_execution_cards(self) -> None:
