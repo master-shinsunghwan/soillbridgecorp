@@ -186,6 +186,40 @@ class OrderWorkflowRegressionTests(unittest.TestCase):
                         f"A{row} should not have a left border",
                     )
 
+    def test_vehicle_receipt_output_starts_at_main_border_without_extra_left_line(self) -> None:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+            temp_dir = Path(tmp)
+
+            for scripts_dir, template_path in zip(MODULE_SETS, TEMPLATE_PATHS):
+                with self.subTest(scripts_dir=scripts_dir):
+                    module = load_module(scripts_dir / "vehicle_receipt_generator.py")
+                    output_path = module.generate_vehicle_receipt(
+                        supplier="테스트 거래처",
+                        items=[{"product_name": "테스트 제품", "quantity": "1", "pack_quantity": ""}],
+                        delivery_place="테스트 납품장소",
+                        manager="테스트 담당자",
+                        output_dir=temp_dir / scripts_dir.name,
+                        template_path=template_path,
+                        output_date=date(2026, 6, 16),
+                    )
+                    workbook = load_workbook(output_path)
+                    worksheet = workbook.active
+
+                    self.assertTrue(
+                        worksheet.print_area.startswith("'모드니인수증'!$B$1:$M$"),
+                        worksheet.print_area,
+                    )
+                    self.assertTrue(worksheet.column_dimensions["A"].hidden)
+                    for row in range(1, 44):
+                        self.assertIsNone(
+                            worksheet[f"A{row}"].border.left.style,
+                            f"A{row} should not have a left border",
+                        )
+                        self.assertIsNone(
+                            worksheet[f"A{row}"].border.right.style,
+                            f"A{row} should not have a right border",
+                        )
+
 
 if __name__ == "__main__":
     unittest.main()

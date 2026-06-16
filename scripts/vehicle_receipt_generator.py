@@ -270,7 +270,9 @@ def dated_filename(output_date: date, supplier: str) -> str:
 
 
 def set_print_layout(worksheet, last_row: int) -> None:
-    worksheet.print_area = f"A1:M{last_row}"
+    worksheet.print_area = f"B1:M{last_row}"
+    worksheet.column_dimensions["A"].hidden = True
+    worksheet.column_dimensions["A"].width = 0
     worksheet.page_setup.paperSize = worksheet.PAPERSIZE_A4
     worksheet.page_setup.orientation = "portrait"
     worksheet.page_setup.fitToWidth = None
