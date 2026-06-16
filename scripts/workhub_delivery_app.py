@@ -9416,6 +9416,18 @@ HTML = r"""<!doctype html>
     }
 
     const ORDER_MODAL_MODES = new Set(["delivery", "invoice", "lotte", "vehicle"]);
+    const ORDER_MODAL_TITLES = {
+      delivery: "개별 택배건 정리",
+      invoice: "송장번호 추출",
+      lotte: "롯데택배 발주서 변환",
+      vehicle: "차량인수증",
+    };
+    function openOrderModal(mode) {
+      document.querySelector("#orderNavGroup")?.classList.add("open");
+      setActiveNav(mode);
+      setPageTitle(ORDER_MODAL_TITLES[mode] || "발주업무");
+      openModal(mode);
+    }
     sidebar.addEventListener("click", (event) => {
       const button = event.target.closest("[data-open]");
       if (!button || !sidebar.contains(button)) return;
@@ -9424,8 +9436,7 @@ HTML = r"""<!doctype html>
       event.preventDefault();
       event.stopImmediatePropagation();
       scheduleSidebarSearchAutofillGuard();
-      document.querySelector("#orderNavGroup")?.classList.add("open");
-      openModal(mode);
+      openOrderModal(mode);
     }, true);
 
     document.querySelectorAll("[data-open]").forEach((button) => {

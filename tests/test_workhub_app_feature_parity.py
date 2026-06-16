@@ -45,8 +45,12 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
             self.assertIn(f'"{mode}"', html_source)
 
         self.assertIn("ORDER_MODAL_MODES", html_source)
+        self.assertIn("ORDER_MODAL_TITLES", html_source)
+        self.assertIn("function openOrderModal(mode)", html_source)
+        self.assertIn("setActiveNav(mode)", html_source)
+        self.assertIn("setPageTitle(ORDER_MODAL_TITLES[mode]", html_source)
         self.assertIn('sidebar.addEventListener("click"', html_source)
-        self.assertIn("openModal(mode)", html_source)
+        self.assertIn("openOrderModal(mode)", html_source)
         self.assertIn("event.stopImmediatePropagation()", html_source)
 
     def test_delivery_modal_title_matches_menu_label(self) -> None:
