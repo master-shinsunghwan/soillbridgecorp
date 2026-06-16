@@ -1885,6 +1885,27 @@ HTML = r"""<!doctype html>
       gap: 7px;
       max-width: 780px;
     }
+    .order-exec-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+    }
+    .order-exec-card {
+      display: grid;
+      gap: 12px;
+      align-content: start;
+      min-height: 210px;
+      padding: 16px;
+      border: 1px solid #dfe5ec;
+      border-radius: 8px;
+      background: #fbfcff;
+    }
+    .order-exec-card-head {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+    }
     .order-exec-kicker {
       color: #155bc8;
       font-size: 12px;
@@ -3392,6 +3413,7 @@ HTML = r"""<!doctype html>
       .crm-task-board-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       .crm-kanban { grid-template-columns: repeat(2, minmax(220px, 1fr)); }
       .crm-grid-2 { grid-template-columns: 1fr; }
+      .order-exec-grid { grid-template-columns: 1fr; }
       .order-exec-steps { grid-template-columns: 1fr; }
       .internal-chat { grid-template-columns: 1fr; }
       .internal-chat-rooms { border-right: 0; border-bottom: 1px solid var(--line); max-height: 210px; }
@@ -3841,16 +3863,9 @@ HTML = r"""<!doctype html>
         </div>
       </div>
       <div class="nav-group" id="orderNavGroup">
-        <button class="nav-item" id="orderNavToggle" type="button">
+        <button class="nav-item" id="orderNavToggle" type="button" data-open="order">
           <span class="nav-label"><i data-lucide="clipboard-list"></i> <span>발주업무</span></span>
-          <i class="nav-chevron" data-lucide="chevron-right"></i>
         </button>
-        <div class="nav-submenu">
-          <button class="nav-subitem" type="button" data-open="delivery">개별 택배건 정리</button>
-          <button class="nav-subitem" type="button" data-open="invoice">송장번호 추출</button>
-          <button class="nav-subitem" type="button" data-open="lotte">롯데택배 발주서 변환</button>
-          <button class="nav-subitem" type="button" data-open="vehicle">차량인수증</button>
-        </div>
       </div>
       <button class="nav-item" type="button" data-open="management"><i data-lucide="database"></i> <span>통합관리대장 관리</span></button>
       <button class="nav-item" type="button" data-open="ledger"><i data-lucide="clipboard-check"></i> <span>CS 처리대장</span></button>
@@ -4078,25 +4093,14 @@ HTML = r"""<!doctype html>
       <section class="workspace-view" id="orderWorkspace">
         <div class="workspace-head">
           <div class="workspace-title" id="orderWorkspaceTitle">발주업무</div>
-          <div class="workspace-actions">
-            <button class="workspace-button" type="button" id="orderWorkspaceOpenModal">실행창 열기</button>
-          </div>
         </div>
         <div class="order-exec-panel">
           <div class="order-exec-summary">
             <div class="order-exec-kicker">발주업무 실행</div>
-            <div class="order-exec-title" id="orderWorkspacePanelTitle">발주업무를 선택해주세요.</div>
-            <div class="order-exec-description" id="orderWorkspaceDescription">좌측 발주업무 하위 메뉴를 선택하면 이곳에서 실행할 작업과 순서를 확인할 수 있습니다.</div>
+            <div class="order-exec-title" id="orderWorkspacePanelTitle">작업을 선택해주세요.</div>
+            <div class="order-exec-description" id="orderWorkspaceDescription">아래 4가지 작업 중 필요한 항목의 실행 버튼을 누르면 기존 드롭/업로드 실행창이 열립니다.</div>
           </div>
-          <ul class="order-exec-steps" id="orderWorkspaceSteps">
-            <li>좌측 발주업무 하위 메뉴를 선택합니다.</li>
-            <li>실행창에서 파일을 선택하거나 필요한 값을 입력합니다.</li>
-            <li>생성 버튼을 눌러 결과를 확인하거나 엑셀을 다운로드합니다.</li>
-          </ul>
-          <div class="order-exec-actions">
-            <button class="workspace-button" type="button" id="orderWorkspaceOpenModalBottom">선택한 작업 실행</button>
-            <span class="order-exec-note" id="orderWorkspaceNote">기존 팝업 실행 방식은 그대로 유지됩니다.</span>
-          </div>
+          <div class="order-exec-grid" id="orderWorkspaceCards"></div>
         </div>
       </section>
 
@@ -5036,10 +5040,7 @@ HTML = r"""<!doctype html>
     const orderWorkspaceTitle = document.querySelector("#orderWorkspaceTitle");
     const orderWorkspacePanelTitle = document.querySelector("#orderWorkspacePanelTitle");
     const orderWorkspaceDescription = document.querySelector("#orderWorkspaceDescription");
-    const orderWorkspaceSteps = document.querySelector("#orderWorkspaceSteps");
-    const orderWorkspaceOpenModal = document.querySelector("#orderWorkspaceOpenModal");
-    const orderWorkspaceOpenModalBottom = document.querySelector("#orderWorkspaceOpenModalBottom");
-    const orderWorkspaceNote = document.querySelector("#orderWorkspaceNote");
+    const orderWorkspaceCards = document.querySelector("#orderWorkspaceCards");
     const leaveWorkspace = document.querySelector("#leaveWorkspace");
     const userAdminWorkspace = document.querySelector("#userAdminWorkspace");
     const backupWorkspace = document.querySelector("#backupWorkspace");
@@ -9369,6 +9370,10 @@ HTML = r"""<!doctype html>
         document.querySelector("#importNavGroup")?.classList.add("open");
         return;
       }
+      if (mode === "order") {
+        document.querySelector("#orderNavToggle")?.classList.add("active");
+        return;
+      }
       const selector = `[data-open="${mode}"]`;
       const activeItem = document.querySelector(selector);
       if (activeItem) activeItem.classList.add("active");
@@ -9549,8 +9554,7 @@ HTML = r"""<!doctype html>
       },
     };
     function showOrderWorkspace(mode) {
-      currentOrderMode = ORDER_WORKFLOWS[mode] ? mode : "delivery";
-      const flow = ORDER_WORKFLOWS[currentOrderMode];
+      if (ORDER_WORKFLOWS[mode]) currentOrderMode = mode;
       closeLedgerFilter();
       dashboardContent.style.display = "none";
       if (orderWorkspace) orderWorkspace.classList.toggle("active", true);
@@ -9562,22 +9566,33 @@ HTML = r"""<!doctype html>
       if (userAdminWorkspace) userAdminWorkspace.classList.toggle("active", false);
       if (backupWorkspace) backupWorkspace.classList.toggle("active", false);
       if (systemUpdateWorkspace) systemUpdateWorkspace.classList.toggle("active", false);
-      document.querySelector("#orderNavGroup")?.classList.add("open");
-      setActiveNav(currentOrderMode);
-      setPageTitle(flow.title);
-      if (orderWorkspaceTitle) orderWorkspaceTitle.textContent = flow.title;
-      if (orderWorkspacePanelTitle) orderWorkspacePanelTitle.textContent = flow.title;
-      if (orderWorkspaceDescription) orderWorkspaceDescription.textContent = flow.description;
-      if (orderWorkspaceOpenModal) orderWorkspaceOpenModal.textContent = flow.action;
-      if (orderWorkspaceOpenModalBottom) orderWorkspaceOpenModalBottom.textContent = flow.action;
-      if (orderWorkspaceNote) orderWorkspaceNote.textContent = flow.note;
-      if (orderWorkspaceSteps) {
-        orderWorkspaceSteps.innerHTML = flow.steps.map((step) => `<li>${escapeHtml(step)}</li>`).join("");
+      setActiveNav("order");
+      setPageTitle("발주업무");
+      if (orderWorkspaceTitle) orderWorkspaceTitle.textContent = "발주업무";
+      if (orderWorkspacePanelTitle) orderWorkspacePanelTitle.textContent = "작업을 선택해주세요.";
+      if (orderWorkspaceDescription) orderWorkspaceDescription.textContent = "아래 4가지 작업 중 필요한 항목의 실행 버튼을 누르면 기존 드롭/업로드 실행창이 열립니다.";
+      if (orderWorkspaceCards) {
+        orderWorkspaceCards.innerHTML = Object.entries(ORDER_WORKFLOWS).map(([key, flow]) => `
+          <article class="order-exec-card" data-order-card="${escapeHtml(key)}">
+            <div class="order-exec-card-head">
+              <div>
+                <div class="order-exec-title">${escapeHtml(flow.title)}</div>
+                <div class="order-exec-description">${escapeHtml(flow.description)}</div>
+              </div>
+              <button class="workspace-button" type="button" data-order-execute="${escapeHtml(key)}">실행</button>
+            </div>
+            <ul class="order-exec-steps">
+              ${flow.steps.map((step) => `<li>${escapeHtml(step)}</li>`).join("")}
+            </ul>
+            <span class="order-exec-note">${escapeHtml(flow.note)}</span>
+          </article>
+        `).join("");
       }
     }
     function openOrderModal(mode) {
-      showOrderWorkspace(mode);
-      setPageTitle(ORDER_MODAL_TITLES[mode] || "발주업무");
+      currentOrderMode = ORDER_WORKFLOWS[mode] ? mode : "delivery";
+      showOrderWorkspace(currentOrderMode);
+      setPageTitle(ORDER_MODAL_TITLES[currentOrderMode] || "발주업무");
       openModal(currentOrderMode);
     }
     sidebar.addEventListener("click", (event) => {
@@ -9607,6 +9622,10 @@ HTML = r"""<!doctype html>
           }
           return;
         }
+        if (mode === "order") {
+          showOrderWorkspace();
+          return;
+        }
         if (mode === "management" || mode === "ledger" || mode === "crm" || mode === "import" || mode === "userAdmin" || mode === "leave" || mode === "backup" || mode === "systemUpdate") {
           showWorkspace(mode);
           return;
@@ -9628,8 +9647,10 @@ HTML = r"""<!doctype html>
     document.querySelectorAll("[data-open-window]").forEach((button) => {
       button.addEventListener("click", () => openWorkspaceWindow(button.dataset.openWindow));
     });
-    [orderWorkspaceOpenModal, orderWorkspaceOpenModalBottom].forEach((button) => {
-      button?.addEventListener("click", () => openOrderModal(currentOrderMode));
+    document.addEventListener("click", (event) => {
+      const button = event.target.closest("[data-order-execute]");
+      if (!button) return;
+      openOrderModal(button.dataset.orderExecute);
     });
     crmTabs.forEach((button) => {
       button.addEventListener("click", () => setCrmTab(button.dataset.crmTab));

@@ -37,34 +37,37 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         self.assertIn("sub_admin", app.DEFAULT_ROLE_PERMISSIONS)
         self.assertIn('data-open="crm"', app.render_app_html({"display_name": "???", "role": "admin", "permissions": app.ALL_PERMISSIONS}))
 
-    def test_order_submenus_have_delegated_modal_click_fallback(self) -> None:
+    def test_order_workspace_cards_open_existing_modals(self) -> None:
         html_source = (SCRIPTS / "workhub_delivery_app.py").read_text(encoding="utf-8")
 
         for mode in ("delivery", "invoice", "lotte", "vehicle"):
-            self.assertIn(f'data-open="{mode}"', html_source)
-            self.assertIn(f'"{mode}"', html_source)
+            self.assertIn(f"{mode}: {{", html_source)
 
         self.assertIn("ORDER_MODAL_MODES", html_source)
         self.assertIn("ORDER_MODAL_TITLES", html_source)
         self.assertIn("function openOrderModal(mode)", html_source)
-        self.assertIn("setActiveNav(mode)", html_source)
-        self.assertIn("setPageTitle(ORDER_MODAL_TITLES[mode]", html_source)
+        self.assertIn('data-open="order"', html_source)
+        self.assertIn('data-order-card="${escapeHtml(key)}"', html_source)
+        self.assertIn('data-order-execute="${escapeHtml(key)}"', html_source)
+        self.assertIn("setActiveNav(\"order\")", html_source)
+        self.assertIn("setPageTitle(ORDER_MODAL_TITLES[currentOrderMode]", html_source)
         self.assertIn('sidebar.addEventListener("click"', html_source)
-        self.assertIn("openOrderModal(mode)", html_source)
+        self.assertIn('event.target.closest("[data-order-execute]")', html_source)
         self.assertIn("event.stopImmediatePropagation()", html_source)
 
     def test_delivery_modal_title_matches_menu_label(self) -> None:
         html_source = (SCRIPTS / "workhub_delivery_app.py").read_text(encoding="utf-8")
 
-        self.assertIn('data-open="delivery">개별 택배건 정리</button>', html_source)
+        self.assertIn('data-order-execute="${escapeHtml(key)}">실행</button>', html_source)
         self.assertIn('modalTitle.textContent = "개별 택배건 정리";', html_source)
 
-    def test_order_submenus_have_right_side_execution_workspace(self) -> None:
+    def test_order_workspace_has_right_side_execution_cards(self) -> None:
         html_source = (SCRIPTS / "workhub_delivery_app.py").read_text(encoding="utf-8")
 
         self.assertIn('id="orderWorkspace"', html_source)
         self.assertIn('id="orderWorkspaceTitle"', html_source)
-        self.assertIn('id="orderWorkspaceOpenModal"', html_source)
+        self.assertIn('id="orderWorkspaceCards"', html_source)
+        self.assertIn("order-exec-card", html_source)
         self.assertIn("ORDER_WORKFLOWS", html_source)
         self.assertIn("function showOrderWorkspace(mode)", html_source)
         self.assertIn('orderWorkspace.classList.toggle("active"', html_source)
