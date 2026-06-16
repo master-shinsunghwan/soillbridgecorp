@@ -11348,6 +11348,16 @@ def clean_payload_text(payload: dict, key: str) -> str:
     return str(payload.get(key, "") or "").strip()
 
 
+def clean_payload_int(payload: dict, key: str, default: int = 0) -> int:
+    value = payload.get(key, default)
+    if value in (None, ""):
+        return int(default)
+    try:
+        return int(value)
+    except (TypeError, ValueError) as exc:  # noqa: BLE001
+        raise ValueError(f"{key}는 정수로 전달해야 합니다.") from exc
+
+
 def default_permissions_for_role(role: str) -> list[str]:
     return list(DEFAULT_ROLE_PERMISSIONS.get(role, DEFAULT_ROLE_PERMISSIONS["user"]))
 
@@ -12413,7 +12423,7 @@ def save_internal_message(payload: dict, user: dict[str, str]) -> int:
     if len(body) > 2000:
         raise ValueError("메시지는 2,000자 이하로 입력해주세요.")
     room_type = "dm" if clean_payload_text(payload, "room_type") == "dm" else "global"
-    recipient_user_id = int(payload.get("recipient_user_id") or 0) if room_type == "dm" else 0
+    recipient_user_id = clean_payload_int(payload, "recipient_user_id") if room_type == "dm" else 0
     init_db()
     if room_type == "dm":
         validation_connection = connect_db()
@@ -12480,7 +12490,7 @@ def save_internal_message(payload: dict, user: dict[str, str]) -> int:
 
 def save_user_account(payload: dict, actor: dict[str, str]) -> int:
     init_db()
-    user_id = int(payload.get("id", 0) or 0)
+    user_id = clean_payload_int(payload, "id")
     username = normalize_username(payload.get("username"))
     display_name = clean_payload_text(payload, "display_name")
     role = clean_payload_text(payload, "role") or "user"
@@ -13133,7 +13143,7 @@ def leave_payload(user: dict[str, str]) -> dict:
 def create_leave_request(user: dict[str, str], payload: dict) -> int:
     init_db()
     user_id = int(user["id"])
-    leave_type_id = int(payload.get("leave_type_id") or get_leave_type_id("annual"))
+    leave_type_id = clean_payload_int(payload, "leave_type_id", get_leave_type_id("annual"))
     start = parse_iso_date(payload.get("start_date"))
     end = parse_iso_date(payload.get("end_date"))
     unit = clean_payload_text(payload, "unit") or "FULL_DAY"
@@ -13220,7 +13230,7 @@ def decide_leave_request(request_id: int, actor: dict[str, str], decision: str, 
 
 def set_leave_balance(payload: dict, actor: dict[str, str]) -> None:
     init_db()
-    user_id = int(payload.get("user_id") or 0)
+    user_id = clean_payload_int(payload, "user_id")
     if not user_id:
         raise ValueError("직원을 선택해주세요.")
     total = clean_leave_days(payload.get("total_days"), "시작 연차")
@@ -13280,7 +13290,7 @@ def parse_historical_leave_lines(text: str) -> list[tuple[date, str, float]]:
 
 def add_historical_leave_usage(payload: dict, actor: dict[str, str]) -> int:
     init_db()
-    user_id = int(payload.get("user_id") or 0)
+    user_id = clean_payload_int(payload, "user_id")
     if not user_id:
         raise ValueError("직원을 선택해주세요.")
     entries = parse_historical_leave_lines(str(payload.get("usage_dates", "") or ""))
@@ -13755,7 +13765,7 @@ def save_import_shipment(payload: dict) -> int:
     values = {field: clean_payload_text(payload, field) for field in IMPORT_SHIPMENT_FIELDS}
     if not any(values.values()):
         raise ValueError("수입제품 출고 진행 내용을 입력해주세요.")
-    shipment_id = int(payload.get("id") or 0)
+    shipment_id = clean_payload_int(payload, "id")
     connection = connect_db()
     try:
         if shipment_id:
@@ -15245,7 +15255,7 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                 payload = json.loads(self.rfile.read(length).decode("utf-8"))
                 task_id = change_crm_task_status(
                     DB_PATH,
-                    int(payload.get("id") or 0),
+                    clean_payload_int(payload, "id"),
                     str(payload.get("status") or ""),
                     user,
                     comment=str(payload.get("comment") or ""),
@@ -15261,7 +15271,7 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                 payload = json.loads(self.rfile.read(length).decode("utf-8"))
                 task_id = add_crm_task_comment(
                     DB_PATH,
-                    int(payload.get("id") or 0),
+                    clean_payload_int(payload, "id"),
                     str(payload.get("body") or ""),
                     user,
                     can_manage=user_has_permission(user, "crm_manage"),
@@ -15287,7 +15297,7 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                     return
                 length = int(self.headers.get("Content-Length", "0"))
                 payload = json.loads(self.rfile.read(length).decode("utf-8"))
-                delete_crm_saved_view(DB_PATH, int(payload.get("id") or 0), user)
+                delete_crm_saved_view(DB_PATH, clean_payload_int(payload, "id"), user)
                 self.send_json({
                     "message": "CRM 저장뷰를 삭제했습니다.",
                     "views": list_crm_saved_views(DB_PATH, int(user.get("id") or 0), scope=str(payload.get("scope") or "tasks")),
@@ -15383,7 +15393,12 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                     return
                 length = int(self.headers.get("Content-Length", "0"))
                 payload = json.loads(self.rfile.read(length).decode("utf-8"))
-                decide_leave_request(int(payload.get("request_id", 0)), user, clean_payload_text(payload, "decision"), clean_payload_text(payload, "comment"))
+                decide_leave_request(
+                    clean_payload_int(payload, "request_id"),
+                    user,
+                    clean_payload_text(payload, "decision"),
+                    clean_payload_text(payload, "comment"),
+                )
                 self.send_json({"message": "연차 신청을 처리했습니다."})
                 return
 
@@ -15429,7 +15444,7 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                     return
                 length = int(self.headers.get("Content-Length", "0"))
                 payload = json.loads(self.rfile.read(length).decode("utf-8"))
-                case_id = int(payload.get("id", 0))
+                case_id = clean_payload_int(payload, "id")
                 if not case_id:
                     raise ValueError("수정할 CS건 ID가 없습니다.")
                 update_cs_case(case_id, payload)
@@ -15453,7 +15468,7 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                     return
                 length = int(self.headers.get("Content-Length", "0"))
                 payload = json.loads(self.rfile.read(length).decode("utf-8"))
-                record_id = int(payload.get("id", 0))
+                record_id = clean_payload_int(payload, "id")
                 if not record_id:
                     raise ValueError("수정할 통합관리대장 행 ID가 없습니다.")
                 update_management_record(record_id, payload)
@@ -15477,7 +15492,7 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                     return
                 length = int(self.headers.get("Content-Length", "0"))
                 payload = json.loads(self.rfile.read(length).decode("utf-8"))
-                record_id = int(payload.get("id", 0))
+                record_id = clean_payload_int(payload, "id")
                 if not record_id:
                     raise ValueError("CS접수할 통합관리대장 행 ID가 없습니다.")
                 case_id = create_cs_case_from_management(record_id)
@@ -15498,7 +15513,7 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                     return
                 length = int(self.headers.get("Content-Length", "0"))
                 payload = json.loads(self.rfile.read(length).decode("utf-8"))
-                complete_import_shipment(int(payload.get("id") or 0))
+                complete_import_shipment(clean_payload_int(payload, "id"))
                 self.send_json({"message": "수입제품 출고 진행 건을 완료 처리했습니다."})
                 return
 
