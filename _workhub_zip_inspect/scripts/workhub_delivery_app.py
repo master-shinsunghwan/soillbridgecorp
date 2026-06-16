@@ -1376,6 +1376,7 @@ HTML = r"""<!doctype html>
       color: var(--purple);
       background: #fdfbff;
       border-radius: 7px;
+      font-size: 13px;
       font-weight: 750;
       cursor: pointer;
     }
@@ -1916,21 +1917,38 @@ HTML = r"""<!doctype html>
       border: 1px solid #dfe5ec;
       border-radius: 8px;
       background: #fbfcff;
-      cursor: pointer;
+      cursor: default;
     }
     .order-exec-card:hover {
-      border-color: #155bc8;
+      border-color: #dfe5ec;
       background: #f5f9ff;
-    }
-    .order-exec-card:focus-visible {
-      outline: 3px solid rgba(21, 91, 200, .22);
-      outline-offset: 2px;
     }
     .order-exec-card-head {
       display: flex;
       align-items: flex-start;
       justify-content: space-between;
       gap: 12px;
+    }
+    .order-exec-title-line {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 6px;
+    }
+    .order-exec-card-icon {
+      width: 34px;
+      height: 34px;
+      display: grid;
+      place-items: center;
+      flex: 0 0 auto;
+      border: 1px solid #d5dce8;
+      border-radius: 8px;
+      background: white;
+      color: #155bc8;
+    }
+    .order-exec-card-icon svg {
+      width: 18px;
+      height: 18px;
     }
     .order-exec-kicker {
       color: #155bc8;
@@ -4127,13 +4145,16 @@ HTML = r"""<!doctype html>
             <div class="order-exec-description" id="orderWorkspaceDescription">아래 4가지 작업 중 필요한 항목의 실행 버튼을 누르면 기존 드롭/업로드 실행창이 열립니다.</div>
           </div>
           <div class="order-exec-grid" id="orderWorkspaceCards">
-            <article class="order-exec-card" data-order-card="delivery" role="button" tabindex="0" onclick="openOrderModal('delivery')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openOrderModal('delivery');}">
+            <article class="order-exec-card" data-order-card="delivery">
               <div class="order-exec-card-head">
                 <div>
-                  <div class="order-exec-title">개별 택배건 정리</div>
+                  <div class="order-exec-title-line">
+                    <span class="order-exec-card-icon"><i data-lucide="package"></i></span>
+                    <div class="order-exec-title">개별 택배건 정리</div>
+                  </div>
                   <div class="order-exec-description">주소일브릿지 엑셀을 업로드해 수령자별 택배건 정리 텍스트를 생성합니다.</div>
                 </div>
-                <button class="workspace-button" type="button" data-open="delivery" onclick="event.stopPropagation();openOrderModal('delivery');">실행</button>
+                <button class="workspace-button" type="button" data-order-execute="delivery">실행</button>
               </div>
               <ul class="order-exec-steps">
                 <li>주소일브릿지 엑셀 파일을 선택합니다.</li>
@@ -4141,13 +4162,16 @@ HTML = r"""<!doctype html>
                 <li>생성 버튼을 눌러 정리 텍스트를 확인합니다.</li>
               </ul>
             </article>
-            <article class="order-exec-card" data-order-card="invoice" role="button" tabindex="0" onclick="openOrderModal('invoice')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openOrderModal('invoice');}">
+            <article class="order-exec-card" data-order-card="invoice">
               <div class="order-exec-card-head">
                 <div>
-                  <div class="order-exec-title">송장번호 추출</div>
+                  <div class="order-exec-title-line">
+                    <span class="order-exec-card-icon"><i data-lucide="file-text"></i></span>
+                    <div class="order-exec-title">송장번호 추출</div>
+                  </div>
                   <div class="order-exec-description">출고송장 엑셀에서 수하인별 송장번호를 추출해 엑셀로 다운로드합니다.</div>
                 </div>
-                <button class="workspace-button" type="button" data-open="invoice" onclick="event.stopPropagation();openOrderModal('invoice');">실행</button>
+                <button class="workspace-button" type="button" data-order-execute="invoice">실행</button>
               </div>
               <ul class="order-exec-steps">
                 <li>출고송장 엑셀 파일을 선택합니다.</li>
@@ -4155,13 +4179,16 @@ HTML = r"""<!doctype html>
                 <li>생성된 송장번호 엑셀을 다운로드합니다.</li>
               </ul>
             </article>
-            <article class="order-exec-card" data-order-card="lotte" role="button" tabindex="0" onclick="openOrderModal('lotte')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openOrderModal('lotte');}">
+            <article class="order-exec-card" data-order-card="lotte">
               <div class="order-exec-card-head">
                 <div>
-                  <div class="order-exec-title">롯데택배 발주서 변환</div>
+                  <div class="order-exec-title-line">
+                    <span class="order-exec-card-icon"><i data-lucide="file-spreadsheet"></i></span>
+                    <div class="order-exec-title">롯데택배 발주서 변환</div>
+                  </div>
                   <div class="order-exec-description">주소일브릿지 원본을 롯데택배 발주서 양식으로 변환합니다.</div>
                 </div>
-                <button class="workspace-button" type="button" data-open="lotte" onclick="event.stopPropagation();openOrderModal('lotte');">실행</button>
+                <button class="workspace-button" type="button" data-order-execute="lotte">실행</button>
               </div>
               <ul class="order-exec-steps">
                 <li>주소일브릿지 원본 엑셀을 선택합니다.</li>
@@ -4169,13 +4196,16 @@ HTML = r"""<!doctype html>
                 <li>변환된 롯데택배 발주서를 다운로드합니다.</li>
               </ul>
             </article>
-            <article class="order-exec-card" data-order-card="vehicle" role="button" tabindex="0" onclick="openOrderModal('vehicle')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openOrderModal('vehicle');}">
+            <article class="order-exec-card" data-order-card="vehicle">
               <div class="order-exec-card-head">
                 <div>
-                  <div class="order-exec-title">차량인수증</div>
+                  <div class="order-exec-title-line">
+                    <span class="order-exec-card-icon"><i data-lucide="truck"></i></span>
+                    <div class="order-exec-title">차량인수증</div>
+                  </div>
                   <div class="order-exec-description">공급받는자, 제품, 납품장소, 담당자 정보를 입력해 차량인수증을 생성합니다.</div>
                 </div>
-                <button class="workspace-button" type="button" data-open="vehicle" onclick="event.stopPropagation();openOrderModal('vehicle');">실행</button>
+                <button class="workspace-button" type="button" data-order-execute="vehicle">실행</button>
               </div>
               <ul class="order-exec-steps">
                 <li>공급받는자와 제품 정보를 입력합니다.</li>
@@ -9717,18 +9747,10 @@ HTML = r"""<!doctype html>
       button.addEventListener("click", () => openWorkspaceWindow(button.dataset.openWindow));
     });
     document.addEventListener("click", (event) => {
-      if (event.target.closest("[data-open]")) return;
       const button = event.target.closest("[data-order-execute]");
-      const card = event.target.closest("[data-order-card]");
-      if (!button && !card) return;
-      openOrderModal(button?.dataset.orderExecute || card.dataset.orderCard);
-    });
-    document.addEventListener("keydown", (event) => {
-      if (event.key !== "Enter" && event.key !== " ") return;
-      const card = event.target.closest("[data-order-card]");
-      if (!card) return;
+      if (!button) return;
       event.preventDefault();
-      openOrderModal(card.dataset.orderCard);
+      openOrderModal(button.dataset.orderExecute);
     });
     crmTabs.forEach((button) => {
       button.addEventListener("click", () => setCrmTab(button.dataset.crmTab));
