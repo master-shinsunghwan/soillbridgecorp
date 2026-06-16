@@ -49,7 +49,8 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         self.assertIn('data-open="order"', html_source)
         self.assertIn('data-order-card="delivery"', html_source)
         self.assertIn('role="button" tabindex="0"', html_source)
-        self.assertIn('data-open="delivery">실행</button>', html_source)
+        self.assertIn("onclick=\"openOrderModal('delivery')\"", html_source)
+        self.assertIn("onclick=\"event.stopPropagation();openOrderModal('delivery');\"", html_source)
         self.assertIn("setActiveNav(\"order\")", html_source)
         self.assertIn("setPageTitle(ORDER_MODAL_TITLES[currentOrderMode]", html_source)
         self.assertIn('sidebar.addEventListener("click"', html_source)
@@ -61,7 +62,7 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
     def test_delivery_modal_title_matches_menu_label(self) -> None:
         html_source = (SCRIPTS / "workhub_delivery_app.py").read_text(encoding="utf-8")
 
-        self.assertIn('data-open="delivery">실행</button>', html_source)
+        self.assertIn('data-open="delivery" onclick="event.stopPropagation();openOrderModal(\'delivery\');">실행</button>', html_source)
         self.assertIn('modalTitle.textContent = "개별 택배건 정리";', html_source)
 
     def test_order_workspace_has_right_side_execution_cards(self) -> None:
