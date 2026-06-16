@@ -857,9 +857,14 @@ HTML = r"""<!doctype html>
     .modal-backdrop {
       position: fixed; inset: 0; display: none; place-items: center;
       background: rgba(249, 250, 252, .42);
-      z-index: 20;
+      z-index: 2000;
     }
     .modal-backdrop.open { display: grid; }
+    .modal-backdrop.open,
+    .modal-backdrop.open .modal,
+    .modal-backdrop.open .modal * {
+      visibility: visible !important;
+    }
     .modal {
       width: min(620px, calc(100vw - 38px));
       max-height: calc(100vh - 38px);
@@ -867,6 +872,8 @@ HTML = r"""<!doctype html>
       background: white; border: 1px solid #b7bdc8; border-radius: 12px;
       box-shadow: var(--shadow); padding: 24px 28px 26px;
       position: relative;
+      color: #1a2230;
+      opacity: 1;
     }
     .modal.ledger-modal {
       width: calc(100vw - 18px);
@@ -882,9 +889,9 @@ HTML = r"""<!doctype html>
       min-height: 0;
     }
     .modal-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; }
-    .modal-title { font-size: 25px; font-weight: 850; }
+    .modal-title { font-size: 25px; font-weight: 850; color: #1a2230; }
     .close { border: 0; background: transparent; color: #3f4650; cursor: pointer; padding: 4px; }
-    .field-label { display: block; font-size: 18px; font-weight: 750; margin-bottom: 10px; }
+    .field-label { display: block; font-size: 18px; font-weight: 750; margin-bottom: 10px; color: #1a2230; }
     .dropzone {
       border: 1px dashed #9aa4b2; border-radius: 8px; background: #fbfcff;
       padding: 22px; min-height: 112px; display: grid; gap: 8px; align-content: center;
@@ -898,6 +905,15 @@ HTML = r"""<!doctype html>
     }
     .drop-main { font-size: 17px; font-weight: 750; color: #1a2230; }
     .drop-sub { font-size: 14px; color: var(--muted); }
+    .modal-backdrop.open .modal,
+    .modal-backdrop.open .modal .modal-title,
+    .modal-backdrop.open .modal .field-label,
+    .modal-backdrop.open .modal .drop-main {
+      color: #1a2230 !important;
+    }
+    .modal-backdrop.open .modal .drop-sub {
+      color: #667085 !important;
+    }
     input[type="file"] { display: none; }
     .options { margin-top: 16px; display: flex; gap: 12px; align-items: center; }
     select {
@@ -9220,6 +9236,9 @@ HTML = r"""<!doctype html>
       closeLedgerCsPopup();
       modal.classList.add("open");
       const modalPanel = modal.querySelector(".modal");
+      modal.style.visibility = "visible";
+      modalPanel.style.visibility = "visible";
+      modalPanel.style.color = "#1a2230";
       modalPanel.classList.toggle("ledger-modal", mode === "ledger" || mode === "management");
       modalPanel.classList.toggle("ledger-view", mode === "ledger");
       modalPanel.classList.toggle("management-view", mode === "management");
