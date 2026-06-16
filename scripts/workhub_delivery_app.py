@@ -1950,6 +1950,11 @@ HTML = r"""<!doctype html>
       width: 18px;
       height: 18px;
     }
+    .order-exec-card-icon::before {
+      content: attr(data-icon);
+      font-size: 18px;
+      line-height: 1;
+    }
     .order-exec-kicker {
       color: #155bc8;
       font-size: 12px;
@@ -4149,7 +4154,7 @@ HTML = r"""<!doctype html>
               <div class="order-exec-card-head">
                 <div>
                   <div class="order-exec-title-line">
-                    <span class="order-exec-card-icon"><i data-lucide="package"></i></span>
+                    <span class="order-exec-card-icon" aria-hidden="true" data-icon="📦"></span>
                     <div class="order-exec-title">개별 택배건 정리</div>
                   </div>
                   <div class="order-exec-description">주소일브릿지 엑셀을 업로드해 수령자별 택배건 정리 텍스트를 생성합니다.</div>
@@ -4166,7 +4171,7 @@ HTML = r"""<!doctype html>
               <div class="order-exec-card-head">
                 <div>
                   <div class="order-exec-title-line">
-                    <span class="order-exec-card-icon"><i data-lucide="file-text"></i></span>
+                    <span class="order-exec-card-icon" aria-hidden="true" data-icon="🔎"></span>
                     <div class="order-exec-title">송장번호 추출</div>
                   </div>
                   <div class="order-exec-description">출고송장 엑셀에서 수하인별 송장번호를 추출해 엑셀로 다운로드합니다.</div>
@@ -4183,7 +4188,7 @@ HTML = r"""<!doctype html>
               <div class="order-exec-card-head">
                 <div>
                   <div class="order-exec-title-line">
-                    <span class="order-exec-card-icon"><i data-lucide="file-spreadsheet"></i></span>
+                    <span class="order-exec-card-icon" aria-hidden="true" data-icon="▦"></span>
                     <div class="order-exec-title">롯데택배 발주서 변환</div>
                   </div>
                   <div class="order-exec-description">주소일브릿지 원본을 롯데택배 발주서 양식으로 변환합니다.</div>
@@ -4200,7 +4205,7 @@ HTML = r"""<!doctype html>
               <div class="order-exec-card-head">
                 <div>
                   <div class="order-exec-title-line">
-                    <span class="order-exec-card-icon"><i data-lucide="truck"></i></span>
+                    <span class="order-exec-card-icon" aria-hidden="true" data-icon="🚚"></span>
                     <div class="order-exec-title">차량인수증</div>
                   </div>
                   <div class="order-exec-description">공급받는자, 제품, 납품장소, 담당자 정보를 입력해 차량인수증을 생성합니다.</div>
@@ -4889,7 +4894,7 @@ HTML = r"""<!doctype html>
 
   <script type="module">
     import { createIcons, BriefcaseBusiness, Home, MessageCircle, Info, ChevronDown, ChevronRight, PlusSquare, RefreshCw, Ellipsis, Headphones, Package, ClipboardCheck, CircleDollarSign, FileText, FileSpreadsheet, ClipboardList, BarChart3, CopyCheck, Bell, Download, Truck, Mail, Upload, Database, CalendarDays, X, Settings } from "/lucide/dist/esm/lucide.js";
-    createIcons({ icons: { BriefcaseBusiness, Home, MessageCircle, Info, ChevronDown, ChevronRight, PlusSquare, RefreshCw, Ellipsis, Headphones, Package, ClipboardCheck, CircleDollarSign, FileText, FileSpreadsheet, ClipboardList, BarChart3, CopyCheck, Bell, Download, Truck, Mail, Upload, Database, CalendarDays, X, Settings } });
+    createIcons({ icons: { BriefcaseBusiness, Home, MessageCircle, Info, ChevronDown, ChevronRight, PlusSquare, RefreshCw, Ellipsis, Headphones, Package, ClipboardCheck, CircleDollarSign, FileText, FileSpreadsheet, ClipboardList, BarChart3, CopyCheck, Bell, Download, Truck, Mail, Upload, Database, CalendarDays, X, Settings, "package": Package, "file-text": FileText, "file-spreadsheet": FileSpreadsheet, "truck": Truck } });
     function applyDaisyUiClasses() {
       document.querySelectorAll(".workspace-button, .crm-mini-button, .action-button, .logout-button, .top-button").forEach((element) => {
         element.classList.add("btn", "btn-sm");
