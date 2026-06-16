@@ -1871,6 +1871,66 @@ HTML = r"""<!doctype html>
       padding: 0 22px 24px;
     }
     .workspace-view.active { display: flex; }
+    .order-exec-panel {
+      display: grid;
+      gap: 14px;
+      padding: 18px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: white;
+      box-shadow: var(--shadow);
+    }
+    .order-exec-summary {
+      display: grid;
+      gap: 7px;
+      max-width: 780px;
+    }
+    .order-exec-kicker {
+      color: #155bc8;
+      font-size: 12px;
+      font-weight: 950;
+    }
+    .order-exec-title {
+      font-size: 20px;
+      font-weight: 950;
+      line-height: 1.32;
+    }
+    .order-exec-description {
+      color: #475467;
+      font-size: 14px;
+      font-weight: 750;
+      line-height: 1.55;
+    }
+    .order-exec-steps {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }
+    .order-exec-steps li {
+      min-height: 68px;
+      padding: 12px;
+      border: 1px solid #dfe5ec;
+      border-radius: 8px;
+      background: #fbfcff;
+      color: #344054;
+      font-size: 13px;
+      font-weight: 800;
+      line-height: 1.45;
+    }
+    .order-exec-actions {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    .order-exec-note {
+      color: #667085;
+      font-size: 12px;
+      font-weight: 750;
+    }
     .workspace-head {
       display: flex;
       align-items: center;
@@ -3332,6 +3392,7 @@ HTML = r"""<!doctype html>
       .crm-task-board-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       .crm-kanban { grid-template-columns: repeat(2, minmax(220px, 1fr)); }
       .crm-grid-2 { grid-template-columns: 1fr; }
+      .order-exec-steps { grid-template-columns: 1fr; }
       .internal-chat { grid-template-columns: 1fr; }
       .internal-chat-rooms { border-right: 0; border-bottom: 1px solid var(--line); max-height: 210px; }
       .crm-staff-row { grid-template-columns: 1fr 1fr 1fr; }
@@ -4012,6 +4073,31 @@ HTML = r"""<!doctype html>
             </article>
           </div>
         </section>
+      </section>
+
+      <section class="workspace-view" id="orderWorkspace">
+        <div class="workspace-head">
+          <div class="workspace-title" id="orderWorkspaceTitle">발주업무</div>
+          <div class="workspace-actions">
+            <button class="workspace-button" type="button" id="orderWorkspaceOpenModal">실행창 열기</button>
+          </div>
+        </div>
+        <div class="order-exec-panel">
+          <div class="order-exec-summary">
+            <div class="order-exec-kicker">발주업무 실행</div>
+            <div class="order-exec-title" id="orderWorkspacePanelTitle">발주업무를 선택해주세요.</div>
+            <div class="order-exec-description" id="orderWorkspaceDescription">좌측 발주업무 하위 메뉴를 선택하면 이곳에서 실행할 작업과 순서를 확인할 수 있습니다.</div>
+          </div>
+          <ul class="order-exec-steps" id="orderWorkspaceSteps">
+            <li>좌측 발주업무 하위 메뉴를 선택합니다.</li>
+            <li>실행창에서 파일을 선택하거나 필요한 값을 입력합니다.</li>
+            <li>생성 버튼을 눌러 결과를 확인하거나 엑셀을 다운로드합니다.</li>
+          </ul>
+          <div class="order-exec-actions">
+            <button class="workspace-button" type="button" id="orderWorkspaceOpenModalBottom">선택한 작업 실행</button>
+            <span class="order-exec-note" id="orderWorkspaceNote">기존 팝업 실행 방식은 그대로 유지됩니다.</span>
+          </div>
+        </div>
       </section>
 
       <section class="workspace-view" id="importWorkspace">
@@ -4946,6 +5032,14 @@ HTML = r"""<!doctype html>
     const managementWorkspace = document.querySelector("#managementWorkspace");
     const ledgerWorkspace = document.querySelector("#ledgerWorkspace");
     const importWorkspace = document.querySelector("#importWorkspace");
+    const orderWorkspace = document.querySelector("#orderWorkspace");
+    const orderWorkspaceTitle = document.querySelector("#orderWorkspaceTitle");
+    const orderWorkspacePanelTitle = document.querySelector("#orderWorkspacePanelTitle");
+    const orderWorkspaceDescription = document.querySelector("#orderWorkspaceDescription");
+    const orderWorkspaceSteps = document.querySelector("#orderWorkspaceSteps");
+    const orderWorkspaceOpenModal = document.querySelector("#orderWorkspaceOpenModal");
+    const orderWorkspaceOpenModalBottom = document.querySelector("#orderWorkspaceOpenModalBottom");
+    const orderWorkspaceNote = document.querySelector("#orderWorkspaceNote");
     const leaveWorkspace = document.querySelector("#leaveWorkspace");
     const userAdminWorkspace = document.querySelector("#userAdminWorkspace");
     const backupWorkspace = document.querySelector("#backupWorkspace");
@@ -5080,6 +5174,7 @@ HTML = r"""<!doctype html>
     const crmMessengerUserBody = document.querySelector("#crmMessengerUserBody");
     const crmMessageEventBody = document.querySelector("#crmMessageEventBody");
     let currentMode = "dashboard";
+    let currentOrderMode = "delivery";
     let vendorContacts = [];
     let ledgerCases = [];
     let managementRecords = [];
@@ -9297,6 +9392,7 @@ HTML = r"""<!doctype html>
       const showSystemUpdate = mode === "systemUpdate" && Boolean(systemUpdateWorkspace);
       dashboardContent.style.display = mode === "dashboard" ? "" : "none";
       if (importWorkspace) importWorkspace.classList.toggle("active", showImport);
+      if (orderWorkspace) orderWorkspace.classList.toggle("active", false);
       managementWorkspace.classList.toggle("active", showManagement);
       ledgerWorkspace.classList.toggle("active", showLedger);
       crmWorkspace.classList.toggle("active", showCrm);
@@ -9422,11 +9518,67 @@ HTML = r"""<!doctype html>
       lotte: "롯데택배 발주서 변환",
       vehicle: "차량인수증",
     };
-    function openOrderModal(mode) {
+    const ORDER_WORKFLOWS = {
+      delivery: {
+        title: "개별 택배건 정리",
+        description: "주소일브릿지 엑셀을 업로드해 수령자별 택배건 정리 텍스트를 생성합니다.",
+        action: "개별 택배건 정리 실행",
+        note: "결과는 실행창 안의 텍스트 영역에 표시됩니다.",
+        steps: ["주소일브릿지 엑셀 파일을 선택합니다.", "정렬 기준을 선택합니다.", "생성 버튼을 눌러 정리 텍스트를 확인합니다."],
+      },
+      invoice: {
+        title: "송장번호 추출",
+        description: "출고송장 엑셀에서 수하인별 송장번호를 추출해 엑셀로 다운로드합니다.",
+        action: "송장번호 추출 실행",
+        note: "동일 송장번호도 합치지 않고 원본 건수 기준으로 유지됩니다.",
+        steps: ["출고송장 엑셀 파일을 선택합니다.", "엑셀 생성 버튼을 누릅니다.", "생성된 송장번호 엑셀을 다운로드합니다."],
+      },
+      lotte: {
+        title: "롯데택배 발주서 변환",
+        description: "주소일브릿지 원본을 롯데택배 발주서 양식으로 변환합니다.",
+        action: "롯데택배 발주서 변환 실행",
+        note: "지정된 롯데택배 템플릿 형식으로 엑셀이 생성됩니다.",
+        steps: ["주소일브릿지 원본 엑셀을 선택합니다.", "엑셀 생성 버튼을 누릅니다.", "변환된 롯데택배 발주서를 다운로드합니다."],
+      },
+      vehicle: {
+        title: "차량인수증",
+        description: "공급받는자, 제품, 납품장소, 담당자 정보를 입력해 차량인수증을 생성합니다.",
+        action: "차량인수증 생성 실행",
+        note: "비고란은 검정색으로 출력되며, 지정 전화 안내 문구는 기존 서식대로 유지됩니다.",
+        steps: ["공급받는자와 제품 정보를 입력합니다.", "납품장소와 담당자명을 입력합니다.", "인수증 생성 버튼으로 엑셀을 다운로드합니다."],
+      },
+    };
+    function showOrderWorkspace(mode) {
+      currentOrderMode = ORDER_WORKFLOWS[mode] ? mode : "delivery";
+      const flow = ORDER_WORKFLOWS[currentOrderMode];
+      closeLedgerFilter();
+      dashboardContent.style.display = "none";
+      if (orderWorkspace) orderWorkspace.classList.toggle("active", true);
+      if (importWorkspace) importWorkspace.classList.toggle("active", false);
+      managementWorkspace.classList.toggle("active", false);
+      ledgerWorkspace.classList.toggle("active", false);
+      crmWorkspace.classList.toggle("active", false);
+      if (leaveWorkspace) leaveWorkspace.classList.toggle("active", false);
+      if (userAdminWorkspace) userAdminWorkspace.classList.toggle("active", false);
+      if (backupWorkspace) backupWorkspace.classList.toggle("active", false);
+      if (systemUpdateWorkspace) systemUpdateWorkspace.classList.toggle("active", false);
       document.querySelector("#orderNavGroup")?.classList.add("open");
-      setActiveNav(mode);
+      setActiveNav(currentOrderMode);
+      setPageTitle(flow.title);
+      if (orderWorkspaceTitle) orderWorkspaceTitle.textContent = flow.title;
+      if (orderWorkspacePanelTitle) orderWorkspacePanelTitle.textContent = flow.title;
+      if (orderWorkspaceDescription) orderWorkspaceDescription.textContent = flow.description;
+      if (orderWorkspaceOpenModal) orderWorkspaceOpenModal.textContent = flow.action;
+      if (orderWorkspaceOpenModalBottom) orderWorkspaceOpenModalBottom.textContent = flow.action;
+      if (orderWorkspaceNote) orderWorkspaceNote.textContent = flow.note;
+      if (orderWorkspaceSteps) {
+        orderWorkspaceSteps.innerHTML = flow.steps.map((step) => `<li>${escapeHtml(step)}</li>`).join("");
+      }
+    }
+    function openOrderModal(mode) {
+      showOrderWorkspace(mode);
       setPageTitle(ORDER_MODAL_TITLES[mode] || "발주업무");
-      openModal(mode);
+      openModal(currentOrderMode);
     }
     sidebar.addEventListener("click", (event) => {
       const button = event.target.closest("[data-open]");
@@ -9475,6 +9627,9 @@ HTML = r"""<!doctype html>
     });
     document.querySelectorAll("[data-open-window]").forEach((button) => {
       button.addEventListener("click", () => openWorkspaceWindow(button.dataset.openWindow));
+    });
+    [orderWorkspaceOpenModal, orderWorkspaceOpenModalBottom].forEach((button) => {
+      button?.addEventListener("click", () => openOrderModal(currentOrderMode));
     });
     crmTabs.forEach((button) => {
       button.addEventListener("click", () => setCrmTab(button.dataset.crmTab));

@@ -59,6 +59,16 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         self.assertIn('data-open="delivery">개별 택배건 정리</button>', html_source)
         self.assertIn('modalTitle.textContent = "개별 택배건 정리";', html_source)
 
+    def test_order_submenus_have_right_side_execution_workspace(self) -> None:
+        html_source = (SCRIPTS / "workhub_delivery_app.py").read_text(encoding="utf-8")
+
+        self.assertIn('id="orderWorkspace"', html_source)
+        self.assertIn('id="orderWorkspaceTitle"', html_source)
+        self.assertIn('id="orderWorkspaceOpenModal"', html_source)
+        self.assertIn("ORDER_WORKFLOWS", html_source)
+        self.assertIn("function showOrderWorkspace(mode)", html_source)
+        self.assertIn('orderWorkspace.classList.toggle("active"', html_source)
+
 
 if __name__ == "__main__":
     unittest.main()
