@@ -180,20 +180,21 @@ HTML = r"""<!doctype html>
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>(주)소일브릿지 발주 업무자동화</title>
+  <title>Soilbridge Workhub</title>
   <link rel="stylesheet" href="/static/workhub.css" />
   <link href="https://cdn.jsdelivr.net/npm/daisyui@5" rel="stylesheet" type="text/css" />
   <style>
     :root {
-      --bg: #f5f7fb;
+      --bg: #f7f8fa;
       --panel: #ffffff;
-      --line: #e3e8f2;
-      --text: #111827;
-      --muted: #667085;
-      --navy: #071a3b;
-      --navy-2: #10285a;
+      --line: #e5e7eb;
+      --line-strong: #d0d5dd;
+      --text: #1f2937;
+      --muted: #6b7280;
+      --navy: #f8fafc;
+      --navy-2: #eef2f7;
       --blue: #2563eb;
-      --blue-soft: #dbeafe;
+      --blue-soft: #eff6ff;
       --green: #079455;
       --green-soft: #dcfae6;
       --orange: #d97706;
@@ -202,7 +203,8 @@ HTML = r"""<!doctype html>
       --purple-soft: #ede9fe;
       --red: #dc2626;
       --red-soft: #fee2e2;
-      --shadow: 0 10px 28px rgba(15, 23, 42, .08);
+      --shadow: 0 1px 2px rgba(16, 24, 40, .04);
+      --shadow-hover: 0 8px 18px rgba(16, 24, 40, .08);
       font-family: Pretendard, Inter, "Noto Sans KR", "Malgun Gothic", Arial, sans-serif;
     }
 
@@ -221,28 +223,28 @@ HTML = r"""<!doctype html>
       min-height: 100vh;
       height: 100vh;
       display: grid;
-      grid-template-columns: 248px minmax(0, 1fr);
+      grid-template-columns: 236px minmax(0, 1fr);
       overflow: hidden;
     }
-    body.standalone .app { grid-template-columns: 248px minmax(0, 1fr); }
+    body.standalone .app { grid-template-columns: 236px minmax(0, 1fr); }
     body.standalone .top-search,
     body.standalone .top-tools { display: none; }
     body.standalone .topbar { grid-template-columns: 1fr; }
     .sidebar {
-      background: linear-gradient(180deg, var(--navy), #081430);
-      color: white;
-      padding: 22px 16px;
+      background: var(--navy);
+      color: #344054;
+      padding: 18px 12px;
       overflow-y: auto;
       scrollbar-width: thin;
-      scrollbar-color: rgba(255,255,255,.28) transparent;
-      border-right: 1px solid rgba(255,255,255,.08);
+      scrollbar-color: #cbd5e1 transparent;
+      border-right: 1px solid var(--line);
     }
     .brand-icon {
-      width: 38px; height: 38px; border-radius: 9px;
+      width: 34px; height: 34px; border-radius: 8px;
       display: grid; place-items: center;
-      background: linear-gradient(145deg, #2f6df6, #7c3aed);
+      background: #2563eb;
       color: white;
-      box-shadow: 0 8px 18px rgba(15, 35, 70, .18);
+      box-shadow: var(--shadow);
       margin: 0;
       flex: 0 0 auto;
     }
@@ -250,11 +252,24 @@ HTML = r"""<!doctype html>
     .brand {
       display: flex;
       align-items: center;
-      gap: 11px;
-      margin-bottom: 14px;
-      padding: 0 4px;
+      gap: 10px;
+      margin-bottom: 12px;
+      padding: 0 8px;
+      width: 100%;
+      border: 0;
+      background: transparent;
+      color: inherit;
+      font-family: inherit;
+      text-align: left;
+      cursor: pointer;
+      border-radius: 8px;
     }
-    .brand-label { font-size: 18px; font-weight: 900; line-height: 1.32; margin: 0; }
+    .brand:hover,
+    .brand:focus-visible {
+      background: #eef2f7;
+      outline: none;
+    }
+    .brand-label { font-size: 16px; font-weight: 950; line-height: 1.32; margin: 0; color: #111827; }
     .sidebar-search {
       position: relative;
       margin: 0 0 18px;
@@ -273,19 +288,19 @@ HTML = r"""<!doctype html>
       width: 100%;
       height: 36px;
       padding: 0 10px 0 32px;
-      border: 1px solid rgba(255,255,255,.14);
+      border: 1px solid var(--line);
       border-radius: 8px;
-      background: rgba(255,255,255,.08);
-      color: white;
+      background: white;
+      color: #111827;
       font-family: inherit;
       font-size: 12px;
       font-weight: 800;
       outline: none;
     }
-    .sidebar-search input::placeholder { color: #9fb0d3; }
+    .sidebar-search input::placeholder { color: #98a2b3; }
     .sidebar-search input:focus {
-      border-color: rgba(147, 197, 253, .8);
-      box-shadow: 0 0 0 2px rgba(59, 130, 246, .22);
+      border-color: #93c5fd;
+      box-shadow: 0 0 0 3px rgba(59, 130, 246, .14);
     }
     .notice-board {
       min-height: 44px;
@@ -444,20 +459,20 @@ HTML = r"""<!doctype html>
     .nav-item, .nav-section, .app-add {
       display: flex; align-items: center; gap: 13px;
       min-height: 43px; padding: 0 12px; border-radius: 8px;
-      font-size: 14px; font-weight: 750; color: #d9e3ff;
-      margin-bottom: 6px;
+      font-size: 13px; font-weight: 850; color: #475467;
+      margin-bottom: 4px;
       border: 0;
       background: transparent;
       width: 100%;
       font-family: inherit;
       text-align: left;
       cursor: pointer;
-      transition: background .16s ease, color .16s ease, transform .16s ease, box-shadow .16s ease;
+      transition: background .16s ease, color .16s ease, box-shadow .16s ease;
     }
     .nav-item.active {
-      color: white;
-      background: rgba(72, 118, 255, .28);
-      box-shadow: inset 0 0 0 1px rgba(255,255,255,.08);
+      color: #155bc8;
+      background: #eef6ff;
+      box-shadow: inset 3px 0 0 #2563eb;
     }
     .nav-item svg { width: 18px; height: 18px; flex: 0 0 auto; }
     .nav-item .nav-label {
@@ -477,7 +492,7 @@ HTML = r"""<!doctype html>
       display: none;
       margin: -2px 0 8px 31px;
       padding-left: 10px;
-      border-left: 1px solid rgba(255,255,255,.14);
+      border-left: 1px solid #d8dee9;
     }
     .nav-group.open .nav-submenu { display: grid; gap: 4px; }
     .nav-subitem {
@@ -486,7 +501,7 @@ HTML = r"""<!doctype html>
       border: 0;
       border-radius: 7px;
       background: transparent;
-      color: #c9d6f4;
+      color: #667085;
       font-family: inherit;
       font-size: 13px;
       font-weight: 750;
@@ -496,26 +511,26 @@ HTML = r"""<!doctype html>
     }
     .nav-subitem:hover,
     .nav-item:hover {
-      background: rgba(255,255,255,.08);
-      color: white;
-      transform: translateX(1px);
+      background: #eef2f7;
+      color: #111827;
     }
     .nav-item.active,
     .nav-subitem.active {
-      background: rgba(72, 118, 255, .28);
-      color: white;
-      box-shadow: inset 3px 0 0 rgba(147, 197, 253, .9);
+      background: #eef6ff;
+      color: #155bc8;
+      box-shadow: inset 3px 0 0 #2563eb;
     }
     .nav-section {
       min-height: auto;
       padding: 0 8px 8px;
       margin: 18px 0 0;
-      color: #9fb0d3;
-      font-size: 12px;
-      font-weight: 850;
+      color: #98a2b3;
+      font-size: 11px;
+      font-weight: 950;
+      letter-spacing: 0;
     }
-    .hash { font-size: 15px; width: 22px; text-align: center; color: #d9e3ff; font-weight: 900; }
-    .divider { height: 1px; background: rgba(255,255,255,.12); margin: 18px 6px; }
+    .hash { font-size: 15px; width: 22px; text-align: center; color: #98a2b3; font-weight: 900; }
+    .divider { height: 1px; background: var(--line); margin: 16px 8px; }
 
     main {
       min-width: 0;
@@ -526,28 +541,29 @@ HTML = r"""<!doctype html>
       overflow: hidden;
     }
     .topbar {
-      height: 74px;
-      flex: 0 0 74px;
+      height: 64px;
+      flex: 0 0 64px;
       display: grid;
       grid-template-columns: 1fr minmax(260px, 430px) auto;
       align-items: center;
-      gap: 18px;
-      padding: 0 22px;
-      background: rgba(245, 247, 251, .88);
-      border-bottom: 1px solid rgba(226, 232, 240, .9);
-      backdrop-filter: blur(10px);
+      gap: 14px;
+      padding: 0 20px;
+      background: rgba(255, 255, 255, .92);
+      border-bottom: 1px solid var(--line);
+      backdrop-filter: blur(12px);
     }
-    .title-wrap { display: grid; gap: 8px; }
-    .title { display: flex; align-items: center; gap: 10px; font-size: 25px; font-weight: 900; line-height: 1.2; white-space: nowrap; word-break: keep-all; }
+    .title-wrap { display: grid; gap: 4px; }
+    .title { display: flex; align-items: center; gap: 10px; font-size: 21px; font-weight: 950; line-height: 1.2; white-space: nowrap; word-break: keep-all; }
     .subtitle { display: none; }
     .top-actions { display: flex; gap: 12px; }
     .top-button {
-      height: 38px; padding: 0 13px; border-radius: 8px; border: 1px solid var(--line);
+      height: 36px; padding: 0 12px; border-radius: 8px; border: 1px solid var(--line);
       background: #fff; display: flex; align-items: center; gap: 8px;
       font-size: 13px; font-weight: 850; color: #344054;
+      box-shadow: var(--shadow);
     }
     .top-search {
-      height: 42px;
+      height: 38px;
       border: 1px solid var(--line);
       border-radius: 8px;
       background: white;
@@ -565,8 +581,8 @@ HTML = r"""<!doctype html>
       gap: 10px;
     }
     .icon-button {
-      min-width: 38px;
-      height: 38px;
+      min-width: 36px;
+      height: 36px;
       border: 1px solid var(--line);
       border-radius: 8px;
       background: white;
@@ -581,11 +597,12 @@ HTML = r"""<!doctype html>
       padding: 0 10px;
       cursor: default;
       white-space: nowrap;
+      box-shadow: var(--shadow);
     }
     .icon-button svg,
     .top-search svg { width: 17px; height: 17px; }
     .user-chip {
-      height: 40px;
+      height: 36px;
       display: flex;
       align-items: center;
       gap: 9px;
@@ -596,9 +613,10 @@ HTML = r"""<!doctype html>
       font-size: 13px;
       font-weight: 850;
       white-space: nowrap;
+      box-shadow: var(--shadow);
     }
     .logout-button {
-      height: 40px;
+      height: 36px;
       display: inline-flex;
       align-items: center;
       justify-content: center;
@@ -610,6 +628,7 @@ HTML = r"""<!doctype html>
       font-size: 13px;
       font-weight: 850;
       text-decoration: none;
+      box-shadow: var(--shadow);
     }
     .avatar {
       width: 27px;
@@ -622,10 +641,10 @@ HTML = r"""<!doctype html>
       flex: 1 1 auto;
       min-height: 0;
       overflow: auto;
-      padding: 0 22px 24px;
+      padding: 16px 20px 24px;
       display: grid;
       align-content: start;
-      gap: 16px;
+      gap: 14px;
     }
     .card {
       background: var(--panel);
@@ -2123,6 +2142,44 @@ HTML = r"""<!doctype html>
       background: #fff1f1;
       color: #b42318;
     }
+    .crm-role-guide {
+      min-height: 46px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+      color: #344054;
+      padding: 10px 12px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      box-shadow: var(--shadow);
+      font-size: 12px;
+      font-weight: 800;
+      line-height: 1.45;
+    }
+    .crm-role-guide strong {
+      display: block;
+      color: #111827;
+      font-size: 13px;
+      font-weight: 950;
+      margin-bottom: 2px;
+    }
+    .crm-role-guide span {
+      color: #667085;
+      word-break: keep-all;
+    }
+    .crm-role-guide em {
+      flex: 0 0 auto;
+      border-radius: 999px;
+      background: #eef6ff;
+      color: #155bc8;
+      padding: 5px 9px;
+      font-style: normal;
+      font-size: 11px;
+      font-weight: 950;
+      white-space: nowrap;
+    }
     .company-portal {
       display: flex;
       flex-direction: column;
@@ -2176,6 +2233,7 @@ HTML = r"""<!doctype html>
       border-radius: 8px;
       background: white;
       overflow: hidden;
+      box-shadow: var(--shadow);
     }
     .company-card-head {
       min-height: 42px;
@@ -2187,7 +2245,7 @@ HTML = r"""<!doctype html>
       gap: 8px;
       font-size: 13px;
       font-weight: 950;
-      background: #fbfcff;
+      background: #fff;
     }
     .company-card-body {
       padding: 14px;
@@ -2244,7 +2302,7 @@ HTML = r"""<!doctype html>
       padding: 12px;
       border: 1px solid #e5e7eb;
       border-radius: 8px;
-      background: #f8fafc;
+      background: white;
       display: flex;
       flex-direction: column;
       justify-content: space-between;
@@ -2287,6 +2345,12 @@ HTML = r"""<!doctype html>
       grid-template-columns: 26px minmax(0, 1fr);
       gap: 10px;
       align-items: center;
+      box-shadow: var(--shadow);
+    }
+    .company-quick-button:hover {
+      border-color: #bfdbfe;
+      background: #f8fbff;
+      box-shadow: var(--shadow-hover);
     }
     .company-quick-button i {
       width: 26px;
@@ -3212,6 +3276,7 @@ HTML = r"""<!doctype html>
       border-radius: 8px;
       background: white;
       overflow: hidden;
+      box-shadow: var(--shadow);
     }
     .crm-card-head {
       min-height: 42px;
@@ -3223,11 +3288,12 @@ HTML = r"""<!doctype html>
       gap: 8px;
       font-size: 13px;
       font-weight: 950;
-      background: #fbfcff;
+      background: #fff;
     }
     .crm-card-body { padding: 12px; }
     .crm-task-form.collapsed .crm-card-body,
-    .crm-task-form.collapsed #crmTaskSave {
+    .crm-task-form.collapsed #crmTaskSave,
+    .crm-task-form.collapsed #crmTaskFormToggle {
       display: none;
     }
     .crm-toolbar {
@@ -3239,6 +3305,7 @@ HTML = r"""<!doctype html>
       border: 1px solid var(--line);
       border-radius: 8px;
       background: white;
+      box-shadow: var(--shadow);
     }
     .sr-only {
       position: absolute;
@@ -3308,7 +3375,8 @@ HTML = r"""<!doctype html>
       padding: 10px 12px;
       border: 1px solid var(--line);
       border-radius: 8px;
-      background: #fbfcff;
+      background: white;
+      box-shadow: var(--shadow);
     }
     .crm-view-pill {
       min-height: 30px;
@@ -3330,8 +3398,8 @@ HTML = r"""<!doctype html>
     .crm-input,
     .crm-select,
     .crm-textarea {
-      min-height: 32px;
-      border: 1px solid #cbd5e1;
+      min-height: 34px;
+      border: 1px solid var(--line-strong);
       border-radius: 7px;
       padding: 0 10px;
       background: white;
@@ -3360,6 +3428,7 @@ HTML = r"""<!doctype html>
       border: 1px solid var(--line);
       border-radius: 8px;
       background: white;
+      box-shadow: var(--shadow);
     }
     .crm-table {
       width: 100%;
@@ -3409,9 +3478,9 @@ HTML = r"""<!doctype html>
       align-items: center;
     }
     .crm-mini-button {
-      min-height: 27px;
-      border: 1px solid #cbd5e1;
-      border-radius: 6px;
+      min-height: 30px;
+      border: 1px solid var(--line-strong);
+      border-radius: 7px;
       background: white;
       color: #1f2937;
       font-family: inherit;
@@ -3425,10 +3494,19 @@ HTML = r"""<!doctype html>
       gap: 4px;
       white-space: nowrap;
     }
+    .crm-mini-button:hover {
+      border-color: #93c5fd;
+      background: #f8fbff;
+      color: #155bc8;
+    }
     .crm-mini-button.primary {
       border-color: #155bc8;
-      background: #eef6ff;
-      color: #155bc8;
+      background: #155bc8;
+      color: white;
+    }
+    .crm-mini-button.primary:hover {
+      background: #0f4eb2;
+      color: white;
     }
     .crm-task-board-stats {
       display: grid;
@@ -3471,12 +3549,143 @@ HTML = r"""<!doctype html>
       font-size: 12px;
       font-weight: 950;
     }
+    .crm-task-view-switch {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 8px;
+      margin: -4px 0 12px;
+      color: #667085;
+      font-size: 12px;
+      font-weight: 850;
+    }
+    .crm-task-view-label {
+      color: #344054;
+      font-weight: 950;
+    }
+    .crm-task-view-button {
+      min-height: 32px;
+      border: 1px solid #d0d5dd;
+      border-radius: 7px;
+      background: white;
+      color: #344054;
+      padding: 0 12px;
+      font-size: 12px;
+      font-weight: 950;
+      cursor: pointer;
+    }
+    .crm-task-view-button.active {
+      border-color: #155bc8;
+      background: #eef6ff;
+      color: #155bc8;
+      box-shadow: 0 0 0 2px rgba(21, 91, 200, .1);
+    }
     .crm-task-layout {
       display: grid;
       grid-template-columns: minmax(0, 1fr) 340px;
       gap: 12px;
       min-height: 500px;
       align-items: stretch;
+    }
+    .crm-task-results {
+      min-width: 0;
+    }
+    .crm-task-list-wrap {
+      overflow: auto;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: white;
+    }
+    .crm-task-table {
+      width: 100%;
+      min-width: 900px;
+      border-collapse: collapse;
+      font-size: 12px;
+    }
+    .crm-task-table th,
+    .crm-task-table td {
+      border-bottom: 1px solid #eef2f7;
+      padding: 12px 10px;
+      text-align: left;
+      vertical-align: top;
+    }
+    .crm-task-table th {
+      position: sticky;
+      top: 0;
+      z-index: 1;
+      background: #f8fafc;
+      color: #475467;
+      font-size: 11px;
+      font-weight: 950;
+      white-space: nowrap;
+    }
+    .crm-task-row {
+      cursor: pointer;
+      background: white;
+    }
+    .crm-task-row:hover,
+    .crm-task-row:focus-visible {
+      background: #f8fbff;
+      outline: none;
+    }
+    .crm-task-row.active {
+      background: #eef6ff;
+      box-shadow: inset 3px 0 0 #155bc8;
+    }
+    .crm-task-number {
+      display: grid;
+      gap: 4px;
+      color: #111827;
+      font-weight: 950;
+      white-space: nowrap;
+    }
+    .crm-task-number small,
+    .crm-task-title-sub,
+    .crm-task-activity {
+      color: #667085;
+      font-size: 11px;
+      font-weight: 800;
+      line-height: 1.35;
+    }
+    .crm-task-title-cell {
+      display: grid;
+      gap: 5px;
+      min-width: 220px;
+    }
+    .crm-task-title-main {
+      color: #111827;
+      font-size: 13px;
+      font-weight: 950;
+      line-height: 1.35;
+      word-break: keep-all;
+    }
+    .crm-task-assignee,
+    .crm-task-source {
+      color: #344054;
+      font-weight: 900;
+      white-space: nowrap;
+    }
+    .crm-task-row-action {
+      min-height: 28px;
+      border: 1px solid #d0d5dd;
+      border-radius: 7px;
+      background: white;
+      color: #155bc8;
+      padding: 0 10px;
+      font-size: 11px;
+      font-weight: 950;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    .crm-task-list-empty {
+      min-height: 240px;
+      display: grid;
+      place-items: center;
+      color: #667085;
+      font-size: 13px;
+      font-weight: 850;
+      text-align: center;
+      padding: 24px;
     }
     .crm-kanban {
       min-width: 0;
@@ -4166,10 +4375,10 @@ HTML = r"""<!doctype html>
 <body>
   <div class="app">
     <aside class="sidebar">
-      <div class="brand">
+      <button class="brand" type="button" id="brandHomeButton" aria-label="업무 홈으로 이동">
         <div class="brand-icon"><i data-lucide="briefcase-business"></i></div>
-        <div class="brand-label">(주)소일브릿지<br>업무자동화</div>
-      </div>
+        <div class="brand-label">Soilbridge<br>Workhub</div>
+      </button>
       <label class="sidebar-search" for="sidebarSearchInput">
         <i data-lucide="search"></i>
         <input id="sidebarSearchInput" name="workhub-menu-search" type="search" placeholder="메뉴 검색" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" />
@@ -4209,10 +4418,11 @@ HTML = r"""<!doctype html>
           <i class="nav-chevron" data-lucide="chevron-right"></i>
         </button>
         <div class="nav-submenu">
-          <button class="nav-subitem" type="button" data-open="crm" data-crm-nav-tab="dashboard">업무 현황</button>
+          <button class="nav-subitem" type="button" data-open="crm" data-crm-nav-tab="dashboard">대시보드</button>
           <button class="nav-subitem" type="button" data-open="crm" data-crm-nav-tab="mine">내 업무</button>
-          <button class="nav-subitem" type="button" data-open="crm" data-crm-nav-tab="tasks">업무보드</button>
-          <button class="nav-subitem" type="button" data-open="crm" data-crm-nav-tab="accounts">직원 현황</button>
+          <button class="nav-subitem" type="button" data-open="crm" data-crm-nav-tab="tasks">업무</button>
+          <button class="nav-subitem" type="button" data-open="crm" data-crm-nav-tab="accounts">직원</button>
+          <button class="nav-subitem" type="button" data-open="crm" data-crm-nav-tab="messages">연동 설정</button>
         </div>
       </div>
       <div class="nav-group" id="distributionMailNavGroup">
@@ -4274,7 +4484,7 @@ HTML = r"""<!doctype html>
               <div class="company-card-head"><span>빠른 실행</span></div>
               <div class="company-card-body">
                 <div class="company-quick-actions" aria-label="회사 포털 빠른 실행">
-                  <button class="company-quick-button" type="button" data-open="crm" data-crm-nav-tab="tasks"><i data-lucide="kanban-square"></i><span>업무보드<small>상태와 마감 확인</small></span></button>
+                  <button class="company-quick-button" type="button" data-open="crm" data-crm-nav-tab="tasks"><i data-lucide="kanban-square"></i><span>업무<small>상태와 마감 확인</small></span></button>
                   <button class="company-quick-button" type="button" data-open="crm" data-crm-nav-tab="mine"><i data-lucide="check-circle-2"></i><span>내 업무<small>내가 처리할 일</small></span></button>
                   <button class="company-quick-button" type="button" data-view="dashboard" data-company-tab="staff"><i data-lucide="network"></i><span>직원 현황<small>조직도와 담당 업무</small></span></button>
                   <button class="company-quick-button" type="button" data-view="dashboard" data-company-tab="chat"><i data-lucide="message-square-text"></i><span>사내 메신저<small>전체방과 직원 DM</small></span></button>
@@ -4327,7 +4537,7 @@ HTML = r"""<!doctype html>
           <article class="company-card">
             <div class="company-card-head">
               <span>운영 요약</span>
-              <button class="crm-mini-button" type="button" data-open="crm" data-crm-nav-tab="dashboard">업무 현황</button>
+              <button class="crm-mini-button" type="button" data-open="crm" data-crm-nav-tab="dashboard">대시보드</button>
             </div>
             <div class="company-card-body">
               <div class="company-default-widgets" aria-label="회사 포털 기본 위젯">
@@ -4337,7 +4547,7 @@ HTML = r"""<!doctype html>
                 <div class="company-default-widget"><span>주의 필요</span><strong id="companyWidgetRisk">0건</strong><small>지연, 높음, 승인대기</small></div>
               </div>
               <div class="company-widget-actions" aria-label="기본 위젯 빠른 이동">
-                <button class="company-widget-button" type="button" data-open="crm" data-crm-nav-tab="tasks"><i data-lucide="list-checks"></i>업무보드</button>
+                <button class="company-widget-button" type="button" data-open="crm" data-crm-nav-tab="tasks"><i data-lucide="list-checks"></i>업무</button>
                 <button class="company-widget-button" type="button" data-view="dashboard" data-company-tab="calendar"><i data-lucide="calendar-days"></i>캘린더</button>
                 <button class="company-widget-button" type="button" data-open="leave"><i data-lucide="umbrella"></i>연차</button>
                 <button class="company-widget-button" type="button" data-view="dashboard" data-company-tab="chat"><i data-lucide="message-circle"></i>사내 메신저</button>
@@ -4373,7 +4583,7 @@ HTML = r"""<!doctype html>
             </article>
             <aside class="company-calendar-side">
               <article class="company-card">
-                <div class="company-card-head"><span>선택한 날짜</span><button class="crm-mini-button" type="button" data-open="crm" data-crm-nav-tab="tasks">업무보드</button></div>
+                <div class="company-card-head"><span>선택한 날짜</span><button class="crm-mini-button" type="button" data-open="crm" data-crm-nav-tab="tasks">업무</button></div>
                 <div class="company-card-body">
                   <div class="calendar-side-date" id="companyCalendarSelectedDate">오늘</div>
                   <div class="calendar-side-list" id="companyCalendarSelectedList">
@@ -4434,7 +4644,7 @@ HTML = r"""<!doctype html>
                 </div>
                 <div class="company-task-list" id="companyStaffTaskBody">내 업무를 불러오는 중입니다.</div>
                 <div class="company-quick-links">
-                  <button class="workspace-button" type="button" data-open="crm" data-crm-nav-tab="tasks">업무보드</button>
+                  <button class="workspace-button" type="button" data-open="crm" data-crm-nav-tab="tasks">업무</button>
                   <button class="workspace-button" type="button" data-open="management">통합관리대장</button>
                   <button class="workspace-button" type="button" data-open="ledger">CS 처리대장</button>
                 </div>
@@ -4479,7 +4689,7 @@ HTML = r"""<!doctype html>
                   <div><span>업무화</span><strong>/업무 명령</strong></div>
                 </div>
                 <div class="company-quick-links">
-                  <button class="workspace-button" type="button" data-open="crm" data-crm-nav-tab="tasks">업무보드</button>
+                  <button class="workspace-button" type="button" data-open="crm" data-crm-nav-tab="tasks">업무</button>
                   <button class="workspace-button" type="button" data-view="dashboard" data-company-tab="staff">직원 현황</button>
                 </div>
               </div>
@@ -4635,21 +4845,22 @@ HTML = r"""<!doctype html>
       </section>
       <section class="workspace-view" id="crmWorkspace">
         <div class="workspace-head">
-          <div class="workspace-title">업무 현황</div>
+          <div class="workspace-title">업무 관리</div>
           <div class="workspace-actions">
             <button class="workspace-button" type="button" id="crmRefresh">새로고침</button>
-            <button class="workspace-button" type="button" id="crmAccountQuick">직원 현황</button>
+            <button class="workspace-button" type="button" id="crmAccountQuick">직원</button>
             <button class="workspace-button" type="button" id="crmTaskQuick">업무 등록</button>
             <button class="workspace-button" type="button" data-open-window="crm">새창으로 열기</button>
           </div>
         </div>
         <div class="crm-tabs" role="tablist" aria-label="CRM 메뉴">
-          <button class="crm-tab active" type="button" role="tab" id="crmTabDashboard" aria-selected="true" aria-controls="crmPanelDashboard" tabindex="0" data-crm-tab="dashboard">업무 현황</button>
+          <button class="crm-tab active" type="button" role="tab" id="crmTabDashboard" aria-selected="true" aria-controls="crmPanelDashboard" tabindex="0" data-crm-tab="dashboard">대시보드</button>
+          <button class="crm-tab" type="button" role="tab" id="crmTabTasks" aria-selected="false" aria-controls="crmPanelTasks" tabindex="-1" data-crm-tab="tasks">업무</button>
           <button class="crm-tab" type="button" role="tab" id="crmTabMine" aria-selected="false" aria-controls="crmPanelMine" tabindex="-1" data-crm-tab="mine">내 업무</button>
-          <button class="crm-tab" type="button" role="tab" id="crmTabTasks" aria-selected="false" aria-controls="crmPanelTasks" tabindex="-1" data-crm-tab="tasks">업무보드</button>
-          <button class="crm-tab" type="button" role="tab" id="crmTabAccounts" aria-selected="false" aria-controls="crmPanelAccounts" tabindex="-1" data-crm-tab="accounts">직원 현황</button>
-          <button class="crm-tab" type="button" role="tab" id="crmMessagesTab" aria-selected="false" aria-controls="crmPanelMessages" tabindex="-1" data-crm-tab="messages">연동 로그</button>
+          <button class="crm-tab" type="button" role="tab" id="crmTabAccounts" aria-selected="false" aria-controls="crmPanelAccounts" tabindex="-1" data-crm-tab="accounts">직원</button>
+          <button class="crm-tab" type="button" role="tab" id="crmMessagesTab" aria-selected="false" aria-controls="crmPanelMessages" tabindex="-1" data-crm-tab="messages">연동 설정</button>
         </div>
+        <div class="crm-role-guide" id="crmRoleGuide" role="note" aria-live="polite"></div>
         <div class="crm-message" id="crmMessage" role="status" aria-live="polite"></div>
 
         <section class="crm-panel active" role="tabpanel" id="crmPanelDashboard" aria-labelledby="crmTabDashboard" tabindex="0" data-crm-panel="dashboard">
@@ -4660,7 +4871,7 @@ HTML = r"""<!doctype html>
             <article class="crm-stat"><div class="crm-stat-label">지연 업무</div><div class="crm-stat-value" id="crmStatOverdue">0</div></article>
           </div>
           <article class="crm-card crm-project-card">
-            <div class="crm-card-head"><span>프로젝트별 진행상황</span><button class="crm-mini-button" type="button" data-crm-go="tasks">업무보드 보기</button></div>
+            <div class="crm-card-head"><span>프로젝트별 진행상황</span><button class="crm-mini-button" type="button" data-crm-go="tasks">업무 보기</button></div>
             <div class="crm-card-body">
               <div class="crm-project-tracker" id="crmProjectProgressBody">
                 <div class="crm-project-empty">프로젝트 진행상황을 불러오는 중입니다.</div>
@@ -4678,7 +4889,7 @@ HTML = r"""<!doctype html>
               </div>
             </article>
             <article class="crm-card">
-              <div class="crm-card-head"><span>최근 메신저 처리</span><button class="crm-mini-button" type="button" data-crm-go="messages">로그 보기</button></div>
+              <div class="crm-card-head"><span>최근 메신저 처리</span><button class="crm-mini-button" type="button" data-crm-go="messages">연동 보기</button></div>
               <div class="crm-table-wrap">
                 <table class="crm-table">
                   <thead><tr><th>일시</th><th>발신자</th><th>결과</th><th>내용</th></tr></thead>
@@ -4693,7 +4904,7 @@ HTML = r"""<!doctype html>
           <div class="crm-task-board-stats" id="crmMineStats"></div>
           <div class="crm-table-wrap">
             <table class="crm-table">
-              <thead><tr><th>번호</th><th>업무 구분</th><th>업무</th><th>마감</th><th>상태</th><th>우선순위</th><th>처리</th></tr></thead>
+              <thead><tr><th>번호</th><th>업무</th><th>마감</th><th>상태</th><th>처리</th></tr></thead>
               <tbody id="crmMineTaskBody"></tbody>
             </table>
           </div>
@@ -4740,7 +4951,7 @@ HTML = r"""<!doctype html>
             <div class="crm-card-head">
               <span>업무 등록/수정</span>
               <span class="crm-mini-actions">
-                <button class="crm-mini-button" type="button" id="crmTaskFormToggle">입력 열기</button>
+                <button class="crm-mini-button" type="button" id="crmTaskFormToggle">닫기</button>
                 <button class="crm-mini-button primary" type="submit" id="crmTaskSave">저장</button>
               </span>
             </div>
@@ -4760,12 +4971,12 @@ HTML = r"""<!doctype html>
           <div class="crm-view-strip" id="crmTaskPresetList" aria-label="업무 빠른 보기"></div>
           <div class="crm-toolbar crm-task-toolbar" aria-label="업무 필터">
             <label class="sr-only" for="crmTaskViewSelect">저장뷰</label>
-            <select class="crm-select" id="crmTaskViewSelect"><option value="">저장뷰 선택</option></select>
+            <select class="crm-select" id="crmTaskViewSelect"><option value="">보기 선택</option></select>
             <label class="sr-only" for="crmTaskSearch">업무 검색</label>
             <input class="crm-input" id="crmTaskSearch" type="search" placeholder="업무, 직원, 번호 검색" />
-            <button class="crm-mini-button primary" type="button" id="crmTaskSearchButton">조회</button>
-            <button class="crm-mini-button" type="button" id="crmTaskAdvancedToggle" aria-expanded="false" aria-controls="crmAdvancedFilters">고급 필터</button>
-            <button class="crm-mini-button" type="button" id="crmTaskFilterReset">초기화</button>
+            <button class="crm-mini-button primary" type="button" id="crmTaskSearchButton">검색</button>
+            <button class="crm-mini-button" type="button" id="crmTaskAdvancedToggle" aria-expanded="false" aria-controls="crmAdvancedFilters">필터 더보기</button>
+            <button class="crm-mini-button" type="button" id="crmTaskFilterReset">필터 해제</button>
             <div class="crm-advanced-filters" id="crmAdvancedFilters" hidden>
             <label class="sr-only" for="crmTaskViewName">저장뷰 이름</label>
             <input class="crm-input" id="crmTaskViewName" type="text" placeholder="저장뷰 이름" />
@@ -4787,17 +4998,22 @@ HTML = r"""<!doctype html>
             </div>
           </div>
           <div class="crm-task-board-stats" id="crmTaskBoardStats"></div>
+          <div class="crm-task-view-switch" aria-label="업무 보기 전환">
+            <span class="crm-task-view-label">보기</span>
+            <button class="crm-task-view-button active" type="button" data-crm-task-view-mode="list" aria-pressed="true">리스트</button>
+            <button class="crm-task-view-button" type="button" data-crm-task-view-mode="board" aria-pressed="false">보드</button>
+          </div>
           <div class="crm-task-layout">
-            <div class="crm-kanban" id="crmTaskBody"></div>
+            <div class="crm-task-results crm-task-list-wrap" id="crmTaskBody"></div>
             <aside class="crm-task-detail" id="crmTaskDetail">
-              <div class="crm-task-detail-empty">업무 카드를 선택하면 상세 정보와 처리 버튼이 표시됩니다.</div>
+              <div class="crm-task-detail-empty">업무를 선택하면 상세 정보와 처리 버튼이 표시됩니다.</div>
             </aside>
           </div>
         </section>
 
         <section class="crm-panel" role="tabpanel" id="crmPanelMessages" aria-labelledby="crmMessagesTab" tabindex="0" data-crm-panel="messages">
           <article class="crm-card">
-            <div class="crm-card-head"><span>카카오 공식 연동 준비</span></div>
+            <div class="crm-card-head"><span>메신저 연동 설정</span></div>
             <div class="crm-card-body crm-webhook-setup">
               <p class="crm-help">카카오 챗봇 스킬 또는 공통 웹훅에서 아래 엔드포인트로 POST 요청을 보내면 CRM 업무에 반영됩니다. 실제 연결 시 공개 HTTPS 도메인과 헤더 토큰이 필요합니다.</p>
               <div class="crm-token"><span>전체 수신 URL</span><code id="crmWebhookUrl">도메인 설정 후 표시됩니다.</code><button class="crm-mini-button" type="button" id="crmWebhookUrlCopy">복사</button></div>
@@ -4836,7 +5052,7 @@ HTML = r"""<!doctype html>
               </div>
             </article>
             <article class="crm-card">
-              <div class="crm-card-head"><span>연동 로그</span></div>
+              <div class="crm-card-head"><span>메신저 연동 로그</span></div>
               <div class="crm-table-wrap">
                 <table class="crm-table">
                   <thead><tr><th>일시</th><th>플랫폼</th><th>발신자</th><th>결과</th><th>내용</th><th>오류</th><th>관리</th></tr></thead>
@@ -5287,6 +5503,7 @@ HTML = r"""<!doctype html>
     const currentUserPermissions = new Set(__USER_PERMISSIONS__);
     const permissionLabels = __PERMISSION_LABELS__;
     const sidebar = document.querySelector(".sidebar");
+    const brandHomeButton = document.querySelector("#brandHomeButton");
     const sidebarSearchInput = document.querySelector("#sidebarSearchInput");
     let sidebarSearchUserTyped = false;
     const sidebarSearchAutofillValues = new Set([
@@ -5326,6 +5543,7 @@ HTML = r"""<!doctype html>
       setHidden(document.querySelector('.nav-subitem[data-crm-nav-tab="messages"]'), !can("crm_message_manage"));
       setHidden(crmAccountQuick, !can("crm_view"));
       setHidden(crmTaskQuick, !can("crm_manage"));
+      if (crmTaskQuick) crmTaskQuick.textContent = can("crm_manage") ? "업무 지시" : "내 업무";
       setHidden(crmAccountForm, !can("crm_manage"));
       setHidden(crmTaskForm, !can("crm_manage"));
       setHidden(crmMessagesTab, !can("crm_message_manage"));
@@ -5581,6 +5799,7 @@ HTML = r"""<!doctype html>
     const crmRefresh = document.querySelector("#crmRefresh");
     const crmAccountQuick = document.querySelector("#crmAccountQuick");
     const crmTaskQuick = document.querySelector("#crmTaskQuick");
+    const crmRoleGuide = document.querySelector("#crmRoleGuide");
     const crmTabs = Array.from(document.querySelectorAll("[data-crm-tab]"));
     const crmPanels = Array.from(document.querySelectorAll("[data-crm-panel]"));
     const crmMessagesTab = document.querySelector("#crmMessagesTab");
@@ -5638,6 +5857,7 @@ HTML = r"""<!doctype html>
     const crmTaskBoardStats = document.querySelector("#crmTaskBoardStats");
     const crmTaskBody = document.querySelector("#crmTaskBody");
     const crmTaskDetail = document.querySelector("#crmTaskDetail");
+    const crmTaskViewModeButtons = Array.from(document.querySelectorAll("[data-crm-task-view-mode]"));
     const crmMineStats = document.querySelector("#crmMineStats");
     const crmMineTaskBody = document.querySelector("#crmMineTaskBody");
     const crmWebhookUrl = document.querySelector("#crmWebhookUrl");
@@ -5670,6 +5890,7 @@ HTML = r"""<!doctype html>
     let crmProjectProgress = [];
     let crmUsers = [];
     let internalChatUsers = [];
+    let crmTaskViewMode = "list";
     let internalChatRoom = { type: "global", userId: "" };
     let companyActiveTab = "notice";
     let companyCalendarMonth = todayString().slice(0, 7);
@@ -5680,11 +5901,10 @@ HTML = r"""<!doctype html>
     let crmSelectedTaskId = "";
     const CRM_TASK_STATUSES = ["대기", "진행중", "보류", "완료"];
     const CRM_TASK_BUILTIN_VIEWS = [
-      { id: "open", name: "전체 미완료", filters: { open_only: "1", sort: "smart" } },
-      { id: "today", name: "오늘 마감", filters: { due: "today", open_only: "1", sort: "due" } },
+      { id: "open", name: "미완료", filters: { open_only: "1", sort: "smart" } },
+      { id: "today", name: "오늘", filters: { due: "today", open_only: "1", sort: "due" } },
       { id: "overdue", name: "지연", filters: { due: "overdue", open_only: "1", sort: "due" } },
       { id: "mine", name: "내 업무", filters: { assignee_user_id: String(currentUser.id || ""), open_only: "1", sort: "due" } },
-      { id: "messages", name: "메신저 지시", filters: { source: "internal_message", open_only: "1", sort: "updated" } },
     ];
     let crmSavedViews = [];
     let crmActiveTaskViewId = "builtin:open";
@@ -7315,17 +7535,48 @@ HTML = r"""<!doctype html>
         panel.hidden = !active;
       });
       syncCrmNavState();
+      renderCrmRoleGuide();
       if (tabName === "accounts") {
         loadCrmStaffDashboard().catch((error) => setCrmMessage(error.message, true));
       } else if (tabName === "mine") {
         loadCrmMineTasks().catch((error) => setCrmMessage(error.message, true));
       } else if (tabName === "tasks") {
+        crmTaskViewMode = "list";
+        syncCrmTaskViewMode();
         loadCrmTasks().catch((error) => setCrmMessage(error.message, true));
       } else if (tabName === "messages") {
         loadCrmMessenger().catch((error) => setCrmMessage(error.message, true));
       } else {
         loadCrmDashboard().catch((error) => setCrmMessage(error.message, true));
       }
+    }
+
+    function defaultCrmTabForUser() {
+      return ["admin", "sub_admin"].includes(String(currentUser.role || "")) ? "tasks" : "mine";
+    }
+
+    function renderCrmRoleGuide() {
+      if (!crmRoleGuide) return;
+      const role = String(currentUser.role || "user");
+      const isOperator = ["admin", "sub_admin"].includes(role);
+      const guides = {
+        dashboard: isOperator
+          ? ["운영 상태를 먼저 확인해.", "프로젝트 진행, 지연 업무, 메신저 처리 결과를 한 번에 보는 관리자용 화면이야.", "관리자"]
+          : ["팀 흐름만 참고해.", "내가 직접 처리할 일은 내 업무 탭에서 보는 게 제일 빠르다.", "참고"],
+        tasks: isOperator
+          ? ["업무를 배정하고 흐름을 조정해.", "검색과 빠른 보기를 먼저 쓰고, 필요한 경우에만 필터 더보기를 열면 돼.", "운영"]
+          : ["팀 업무 목록이야.", "내가 처리할 일은 내 업무 탭에서 완료/보류/댓글만 확인하면 된다.", "보기"],
+        mine: ["오늘 내 할 일을 처리해.", "업무를 끝냈으면 완료, 못 하겠으면 보류, 상황 설명은 댓글로 남기면 돼.", "실행"],
+        accounts: isOperator
+          ? ["직원별 업무량을 확인해.", "누가 많이 밀렸는지, 오늘 마감과 지연 업무가 있는지 보는 화면이야.", "팀"]
+          : ["직원 현황을 참고해.", "업무 배정 상황을 볼 수 있지만, 내 처리는 내 업무에서 하면 된다.", "참고"],
+        messages: ["외부 메신저 연동을 관리해.", "토큰과 사용자 매핑은 관리자만 만지는 설정이니 변경 후에는 테스트 로그를 확인해.", "설정"],
+      };
+      const guide = guides[crmActiveTab] || guides[defaultCrmTabForUser()];
+      crmRoleGuide.innerHTML = `
+        <div><strong>${escapeHtml(guide[0])}</strong><span>${escapeHtml(guide[1])}</span></div>
+        <em>${escapeHtml(guide[2])}</em>
+      `;
     }
 
     function crmTaskFilterDefaults() {
@@ -7385,7 +7636,7 @@ HTML = r"""<!doctype html>
         `<option value="saved:${escapeHtml(view.id)}">${escapeHtml(view.name)}</option>`
       )).join("");
       crmTaskViewSelect.innerHTML = [
-        `<option value="">저장뷰 선택</option>`,
+        `<option value="">보기 선택</option>`,
         `<optgroup label="기본 보기">${CRM_TASK_BUILTIN_VIEWS.map((view) => (
           `<option value="builtin:${escapeHtml(view.id)}">${escapeHtml(view.name)}</option>`
         )).join("")}</optgroup>`,
@@ -7693,7 +7944,7 @@ HTML = r"""<!doctype html>
     function setCrmTaskFormOpen(open) {
       if (!crmTaskForm) return;
       crmTaskForm.classList.toggle("collapsed", !open);
-      if (crmTaskFormToggle) crmTaskFormToggle.textContent = open ? "입력 닫기" : "입력 열기";
+      if (crmTaskFormToggle) crmTaskFormToggle.textContent = open ? "닫기" : "업무 등록";
     }
 
     function resetCrmTaskForm() {
@@ -7755,6 +8006,19 @@ HTML = r"""<!doctype html>
       return due.length >= 10 ? due.slice(0, 10) : "";
     }
 
+    function syncCrmTaskViewMode() {
+      crmTaskViewModeButtons.forEach((button) => {
+        const active = button.dataset.crmTaskViewMode === crmTaskViewMode;
+        button.classList.toggle("active", active);
+        button.setAttribute("aria-pressed", active ? "true" : "false");
+      });
+      if (crmTaskBody) {
+        crmTaskBody.className = crmTaskViewMode === "board"
+          ? "crm-task-results crm-kanban"
+          : "crm-task-results crm-task-list-wrap";
+      }
+    }
+
     function renderCrmTaskBoardStats() {
       if (!crmTaskBoardStats) return;
       const today = todayString();
@@ -7778,6 +8042,55 @@ HTML = r"""<!doctype html>
           <i>${escapeHtml(icon)}</i>
         </article>
       `).join("");
+    }
+
+    function crmTaskActivityText(task) {
+      return task.updated_at || task.created_at || "활동 없음";
+    }
+
+    function renderCrmTaskList() {
+      if (!crmTasks.length) {
+        return `<div class="crm-task-list-empty">조회된 업무가 없습니다.<br />완료 업무는 완료 필터를 열 때만 표시됩니다.</div>`;
+      }
+      return `
+        <table class="crm-task-table" aria-label="업무 목록">
+          <thead>
+            <tr>
+              <th scope="col">번호</th>
+              <th scope="col">업무</th>
+              <th scope="col">담당자</th>
+              <th scope="col">마감</th>
+              <th scope="col">상태</th>
+              <th scope="col">우선순위</th>
+              <th scope="col">최근 활동</th>
+              <th scope="col">상세</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${crmTasks.map((task) => {
+              const isActive = String(task.id) === String(crmSelectedTaskId);
+              return `
+                <tr class="crm-task-row ${isActive ? "active" : ""}" role="button" tabindex="0" aria-pressed="${isActive ? "true" : "false"}" data-crm-task-card="${escapeHtml(task.id)}">
+                  <td><span class="crm-task-number">${escapeHtml(task.public_id || "")}<small>${escapeHtml(crmSourceLabel(task.source))}</small></span></td>
+                  <td>
+                    <div class="crm-task-title-cell">
+                      <span class="crm-task-title-main">${escapeHtml(task.title || "제목 없음")}</span>
+                      <span class="crm-task-title-sub">${escapeHtml(crmTaskContextLabel(task))}</span>
+                      <span class="crm-task-title-sub">${escapeHtml(task.description || "상세 내용이 없습니다.")}</span>
+                    </div>
+                  </td>
+                  <td><span class="crm-task-assignee">${escapeHtml(task.assignee_name || "담당자 미정")}</span></td>
+                  <td><span class="crm-due-text">${escapeHtml(crmDueDateText(task))}</span></td>
+                  <td><span class="crm-status ${crmStatusClass(task.status)}">${escapeHtml(task.status || "대기")}</span></td>
+                  <td>${crmPriorityBadge(task.priority)}</td>
+                  <td><span class="crm-task-activity">${escapeHtml(crmTaskActivityText(task))}</span></td>
+                  <td><button class="crm-task-row-action" type="button" data-crm-task-select="${escapeHtml(task.id)}">상세 보기</button></td>
+                </tr>
+              `;
+            }).join("")}
+          </tbody>
+        </table>
+      `;
     }
 
     function renderCrmTaskCard(task) {
@@ -7869,7 +8182,7 @@ HTML = r"""<!doctype html>
     function renderCrmTaskDetail(task) {
       if (!crmTaskDetail) return;
       if (!task) {
-        crmTaskDetail.innerHTML = `<div class="crm-task-detail-empty">업무 카드를 선택하면 상세 정보와 처리 버튼이 표시됩니다.</div>`;
+        crmTaskDetail.innerHTML = `<div class="crm-task-detail-empty">업무를 선택하면 상세 정보와 처리 버튼이 표시됩니다.</div>`;
         return;
       }
       const canEdit = can("crm_manage");
@@ -7890,11 +8203,11 @@ HTML = r"""<!doctype html>
             <div class="crm-detail-cell"><span>출처</span><strong>${escapeHtml(crmSourceLabel(task.source))}</strong></div>
           </div>
           <div class="crm-detail-actions">
-            ${canEdit ? `<button class="crm-mini-button" type="button" data-crm-task-edit="${escapeHtml(task.id)}">수정</button>` : ""}
-            <button class="crm-mini-button primary" type="button" data-crm-task-status="${escapeHtml(task.id)}" data-status="진행중">확인</button>
             <button class="crm-mini-button primary" type="button" data-crm-task-status="${escapeHtml(task.id)}" data-status="완료">완료</button>
             <button class="crm-mini-button" type="button" data-crm-task-status="${escapeHtml(task.id)}" data-status="보류">보류</button>
+            <button class="crm-mini-button" type="button" data-crm-task-status="${escapeHtml(task.id)}" data-status="진행중">확인</button>
             <button class="crm-mini-button" type="button" data-crm-task-comment="${escapeHtml(task.id)}">댓글</button>
+            ${canEdit ? `<button class="crm-mini-button" type="button" data-crm-task-edit="${escapeHtml(task.id)}">수정</button>` : ""}
           </div>
           <form class="crm-detail-comment-form" data-crm-comment-form="${escapeHtml(task.id)}">
             <label for="${escapeHtml(commentId)}">댓글</label>
@@ -8260,31 +8573,40 @@ HTML = r"""<!doctype html>
 
     function renderCrmTasks() {
       renderCrmTaskBoardStats();
+      syncCrmTaskViewMode();
       if (!crmTasks.length) {
         crmSelectedTaskId = "";
-        crmTaskBody.innerHTML = CRM_TASK_STATUSES.map((status) => `
-          <section class="crm-kanban-column">
-            <div class="crm-kanban-head"><span>${escapeHtml(status)}</span><span class="crm-kanban-count">0</span></div>
-            <div class="crm-kanban-list"><div class="crm-kanban-empty">조회된 업무가 없습니다.</div></div>
-          </section>
-        `).join("");
+        if (crmTaskViewMode === "board") {
+          crmTaskBody.innerHTML = CRM_TASK_STATUSES.map((status) => `
+            <section class="crm-kanban-column">
+              <div class="crm-kanban-head"><span>${escapeHtml(status)}</span><span class="crm-kanban-count">0</span></div>
+              <div class="crm-kanban-list"><div class="crm-kanban-empty">조회된 업무가 없습니다.</div></div>
+            </section>
+          `).join("");
+        } else {
+          crmTaskBody.innerHTML = renderCrmTaskList();
+        }
         renderCrmTaskDetail(null);
         return;
       }
       if (!crmTasks.some((task) => String(task.id) === String(crmSelectedTaskId))) {
         crmSelectedTaskId = String(crmTasks[0].id);
       }
-      crmTaskBody.innerHTML = CRM_TASK_STATUSES.map((status) => {
-        const items = crmTasks.filter((task) => (task.status || "대기") === status);
-        return `
-          <section class="crm-kanban-column">
-            <div class="crm-kanban-head"><span>${escapeHtml(status)}</span><span class="crm-kanban-count">${escapeHtml(items.length)}</span></div>
-            <div class="crm-kanban-list">
-              ${items.length ? items.map(renderCrmTaskCard).join("") : `<div class="crm-kanban-empty">${escapeHtml(status)} 업무가 없습니다.</div>`}
-            </div>
-          </section>
-        `;
-      }).join("");
+      if (crmTaskViewMode === "board") {
+        crmTaskBody.innerHTML = CRM_TASK_STATUSES.map((status) => {
+          const items = crmTasks.filter((task) => (task.status || "대기") === status);
+          return `
+            <section class="crm-kanban-column">
+              <div class="crm-kanban-head"><span>${escapeHtml(status)}</span><span class="crm-kanban-count">${escapeHtml(items.length)}</span></div>
+              <div class="crm-kanban-list">
+                ${items.length ? items.map(renderCrmTaskCard).join("") : `<div class="crm-kanban-empty">${escapeHtml(status)} 업무가 없습니다.</div>`}
+              </div>
+            </section>
+          `;
+        }).join("");
+      } else {
+        crmTaskBody.innerHTML = renderCrmTaskList();
+      }
       const selectedTask = crmTasks.find((task) => String(task.id) === String(crmSelectedTaskId));
       renderCrmTaskDetail(selectedTask);
       if (selectedTask) ensureCrmTaskComments(selectedTask.id).catch(() => {});
@@ -8315,21 +8637,22 @@ HTML = r"""<!doctype html>
       crmMineTaskBody.innerHTML = openTasks.length ? openTasks.map((task) => `
         <tr>
           <td>${escapeHtml(task.public_id || "")}</td>
-          <td class="left">${escapeHtml(crmTaskContextLabel(task))}</td>
-          <td class="left">${escapeHtml(task.title)}</td>
+          <td class="left">
+            <strong>${escapeHtml(task.title)}</strong><br />
+            <span class="crm-task-title-sub">${escapeHtml(crmTaskContextLabel(task))}</span>
+          </td>
           <td>${escapeHtml(crmDueDateText(task))}</td>
           <td>${crmStatusBadge(task.status)}</td>
-          <td>${crmPriorityBadge(task.priority)}</td>
           <td>
             <span class="crm-mini-actions">
-              <button class="crm-mini-button primary" type="button" data-crm-task-status="${escapeHtml(task.id)}" data-status="진행중">확인</button>
               <button class="crm-mini-button primary" type="button" data-crm-task-status="${escapeHtml(task.id)}" data-status="완료">완료</button>
               <button class="crm-mini-button" type="button" data-crm-task-status="${escapeHtml(task.id)}" data-status="보류">보류</button>
+              <button class="crm-mini-button" type="button" data-crm-task-status="${escapeHtml(task.id)}" data-status="진행중">확인</button>
               <button class="crm-mini-button" type="button" data-crm-task-comment="${escapeHtml(task.id)}">댓글</button>
             </span>
           </td>
         </tr>
-      `).join("") : `<tr><td colspan="7">내 미완료 업무가 없습니다.</td></tr>`;
+      `).join("") : `<tr><td colspan="5">내 미완료 업무가 없습니다.</td></tr>`;
     }
 
     async function loadCrmTasks() {
@@ -9985,8 +10308,9 @@ HTML = r"""<!doctype html>
         closeLedgerFilter();
         loadLedgerCases();
       } else if (showCrm) {
-        setPageTitle("업무 현황");
+        setPageTitle("업무 관리");
         closeLedgerFilter();
+        renderCrmRoleGuide();
         loadCrmAll().catch((error) => setCrmMessage(error.message, true));
       } else if (showImport) {
         setPageTitle("수출입 업무");
@@ -10021,6 +10345,7 @@ HTML = r"""<!doctype html>
       const url = new URL(window.location.href);
       url.searchParams.set("view", mode);
       url.searchParams.set("standalone", "1");
+      if (mode === "crm") url.searchParams.set("crm_tab", crmActiveTab || "tasks");
       window.open(url.toString(), "_blank", "width=1480,height=920");
     }
 
@@ -10191,6 +10516,11 @@ HTML = r"""<!doctype html>
     document.querySelectorAll("[data-open-window]").forEach((button) => {
       button.addEventListener("click", () => openWorkspaceWindow(button.dataset.openWindow));
     });
+    brandHomeButton?.addEventListener("click", () => {
+      showWorkspace("dashboard");
+      setCompanyTab("notice");
+      document.querySelector("#companyNavGroup")?.classList.add("open");
+    });
     document.addEventListener("click", (event) => {
       const button = event.target.closest("[data-order-execute]");
       if (!button) return;
@@ -10215,6 +10545,12 @@ HTML = r"""<!doctype html>
           setCrmTab(nextTab.dataset.crmTab);
           nextTab?.focus();
         }
+      });
+    });
+    crmTaskViewModeButtons.forEach((button) => {
+      button.addEventListener("click", () => {
+        crmTaskViewMode = button.dataset.crmTaskViewMode === "board" ? "board" : "list";
+        renderCrmTasks();
       });
     });
     companyTabs.forEach((button) => {
@@ -10441,9 +10777,9 @@ HTML = r"""<!doctype html>
       openEmployeeWidget(card.dataset.crmStaffCard).catch((error) => setCrmMessage(error.message, true));
     });
     crmTaskQuick.addEventListener("click", () => {
+      setCrmTab("tasks");
       resetCrmTaskForm();
       setCrmTaskFormOpen(true);
-      setCrmTab("tasks");
       crmTaskTitle?.focus();
     });
     crmAccountForm.addEventListener("submit", (event) => {
@@ -10496,7 +10832,7 @@ HTML = r"""<!doctype html>
       const open = Boolean(crmAdvancedFilters?.hidden);
       if (crmAdvancedFilters) crmAdvancedFilters.hidden = !open;
       crmTaskAdvancedToggle.setAttribute("aria-expanded", open ? "true" : "false");
-      crmTaskAdvancedToggle.textContent = open ? "필터 닫기" : "고급 필터";
+      crmTaskAdvancedToggle.textContent = open ? "필터 접기" : "필터 더보기";
     });
     crmTaskSearch.addEventListener("keydown", (event) => {
       if (event.key === "Enter") {
@@ -10556,10 +10892,14 @@ HTML = r"""<!doctype html>
     }
     crmTaskBody.addEventListener("click", (event) => {
       if (handleCrmTaskAction(event)) return;
+      const selectButton = event.target.closest("[data-crm-task-select]");
+      if (selectButton) {
+        selectCrmTask(selectButton.dataset.crmTaskSelect);
+        return;
+      }
       const card = event.target.closest("[data-crm-task-card]");
       if (card) {
         selectCrmTask(card.dataset.crmTaskCard);
-        openCrmTaskWidget(card.dataset.crmTaskCard).catch((error) => setCrmMessage(error.message, true));
       }
     });
     crmTaskBody.addEventListener("keydown", (event) => {
@@ -10569,7 +10909,6 @@ HTML = r"""<!doctype html>
       if (!card) return;
       event.preventDefault();
       selectCrmTask(card.dataset.crmTaskCard);
-      openCrmTaskWidget(card.dataset.crmTaskCard).catch((error) => setCrmMessage(error.message, true));
     });
     focusWidgetClose?.addEventListener("click", closeFocusWidget);
     focusWidget?.addEventListener("click", (event) => {
@@ -11056,8 +11395,13 @@ HTML = r"""<!doctype html>
       URL.revokeObjectURL(url);
     });
 
-    const initialView = new URLSearchParams(window.location.search).get("view");
+    const initialParams = new URLSearchParams(window.location.search);
+    const initialView = initialParams.get("view");
     showWorkspace(["management", "ledger", "crm", "import", "leave", "userAdmin", "backup", "systemUpdate"].includes(initialView) ? initialView : "dashboard");
+    if (initialView === "crm" && currentMode === "crm") {
+      const requestedCrmTab = initialParams.get("crm_tab") || defaultCrmTabForUser();
+      setCrmTab(["dashboard", "mine", "tasks", "accounts", "messages"].includes(requestedCrmTab) ? requestedCrmTab : "tasks");
+    }
     if (!initialView || initialView === "dashboard") {
       loadCompanyMiniCalendar().catch(() => {
         if (companyMiniCalendarGrid) companyMiniCalendarGrid.innerHTML = `<div class="calendar-empty">미니 캘린더를 불러오지 못했습니다.</div>`;
@@ -11073,7 +11417,7 @@ LOGIN_HTML = r"""<!doctype html>
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>(주)소일브릿지 업무자동화 로그인</title>
+  <title>Soilbridge Workhub 로그인</title>
   <link rel="stylesheet" href="/static/workhub.css" />
   <style>
     :root {
@@ -11214,7 +11558,7 @@ LOGIN_HTML = r"""<!doctype html>
     <div class="brand">
       <div class="brand-mark">SB</div>
       <div>
-        <div class="brand-title">(주)소일브릿지<br>업무자동화</div>
+        <div class="brand-title">Soilbridge<br>Workhub</div>
         <div class="brand-sub">관리자 / 부관리자 / 사용자 로그인</div>
       </div>
     </div>
@@ -16219,7 +16563,7 @@ def run(host: str = "127.0.0.1", port: int = 8765) -> None:
     init_db()
     start_backup_scheduler()
     server = ThreadingHTTPServer((host, port), WorkhubHandler)
-    print(f"(주)소일브릿지 발주 업무자동화 앱 실행 중: http://{host}:{port}")
+    print(f"Soilbridge Workhub 실행 중: http://{host}:{port}")
     server.serve_forever()
 
 
