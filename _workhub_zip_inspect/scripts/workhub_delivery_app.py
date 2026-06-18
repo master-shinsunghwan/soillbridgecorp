@@ -5114,12 +5114,19 @@ HTML = r"""<!doctype html>
             </select>
           </div>
           <div class="text-field">
-            <label class="field-label">업체 메일 주소록 엑셀 업로드</label>
+            <label class="field-label">매입처/매출처 업체 메일 주소록 엑셀 업로드</label>
             <label class="dropzone" for="vendorContactsFileInput">
-              <span class="drop-main" id="vendorContactsDropMain">업체명/메일주소 엑셀을 선택해주세요.</span>
-              <span class="drop-sub">헤더 예시: 업체명, 메일주소</span>
+              <span class="drop-main" id="vendorContactsDropMain">업체구분/업체명/메일주소 엑셀을 선택해주세요.</span>
+              <span class="drop-sub">헤더 예시: 거래처구분, 업체명, 메일주소</span>
               <input id="vendorContactsFileInput" name="vendor_contacts" type="file" accept=".xlsx,.xlsm" />
             </label>
+          </div>
+          <div class="text-field">
+            <label class="field-label" for="vendorTypeSelect">업체 구분</label>
+            <select id="vendorTypeSelect">
+              <option value="purchase">매입처</option>
+              <option value="sales">매출처</option>
+            </select>
           </div>
           <div class="text-field">
             <label class="field-label" for="recipientEmailInput">받는 업체 메일</label>
@@ -5468,6 +5475,7 @@ HTML = r"""<!doctype html>
     const vendorContactSelect = document.querySelector("#vendorContactSelect");
     const vendorContactsFileInput = document.querySelector("#vendorContactsFileInput");
     const vendorContactsDropMain = document.querySelector("#vendorContactsDropMain");
+    const vendorTypeSelect = document.querySelector("#vendorTypeSelect");
     const recipientEmailInput = document.querySelector("#recipientEmailInput");
     const vendorNameInput = document.querySelector("#vendorNameInput");
     const saveVendorContactButton = document.querySelector("#saveVendorContact");
@@ -5751,6 +5759,7 @@ HTML = r"""<!doctype html>
     let currentMode = "dashboard";
     let currentOrderMode = "delivery";
     let vendorContacts = [];
+    let activeCsCaseId = "";
     let ledgerCases = [];
     let managementRecords = [];
     let managementPeriods = [];
@@ -6755,8 +6764,8 @@ HTML = r"""<!doctype html>
 
       vendorContacts.forEach((contact) => {
         const option = document.createElement("option");
-        option.value = contact.vendor_name;
-        option.textContent = `${contact.vendor_name} / ${contact.email}`;
+        option.value = `${contact.vendor_type || "purchase"}::${contact.vendor_name}`;
+        option.textContent = `[${contact.vendor_type_label || "매입처"}] ${contact.vendor_name} / ${contact.email}`;
         vendorContactSelect.appendChild(option);
       });
     }
@@ -6775,8 +6784,12 @@ HTML = r"""<!doctype html>
     }
 
     function applySelectedVendor() {
-      const selected = vendorContacts.find((contact) => contact.vendor_name === vendorContactSelect.value);
+      const [selectedType, selectedName] = vendorContactSelect.value.split("::");
+      const selected = vendorContacts.find((contact) => (
+        (contact.vendor_type || "purchase") === selectedType && contact.vendor_name === selectedName
+      ));
       if (!selected) return;
+      vendorTypeSelect.value = selected.vendor_type || "purchase";
       vendorNameInput.value = selected.vendor_name;
       recipientEmailInput.value = selected.email;
       csSubjectInput.value = defaultCsSubject(selected.vendor_name);
@@ -6785,6 +6798,7 @@ HTML = r"""<!doctype html>
     async function saveCurrentVendorContact() {
       const vendorName = vendorNameInput.value.trim();
       const email = recipientEmailInput.value.trim();
+      const vendorType = vendorTypeSelect.value || "purchase";
       if (!vendorName || !email) {
         notice.textContent = "업체명과 받는 업체 메일을 입력해주세요.";
         return;
@@ -6794,13 +6808,13 @@ HTML = r"""<!doctype html>
         const response = await fetch("/api/vendor-contact", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ vendor_name: vendorName, email }),
+          body: JSON.stringify({ vendor_type: vendorType, vendor_name: vendorName, email }),
         });
         const data = await response.json();
         if (!response.ok) throw new Error(data.error || "업체 메일 저장에 실패했습니다.");
         vendorContacts = data.contacts || [];
         renderVendorContacts();
-        vendorContactSelect.value = vendorName;
+        vendorContactSelect.value = `${vendorType}::${vendorName}`;
         notice.textContent = "업체 메일 주소를 저장했습니다.";
       } catch (error) {
         notice.textContent = error.message;
@@ -6835,9 +6849,11 @@ HTML = r"""<!doctype html>
 
     function collectCsPayload() {
       return {
+        case_id: activeCsCaseId,
         naver_email: naverEmailInput.value.trim(),
         naver_password: naverPasswordInput.value,
         save_credentials: saveMailCredentials.checked,
+        vendor_type: vendorTypeSelect.value || "purchase",
         recipient_email: recipientEmailInput.value.trim(),
         vendor_name: vendorNameInput.value.trim(),
         cs_origin: csOriginInput.value.trim(),
@@ -9072,7 +9088,8 @@ HTML = r"""<!doctype html>
       saveMailCredentials.checked = true;
       vendorContactSelect.value = "";
       vendorContactsFileInput.value = "";
-      vendorContactsDropMain.textContent = "업체명/메일주소 엑셀을 선택해주세요.";
+      vendorContactsDropMain.textContent = "업체구분/업체명/메일주소 엑셀을 선택해주세요.";
+      vendorTypeSelect.value = "purchase";
       recipientEmailInput.value = "";
       vendorNameInput.value = "";
       csOriginInput.value = "";
@@ -9084,6 +9101,7 @@ HTML = r"""<!doctype html>
       csContentInput.value = "";
       csSubjectInput.value = defaultCsSubject();
       refreshCsBody();
+      activeCsCaseId = "";
     }
 
     function openLedgerCsPopup() {
@@ -9392,6 +9410,33 @@ HTML = r"""<!doctype html>
       }
     }
 
+    async function openVendorCsMailPrompt(prompt) {
+      if (!prompt?.enabled) return;
+      const payload = prompt.payload || {};
+      openModal("cs");
+      await loadMailSettings();
+      await loadVendorContacts();
+      activeCsCaseId = String(prompt.case_id || payload.case_id || "");
+      vendorTypeSelect.value = payload.vendor_type || "purchase";
+      vendorNameInput.value = payload.vendor_name || prompt.vendor_name || "";
+      recipientEmailInput.value = payload.recipient_email || prompt.recipient_email || "";
+      csOriginInput.value = payload.cs_origin || "";
+      csProductInput.value = payload.cs_product || "";
+      csReceiverInput.value = payload.cs_receiver || "";
+      csPhoneInput.value = payload.cs_phone || "";
+      csAddressInput.value = payload.cs_address || "";
+      csTypeInput.value = payload.cs_type || "";
+      csContentInput.value = payload.cs_content || "";
+      csSubjectInput.value = payload.subject || defaultCsSubject(vendorNameInput.value.trim());
+      csBodyInput.value = payload.body || defaultCsBody();
+      vendorContactSelect.value = `${vendorTypeSelect.value}::${vendorNameInput.value}`;
+      if (!recipientEmailInput.value.trim()) {
+        notice.textContent = "매입처 메일 주소가 없습니다. 주소록 업로드 또는 직접 입력 후 발송해주세요.";
+      } else {
+        notice.textContent = "매입처 CS 요청 메일 내용을 확인한 뒤 전송해주세요.";
+      }
+    }
+
     async function receiveManagementCs(button) {
       const row = button.closest("tr");
       if (!row) return;
@@ -9414,6 +9459,7 @@ HTML = r"""<!doctype html>
         if (!response.ok) throw new Error(data.error || "CS 처리대장 접수에 실패했습니다.");
         notice.textContent = data.message || "CS 처리대장에 접수했습니다.";
         showWorkspace("ledger");
+        if (data.mail_prompt?.enabled) await openVendorCsMailPrompt(data.mail_prompt);
       } catch (error) {
         notice.textContent = error.message;
       } finally {
@@ -9876,7 +9922,8 @@ HTML = r"""<!doctype html>
       saveMailCredentials.checked = true;
       vendorContactSelect.value = "";
       vendorContactsFileInput.value = "";
-      vendorContactsDropMain.textContent = "업체명/메일주소 엑셀을 선택해주세요.";
+      vendorContactsDropMain.textContent = "업체구분/업체명/메일주소 엑셀을 선택해주세요.";
+      vendorTypeSelect.value = "purchase";
       recipientEmailInput.value = "";
       vendorNameInput.value = "";
       csOriginInput.value = "";
@@ -9888,6 +9935,7 @@ HTML = r"""<!doctype html>
       csContentInput.value = "";
       csSubjectInput.value = defaultCsSubject();
       refreshCsBody();
+      activeCsCaseId = "";
       resetProductRows();
       notice.textContent = "";
       dropMain.textContent = "파일을 선택하거나 여기에 올려주세요.";
@@ -10928,7 +10976,7 @@ HTML = r"""<!doctype html>
       document.querySelector("label[for='vendorContactsFileInput']"),
       vendorContactsFileInput,
       vendorContactsDropMain,
-      "업체명/메일주소 엑셀을 선택해주세요."
+      "업체구분/업체명/메일주소 엑셀을 선택해주세요."
     );
     document.querySelector("#addProductRow").addEventListener("click", () => addProductRow());
     noticeSaveButton.addEventListener("click", () => {
@@ -11170,6 +11218,7 @@ HTML = r"""<!doctype html>
           const data = await response.json();
           if (!response.ok) throw new Error(data.error || "메일 전송에 실패했습니다.");
           notice.textContent = data.message || "메일 전송이 완료되었습니다.";
+          activeCsCaseId = "";
           await loadCsCases();
         } else if (currentMode === "vehicle") {
           const payload = collectVehiclePayload();
@@ -12243,6 +12292,23 @@ def connect_db() -> sqlite3.Connection:
     return connection
 
 
+def normalize_vendor_type(value: object) -> str:
+    text = re.sub(r"[\s/_-]+", "", str(value or "").strip().lower())
+    if text in {"매출", "매출처", "매출거래처", "판매처", "sales", "seller", "customer"}:
+        return "sales"
+    return "purchase"
+
+
+def vendor_type_label(vendor_type: object) -> str:
+    return "매출처" if normalize_vendor_type(vendor_type) == "sales" else "매입처"
+
+
+def normalize_company_key(value: object) -> str:
+    text = str(value or "").strip().lower()
+    text = re.sub(r"\(주\)|㈜|주식회사|[\s\(\)\[\]{}./_-]+", "", text)
+    return text
+
+
 def init_db() -> None:
     connection = connect_db()
     try:
@@ -12484,6 +12550,43 @@ def init_db() -> None:
         connection.execute("CREATE INDEX IF NOT EXISTS idx_cs_cases_original_invoice ON cs_cases(original_invoice)")
         connection.execute("CREATE INDEX IF NOT EXISTS idx_cs_cases_receiver_phone ON cs_cases(receiver_phone)")
         connection.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_cs_cases_source ON cs_cases(source_file, source_sheet, source_row)")
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS vendor_contacts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                vendor_type TEXT NOT NULL DEFAULT 'purchase',
+                vendor_name TEXT NOT NULL,
+                email TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                UNIQUE(vendor_type, vendor_name)
+            )
+            """
+        )
+        connection.execute("CREATE INDEX IF NOT EXISTS idx_vendor_contacts_name ON vendor_contacts(vendor_name)")
+        if VENDOR_CONTACTS_PATH.exists():
+            existing_count = connection.execute("SELECT COUNT(*) AS count FROM vendor_contacts").fetchone()["count"]
+            if int(existing_count or 0) == 0:
+                try:
+                    raw_contacts = json.loads(VENDOR_CONTACTS_PATH.read_text(encoding="utf-8"))
+                except (OSError, json.JSONDecodeError):
+                    raw_contacts = []
+                if isinstance(raw_contacts, list):
+                    for raw in raw_contacts:
+                        if not isinstance(raw, dict):
+                            continue
+                        vendor_name = str(raw.get("vendor_name", "")).strip()
+                        email = str(raw.get("email", "")).strip()
+                        vendor_type = normalize_vendor_type(str(raw.get("vendor_type", "") or "purchase"))
+                        if vendor_name and email and "@" in email:
+                            connection.execute(
+                                """
+                                INSERT OR IGNORE INTO vendor_contacts
+                                    (vendor_type, vendor_name, email, created_at, updated_at)
+                                VALUES (?, ?, ?, ?, ?)
+                                """,
+                                (vendor_type, vendor_name, email, now, now),
+                            )
         connection.execute(
             """
             CREATE TABLE IF NOT EXISTS management_records (
@@ -15437,67 +15540,98 @@ def save_mail_settings(naver_email: str, naver_password: str | None = None) -> N
     MAIL_SETTINGS_PATH.write_text(json.dumps(settings, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
-def load_vendor_contacts() -> list[dict[str, str]]:
-    if not VENDOR_CONTACTS_PATH.exists():
-        return []
+def contact_from_row(row: sqlite3.Row) -> dict[str, str]:
+    vendor_type = normalize_vendor_type(row["vendor_type"])
+    return {
+        "vendor_type": vendor_type,
+        "vendor_type_label": vendor_type_label(vendor_type),
+        "vendor_name": str(row["vendor_name"] or ""),
+        "email": str(row["email"] or ""),
+    }
+
+
+def load_vendor_contacts(vendor_type: str = "") -> list[dict[str, str]]:
+    init_db()
+    normalized_type = normalize_vendor_type(vendor_type) if vendor_type else ""
+    connection = connect_db()
     try:
-        raw_contacts = json.loads(VENDOR_CONTACTS_PATH.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return []
-    contacts: list[dict[str, str]] = []
-    if isinstance(raw_contacts, list):
-        for raw in raw_contacts:
-            if not isinstance(raw, dict):
-                continue
-            vendor_name = str(raw.get("vendor_name", "")).strip()
-            email = str(raw.get("email", "")).strip()
-            if vendor_name and email:
-                contacts.append({"vendor_name": vendor_name, "email": email})
-    return sorted(contacts, key=lambda item: item["vendor_name"])
+        if normalized_type:
+            rows = connection.execute(
+                """
+                SELECT vendor_type, vendor_name, email
+                  FROM vendor_contacts
+                 WHERE vendor_type = ?
+                 ORDER BY vendor_type, vendor_name
+                """,
+                (normalized_type,),
+            ).fetchall()
+        else:
+            rows = connection.execute(
+                """
+                SELECT vendor_type, vendor_name, email
+                  FROM vendor_contacts
+                 ORDER BY vendor_type, vendor_name
+                """
+            ).fetchall()
+    finally:
+        connection.close()
+    return [contact_from_row(row) for row in rows]
 
 
-def save_vendor_contact(vendor_name: str, email: str) -> list[dict[str, str]]:
+def save_vendor_contact(vendor_name: str, email: str, vendor_type: str = "purchase") -> list[dict[str, str]]:
     vendor_name = vendor_name.strip()
     email = email.strip()
+    vendor_type = normalize_vendor_type(vendor_type)
     if not vendor_name:
         raise ValueError("업체명을 입력해주세요.")
     if not email or "@" not in email:
         raise ValueError("업체 메일주소를 올바르게 입력해주세요.")
 
-    contacts = load_vendor_contacts()
-    replaced = False
-    for contact in contacts:
-        if contact["vendor_name"] == vendor_name:
-            contact["email"] = email
-            replaced = True
-            break
-    if not replaced:
-        contacts.append({"vendor_name": vendor_name, "email": email})
-    contacts = sorted(contacts, key=lambda item: item["vendor_name"])
-    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-    VENDOR_CONTACTS_PATH.write_text(json.dumps(contacts, ensure_ascii=False, indent=2), encoding="utf-8")
-    return contacts
+    init_db()
+    timestamp = now_text()
+    connection = connect_db()
+    try:
+        connection.execute(
+            """
+            INSERT INTO vendor_contacts (vendor_type, vendor_name, email, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(vendor_type, vendor_name)
+            DO UPDATE SET email = excluded.email, updated_at = excluded.updated_at
+            """,
+            (vendor_type, vendor_name, email, timestamp, timestamp),
+        )
+        connection.commit()
+    finally:
+        connection.close()
+    return load_vendor_contacts()
 
 
 def save_vendor_contacts_bulk(new_contacts: list[dict[str, str]]) -> tuple[list[dict[str, str]], int]:
-    contacts_by_name = {contact["vendor_name"]: contact["email"] for contact in load_vendor_contacts()}
+    init_db()
+    timestamp = now_text()
     saved_count = 0
-    for contact in new_contacts:
-        vendor_name = str(contact.get("vendor_name", "")).strip()
-        email = str(contact.get("email", "")).strip()
-        if not vendor_name or not email or "@" not in email:
-            continue
-        contacts_by_name[vendor_name] = email
-        saved_count += 1
-
-    contacts = [
-        {"vendor_name": vendor_name, "email": email}
-        for vendor_name, email in contacts_by_name.items()
-    ]
-    contacts = sorted(contacts, key=lambda item: item["vendor_name"])
-    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-    VENDOR_CONTACTS_PATH.write_text(json.dumps(contacts, ensure_ascii=False, indent=2), encoding="utf-8")
-    return contacts, saved_count
+    connection = connect_db()
+    try:
+        for contact in new_contacts:
+            vendor_name = str(contact.get("vendor_name", "")).strip()
+            email = str(contact.get("email", "")).strip()
+            vendor_type = normalize_vendor_type(contact.get("vendor_type", "purchase"))
+            if not vendor_name or not email or "@" not in email:
+                continue
+            connection.execute(
+                """
+                INSERT INTO vendor_contacts (vendor_type, vendor_name, email, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(vendor_type, vendor_name)
+                DO UPDATE SET email = excluded.email, updated_at = excluded.updated_at
+                """,
+                (vendor_type, vendor_name, email, timestamp, timestamp),
+            )
+            saved_count += 1
+        connection.commit()
+    finally:
+        connection.close()
+    return load_vendor_contacts(), saved_count
 
 
 def header_text(value: object) -> str:
@@ -15512,27 +15646,200 @@ def import_vendor_contacts_from_workbook(path: Path) -> tuple[list[dict[str, str
         raise ValueError("업체 메일 주소록 엑셀에 데이터가 없습니다.")
 
     header = [header_text(value) for value in rows[0]]
-    vendor_headers = {"업체명", "거래처명", "회사명", "업체", "거래처"}
+    vendor_headers = {"업체명", "거래처명", "회사명", "업체", "거래처", "vendor", "vendorname", "vendor_name", "company", "companyname"}
     email_headers = {"메일", "메일주소", "이메일", "email", "e-mail", "emailaddress"}
+    type_headers = {"구분", "업체구분", "거래처구분", "유형", "분류", "매입매출", "매입/매출", "type", "vendortype", "vendor_type", "category"}
     vendor_idx = next((idx for idx, value in enumerate(header) if value in vendor_headers), None)
     email_idx = next((idx for idx, value in enumerate(header) if value in email_headers), None)
+    type_idx = next((idx for idx, value in enumerate(header) if value in type_headers), None)
 
     data_rows = rows[1:] if vendor_idx is not None and email_idx is not None else rows
     if vendor_idx is None or email_idx is None:
         vendor_idx = 0
         email_idx = 1
+        type_idx = None
 
     imported: list[dict[str, str]] = []
     for row in data_rows:
         vendor_name = str(row[vendor_idx] or "").strip() if len(row) > vendor_idx else ""
         email = str(row[email_idx] or "").strip() if len(row) > email_idx else ""
+        vendor_type = normalize_vendor_type(row[type_idx]) if type_idx is not None and len(row) > type_idx else "purchase"
         if vendor_name and email and "@" in email:
-            imported.append({"vendor_name": vendor_name, "email": email})
+            imported.append({"vendor_type": vendor_type, "vendor_name": vendor_name, "email": email})
 
     if not imported:
         raise ValueError("저장할 업체명/메일주소를 찾지 못했습니다. 엑셀에 업체명과 메일주소 열을 넣어주세요.")
 
     return save_vendor_contacts_bulk(imported)
+
+
+def find_vendor_contact(vendor_name: str, vendor_type: str = "purchase") -> dict[str, str] | None:
+    init_db()
+    vendor_name = str(vendor_name or "").strip()
+    if not vendor_name:
+        return None
+    normalized_type = normalize_vendor_type(vendor_type)
+    connection = connect_db()
+    try:
+        row = connection.execute(
+            """
+            SELECT vendor_type, vendor_name, email
+              FROM vendor_contacts
+             WHERE vendor_type = ? AND vendor_name = ?
+            """,
+            (normalized_type, vendor_name),
+        ).fetchone()
+        if row:
+            return contact_from_row(row)
+        target_key = normalize_company_key(vendor_name)
+        for candidate in connection.execute(
+            """
+            SELECT vendor_type, vendor_name, email
+              FROM vendor_contacts
+             WHERE vendor_type = ?
+            """,
+            (normalized_type,),
+        ).fetchall():
+            if normalize_company_key(candidate["vendor_name"]) == target_key:
+                return contact_from_row(candidate)
+    finally:
+        connection.close()
+    return None
+
+
+def is_purchase_vendor_cs_target(vendor_name: str) -> bool:
+    key = normalize_company_key(vendor_name)
+    if not key:
+        return False
+    if "소일브릿지" in key and "본사" in key:
+        return False
+    return True
+
+
+def get_cs_case(case_id: int) -> dict[str, str | int] | None:
+    init_db()
+    connection = connect_db()
+    try:
+        row = connection.execute(
+            """
+            SELECT id, created_at, updated_at, status, vendor_name, vendor_email,
+                   original_info, original_invoice, product_name, orderer_name, orderer_phone, receiver_name,
+                   receiver_phone, receiver_address, cs_type, cs_content, return_invoice,
+                   reship_invoice, mail_subject, mail_body, mail_sent_at, occurred_at, completed_at, order_date,
+                   ship_date, sales_vendor, purchase_vendor, courier, quantity
+              FROM cs_cases
+             WHERE id = ?
+            """,
+            (case_id,),
+        ).fetchone()
+    finally:
+        connection.close()
+    return dict(row) if row else None
+
+
+def default_vendor_cs_subject(vendor_name: str) -> str:
+    return f"[CS 요청] {vendor_name + ' ' if vendor_name else ''}확인 부탁드립니다"
+
+
+def default_vendor_cs_body(case: dict[str, object]) -> str:
+    return (
+        "안녕하세요. (주)소일브릿지 입니다.\n\n"
+        f"- 원출고일 및 원송장번호 : {case.get('original_info') or ''}\n\n"
+        f"- 상품명 : {case.get('product_name') or ''}\n\n"
+        f"- 수령인 : {case.get('receiver_name') or ''}\n\n"
+        f"- 수령인 연락처 : {case.get('receiver_phone') or ''}\n\n"
+        f"- 수령인 주소 : {case.get('receiver_address') or ''}\n\n"
+        f"- CS내용 : {case.get('cs_content') or case.get('cs_type') or ''}\n\n"
+        "CS건을 보내드립니다.\n\n"
+        "입고 접수 후 일주일 이상 회신 없을 경우 자체 환불 및 정산 반영 예정이오니 처리 결과 회신 부탁드립니다.\n"
+    )
+
+
+def vendor_cs_mail_prompt(case: dict[str, object] | None) -> dict[str, object]:
+    if not case:
+        return {"enabled": False}
+    vendor_name = str(case.get("purchase_vendor") or case.get("vendor_name") or "").strip()
+    if not is_purchase_vendor_cs_target(vendor_name):
+        return {"enabled": False}
+    contact = find_vendor_contact(vendor_name, "purchase")
+    recipient_email = contact["email"] if contact else ""
+    payload = {
+        "case_id": str(case.get("id") or ""),
+        "vendor_type": "purchase",
+        "vendor_name": vendor_name,
+        "recipient_email": recipient_email,
+        "cs_origin": str(case.get("original_info") or ""),
+        "original_invoice": str(case.get("original_invoice") or ""),
+        "cs_product": str(case.get("product_name") or ""),
+        "cs_receiver": str(case.get("receiver_name") or ""),
+        "cs_phone": str(case.get("receiver_phone") or ""),
+        "cs_address": str(case.get("receiver_address") or ""),
+        "cs_type": str(case.get("cs_type") or ""),
+        "cs_content": str(case.get("cs_content") or ""),
+        "subject": default_vendor_cs_subject(vendor_name),
+        "body": default_vendor_cs_body(case),
+    }
+    return {
+        "enabled": True,
+        "case_id": case.get("id") or "",
+        "vendor_name": vendor_name,
+        "recipient_email": recipient_email,
+        "missing_email": not bool(recipient_email),
+        "payload": payload,
+    }
+
+
+def mark_cs_case_mail_sent(case_id: int, payload: dict) -> None:
+    if not case_id:
+        raise ValueError("메일 발송 처리할 CS건 ID가 없습니다.")
+    init_db()
+    case = cs_case_from_payload(payload, status="메일발송", mail_sent=True)
+    connection = connect_db()
+    try:
+        cursor = connection.execute(
+            """
+            UPDATE cs_cases
+               SET status = ?,
+                   vendor_name = COALESCE(NULLIF(?, ''), vendor_name),
+                   vendor_email = COALESCE(NULLIF(?, ''), vendor_email),
+                   original_info = COALESCE(NULLIF(?, ''), original_info),
+                   original_invoice = COALESCE(NULLIF(?, ''), original_invoice),
+                   product_name = COALESCE(NULLIF(?, ''), product_name),
+                   receiver_name = COALESCE(NULLIF(?, ''), receiver_name),
+                   receiver_phone = COALESCE(NULLIF(?, ''), receiver_phone),
+                   receiver_address = COALESCE(NULLIF(?, ''), receiver_address),
+                   cs_type = COALESCE(NULLIF(?, ''), cs_type),
+                   cs_content = COALESCE(NULLIF(?, ''), cs_content),
+                   mail_subject = ?,
+                   mail_body = ?,
+                   mail_sent_at = ?,
+                   updated_at = ?
+             WHERE id = ?
+            """,
+            [
+                case["status"],
+                case["vendor_name"],
+                case["vendor_email"],
+                case["original_info"],
+                case["original_invoice"],
+                case["product_name"],
+                case["receiver_name"],
+                case["receiver_phone"],
+                case["receiver_address"],
+                case["cs_type"],
+                case["cs_content"],
+                case["mail_subject"],
+                case["mail_body"],
+                case["mail_sent_at"],
+                now_text(),
+                case_id,
+            ],
+        )
+        connection.commit()
+        if cursor.rowcount == 0:
+            raise ValueError("메일 발송 처리할 CS건을 찾지 못했습니다.")
+    finally:
+        connection.close()
 
 
 def send_cs_mail(payload: dict) -> None:
@@ -16236,7 +16543,11 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                     return
                 payload = parse_json_body(self.headers, self.rfile)
                 send_cs_mail(payload)
-                case_id = save_cs_case(payload, status="메일발송", mail_sent=True)
+                case_id = int(payload.get("case_id") or 0)
+                if case_id:
+                    mark_cs_case_mail_sent(case_id, payload)
+                else:
+                    case_id = save_cs_case(payload, status="메일발송", mail_sent=True)
                 self.send_json({"message": "CS 요청 메일 전송 및 DB 저장이 완료되었습니다.", "case_id": case_id})
                 return
 
@@ -16300,7 +16611,13 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                 if not record_id:
                     raise ValueError("CS접수할 통합관리대장 행 ID가 없습니다.")
                 case_id = create_cs_case_from_management(record_id)
-                self.send_json({"message": "CS 처리대장에 접수했습니다.", "case_id": case_id})
+                case = get_cs_case(case_id)
+                self.send_json({
+                    "message": "CS 처리대장에 접수했습니다.",
+                    "case_id": case_id,
+                    "case": case,
+                    "mail_prompt": vendor_cs_mail_prompt(case),
+                })
                 return
 
             if route_path == "/api/import-shipment-save":
@@ -16360,6 +16677,7 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                 contacts = save_vendor_contact(
                     str(payload.get("vendor_name", "")),
                     str(payload.get("email", "")),
+                    str(payload.get("vendor_type", "purchase")),
                 )
                 self.send_json({"message": "업체 메일 주소를 저장했습니다.", "contacts": contacts})
                 return
