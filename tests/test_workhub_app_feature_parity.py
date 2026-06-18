@@ -168,7 +168,15 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
             self.assertIn('stockNoticeFields.style.display = "block"', html_source)
             self.assertIn('"/api/mail-send"', html_source)
             self.assertIn('send_general_mail(payload)', html_source)
+            self.assertEqual(1, html_source.count("function defaultStockNoticeBody()"))
+            self.assertIn('} else if (mode === "cs") {', html_source)
+            self.assertIn('} else if (mode === "mail-stock") {', html_source)
+            self.assertNotIn('mode === "cs" || mode === "mail-stock"', html_source)
             self.assertNotIn('currentMode === "cs" || currentMode === "mail-stock"', html_source)
+            self.assertNotIn("제품 입고 및 품절 안내드립니다", html_source)
+            self.assertNotIn("안내 내용", html_source)
+            self.assertNotIn("확인 후 관련 일정", html_source)
+            self.assertNotIn("csBodyInput.value = defaultStockNoticeBody();", html_source)
 
     def test_vendor_contact_upload_is_managed_from_admin_workspace(self) -> None:
         for app_file in (

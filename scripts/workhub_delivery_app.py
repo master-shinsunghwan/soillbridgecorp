@@ -6597,43 +6597,6 @@ HTML = r"""<!doctype html>
       return `안녕하세요. (주)소일브릿지 입니다.\n\n\n\n- 원출고일  및 원송장번호 : ${csOriginInput.value.trim()}\n\n\n\n- 상품명 : ${csProductInput.value.trim()} \n\n- 수령인 : ${csReceiverInput.value.trim()}\n\n- 수령인 연락처 : ${csPhoneInput.value.trim()}\n\n- 수령인 주소 : ${csAddressInput.value.trim()}\n\n\n\n- CS내용 : ${csContentInput.value.trim()}\n\n \n\nCS건을 보내드립니다.\n\n \n\n★반품 접수 후 일주일 이상 회신 없으실 경우 자체 환불 및 정산 반영 예정이오니, 처리 결과 꼭 회신 부탁드립니다.\n\n `;
     }
 
-    function defaultStockNoticeBody() {
-      return `안녕하세요. (주)소일브릿지 입니다.
-
-제품 입고 및 품절 현황 안내드립니다.
-
-■ 기준일자: ${stockNoticeDateInput?.value || ""}
-
-■ 제품 입고 안내
-
-▶품명(모델명) : ${stockInboundProductInput?.value.trim() || ""}
-
-▶입고 일정 : ${stockInboundScheduleInput?.value.trim() || ""}
-
-▶출고 가능 일정 : ${stockOutboundAvailableInput?.value.trim() || ""}
-
-▶특이사항 : ${stockInboundNoteInput?.value.trim() || ""}
-
-■ 제품 일시 품절(단종) 안내
-
-▶품명(모델명) : ${stockSoldoutProductInput?.value.trim() || ""}
-
-▶출고 불가 일정 : ${stockOutboundBlockedInput?.value.trim() || ""}
-
-▶재입고 일정 : ${stockRestockScheduleInput?.value.trim() || ""}
-
-▶특이사항 : ${stockSoldoutNoteInput?.value.trim() || ""}
-
-업무 진행 시 참고 부탁드리며, 확인이 필요한 내용이 있으시면 회신 부탁드립니다.
-
-감사합니다.
-
-(주)소일브릿지
-담당자: ${stockManagerNameInput?.value.trim() || ""}
-연락처: ${stockManagerPhoneInput?.value.trim() || ""}
-이메일: ${stockSenderEmailInput?.value.trim() || ""}`;
-    }
-
     function refreshCsBody() {
       csBodyInput.value = defaultCsBody();
     }
@@ -10124,26 +10087,15 @@ HTML = r"""<!doctype html>
         messagePlaceholder.style.display = "none";
         fileInput.required = false;
         templateInput.required = false;
-      } else if (mode === "cs" || mode === "mail-stock") {
-        modalTitle.textContent = mode === "mail-stock" ? "입고 및 품절 공지" : "업체 CS 요청";
-        submitButton.textContent = mode === "mail-stock" ? "공지 메일 발송" : "메일 전송";
+      } else if (mode === "cs") {
+        modalTitle.textContent = "업체 CS 요청";
+        submitButton.textContent = "메일 전송";
         submitButton.className = "btn primary";
-        if (mode === "mail-stock") {
-          csSubjectInput.value = "입고 및 품절 공지";
-          csBodyInput.value = defaultStockNoticeBody();
-        }
         deliveryOptions.style.display = "none";
         templateUpload.style.display = "none";
         vehicleFields.style.display = "none";
         csFields.style.display = "block";
         if (stockNoticeFields) stockNoticeFields.style.display = "none";
-        if (mode === "mail-stock") {
-          modalTitle.textContent = "입고 및 품절 공지";
-          submitButton.textContent = "공지 메일 발송";
-          csFields.style.display = "none";
-          stockNoticeFields.style.display = "block";
-          refreshStockNoticeBody();
-        }
         ledgerFields.style.display = "none";
         managementFields.style.display = "none";
         messagePlaceholder.style.display = "none";
@@ -10151,6 +10103,22 @@ HTML = r"""<!doctype html>
         templateInput.required = false;
         loadVendorContacts();
         loadCsCases();
+      } else if (mode === "mail-stock") {
+        modalTitle.textContent = "입고 및 품절 공지";
+        submitButton.textContent = "공지 메일 발송";
+        submitButton.className = "btn primary";
+        deliveryOptions.style.display = "none";
+        templateUpload.style.display = "none";
+        vehicleFields.style.display = "none";
+        csFields.style.display = "none";
+        stockNoticeFields.style.display = "block";
+        ledgerFields.style.display = "none";
+        managementFields.style.display = "none";
+        messagePlaceholder.style.display = "none";
+        fileInput.required = false;
+        templateInput.required = false;
+        refreshStockNoticeBody();
+        loadVendorContacts();
       } else if (mode.startsWith("mail-")) {
         submitButton.textContent = "닫기";
         submitButton.className = "btn";
