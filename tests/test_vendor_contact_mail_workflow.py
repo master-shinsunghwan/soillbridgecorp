@@ -126,5 +126,38 @@ class VendorContactMailWorkflowTests(unittest.TestCase):
             self.assertEqual(prompt["payload"]["cs_product"], "테스트 상품")
 
 
+    def test_mail_settings_store_bulk_mail_technical_defaults(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            app = load_app(Path(directory))
+
+            app.save_mail_settings(
+                "soilbridge@naver.com",
+                "application-password",
+                bulk_settings={
+                    "smtp_port": "587",
+                    "smtp_security": "tls",
+                    "bulk_batch_size": "35",
+                    "bulk_send_interval_seconds": "20",
+                    "bulk_batch_pause_minutes": "7",
+                    "bulk_test_recipient": "test@example.com",
+                },
+            )
+
+            public_settings = app.load_mail_settings(include_password=False)
+            self.assertEqual(public_settings["naver_email"], "soilbridge@naver.com")
+            self.assertTrue(public_settings["has_password"])
+            self.assertEqual(public_settings["smtp_host"], "smtp.naver.com")
+            self.assertEqual(public_settings["smtp_port"], 587)
+            self.assertEqual(public_settings["smtp_security"], "tls")
+            self.assertEqual(public_settings["bulk_batch_size"], 35)
+            self.assertEqual(public_settings["bulk_send_interval_seconds"], 20)
+            self.assertEqual(public_settings["bulk_batch_pause_minutes"], 7)
+            self.assertEqual(public_settings["bulk_test_recipient"], "test@example.com")
+            self.assertNotIn("naver_password", public_settings)
+
+            private_settings = app.load_mail_settings(include_password=True)
+            self.assertEqual(private_settings["naver_password"], "application-password")
+
+
 if __name__ == "__main__":
     unittest.main()

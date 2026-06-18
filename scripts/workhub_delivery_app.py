@@ -86,6 +86,15 @@ LOTTE_TEMPLATE = ROOT / "templates" / "lotte_order_form_template.xlsx"
 MANAGEMENT_EXPORT_TEMPLATE = ROOT / "templates" / "management_ledger_export_template.xlsx"
 NAVER_SMTP_HOST = "smtp.naver.com"
 NAVER_SMTP_PORT = 465
+DEFAULT_MAIL_TECHNICAL_SETTINGS = {
+    "smtp_host": NAVER_SMTP_HOST,
+    "smtp_port": NAVER_SMTP_PORT,
+    "smtp_security": "ssl",
+    "bulk_batch_size": 20,
+    "bulk_send_interval_seconds": 15,
+    "bulk_batch_pause_minutes": 5,
+    "bulk_test_recipient": "",
+}
 SECRET_KEY_PATH = CONFIG_DIR / "secret.key"
 TOKEN_PREFIX_DPAPI = "dpapi:"
 TOKEN_PREFIX_KEY = "key1:"
@@ -5390,6 +5399,15 @@ HTML = r"""<!doctype html>
     const adminSaveMailCredentials = document.querySelector("#adminSaveMailCredentials");
     const adminMailSettingsSave = document.querySelector("#adminMailSettingsSave");
     const adminMailSettingsMessage = document.querySelector("#adminMailSettingsMessage");
+    const adminSmtpPort = document.querySelector("#adminSmtpPort");
+    const adminSmtpSecurity = document.querySelector("#adminSmtpSecurity");
+    const adminBulkBatchSize = document.querySelector("#adminBulkBatchSize");
+    const adminBulkSendInterval = document.querySelector("#adminBulkSendInterval");
+    const adminBulkBatchPause = document.querySelector("#adminBulkBatchPause");
+    const adminBulkTestRecipient = document.querySelector("#adminBulkTestRecipient");
+    const adminMailTechnicalSave = document.querySelector("#adminMailTechnicalSave");
+    const adminMailTestSend = document.querySelector("#adminMailTestSend");
+    const adminMailTechnicalMessage = document.querySelector("#adminMailTechnicalMessage");
     const userAdminPermissionChecks = Array.from(document.querySelectorAll("[data-permission-check]"));
     const leaveRefresh = document.querySelector("#leaveRefresh");
     const leaveTotalDays = document.querySelector("#leaveTotalDays");
@@ -6496,6 +6514,12 @@ HTML = r"""<!doctype html>
           adminNaverPasswordInput.value = "";
           adminNaverPasswordInput.placeholder = data.has_password ? "저장된 비밀번호 사용" : "저장된 비밀번호가 없으면 입력";
         }
+        if (adminSmtpPort) adminSmtpPort.value = String(data.smtp_port || 465);
+        if (adminSmtpSecurity) adminSmtpSecurity.value = data.smtp_security || "ssl";
+        if (adminBulkBatchSize) adminBulkBatchSize.value = data.bulk_batch_size || 20;
+        if (adminBulkSendInterval) adminBulkSendInterval.value = data.bulk_send_interval_seconds || 15;
+        if (adminBulkBatchPause) adminBulkBatchPause.value = data.bulk_batch_pause_minutes ?? 5;
+        if (adminBulkTestRecipient) adminBulkTestRecipient.value = data.bulk_test_recipient || "";
         return data;
       } catch {
         // 저장된 메일 설정이 없어도 다른 화면 사용은 계속 가능합니다.
@@ -6537,6 +6561,73 @@ HTML = r"""<!doctype html>
         adminMailSettingsMessage.textContent = error.message;
       } finally {
         adminMailSettingsSave.disabled = false;
+      }
+    }
+
+    function adminMailTechnicalPayload() {
+      const smtpPort = adminSmtpPort?.value || "465";
+      return {
+        naver_email: adminNaverEmailInput?.value.trim() || "",
+        naver_password: "",
+        save_credentials: false,
+        smtp_port: smtpPort,
+        smtp_security: adminSmtpSecurity?.value || (smtpPort === "587" ? "tls" : "ssl"),
+        bulk_batch_size: adminBulkBatchSize?.value || "20",
+        bulk_send_interval_seconds: adminBulkSendInterval?.value || "15",
+        bulk_batch_pause_minutes: adminBulkBatchPause?.value || "5",
+        bulk_test_recipient: adminBulkTestRecipient?.value.trim() || "",
+      };
+    }
+
+    async function saveAdminMailTechnicalSettings() {
+      if (!adminMailTechnicalSave) return;
+      const payload = adminMailTechnicalPayload();
+      if (!payload.naver_email) {
+        adminMailTechnicalMessage.textContent = "네이버 메일 아이디를 먼저 입력해주세요.";
+        return;
+      }
+      adminMailTechnicalSave.disabled = true;
+      adminMailTechnicalMessage.textContent = "단체메일 기술 설정을 저장하는 중입니다.";
+      try {
+        const response = await fetch("/api/mail-settings", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "단체메일 기술 설정 저장에 실패했습니다.");
+        if (adminSmtpPort) adminSmtpPort.value = String(data.smtp_port || payload.smtp_port);
+        if (adminSmtpSecurity) adminSmtpSecurity.value = data.smtp_security || payload.smtp_security;
+        adminMailTechnicalMessage.textContent = "단체메일 기술 설정을 저장했습니다.";
+      } catch (error) {
+        adminMailTechnicalMessage.textContent = error.message;
+      } finally {
+        adminMailTechnicalSave.disabled = false;
+      }
+    }
+
+    async function sendAdminMailTestMessage() {
+      if (!adminMailTestSend) return;
+      const recipient = adminBulkTestRecipient?.value.trim() || "";
+      if (!recipient) {
+        adminMailTechnicalMessage.textContent = "테스트 수신 메일 주소를 입력해주세요.";
+        return;
+      }
+      adminMailTestSend.disabled = true;
+      adminMailTechnicalMessage.textContent = "테스트 메일을 발송하는 중입니다.";
+      try {
+        const response = await fetch("/api/mail-test", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ recipient_email: recipient }),
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "테스트 메일 발송에 실패했습니다.");
+        adminMailTechnicalMessage.textContent = data.message || "테스트 메일을 발송했습니다.";
+      } catch (error) {
+        adminMailTechnicalMessage.textContent = error.message;
+      } finally {
+        adminMailTestSend.disabled = false;
       }
     }
 
@@ -10809,6 +10900,13 @@ HTML = r"""<!doctype html>
     if (userAdminRefresh) userAdminRefresh.addEventListener("click", loadUserAccounts);
     if (userAdminSave) userAdminSave.addEventListener("click", saveUserAccount);
     if (adminMailSettingsSave) adminMailSettingsSave.addEventListener("click", saveAdminMailSettings);
+    if (adminMailTechnicalSave) adminMailTechnicalSave.addEventListener("click", saveAdminMailTechnicalSettings);
+    if (adminMailTestSend) adminMailTestSend.addEventListener("click", sendAdminMailTestMessage);
+    if (adminSmtpPort) {
+      adminSmtpPort.addEventListener("change", () => {
+        if (adminSmtpSecurity) adminSmtpSecurity.value = adminSmtpPort.value === "587" ? "tls" : "ssl";
+      });
+    }
     if (userAdminRole) userAdminRole.addEventListener("change", syncPermissionChecksForRole);
     if (backupRefresh) backupRefresh.addEventListener("click", loadBackups);
     if (backupCreate) backupCreate.addEventListener("click", createBackupNow);
@@ -11410,6 +11508,38 @@ ADMIN_WORKSPACE_HTML = r"""
                 <button class="workspace-button" type="button" id="adminMailSettingsSave">메일 기본정보 저장</button>
               </div>
               <div class="admin-message" id="adminMailSettingsMessage"></div>
+            </div>
+            <div class="admin-card">
+              <div class="admin-section-title">단체메일 기술 설정</div>
+              <div class="admin-form">
+                <label>SMTP 포트
+                  <select id="adminSmtpPort">
+                    <option value="465">465 - SSL</option>
+                    <option value="587">587 - TLS</option>
+                  </select>
+                </label>
+                <label>보안 방식
+                  <select id="adminSmtpSecurity">
+                    <option value="ssl">SSL</option>
+                    <option value="tls">TLS</option>
+                  </select>
+                </label>
+                <label>묶음 발송 수
+                  <input id="adminBulkBatchSize" type="number" min="1" max="100" value="20" />
+                </label>
+                <label>발송 간격(초)
+                  <input id="adminBulkSendInterval" type="number" min="5" max="600" value="15" />
+                </label>
+                <label>묶음 사이 대기(분)
+                  <input id="adminBulkBatchPause" type="number" min="0" max="120" value="5" />
+                </label>
+                <label>테스트 수신 메일
+                  <input id="adminBulkTestRecipient" type="email" placeholder="예) test@example.com" />
+                </label>
+                <button class="workspace-button" type="button" id="adminMailTechnicalSave">단체메일 기술 설정 저장</button>
+                <button class="workspace-button ghost" type="button" id="adminMailTestSend">테스트 메일 발송</button>
+              </div>
+              <div class="admin-message" id="adminMailTechnicalMessage">테스트 발송은 저장된 네이버 메일 계정으로 1건만 발송합니다.</div>
             </div>
             <div class="admin-card">
               <div class="admin-section-title">업체 메일 주소록</div>
@@ -15264,26 +15394,83 @@ def normalize_naver_email(value: object) -> str:
     return email
 
 
-def load_mail_settings(include_password: bool = False) -> dict[str, str | bool]:
+def clean_int_setting(value: object, default: int, minimum: int, maximum: int) -> int:
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return default
+    return min(max(parsed, minimum), maximum)
+
+
+def normalize_mail_technical_settings(settings: dict | None = None) -> dict[str, str | int]:
+    source = settings or {}
+    smtp_port = clean_int_setting(
+        source.get("smtp_port"),
+        int(DEFAULT_MAIL_TECHNICAL_SETTINGS["smtp_port"]),
+        1,
+        65535,
+    )
+    smtp_security = str(source.get("smtp_security") or "").strip().lower()
+    if smtp_security not in {"ssl", "tls"}:
+        smtp_security = "tls" if smtp_port == 587 else "ssl"
+    if smtp_security == "ssl" and smtp_port not in {465, 587}:
+        smtp_port = 465
+    if smtp_security == "tls" and smtp_port not in {465, 587}:
+        smtp_port = 587
+
+    return {
+        "smtp_host": NAVER_SMTP_HOST,
+        "smtp_port": smtp_port,
+        "smtp_security": smtp_security,
+        "bulk_batch_size": clean_int_setting(
+            source.get("bulk_batch_size"),
+            int(DEFAULT_MAIL_TECHNICAL_SETTINGS["bulk_batch_size"]),
+            1,
+            100,
+        ),
+        "bulk_send_interval_seconds": clean_int_setting(
+            source.get("bulk_send_interval_seconds"),
+            int(DEFAULT_MAIL_TECHNICAL_SETTINGS["bulk_send_interval_seconds"]),
+            5,
+            600,
+        ),
+        "bulk_batch_pause_minutes": clean_int_setting(
+            source.get("bulk_batch_pause_minutes"),
+            int(DEFAULT_MAIL_TECHNICAL_SETTINGS["bulk_batch_pause_minutes"]),
+            0,
+            120,
+        ),
+        "bulk_test_recipient": str(source.get("bulk_test_recipient") or "").strip(),
+    }
+
+
+def load_mail_settings(include_password: bool = False) -> dict[str, str | int | bool]:
+    defaults = normalize_mail_technical_settings(DEFAULT_MAIL_TECHNICAL_SETTINGS)
     if not MAIL_SETTINGS_PATH.exists():
-        return {"naver_email": "", "has_password": False}
+        return {"naver_email": "", "has_password": False, **defaults}
     try:
         settings = json.loads(MAIL_SETTINGS_PATH.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
-        return {"naver_email": "", "has_password": False}
+        return {"naver_email": "", "has_password": False, **defaults}
     password_token = str(settings.get("password_token", ""))
-    loaded: dict[str, str | bool] = {
+    loaded: dict[str, str | int | bool] = {
         "naver_email": str(settings.get("naver_email", "")),
         "has_password": bool(password_token),
+        **normalize_mail_technical_settings(settings),
     }
     if include_password and password_token:
         loaded["naver_password"] = unprotect_text(password_token)
     return loaded
 
 
-def save_mail_settings(naver_email: str, naver_password: str | None = None) -> None:
+def save_mail_settings(
+    naver_email: str,
+    naver_password: str | None = None,
+    bulk_settings: dict | None = None,
+) -> None:
     settings = load_mail_settings(include_password=False)
     settings["naver_email"] = naver_email
+    settings.update(normalize_mail_technical_settings({**settings, **(bulk_settings or {})}))
     if naver_password:
         settings["password_token"] = protect_text(naver_password)
         settings["has_password"] = True
@@ -15623,6 +15810,16 @@ def send_cs_mail(payload: dict) -> None:
 
     if payload.get("save_credentials", True):
         save_mail_settings(naver_email, naver_password)
+    send_naver_mail(
+        naver_email,
+        naver_password,
+        recipient,
+        subject,
+        body,
+        smtp_port=int(saved.get("smtp_port") or NAVER_SMTP_PORT),
+        smtp_security=str(saved.get("smtp_security") or "ssl"),
+    )
+    return
 
     message = EmailMessage()
     message["Subject"] = subject
@@ -15637,6 +15834,59 @@ def send_cs_mail(payload: dict) -> None:
             smtp.send_message(message)
     except smtplib.SMTPAuthenticationError as exc:
         raise ValueError("네이버 메일 로그인에 실패했습니다. 아이디/비밀번호와 네이버 메일 SMTP 사용 설정을 확인해주세요.") from exc
+
+
+def send_naver_mail(
+    naver_email: str,
+    naver_password: str,
+    recipient: str,
+    subject: str,
+    body: str,
+    smtp_port: int = NAVER_SMTP_PORT,
+    smtp_security: str = "ssl",
+) -> None:
+    message = EmailMessage()
+    message["Subject"] = subject
+    message["From"] = formataddr(("(주)소일브릿지", naver_email))
+    message["To"] = recipient
+    message.set_content(body)
+
+    smtp_security = smtp_security if smtp_security in {"ssl", "tls"} else "ssl"
+    context = ssl.create_default_context()
+    try:
+        if smtp_security == "tls":
+            with smtplib.SMTP(NAVER_SMTP_HOST, smtp_port, timeout=20) as smtp:
+                smtp.starttls(context=context)
+                smtp.login(naver_email, naver_password)
+                smtp.send_message(message)
+        else:
+            with smtplib.SMTP_SSL(NAVER_SMTP_HOST, smtp_port, context=context, timeout=20) as smtp:
+                smtp.login(naver_email, naver_password)
+                smtp.send_message(message)
+    except smtplib.SMTPAuthenticationError as exc:
+        raise ValueError("네이버 메일 로그인에 실패했습니다. 아이디/비밀번호와 네이버 메일 SMTP 사용 설정을 확인해주세요.") from exc
+
+
+def send_mail_test(payload: dict) -> None:
+    saved = load_mail_settings(include_password=True)
+    naver_email = normalize_naver_email(saved.get("naver_email"))
+    naver_password = str(saved.get("naver_password", ""))
+    recipient = str(payload.get("recipient_email") or saved.get("bulk_test_recipient") or "").strip()
+    if not naver_email:
+        raise ValueError("네이버 메일 아이디를 입력해주세요.")
+    if not naver_password:
+        raise ValueError("네이버 메일 비밀번호를 입력해주세요.")
+    if not recipient:
+        raise ValueError("테스트 수신 메일 주소를 입력해주세요.")
+    send_naver_mail(
+        naver_email,
+        naver_password,
+        recipient,
+        "[소일브릿지] 네이버 메일 SMTP 테스트",
+        "소일브릿지 업무자동화 프로그램의 네이버 메일 SMTP 테스트 발송입니다.",
+        smtp_port=int(saved.get("smtp_port") or NAVER_SMTP_PORT),
+        smtp_security=str(saved.get("smtp_security") or "ssl"),
+    )
 
 
 class WorkhubHandler(BaseHTTPRequestHandler):
@@ -16319,13 +16569,29 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                 if not naver_email:
                     raise ValueError("네이버 메일 아이디를 입력해주세요.")
                 naver_password = str(payload.get("naver_password") or "") if payload.get("save_credentials", True) else ""
-                save_mail_settings(naver_email, naver_password)
+                save_mail_settings(naver_email, naver_password, bulk_settings=payload)
                 settings = load_mail_settings(include_password=False)
                 self.send_json({
                     "message": "메일 기본정보를 저장했습니다.",
                     "naver_email": settings.get("naver_email", ""),
                     "has_password": settings.get("has_password", False),
+                    "smtp_host": settings.get("smtp_host", NAVER_SMTP_HOST),
+                    "smtp_port": settings.get("smtp_port", NAVER_SMTP_PORT),
+                    "smtp_security": settings.get("smtp_security", "ssl"),
+                    "bulk_batch_size": settings.get("bulk_batch_size", 20),
+                    "bulk_send_interval_seconds": settings.get("bulk_send_interval_seconds", 15),
+                    "bulk_batch_pause_minutes": settings.get("bulk_batch_pause_minutes", 5),
+                    "bulk_test_recipient": settings.get("bulk_test_recipient", ""),
                 })
+                return
+
+            if self.path == "/api/mail-test":
+                if not self.require_admin(user, "메일 테스트 발송"):
+                    return
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(length).decode("utf-8"))
+                send_mail_test(payload)
+                self.send_json({"message": "테스트 메일을 발송했습니다."})
                 return
 
             if self.path == "/api/cs-mail":

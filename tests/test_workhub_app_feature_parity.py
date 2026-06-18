@@ -126,6 +126,25 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
             self.assertNotIn('id="naverPasswordInput"', cs_mail_account_slice)
             self.assertNotIn('id="saveMailCredentials"', cs_mail_account_slice)
 
+    def test_bulk_mail_technical_settings_are_managed_from_admin_workspace(self) -> None:
+        for app_file in (
+            ROOT / "scripts" / "workhub_delivery_app.py",
+            ROOT / "_workhub_zip_inspect" / "scripts" / "workhub_delivery_app.py",
+        ):
+            html_source = app_file.read_text(encoding="utf-8")
+
+            self.assertIn('id="adminSmtpPort"', html_source)
+            self.assertIn('id="adminSmtpSecurity"', html_source)
+            self.assertIn('id="adminBulkBatchSize"', html_source)
+            self.assertIn('id="adminBulkSendInterval"', html_source)
+            self.assertIn('id="adminBulkBatchPause"', html_source)
+            self.assertIn('id="adminBulkTestRecipient"', html_source)
+            self.assertIn('id="adminMailTechnicalSave"', html_source)
+            self.assertIn('id="adminMailTestSend"', html_source)
+            self.assertIn("function saveAdminMailTechnicalSettings()", html_source)
+            self.assertIn("function sendAdminMailTestMessage()", html_source)
+            self.assertIn('"/api/mail-test"', html_source)
+
     def test_vendor_contact_upload_is_managed_from_admin_workspace(self) -> None:
         for app_file in (
             ROOT / "scripts" / "workhub_delivery_app.py",
