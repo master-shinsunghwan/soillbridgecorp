@@ -4765,14 +4765,6 @@ HTML = r"""<!doctype html>
             </select>
           </div>
           <div class="text-field">
-            <label class="field-label">매입처/매출처 업체 메일 주소록 엑셀 업로드</label>
-            <label class="dropzone" for="vendorContactsFileInput">
-              <span class="drop-main" id="vendorContactsDropMain">업체구분/업체명/메일주소 엑셀을 선택해주세요.</span>
-              <span class="drop-sub">헤더 예시: 거래처구분, 업체명, 메일주소</span>
-              <input id="vendorContactsFileInput" name="vendor_contacts" type="file" accept=".xlsx,.xlsm" />
-            </label>
-          </div>
-          <div class="text-field">
             <label class="field-label" for="vendorTypeSelect">업체 구분</label>
             <select id="vendorTypeSelect">
               <option value="purchase">매입처</option>
@@ -6498,9 +6490,10 @@ HTML = r"""<!doctype html>
     }
 
     async function uploadVendorContactsWorkbook() {
+      if (!vendorContactsFileInput) return;
       const file = vendorContactsFileInput.files[0];
       if (!file) return;
-      vendorContactsDropMain.textContent = file.name;
+      if (vendorContactsDropMain) vendorContactsDropMain.textContent = file.name;
       const formData = new FormData();
       formData.append("file", file);
       notice.textContent = "업체 메일 주소록을 저장 중입니다.";
@@ -8675,8 +8668,6 @@ HTML = r"""<!doctype html>
 
     function resetCsFormInputs() {
       vendorContactSelect.value = "";
-      vendorContactsFileInput.value = "";
-      vendorContactsDropMain.textContent = "업체구분/업체명/메일주소 엑셀을 선택해주세요.";
       vendorTypeSelect.value = "purchase";
       recipientEmailInput.value = "";
       vendorNameInput.value = "";
@@ -9503,8 +9494,6 @@ HTML = r"""<!doctype html>
       deliveryPlaceInput.value = "";
       managerInput.value = "";
       vendorContactSelect.value = "";
-      vendorContactsFileInput.value = "";
-      vendorContactsDropMain.textContent = "업체구분/업체명/메일주소 엑셀을 선택해주세요.";
       vendorTypeSelect.value = "purchase";
       recipientEmailInput.value = "";
       vendorNameInput.value = "";
@@ -10472,6 +10461,7 @@ HTML = r"""<!doctype html>
     });
 
     function setupDropzone(dropzone, input, label, fallbackText) {
+      if (!dropzone || !input || !label) return;
       ["dragenter", "dragover"].forEach((eventName) => {
         dropzone.addEventListener(eventName, (event) => {
           event.preventDefault();
@@ -10521,7 +10511,7 @@ HTML = r"""<!doctype html>
     receiptTypeSelect.addEventListener("change", resetProductRows);
     vendorContactSelect.addEventListener("change", applySelectedVendor);
     saveVendorContactButton.addEventListener("click", saveCurrentVendorContact);
-    vendorContactsFileInput.addEventListener("change", uploadVendorContactsWorkbook);
+    if (vendorContactsFileInput) vendorContactsFileInput.addEventListener("change", uploadVendorContactsWorkbook);
     saveCsCaseButton.addEventListener("click", saveCurrentCsCase);
     ledgerRefresh.addEventListener("click", loadLedgerCases);
     ledgerStatusFilter.addEventListener("change", applyLedgerFilters);
@@ -11172,6 +11162,15 @@ ADMIN_WORKSPACE_HTML = r"""
                 <button class="workspace-button" type="button" id="adminMailSettingsSave">메일 기본정보 저장</button>
               </div>
               <div class="admin-message" id="adminMailSettingsMessage"></div>
+            </div>
+            <div class="admin-card">
+              <div class="admin-section-title">업체 메일 주소록</div>
+              <label class="dropzone" for="vendorContactsFileInput">
+                <span class="drop-main" id="vendorContactsDropMain">업체구분/업체명/메일주소 엑셀을 선택해주세요.</span>
+                <span class="drop-sub">헤더 예시: 거래처구분, 업체명, 메일주소</span>
+                <input id="vendorContactsFileInput" name="vendor_contacts" type="file" accept=".xlsx,.xlsm" />
+              </label>
+              <div class="admin-message">매입처/매출처 업체 메일 주소록 엑셀을 업로드하면 DB에 저장됩니다.</div>
             </div>
             <div class="admin-form">
               <input id="userAdminId" type="hidden" />
