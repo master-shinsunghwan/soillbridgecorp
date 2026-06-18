@@ -1378,6 +1378,67 @@ HTML = r"""<!doctype html>
       resize: vertical;
       line-height: 1.45;
     }
+    .vendor-picker-button {
+      width: 100%;
+      min-height: 44px;
+      padding: 0 14px;
+      border: 1px solid #aab2bf;
+      border-radius: 7px;
+      background: #fff;
+      color: #1a2230;
+      font-family: inherit;
+      font-size: 14px;
+      font-weight: 850;
+      text-align: left;
+      cursor: pointer;
+    }
+    .vendor-picker-selected {
+      margin-top: 8px;
+      color: #667085;
+      font-size: 12px;
+      font-weight: 800;
+    }
+    .vendor-picker-tree {
+      margin-top: 10px;
+      max-height: 240px;
+      overflow: auto;
+      border: 1px solid #d8e0ee;
+      border-radius: 8px;
+      background: #fbfcff;
+      padding: 10px;
+    }
+    .vendor-picker-group + .vendor-picker-group { margin-top: 10px; }
+    .vendor-picker-group-title {
+      margin-bottom: 6px;
+      color: #344054;
+      font-size: 12px;
+      font-weight: 950;
+    }
+    .vendor-picker-option {
+      width: 100%;
+      min-height: 36px;
+      margin-top: 4px;
+      padding: 7px 10px;
+      border: 1px solid #e2e8f0;
+      border-radius: 7px;
+      background: #fff;
+      color: #1f2937;
+      font-family: inherit;
+      font-size: 13px;
+      font-weight: 800;
+      text-align: left;
+      cursor: pointer;
+    }
+    .vendor-picker-option:hover {
+      border-color: #93c5fd;
+      background: #eff6ff;
+    }
+    .vendor-picker-empty {
+      padding: 10px;
+      color: #667085;
+      font-size: 13px;
+      font-weight: 800;
+    }
     .product-table {
       margin-top: 12px;
       display: grid;
@@ -4951,25 +5012,13 @@ HTML = r"""<!doctype html>
         </div>
         <div class="stock-notice-fields" id="stockNoticeFields">
           <div class="text-field">
-            <label class="field-label" for="stockVendorContactSelect">업체 선택</label>
-            <select id="stockVendorContactSelect">
-              <option value="">업체를 선택해주세요</option>
-            </select>
-          </div>
-          <div class="text-field">
-            <label class="field-label" for="stockVendorTypeSelect">업체 구분</label>
-            <select id="stockVendorTypeSelect">
-              <option value="purchase">매입처</option>
-              <option value="sales">매출처</option>
-            </select>
-          </div>
-          <div class="text-field">
-            <label class="field-label" for="stockRecipientEmailInput">받는 업체 메일</label>
-            <input id="stockRecipientEmailInput" type="email" placeholder="예) vendor@example.com" />
-          </div>
-          <div class="text-field">
-            <label class="field-label" for="stockVendorNameInput">업체명</label>
-            <input id="stockVendorNameInput" type="text" placeholder="예) 키친쿡" />
+            <label class="field-label" for="stockVendorPickerButton">업체 선택</label>
+            <button class="vendor-picker-button" id="stockVendorPickerButton" type="button">업체를 선택해주세요</button>
+            <div class="vendor-picker-selected" id="stockSelectedVendorLabel">선택된 업체 없음</div>
+            <div class="vendor-picker-tree" id="stockVendorTree" hidden></div>
+            <input id="stockVendorTypeSelect" type="hidden" value="purchase" />
+            <input id="stockRecipientEmailInput" type="hidden" />
+            <input id="stockVendorNameInput" type="hidden" />
           </div>
           <div class="text-field">
             <label class="field-label" for="stockNoticeDateInput">기준일자</label>
@@ -5329,7 +5378,9 @@ HTML = r"""<!doctype html>
     const saveCsCaseButton = document.querySelector("#saveCsCase");
     const csCaseList = document.querySelector("#csCaseList");
     const stockNoticeFields = document.querySelector("#stockNoticeFields");
-    const stockVendorContactSelect = document.querySelector("#stockVendorContactSelect");
+    const stockVendorPickerButton = document.querySelector("#stockVendorPickerButton");
+    const stockVendorTree = document.querySelector("#stockVendorTree");
+    const stockSelectedVendorLabel = document.querySelector("#stockSelectedVendorLabel");
     const stockVendorTypeSelect = document.querySelector("#stockVendorTypeSelect");
     const stockRecipientEmailInput = document.querySelector("#stockRecipientEmailInput");
     const stockVendorNameInput = document.querySelector("#stockVendorNameInput");
@@ -6787,19 +6838,29 @@ HTML = r"""<!doctype html>
     }
 
     function renderStockVendorContacts() {
-      if (!stockVendorContactSelect) return;
-      stockVendorContactSelect.innerHTML = "";
-      const emptyOption = document.createElement("option");
-      emptyOption.value = "";
-      emptyOption.textContent = vendorContacts.length ? "업체를 선택해주세요" : "저장된 업체가 없습니다";
-      stockVendorContactSelect.appendChild(emptyOption);
-
-      vendorContacts.forEach((contact) => {
-        const option = document.createElement("option");
-        option.value = `${contact.vendor_type || "purchase"}::${contact.vendor_name}`;
-        option.textContent = `[${contact.vendor_type_label || "매입처"}] ${contact.vendor_name} / ${contact.email}`;
-        stockVendorContactSelect.appendChild(option);
-      });
+      if (!stockVendorTree) return;
+      if (!vendorContacts.length) {
+        stockVendorTree.innerHTML = '<div class="vendor-picker-empty">저장된 업체 메일 리스트가 없습니다.</div>';
+        return;
+      }
+      const groups = [
+        ["purchase", "매입처"],
+        ["sales", "매출처"],
+      ];
+      stockVendorTree.innerHTML = groups.map(([type, label]) => {
+        const items = vendorContacts.filter((contact) => (contact.vendor_type || "purchase") === type);
+        if (!items.length) return "";
+        return `
+          <div class="vendor-picker-group">
+            <div class="vendor-picker-group-title">${label}</div>
+            ${items.map((contact) => `
+              <button class="vendor-picker-option" type="button" data-stock-vendor-type="${escapeHtml(contact.vendor_type || "purchase")}" data-stock-vendor-name="${escapeHtml(contact.vendor_name)}">
+                ${escapeHtml(contact.vendor_name)} / ${escapeHtml(contact.email)}
+              </button>
+            `).join("")}
+          </div>
+        `;
+      }).join("") || '<div class="vendor-picker-empty">저장된 업체 메일 리스트가 없습니다.</div>';
     }
 
     async function loadVendorContacts() {
@@ -6824,19 +6885,49 @@ HTML = r"""<!doctype html>
       vendorTypeSelect.value = selected.vendor_type || "purchase";
       vendorNameInput.value = selected.vendor_name;
       recipientEmailInput.value = selected.email;
-      csSubjectInput.value = defaultCsSubject(selected.vendor_name);
+      csSubjectInput.value = currentMode === "mail-stock" ? "입고 및 품절 공지" : defaultCsSubject(selected.vendor_name);
     }
 
-    function applySelectedStockVendor() {
-      if (!stockVendorContactSelect) return;
-      const [selectedType, selectedName] = stockVendorContactSelect.value.split("::");
+    function setSelectedStockVendor(selected) {
+      if (!selected) {
+        stockVendorTypeSelect.value = "purchase";
+        stockVendorNameInput.value = "";
+        stockRecipientEmailInput.value = "";
+        if (stockVendorPickerButton) stockVendorPickerButton.textContent = "업체를 선택해주세요";
+        if (stockSelectedVendorLabel) stockSelectedVendorLabel.textContent = "선택된 업체 없음";
+        return;
+      }
+      stockVendorTypeSelect.value = selected.vendor_type || "purchase";
+      stockVendorNameInput.value = selected.vendor_name;
+      stockRecipientEmailInput.value = selected.email;
+      if (stockVendorPickerButton) stockVendorPickerButton.textContent = selected.vendor_name;
+      if (stockSelectedVendorLabel) {
+        const typeLabel = selected.vendor_type_label || (selected.vendor_type === "sales" ? "매출처" : "매입처");
+        stockSelectedVendorLabel.textContent = `[${typeLabel}] ${selected.vendor_name} / ${selected.email}`;
+      }
+    }
+
+    function toggleStockVendorTree() {
+      if (!stockVendorTree) return;
+      stockVendorTree.hidden = !stockVendorTree.hidden;
+    }
+
+    function applySelectedStockVendorFromTree(button) {
+      const selectedType = button?.dataset.stockVendorType || "";
+      const selectedName = button?.dataset.stockVendorName || "";
       const selected = vendorContacts.find((contact) => (
         (contact.vendor_type || "purchase") === selectedType && contact.vendor_name === selectedName
       ));
       if (!selected) return;
-      stockVendorTypeSelect.value = selected.vendor_type || "purchase";
-      stockVendorNameInput.value = selected.vendor_name;
-      stockRecipientEmailInput.value = selected.email;
+      setSelectedStockVendor(selected);
+      if (stockVendorTree) stockVendorTree.hidden = true;
+    }
+
+    function applySelectedStockVendor() {
+      const selected = vendorContacts.find((contact) => (
+        (contact.vendor_type || "purchase") === stockVendorTypeSelect.value && contact.vendor_name === stockVendorNameInput.value
+      ));
+      if (selected) setSelectedStockVendor(selected);
     }
 
     async function saveCurrentVendorContact() {
@@ -9069,10 +9160,8 @@ HTML = r"""<!doctype html>
       csContentInput.value = "";
       csSubjectInput.value = defaultCsSubject();
       refreshCsBody();
-      if (stockVendorContactSelect) stockVendorContactSelect.value = "";
-      if (stockVendorTypeSelect) stockVendorTypeSelect.value = "purchase";
-      if (stockRecipientEmailInput) stockRecipientEmailInput.value = "";
-      if (stockVendorNameInput) stockVendorNameInput.value = "";
+      setSelectedStockVendor(null);
+      if (stockVendorTree) stockVendorTree.hidden = true;
       if (stockNoticeDateInput) stockNoticeDateInput.value = todayString();
       [
         stockInboundProductInput,
@@ -11270,7 +11359,11 @@ HTML = r"""<!doctype html>
     });
     [csOriginInput, csProductInput, csReceiverInput, csPhoneInput, csAddressInput, csContentInput]
       .forEach((input) => input.addEventListener("input", refreshCsBody));
-    stockVendorContactSelect?.addEventListener("change", applySelectedStockVendor);
+    stockVendorPickerButton?.addEventListener("click", toggleStockVendorTree);
+    stockVendorTree?.addEventListener("click", (event) => {
+      const button = event.target.closest("[data-stock-vendor-name]");
+      if (button) applySelectedStockVendorFromTree(button);
+    });
     [
       stockNoticeDateInput,
       stockInboundProductInput,
