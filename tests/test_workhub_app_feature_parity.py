@@ -40,7 +40,7 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
     def test_order_workspace_cards_open_existing_modals(self) -> None:
         html_source = (SCRIPTS / "workhub_delivery_app.py").read_text(encoding="utf-8")
 
-        for mode in ("delivery", "invoice", "lotte", "vehicle"):
+        for mode in ("delivery", "invoice", "lotte", "salesVendor", "vehicle"):
             self.assertIn(f"{mode}: {{", html_source)
 
         self.assertIn("ORDER_MODAL_MODES", html_source)
@@ -49,11 +49,14 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         self.assertIn('data-open="order"', html_source)
         self.assertIn('data-order-card="delivery"', html_source)
         self.assertIn('data-order-execute="delivery"', html_source)
+        self.assertIn('data-order-card="salesVendor"', html_source)
+        self.assertIn('data-order-execute="salesVendor"', html_source)
+        self.assertIn('/api/sales-vendor-summary', html_source)
         self.assertIn('data-icon="📦"', html_source)
         self.assertIn('data-icon="🔎"', html_source)
         self.assertIn('data-icon="▦"', html_source)
         self.assertIn('data-icon="🚚"', html_source)
-        for mode in ("delivery", "invoice", "lotte", "vehicle"):
+        for mode in ("delivery", "invoice", "lotte", "salesVendor", "vehicle"):
             self.assertNotIn(f'data-order-card="{mode}" role="button" tabindex="0"', html_source)
         self.assertNotIn("onclick=\"openOrderModal('delivery')\"", html_source)
         self.assertNotIn("onclick=\"event.stopPropagation();openOrderModal('delivery');\"", html_source)

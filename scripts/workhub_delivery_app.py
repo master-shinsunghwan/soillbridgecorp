@@ -34,6 +34,7 @@ from openpyxl.utils import get_column_letter
 from delivery_text_summary import summarize_workbook
 from invoice_number_exporter import export_invoice_numbers, extract_invoice_rows
 from lotte_order_form_converter import convert_lotte_order_form
+from sales_vendor_summary_converter import convert_sales_vendor_workbook
 from vehicle_receipt_generator import generate_vehicle_receipt
 from workhub_crm import (
     add_crm_task_comment,
@@ -4149,7 +4150,7 @@ HTML = r"""<!doctype html>
           <div class="order-exec-summary">
             <div class="order-exec-kicker">발주업무 실행</div>
             <div class="order-exec-title" id="orderWorkspacePanelTitle">작업을 선택해주세요.</div>
-            <div class="order-exec-description" id="orderWorkspaceDescription">아래 4가지 작업 중 필요한 항목의 실행 버튼을 누르면 기존 드롭/업로드 실행창이 열립니다.</div>
+            <div class="order-exec-description" id="orderWorkspaceDescription">아래 5가지 작업 중 필요한 항목의 실행 버튼을 누르면 기존 드롭/업로드 실행창이 열립니다.</div>
           </div>
           <div class="order-exec-grid" id="orderWorkspaceCards">
             <article class="order-exec-card" data-order-card="delivery">
@@ -4201,6 +4202,23 @@ HTML = r"""<!doctype html>
                 <li>주소일브릿지 원본 엑셀을 선택합니다.</li>
                 <li>엑셀 생성 버튼을 누릅니다.</li>
                 <li>변환된 롯데택배 발주서를 다운로드합니다.</li>
+              </ul>
+            </article>
+            <article class="order-exec-card" data-order-card="salesVendor">
+              <div class="order-exec-card-head">
+                <div>
+                  <div class="order-exec-title-line">
+                    <span class="order-exec-card-icon" aria-hidden="true" data-icon="₩"></span>
+                    <div class="order-exec-title">매입/매출별 테이터 정리(feat. 얼마에요)</div>
+                  </div>
+                  <div class="order-exec-description">주소일브릿지 원본을 매출처별 시트와 매입처 요약 형식으로 정리합니다.</div>
+                </div>
+                <button class="workspace-button" type="button" data-order-execute="salesVendor">실행</button>
+              </div>
+              <ul class="order-exec-steps">
+                <li>주소일브릿지 원본 엑셀을 선택합니다.</li>
+                <li>엑셀 생성 버튼을 누릅니다.</li>
+                <li>매출처별 정리 파일을 다운로드합니다.</li>
               </ul>
             </article>
             <article class="order-exec-card" data-order-card="vehicle">
@@ -9348,6 +9366,21 @@ HTML = r"""<!doctype html>
         fileInput.required = false;
         templateInput.required = false;
         dropSub.textContent = "주소일브릿지 원본을 업로드하면 지정된 롯데택배 발주서 양식으로 출력합니다.";
+      } else if (mode === "salesVendor") {
+        modalTitle.textContent = "매입/매출별 테이터 정리(feat. 얼마에요)";
+        fileLabel.textContent = "주소일브릿지 원본 선택";
+        submitButton.textContent = "엑셀 생성";
+        submitButton.className = "btn primary";
+        deliveryOptions.style.display = "none";
+        templateUpload.style.display = "none";
+        vehicleFields.style.display = "none";
+        csFields.style.display = "none";
+        ledgerFields.style.display = "none";
+        managementFields.style.display = "none";
+        messagePlaceholder.style.display = "none";
+        fileInput.required = false;
+        templateInput.required = false;
+        dropSub.textContent = "주소일브릿지 원본을 업로드하면 매출처별 정리 엑셀을 다운로드합니다.";
       } else if (mode === "vehicle") {
         modalTitle.textContent = "차량인수증 생성";
         submitButton.textContent = "인수증 생성";
@@ -9628,11 +9661,12 @@ HTML = r"""<!doctype html>
       window.setInterval(guardSidebarSearchAutofill, 500);
     }
 
-    const ORDER_MODAL_MODES = new Set(["delivery", "invoice", "lotte", "vehicle"]);
+    const ORDER_MODAL_MODES = new Set(["delivery", "invoice", "lotte", "salesVendor", "vehicle"]);
     const ORDER_MODAL_TITLES = {
       delivery: "개별 택배건 정리",
       invoice: "송장번호 추출",
       lotte: "롯데택배 발주서 변환",
+      salesVendor: "매입/매출별 테이터 정리(feat. 얼마에요)",
       vehicle: "차량인수증",
     };
     const ORDER_WORKFLOWS = {
@@ -9656,6 +9690,13 @@ HTML = r"""<!doctype html>
         action: "롯데택배 발주서 변환 실행",
         note: "지정된 롯데택배 템플릿 형식으로 엑셀이 생성됩니다.",
         steps: ["주소일브릿지 원본 엑셀을 선택합니다.", "엑셀 생성 버튼을 누릅니다.", "변환된 롯데택배 발주서를 다운로드합니다."],
+      },
+      salesVendor: {
+        title: "매입/매출별 테이터 정리(feat. 얼마에요)",
+        description: "주소일브릿지 원본을 매출처별 시트와 매입처 요약 형식으로 정리합니다.",
+        action: "매입/매출별 정리 실행",
+        note: "파일명은 통합관리대장 양식과 같은 날짜 표기 방식으로 생성됩니다.",
+        steps: ["주소일브릿지 원본 엑셀을 선택합니다.", "엑셀 생성 버튼을 누릅니다.", "매출처별 정리 파일을 다운로드합니다."],
       },
       vehicle: {
         title: "차량인수증",
@@ -9682,7 +9723,7 @@ HTML = r"""<!doctype html>
       setPageTitle("발주업무");
       if (orderWorkspaceTitle) orderWorkspaceTitle.textContent = "발주업무";
       if (orderWorkspacePanelTitle) orderWorkspacePanelTitle.textContent = "작업을 선택해주세요.";
-      if (orderWorkspaceDescription) orderWorkspaceDescription.textContent = "아래 4가지 작업 중 필요한 항목의 실행 버튼을 누르면 기존 드롭/업로드 실행창이 열립니다.";
+      if (orderWorkspaceDescription) orderWorkspaceDescription.textContent = "아래 5가지 작업 중 필요한 항목의 실행 버튼을 누르면 기존 드롭/업로드 실행창이 열립니다.";
     }
     function openOrderModal(mode) {
       currentOrderMode = ORDER_WORKFLOWS[mode] ? mode : "delivery";
@@ -10512,6 +10553,15 @@ HTML = r"""<!doctype html>
           resultText.value = data.text;
           result.classList.add("open");
           notice.textContent = `${data.line_count}개 묶음이 생성되었습니다.`;
+        } else if (currentMode === "salesVendor") {
+          if (!fileInput.files[0]) throw new Error("주소일브릿지 원본 엑셀 파일을 선택해주세요.");
+          const response = await fetch("/api/sales-vendor-summary", { method: "POST", body: formData });
+          if (!response.ok) {
+            const data = await response.json();
+            throw new Error(data.error || "처리에 실패했습니다.");
+          }
+          await downloadWorkbookResponse(response, "주소일브릿지_매출처별_정리.xlsx");
+          notice.textContent = "매출처별 정리 엑셀 다운로드가 시작되었습니다.";
         } else {
           if (!fileInput.files[0]) {
             throw new Error(currentMode === "invoice" ? "출고송장 엑셀 파일을 선택해주세요." : "주소일브릿지 원본 엑셀 파일을 선택해주세요.");
@@ -15482,6 +15532,29 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                 if not LOTTE_TEMPLATE.exists():
                     raise FileNotFoundError(f"롯데택배 발주서 양식을 찾지 못했습니다: {LOTTE_TEMPLATE}")
                 output_path = convert_lotte_order_form(source_path, LOTTE_TEMPLATE, DOWNLOAD_DIR)
+                filename = quote(output_path.name)
+                self.send_response(200)
+                self.send_header(
+                    "Content-Type",
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                )
+                self.send_header(
+                    "Content-Disposition",
+                    f"attachment; filename*=UTF-8''{filename}",
+                )
+                data = output_path.read_bytes()
+                self.send_header("Content-Length", str(len(data)))
+                self.end_headers()
+                self.wfile.write(data)
+                return
+
+            if self.path == "/api/sales-vendor-summary":
+                if not self.require_permission(user, "excel_upload", "엑셀 업로드"):
+                    return
+                if not self.require_permission(user, "excel_download", "엑셀 다운로드"):
+                    return
+                source_path = save_uploaded_file(fields, "file")
+                output_path = convert_sales_vendor_workbook(source_path, DOWNLOAD_DIR)
                 filename = quote(output_path.name)
                 self.send_response(200)
                 self.send_header(
