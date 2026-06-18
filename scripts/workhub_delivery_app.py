@@ -2366,6 +2366,9 @@ HTML = r"""<!doctype html>
       flex-direction: column;
       gap: 12px;
     }
+    .dashboard-import-card .import-table {
+      min-width: 720px;
+    }
     .company-grid {
       display: grid;
       grid-template-columns: minmax(0, 1.1fr) minmax(320px, .9fr);
@@ -4212,7 +4215,37 @@ HTML = r"""<!doctype html>
           </div>
         </section>
 
-        <section class="company-panel" data-company-panel="calendar">
+        <section class="import-progress-card dashboard-import-card open" id="dashboardImportScheduleCard">
+          <div class="import-progress-head">
+            <button class="import-progress-title" type="button" id="dashboardImportScheduleOpen">
+              <i data-lucide="package"></i>
+              <span>수입제품 입고 일정</span>
+            </button>
+            <div class="import-progress-summary" id="dashboardImportScheduleSummary">진행 0건</div>
+          </div>
+          <div class="import-progress-actions">
+            <button class="workspace-button" type="button" id="dashboardImportScheduleRefresh">새로고침</button>
+            <button class="workspace-button" type="button" data-view="import">전체 보기</button>
+          </div>
+          <div class="import-table-wrap">
+            <table class="import-table">
+              <thead>
+                <tr>
+                  <th>입항일</th>
+                  <th>품명</th>
+                  <th>수량</th>
+                  <th>진행상태</th>
+                  <th>입고/반입 일정</th>
+                </tr>
+              </thead>
+              <tbody id="dashboardImportScheduleBody">
+                <tr><td colspan="5"><div class="import-empty">수입제품 입고 일정을 불러오는 중입니다.</div></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="company-panel active" data-company-panel="calendar">
           <div class="company-calendar-shell">
             <article class="company-card">
               <div class="company-calendar-toolbar">
@@ -5297,6 +5330,7 @@ HTML = r"""<!doctype html>
       setHidden(sharedFileUploadPanel, currentUser.role !== "admin");
       setHidden(importShipmentInputOpen, !can("import_shipment_manage"));
       setHidden(importShipmentWorkspaceOpen, !can("import_shipment_manage"));
+      setHidden(dashboardImportScheduleOpen, !can("import_shipment_manage"));
       document.querySelectorAll('[data-open="crm"]').forEach((button) => setHidden(button, !can("crm_view")));
       setHidden(document.querySelector('.nav-subitem[data-crm-nav-tab="messages"]'), !can("crm_message_manage"));
       setHidden(crmAccountQuick, !can("crm_view"));
@@ -5478,6 +5512,10 @@ HTML = r"""<!doctype html>
     const importShipmentRefresh = document.querySelector("#importShipmentRefresh");
     const importShipmentInputOpen = document.querySelector("#importShipmentInputOpen");
     const importShipmentWorkspaceOpen = document.querySelector("#importShipmentWorkspaceOpen");
+    const dashboardImportScheduleBody = document.querySelector("#dashboardImportScheduleBody");
+    const dashboardImportScheduleSummary = document.querySelector("#dashboardImportScheduleSummary");
+    const dashboardImportScheduleRefresh = document.querySelector("#dashboardImportScheduleRefresh");
+    const dashboardImportScheduleOpen = document.querySelector("#dashboardImportScheduleOpen");
     const importShipmentPopup = document.querySelector("#importShipmentPopup");
     const importShipmentClose = document.querySelector("#importShipmentClose");
     const importShipmentSave = document.querySelector("#importShipmentSave");
@@ -6517,10 +6555,30 @@ HTML = r"""<!doctype html>
       importShipmentPopup.classList.remove("open");
     }
 
+    function renderDashboardImportSchedule() {
+      if (!dashboardImportScheduleBody || !dashboardImportScheduleSummary) return;
+      const activeRecords = importShipments.filter((record) => !record.completed_at);
+      dashboardImportScheduleSummary.textContent = `진행 ${activeRecords.length}건`;
+      if (!activeRecords.length) {
+        dashboardImportScheduleBody.innerHTML = `<tr><td colspan="5"><div class="import-empty">등록된 수입제품 입고 일정이 없습니다.</div></td></tr>`;
+        return;
+      }
+      dashboardImportScheduleBody.innerHTML = activeRecords.slice(0, 6).map((record) => `
+        <tr>
+          <td>${escapeHtml(record.arrival_date || "-")}</td>
+          <td class="left">${escapeHtml(record.item || "-")}</td>
+          <td>${escapeHtml(record.quantity || "-")}</td>
+          <td>${escapeHtml(record.progress_status || "진행중")}</td>
+          <td>${escapeHtml(record.warehouse_due_date || "-")}</td>
+        </tr>
+      `).join("");
+    }
+
     function renderImportShipments() {
       const activeCount = importShipments.filter((record) => !record.completed_at).length;
       const doneCount = importShipments.length - activeCount;
       importShipmentSummary.textContent = `진행 ${activeCount}건 / 완료 ${doneCount}건`;
+      renderDashboardImportSchedule();
       if (!importShipments.length) {
         importShipmentBody.innerHTML = `<tr><td colspan="11"><div class="import-empty">등록된 수입제품 출고 진행 건이 없습니다.</div></td></tr>`;
         return;
@@ -7093,10 +7151,16 @@ HTML = r"""<!doctype html>
 
     function setCompanyTab(tabName) {
       companyActiveTab = tabName || "notice";
-      companyPanels.forEach((panel) => panel.classList.toggle("active", panel.dataset.companyPanel === companyActiveTab));
+      companyPanels.forEach((panel) => {
+        const isActivePanel = panel.dataset.companyPanel === companyActiveTab
+          || (companyActiveTab === "notice" && panel.dataset.companyPanel === "calendar");
+        panel.classList.toggle("active", isActivePanel);
+      });
       syncCompanyNavState();
       if (companyActiveTab === "staff") {
         loadCompanyStaffDashboard().catch(() => {});
+      } else if (companyActiveTab === "notice") {
+        loadDashboardEntryData().catch(() => {});
       } else if (companyActiveTab === "calendar") {
         loadCompanyCalendar().catch(() => {
           if (companyCalendarGrid) companyCalendarGrid.innerHTML = `<div class="calendar-empty">캘린더를 불러오지 못했습니다.</div>`;
@@ -7230,6 +7294,14 @@ HTML = r"""<!doctype html>
       companyCalendarGrid.innerHTML = `<div class="calendar-empty">캘린더를 불러오는 중입니다.</div>`;
       const data = await crmFetchJson(`/api/company-calendar-events?month=${encodeURIComponent(companyCalendarMonth)}`);
       renderCompanyCalendar(data);
+    }
+
+    async function loadDashboardEntryData() {
+      const tasks = [loadImportShipments()];
+      tasks.push(loadCompanyCalendar().catch(() => {
+        if (companyCalendarGrid) companyCalendarGrid.innerHTML = `<div class="calendar-empty">캘린더를 불러오지 못했습니다.</div>`;
+      }));
+      await Promise.allSettled(tasks);
     }
 
     function openCalendarEventWidget(eventId) {
@@ -10398,6 +10470,8 @@ HTML = r"""<!doctype html>
         setPageTitle("회사 포털");
         closeLedgerFilter();
         if (companyActiveTab === "staff") loadCompanyStaffDashboard().catch(() => {});
+        else if (companyActiveTab === "notice") loadDashboardEntryData().catch(() => {});
+        else if (companyActiveTab === "calendar") loadCompanyCalendar().catch(() => {});
       }
     }
 
@@ -11053,6 +11127,11 @@ HTML = r"""<!doctype html>
       }
     });
     importShipmentRefresh.addEventListener("click", loadImportShipments);
+    dashboardImportScheduleRefresh?.addEventListener("click", loadImportShipments);
+    dashboardImportScheduleOpen?.addEventListener("click", () => {
+      showWorkspace("import");
+      openImportShipmentPopup();
+    });
     importShipmentWorkspaceOpen?.addEventListener("click", () => openImportShipmentPopup());
     importShipmentTreeToggle.addEventListener("click", () => {
       importProgressCard.classList.toggle("open");

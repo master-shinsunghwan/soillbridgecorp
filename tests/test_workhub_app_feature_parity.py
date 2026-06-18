@@ -67,6 +67,30 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         self.assertIn('document.addEventListener("keydown"', html_source)
         self.assertIn("event.stopImmediatePropagation()", html_source)
 
+    def test_dashboard_entry_shows_notice_import_schedule_and_calendar(self) -> None:
+        for app_file in (
+            ROOT / "scripts" / "workhub_delivery_app.py",
+            ROOT / "_workhub_zip_inspect" / "scripts" / "workhub_delivery_app.py",
+        ):
+            html_source = app_file.read_text(encoding="utf-8")
+
+            self.assertIn('id="sidebarNoticePreview"', html_source)
+            self.assertIn('id="dashboardImportScheduleCard"', html_source)
+            self.assertIn('data-company-panel="calendar"', html_source)
+            self.assertIn('class="company-panel active" data-company-panel="calendar"', html_source)
+            notice_index = html_source.index('id="sidebarNoticePreview"')
+            import_index = html_source.index('id="dashboardImportScheduleCard"')
+            calendar_index = html_source.index('data-company-panel="calendar"')
+            self.assertLess(notice_index, import_index)
+            self.assertLess(import_index, calendar_index)
+            self.assertIn("수입제품 입고 일정", html_source)
+            self.assertIn('id="dashboardImportScheduleSummary"', html_source)
+            self.assertIn('id="dashboardImportScheduleBody"', html_source)
+            self.assertIn("function renderDashboardImportSchedule()", html_source)
+            self.assertIn("renderDashboardImportSchedule();", html_source)
+            self.assertIn('companyActiveTab === "notice" && panel.dataset.companyPanel === "calendar"', html_source)
+            self.assertIn("loadDashboardEntryData().catch", html_source)
+
     def test_delivery_modal_title_matches_menu_label(self) -> None:
         html_source = (SCRIPTS / "workhub_delivery_app.py").read_text(encoding="utf-8")
 
