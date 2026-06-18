@@ -1319,7 +1319,8 @@ HTML = r"""<!doctype html>
       .system-summary-grid { grid-template-columns: 1fr; }
     }
     .vehicle-fields { display: none; }
-    .cs-fields { display: none; }
+    .cs-fields,
+    .stock-notice-fields { display: none; }
     .ledger-fields { display: none; }
     .management-fields { display: none; }
     .ledger-cs-popup-head { display: none; }
@@ -5298,6 +5299,85 @@ HTML = r"""<!doctype html>
             <div id="csCaseList"></div>
           </div>
         </div>
+        <div class="stock-notice-fields" id="stockNoticeFields">
+          <div class="text-field">
+            <label class="field-label" for="stockVendorContactSelect">업체 선택</label>
+            <select id="stockVendorContactSelect">
+              <option value="">업체를 선택해주세요</option>
+            </select>
+          </div>
+          <div class="text-field">
+            <label class="field-label" for="stockVendorTypeSelect">업체 구분</label>
+            <select id="stockVendorTypeSelect">
+              <option value="purchase">매입처</option>
+              <option value="sales">매출처</option>
+            </select>
+          </div>
+          <div class="text-field">
+            <label class="field-label" for="stockRecipientEmailInput">받는 업체 메일</label>
+            <input id="stockRecipientEmailInput" type="email" placeholder="예: vendor@example.com" />
+          </div>
+          <div class="text-field">
+            <label class="field-label" for="stockVendorNameInput">업체명</label>
+            <input id="stockVendorNameInput" type="text" />
+          </div>
+          <div class="text-field">
+            <label class="field-label" for="stockNoticeDateInput">기준일자</label>
+            <input id="stockNoticeDateInput" type="date" />
+          </div>
+          <div class="text-field">
+            <label class="field-label" for="stockInboundProductInput">입고 품명(모델명)</label>
+            <input id="stockInboundProductInput" type="text" />
+          </div>
+          <div class="text-field">
+            <label class="field-label" for="stockInboundScheduleInput">입고 일정</label>
+            <input id="stockInboundScheduleInput" type="text" />
+          </div>
+          <div class="text-field">
+            <label class="field-label" for="stockOutboundAvailableInput">출고 가능 일정</label>
+            <input id="stockOutboundAvailableInput" type="text" />
+          </div>
+          <div class="text-field">
+            <label class="field-label" for="stockInboundNoteInput">입고 특이사항</label>
+            <textarea id="stockInboundNoteInput"></textarea>
+          </div>
+          <div class="text-field">
+            <label class="field-label" for="stockSoldoutProductInput">품절/단종 품명(모델명)</label>
+            <input id="stockSoldoutProductInput" type="text" />
+          </div>
+          <div class="text-field">
+            <label class="field-label" for="stockOutboundBlockedInput">출고 불가 일정</label>
+            <input id="stockOutboundBlockedInput" type="text" />
+          </div>
+          <div class="text-field">
+            <label class="field-label" for="stockRestockScheduleInput">재입고 일정</label>
+            <input id="stockRestockScheduleInput" type="text" />
+          </div>
+          <div class="text-field">
+            <label class="field-label" for="stockSoldoutNoteInput">품절 특이사항</label>
+            <textarea id="stockSoldoutNoteInput"></textarea>
+          </div>
+          <div class="text-field">
+            <label class="field-label" for="stockManagerNameInput">담당자명</label>
+            <input id="stockManagerNameInput" type="text" />
+          </div>
+          <div class="text-field">
+            <label class="field-label" for="stockManagerPhoneInput">연락처</label>
+            <input id="stockManagerPhoneInput" type="text" />
+          </div>
+          <div class="text-field">
+            <label class="field-label" for="stockSenderEmailInput">발신메일</label>
+            <input id="stockSenderEmailInput" type="email" />
+          </div>
+          <div class="text-field">
+            <label class="field-label" for="stockSubjectInput">메일 제목</label>
+            <input id="stockSubjectInput" type="text" />
+          </div>
+          <div class="text-field">
+            <label class="field-label" for="stockBodyInput">공지 내용</label>
+            <textarea id="stockBodyInput"></textarea>
+          </div>
+        </div>
         <div class="ledger-fields" id="ledgerFields">
           <div class="ledger-toolbar">
             <input id="ledgerSearchInput" type="text" placeholder="업체명, 수령인, 상품명, 원송장, CS내용 검색" />
@@ -5598,6 +5678,25 @@ HTML = r"""<!doctype html>
     const csBodyInput = document.querySelector("#csBodyInput");
     const saveCsCaseButton = document.querySelector("#saveCsCase");
     const csCaseList = document.querySelector("#csCaseList");
+    const stockNoticeFields = document.querySelector("#stockNoticeFields");
+    const stockVendorContactSelect = document.querySelector("#stockVendorContactSelect");
+    const stockVendorTypeSelect = document.querySelector("#stockVendorTypeSelect");
+    const stockRecipientEmailInput = document.querySelector("#stockRecipientEmailInput");
+    const stockVendorNameInput = document.querySelector("#stockVendorNameInput");
+    const stockNoticeDateInput = document.querySelector("#stockNoticeDateInput");
+    const stockInboundProductInput = document.querySelector("#stockInboundProductInput");
+    const stockInboundScheduleInput = document.querySelector("#stockInboundScheduleInput");
+    const stockOutboundAvailableInput = document.querySelector("#stockOutboundAvailableInput");
+    const stockInboundNoteInput = document.querySelector("#stockInboundNoteInput");
+    const stockSoldoutProductInput = document.querySelector("#stockSoldoutProductInput");
+    const stockOutboundBlockedInput = document.querySelector("#stockOutboundBlockedInput");
+    const stockRestockScheduleInput = document.querySelector("#stockRestockScheduleInput");
+    const stockSoldoutNoteInput = document.querySelector("#stockSoldoutNoteInput");
+    const stockManagerNameInput = document.querySelector("#stockManagerNameInput");
+    const stockManagerPhoneInput = document.querySelector("#stockManagerPhoneInput");
+    const stockSenderEmailInput = document.querySelector("#stockSenderEmailInput");
+    const stockSubjectInput = document.querySelector("#stockSubjectInput");
+    const stockBodyInput = document.querySelector("#stockBodyInput");
     const ledgerCsPopupClose = document.querySelector("#ledgerCsPopupClose");
     const ledgerSearchInput = document.querySelector("#ledgerSearchInput");
     const ledgerStatusFilter = document.querySelector("#ledgerStatusFilter");
@@ -6873,7 +6972,49 @@ HTML = r"""<!doctype html>
     }
 
     function refreshCsBody() {
-      csBodyInput.value = currentMode === "mail-stock" ? defaultStockNoticeBody() : defaultCsBody();
+      csBodyInput.value = defaultCsBody();
+    }
+
+    function refreshStockNoticeBody() {
+      if (stockBodyInput) stockBodyInput.value = defaultStockNoticeBody();
+    }
+
+    function defaultStockNoticeBody() {
+      const value = (input) => input?.value.trim() || "";
+      return `안녕하세요. (주)소일브릿지 입니다.
+
+제품 입고 및 품절 현황 안내드립니다.
+
+■ 기준일자: ${stockNoticeDateInput?.value || ""}
+
+■ 제품 입고 안내
+
+▶품명(모델명) : ${value(stockInboundProductInput)}
+
+▶입고 일정 : ${value(stockInboundScheduleInput)}
+
+▶출고 가능 일정 : ${value(stockOutboundAvailableInput)}
+
+▶특이사항 : ${value(stockInboundNoteInput)}
+
+■ 제품 일시 품절(단종) 안내
+
+▶품명(모델명) : ${value(stockSoldoutProductInput)}
+
+▶출고 불가 일정 : ${value(stockOutboundBlockedInput)}
+
+▶재입고 일정 : ${value(stockRestockScheduleInput)}
+
+▶특이사항 : ${value(stockSoldoutNoteInput)}
+
+업무 진행 시 참고 부탁드리며, 확인이 필요한 내용이 있으시면 회신 부탁드립니다.
+
+감사합니다.
+
+(주)소일브릿지
+담당자: ${value(stockManagerNameInput)}
+연락처: ${value(stockManagerPhoneInput)}
+이메일: ${value(stockSenderEmailInput)}`;
     }
 
     async function loadMailSettings() {
@@ -7018,6 +7159,22 @@ HTML = r"""<!doctype html>
       });
     }
 
+    function renderStockVendorContacts() {
+      if (!stockVendorContactSelect) return;
+      stockVendorContactSelect.innerHTML = "";
+      const emptyOption = document.createElement("option");
+      emptyOption.value = "";
+      emptyOption.textContent = vendorContacts.length ? "업체를 선택해주세요" : "저장된 업체가 없습니다";
+      stockVendorContactSelect.appendChild(emptyOption);
+
+      vendorContacts.forEach((contact) => {
+        const option = document.createElement("option");
+        option.value = `${contact.vendor_type || "purchase"}::${contact.vendor_name}`;
+        option.textContent = `[${contact.vendor_type_label || "매입처"}] ${contact.vendor_name} / ${contact.email}`;
+        stockVendorContactSelect.appendChild(option);
+      });
+    }
+
     async function loadVendorContacts() {
       try {
         const response = await fetch("/api/vendor-contacts");
@@ -7025,9 +7182,11 @@ HTML = r"""<!doctype html>
         const data = await response.json();
         vendorContacts = data.contacts || [];
         renderVendorContacts();
+        renderStockVendorContacts();
       } catch {
         vendorContacts = [];
         renderVendorContacts();
+        renderStockVendorContacts();
       }
     }
 
@@ -7041,6 +7200,18 @@ HTML = r"""<!doctype html>
       vendorNameInput.value = selected.vendor_name;
       recipientEmailInput.value = selected.email;
       csSubjectInput.value = currentMode === "mail-stock" ? "입고 및 품절 공지" : defaultCsSubject(selected.vendor_name);
+    }
+
+    function applySelectedStockVendor() {
+      if (!stockVendorContactSelect) return;
+      const [selectedType, selectedName] = stockVendorContactSelect.value.split("::");
+      const selected = vendorContacts.find((contact) => (
+        (contact.vendor_type || "purchase") === selectedType && contact.vendor_name === selectedName
+      ));
+      if (!selected) return;
+      stockVendorTypeSelect.value = selected.vendor_type || "purchase";
+      stockVendorNameInput.value = selected.vendor_name;
+      stockRecipientEmailInput.value = selected.email;
     }
 
     async function saveCurrentVendorContact() {
@@ -7111,6 +7282,17 @@ HTML = r"""<!doctype html>
         cs_content: csContentInput.value.trim(),
         subject: csSubjectInput.value.trim(),
         body: csBodyInput.value.trim(),
+      };
+    }
+
+    function collectStockNoticePayload() {
+      return {
+        vendor_type: stockVendorTypeSelect?.value || "purchase",
+        recipient_email: stockRecipientEmailInput?.value.trim() || "",
+        vendor_name: stockVendorNameInput?.value.trim() || "",
+        subject: stockSubjectInput?.value.trim() || "",
+        body: stockBodyInput?.value.trim() || "",
+        save_credentials: true,
       };
     }
 
@@ -9341,6 +9523,28 @@ HTML = r"""<!doctype html>
       csContentInput.value = "";
       csSubjectInput.value = defaultCsSubject();
       refreshCsBody();
+      if (stockVendorContactSelect) stockVendorContactSelect.value = "";
+      if (stockVendorTypeSelect) stockVendorTypeSelect.value = "purchase";
+      if (stockRecipientEmailInput) stockRecipientEmailInput.value = "";
+      if (stockVendorNameInput) stockVendorNameInput.value = "";
+      if (stockNoticeDateInput) stockNoticeDateInput.value = todayString();
+      [
+        stockInboundProductInput,
+        stockInboundScheduleInput,
+        stockOutboundAvailableInput,
+        stockInboundNoteInput,
+        stockSoldoutProductInput,
+        stockOutboundBlockedInput,
+        stockRestockScheduleInput,
+        stockSoldoutNoteInput,
+        stockManagerNameInput,
+        stockManagerPhoneInput,
+        stockSenderEmailInput,
+      ].forEach((input) => {
+        if (input) input.value = "";
+      });
+      if (stockSubjectInput) stockSubjectInput.value = "입고 및 품절 공지";
+      refreshStockNoticeBody();
       activeCsCaseId = "";
     }
 
@@ -10262,6 +10466,7 @@ HTML = r"""<!doctype html>
       dropMain.textContent = "파일을 선택하거나 여기에 올려주세요.";
       templateDropMain.textContent = "롯데택배 발주서 양식을 선택해주세요.";
       messagePlaceholder.style.display = "none";
+      if (stockNoticeFields) stockNoticeFields.style.display = "none";
       if (mode === "delivery") {
         modalTitle.textContent = "개별 택배건 정리";
         fileLabel.textContent = "주소일브릿지 엑셀 선택";
@@ -10348,6 +10553,14 @@ HTML = r"""<!doctype html>
         templateUpload.style.display = "none";
         vehicleFields.style.display = "none";
         csFields.style.display = "block";
+        if (stockNoticeFields) stockNoticeFields.style.display = "none";
+        if (mode === "mail-stock") {
+          modalTitle.textContent = "입고 및 품절 공지";
+          submitButton.textContent = "공지 메일 발송";
+          csFields.style.display = "none";
+          stockNoticeFields.style.display = "block";
+          refreshStockNoticeBody();
+        }
         ledgerFields.style.display = "none";
         managementFields.style.display = "none";
         messagePlaceholder.style.display = "none";
@@ -11561,6 +11774,22 @@ HTML = r"""<!doctype html>
     });
     [csOriginInput, csProductInput, csReceiverInput, csPhoneInput, csAddressInput, csContentInput]
       .forEach((input) => input.addEventListener("input", refreshCsBody));
+    stockVendorContactSelect?.addEventListener("change", applySelectedStockVendor);
+    [
+      stockNoticeDateInput,
+      stockInboundProductInput,
+      stockInboundScheduleInput,
+      stockOutboundAvailableInput,
+      stockInboundNoteInput,
+      stockSoldoutProductInput,
+      stockOutboundBlockedInput,
+      stockRestockScheduleInput,
+      stockSoldoutNoteInput,
+      stockManagerNameInput,
+      stockManagerPhoneInput,
+      stockSenderEmailInput,
+    ].forEach((input) => input?.addEventListener("input", refreshStockNoticeBody));
+    stockNoticeDateInput?.addEventListener("change", refreshStockNoticeBody);
 
     setInterval(() => {
       saveCurrentWorkspaceRows({ silent: true });
@@ -11574,7 +11803,7 @@ HTML = r"""<!doctype html>
       try {
         if (currentMode === "ledger" || currentMode === "management") {
           closeModal();
-        } else if (currentMode === "cs" || currentMode === "mail-stock") {
+        } else if (currentMode === "cs") {
           refreshCsBody();
           const payload = collectCsPayload();
           if (!payload.recipient_email || !payload.subject || !payload.body) {
@@ -11590,6 +11819,20 @@ HTML = r"""<!doctype html>
           notice.textContent = data.message || "메일 전송이 완료되었습니다.";
           activeCsCaseId = "";
           await loadCsCases();
+        } else if (currentMode === "mail-stock") {
+          refreshStockNoticeBody();
+          const payload = collectStockNoticePayload();
+          if (!payload.recipient_email || !payload.subject || !payload.body) {
+            throw new Error("받는 업체 메일, 제목, 공지 내용을 입력해주세요.");
+          }
+          const response = await fetch("/api/mail-send", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          });
+          const data = await response.json();
+          if (!response.ok) throw new Error(data.error || "공지 메일 발송에 실패했습니다.");
+          notice.textContent = data.message || "공지 메일 발송이 완료되었습니다.";
         } else if (currentMode === "vehicle") {
           const payload = collectVehiclePayload();
           if (!payload.supplier || !payload.delivery_place || !payload.manager || payload.items.length === 0) {
@@ -16508,6 +16751,10 @@ def send_cs_mail(payload: dict) -> None:
         raise ValueError("네이버 메일 로그인에 실패했습니다. 아이디/비밀번호와 네이버 메일 SMTP 사용 설정을 확인해주세요.") from exc
 
 
+def send_general_mail(payload: dict) -> None:
+    send_cs_mail(payload)
+
+
 def send_naver_mail(
     naver_email: str,
     naver_password: str,
@@ -17275,6 +17522,14 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                 payload = parse_json_body(self.headers, self.rfile)
                 send_mail_test(payload)
                 self.send_json({"message": "테스트 메일을 발송했습니다."})
+                return
+
+            if route_path == "/api/mail-send":
+                if not self.require_permission(user, "mail_send", "메일 발송"):
+                    return
+                payload = parse_json_body(self.headers, self.rfile)
+                send_general_mail(payload)
+                self.send_json({"message": "메일 발송이 완료되었습니다."})
                 return
 
             if route_path == "/api/cs-mail":

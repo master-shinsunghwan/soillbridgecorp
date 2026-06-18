@@ -158,9 +158,17 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
             self.assertIn('data-mail-popup="stock"', html_source)
             self.assertIn("입고 및 품절 공지", html_source)
             self.assertIn('openModal(type === "stock" ? "mail-stock" : "cs")', html_source)
-            self.assertIn('} else if (mode === "cs" || mode === "mail-stock") {', html_source)
-            self.assertIn('mode === "mail-stock" ? "입고 및 품절 공지" : "업체 CS 요청"', html_source)
-            self.assertIn('mode === "mail-stock" ? "공지 메일 발송" : "메일 전송"', html_source)
+            self.assertIn('class="stock-notice-fields" id="stockNoticeFields"', html_source)
+            self.assertIn('id="stockNoticeDateInput"', html_source)
+            self.assertIn('id="stockManagerNameInput"', html_source)
+            self.assertIn('id="stockManagerPhoneInput"', html_source)
+            self.assertIn('id="stockSenderEmailInput"', html_source)
+            self.assertIn("function defaultStockNoticeBody()", html_source)
+            self.assertIn("function collectStockNoticePayload()", html_source)
+            self.assertIn('stockNoticeFields.style.display = "block"', html_source)
+            self.assertIn('"/api/mail-send"', html_source)
+            self.assertIn('send_general_mail(payload)', html_source)
+            self.assertNotIn('currentMode === "cs" || currentMode === "mail-stock"', html_source)
 
     def test_vendor_contact_upload_is_managed_from_admin_workspace(self) -> None:
         for app_file in (
