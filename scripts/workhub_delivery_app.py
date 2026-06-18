@@ -953,6 +953,19 @@ HTML = r"""<!doctype html>
       border: 1px solid var(--line);
       border-radius: 8px;
     }
+    .admin-card {
+      display: grid;
+      gap: 12px;
+      padding: 14px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fbfcff;
+    }
+    .admin-section-title {
+      font-size: 14px;
+      font-weight: 950;
+      color: #111827;
+    }
     .admin-form {
       display: grid;
       grid-template-columns: 1.1fr 1.1fr .8fr 1fr auto auto;
@@ -4746,18 +4759,6 @@ HTML = r"""<!doctype html>
             <button class="ledger-cs-popup-close" id="ledgerCsPopupClose" type="button">닫기</button>
           </div>
           <div class="text-field">
-            <label class="field-label" for="naverEmailInput">네이버 메일 아이디</label>
-            <input id="naverEmailInput" name="naver_email" type="text" placeholder="예) soilbridge@naver.com" />
-          </div>
-          <div class="text-field">
-            <label class="field-label" for="naverPasswordInput">네이버 메일 비밀번호</label>
-            <input id="naverPasswordInput" name="naver_password" type="password" placeholder="저장된 비밀번호가 없으면 입력" autocomplete="current-password" />
-          </div>
-          <label class="checkbox-field">
-            <input id="saveMailCredentials" type="checkbox" checked />
-            <span>아이디/비밀번호 저장</span>
-          </label>
-          <div class="text-field">
             <label class="field-label" for="vendorContactSelect">업체 선택</label>
             <select id="vendorContactSelect">
               <option value="">업체를 선택해주세요</option>
@@ -5119,9 +5120,6 @@ HTML = r"""<!doctype html>
     const requestNoteInput = document.querySelector("#requestNoteInput");
     const deliveryPlaceInput = document.querySelector("#deliveryPlaceInput");
     const managerInput = document.querySelector("#managerInput");
-    const naverEmailInput = document.querySelector("#naverEmailInput");
-    const naverPasswordInput = document.querySelector("#naverPasswordInput");
-    const saveMailCredentials = document.querySelector("#saveMailCredentials");
     const vendorContactSelect = document.querySelector("#vendorContactSelect");
     const vendorContactsFileInput = document.querySelector("#vendorContactsFileInput");
     const vendorContactsDropMain = document.querySelector("#vendorContactsDropMain");
@@ -5276,6 +5274,11 @@ HTML = r"""<!doctype html>
     const userAdminSave = document.querySelector("#userAdminSave");
     const userAdminBody = document.querySelector("#userAdminBody");
     const userAdminMessage = document.querySelector("#userAdminMessage");
+    const adminNaverEmailInput = document.querySelector("#adminNaverEmailInput");
+    const adminNaverPasswordInput = document.querySelector("#adminNaverPasswordInput");
+    const adminSaveMailCredentials = document.querySelector("#adminSaveMailCredentials");
+    const adminMailSettingsSave = document.querySelector("#adminMailSettingsSave");
+    const adminMailSettingsMessage = document.querySelector("#adminMailSettingsMessage");
     const userAdminPermissionChecks = Array.from(document.querySelectorAll("[data-permission-check]"));
     const leaveRefresh = document.querySelector("#leaveRefresh");
     const leaveTotalDays = document.querySelector("#leaveTotalDays");
@@ -6377,11 +6380,52 @@ HTML = r"""<!doctype html>
         const response = await fetch("/api/mail-settings");
         if (!response.ok) return;
         const data = await response.json();
-        if (currentMode !== "cs") return;
-        naverEmailInput.value = data.naver_email || "";
-        naverPasswordInput.placeholder = data.has_password ? "저장된 비밀번호 사용" : "저장된 비밀번호가 없으면 입력";
+        if (adminNaverEmailInput) adminNaverEmailInput.value = data.naver_email || "";
+        if (adminNaverPasswordInput) {
+          adminNaverPasswordInput.value = "";
+          adminNaverPasswordInput.placeholder = data.has_password ? "저장된 비밀번호 사용" : "저장된 비밀번호가 없으면 입력";
+        }
+        return data;
       } catch {
-        // 저장된 메일 설정이 없어도 CS 작성은 계속 가능합니다.
+        // 저장된 메일 설정이 없어도 다른 화면 사용은 계속 가능합니다.
+      }
+    }
+
+    async function loadAdminMailSettings() {
+      if (!adminNaverEmailInput) return;
+      adminMailSettingsMessage.textContent = "메일 기본정보를 불러오는 중입니다.";
+      const data = await loadMailSettings();
+      adminMailSettingsMessage.textContent = data?.has_password ? "저장된 네이버 메일 비밀번호가 있습니다." : "저장된 네이버 메일 비밀번호가 없습니다.";
+    }
+
+    async function saveAdminMailSettings() {
+      if (!adminMailSettingsSave) return;
+      const payload = {
+        naver_email: adminNaverEmailInput.value.trim(),
+        naver_password: adminNaverPasswordInput.value,
+        save_credentials: adminSaveMailCredentials.checked,
+      };
+      if (!payload.naver_email) {
+        adminMailSettingsMessage.textContent = "네이버 메일 아이디를 입력해주세요.";
+        return;
+      }
+      adminMailSettingsSave.disabled = true;
+      adminMailSettingsMessage.textContent = "메일 기본정보를 저장하는 중입니다.";
+      try {
+        const response = await fetch("/api/mail-settings", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "메일 기본정보 저장에 실패했습니다.");
+        adminNaverPasswordInput.value = "";
+        adminNaverPasswordInput.placeholder = data.has_password ? "저장된 비밀번호 사용" : "저장된 비밀번호가 없으면 입력";
+        adminMailSettingsMessage.textContent = data.message || "메일 기본정보를 저장했습니다.";
+      } catch (error) {
+        adminMailSettingsMessage.textContent = error.message;
+      } finally {
+        adminMailSettingsSave.disabled = false;
       }
     }
 
@@ -6480,9 +6524,6 @@ HTML = r"""<!doctype html>
     function collectCsPayload() {
       return {
         case_id: activeCsCaseId,
-        naver_email: naverEmailInput.value.trim(),
-        naver_password: naverPasswordInput.value,
-        save_credentials: saveMailCredentials.checked,
         vendor_type: vendorTypeSelect.value || "purchase",
         recipient_email: recipientEmailInput.value.trim(),
         vendor_name: vendorNameInput.value.trim(),
@@ -8633,10 +8674,6 @@ HTML = r"""<!doctype html>
     }
 
     function resetCsFormInputs() {
-      naverEmailInput.value = "";
-      naverPasswordInput.value = "";
-      naverPasswordInput.placeholder = "저장된 비밀번호가 없으면 입력";
-      saveMailCredentials.checked = true;
       vendorContactSelect.value = "";
       vendorContactsFileInput.value = "";
       vendorContactsDropMain.textContent = "업체구분/업체명/메일주소 엑셀을 선택해주세요.";
@@ -8660,7 +8697,6 @@ HTML = r"""<!doctype html>
       resetCsFormInputs();
       csFields.classList.add("ledger-cs-popup");
       csFields.style.display = "block";
-      loadMailSettings();
       loadVendorContacts();
       loadCsCases();
       notice.textContent = "새 CS 내용을 입력한 뒤 CS건 DB 저장을 눌러주세요.";
@@ -8965,7 +9001,6 @@ HTML = r"""<!doctype html>
       if (!prompt?.enabled) return;
       const payload = prompt.payload || {};
       openModal("cs");
-      await loadMailSettings();
       await loadVendorContacts();
       activeCsCaseId = String(prompt.case_id || payload.case_id || "");
       vendorTypeSelect.value = payload.vendor_type || "purchase";
@@ -9467,10 +9502,6 @@ HTML = r"""<!doctype html>
       requestNoteInput.value = "";
       deliveryPlaceInput.value = "";
       managerInput.value = "";
-      naverEmailInput.value = "";
-      naverPasswordInput.value = "";
-      naverPasswordInput.placeholder = "저장된 비밀번호가 없으면 입력";
-      saveMailCredentials.checked = true;
       vendorContactSelect.value = "";
       vendorContactsFileInput.value = "";
       vendorContactsDropMain.textContent = "업체구분/업체명/메일주소 엑셀을 선택해주세요.";
@@ -9579,7 +9610,6 @@ HTML = r"""<!doctype html>
         messagePlaceholder.style.display = "none";
         fileInput.required = false;
         templateInput.required = false;
-        loadMailSettings();
         loadVendorContacts();
         loadCsCases();
       } else if (mode.startsWith("mail-")) {
@@ -9755,6 +9785,7 @@ HTML = r"""<!doctype html>
         setPageTitle("권한설정");
         closeLedgerFilter();
         resetUserAdminForm();
+        loadAdminMailSettings();
         loadUserAccounts();
       } else if (showBackup) {
         setPageTitle("백업 관리");
@@ -10539,6 +10570,7 @@ HTML = r"""<!doctype html>
     ledgerDeleteSelected.addEventListener("click", () => deleteSelectedRows("ledger"));
     if (userAdminRefresh) userAdminRefresh.addEventListener("click", loadUserAccounts);
     if (userAdminSave) userAdminSave.addEventListener("click", saveUserAccount);
+    if (adminMailSettingsSave) adminMailSettingsSave.addEventListener("click", saveAdminMailSettings);
     if (userAdminRole) userAdminRole.addEventListener("change", syncPermissionChecksForRole);
     if (backupRefresh) backupRefresh.addEventListener("click", loadBackups);
     if (backupCreate) backupCreate.addEventListener("click", createBackupNow);
@@ -11127,6 +11159,20 @@ ADMIN_WORKSPACE_HTML = r"""
         </div>
         <div class="workspace-mount">
           <div class="admin-panel">
+            <div class="admin-card">
+              <div class="admin-section-title">메일 기본정보</div>
+              <div class="admin-form">
+                <label>네이버 메일 아이디
+                  <input id="adminNaverEmailInput" type="text" placeholder="예) soilbridge@naver.com" />
+                </label>
+                <label>네이버 메일 비밀번호
+                  <input id="adminNaverPasswordInput" type="password" placeholder="저장된 비밀번호가 없으면 입력" autocomplete="new-password" />
+                </label>
+                <label class="admin-check"><input id="adminSaveMailCredentials" type="checkbox" checked /> 아이디/비밀번호 저장</label>
+                <button class="workspace-button" type="button" id="adminMailSettingsSave">메일 기본정보 저장</button>
+              </div>
+              <div class="admin-message" id="adminMailSettingsMessage"></div>
+            </div>
             <div class="admin-form">
               <input id="userAdminId" type="hidden" />
               <label>아이디
@@ -15853,6 +15899,24 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                 payload = json.loads(self.rfile.read(length).decode("utf-8"))
                 count = add_historical_leave_usage(payload, user)
                 self.send_json({"message": f"기존 사용 연차 {count}건을 등록했습니다.", "count": count})
+                return
+
+            if self.path == "/api/mail-settings":
+                if not self.require_admin(user, "메일 기본정보 저장"):
+                    return
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(length).decode("utf-8"))
+                naver_email = normalize_naver_email(payload.get("naver_email"))
+                if not naver_email:
+                    raise ValueError("네이버 메일 아이디를 입력해주세요.")
+                naver_password = str(payload.get("naver_password") or "") if payload.get("save_credentials", True) else ""
+                save_mail_settings(naver_email, naver_password)
+                settings = load_mail_settings(include_password=False)
+                self.send_json({
+                    "message": "메일 기본정보를 저장했습니다.",
+                    "naver_email": settings.get("naver_email", ""),
+                    "has_password": settings.get("has_password", False),
+                })
                 return
 
             if self.path == "/api/cs-mail":
