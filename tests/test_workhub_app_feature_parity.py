@@ -79,9 +79,15 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         self.assertIn('id="orderWorkspace"', html_source)
         self.assertIn('id="orderWorkspaceTitle"', html_source)
         self.assertIn('id="orderWorkspaceCards"', html_source)
+        self.assertIn('id="orderRecentDownloads"', html_source)
+        self.assertIn('id="orderDownloadList"', html_source)
+        self.assertIn('/api/order-downloads', html_source)
+        self.assertIn('/api/order-download?id=', html_source)
         self.assertIn("order-exec-card", html_source)
         self.assertIn("ORDER_WORKFLOWS", html_source)
         self.assertIn("function showOrderWorkspace(mode)", html_source)
+        self.assertIn("function loadOrderDownloads()", html_source)
+        self.assertIn("function renderOrderDownloads(downloads)", html_source)
         self.assertIn('orderWorkspace.classList.toggle("active"', html_source)
 
     def test_upload_dialog_does_not_use_daisyui_modal_class(self) -> None:

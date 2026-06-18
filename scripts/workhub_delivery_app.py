@@ -70,6 +70,9 @@ RUNTIME_ROOT = Path(os.environ.get("WORKHUB_DATA_DIR", str(RUNTIME_ROOT)))
 OUTPUT_DIR = RUNTIME_ROOT / "output" / "workhub_app"
 UPLOAD_DIR = OUTPUT_DIR / "uploads"
 DOWNLOAD_DIR = OUTPUT_DIR / "downloads"
+ORDER_DOWNLOAD_DIR = DOWNLOAD_DIR / "order_outputs"
+ORDER_DOWNLOAD_HISTORY_PATH = ORDER_DOWNLOAD_DIR / "history.json"
+ORDER_DOWNLOAD_LIMIT = 10
 CONFIG_DIR = RUNTIME_ROOT / "config"
 DB_PATH = CONFIG_DIR / "workhub.db"
 MAIL_SETTINGS_PATH = CONFIG_DIR / "mail_settings.json"
@@ -2003,6 +2006,63 @@ HTML = r"""<!doctype html>
       color: #667085;
       font-size: 12px;
       font-weight: 750;
+    }
+    .order-download-panel {
+      display: grid;
+      gap: 12px;
+      padding: 16px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: white;
+      box-shadow: var(--shadow);
+    }
+    .order-download-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+    .order-download-title {
+      font-size: 15px;
+      font-weight: 950;
+      color: #111827;
+    }
+    .order-download-list {
+      display: grid;
+      gap: 8px;
+    }
+    .order-download-item {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 12px;
+      align-items: center;
+      padding: 10px 12px;
+      border: 1px solid #dfe5ec;
+      border-radius: 8px;
+      background: #fbfcff;
+    }
+    .order-download-name {
+      font-size: 13px;
+      font-weight: 900;
+      color: #1f2937;
+      overflow-wrap: anywhere;
+    }
+    .order-download-meta {
+      margin-top: 4px;
+      font-size: 12px;
+      font-weight: 750;
+      color: #667085;
+    }
+    .order-download-empty {
+      min-height: 52px;
+      display: grid;
+      place-items: center;
+      border: 1px dashed #cbd5e1;
+      border-radius: 8px;
+      color: #667085;
+      font-size: 13px;
+      font-weight: 800;
+      background: #fbfcff;
     }
     .workspace-head {
       display: flex;
@@ -4240,6 +4300,18 @@ HTML = r"""<!doctype html>
             </article>
           </div>
         </div>
+        <div class="order-download-panel" id="orderRecentDownloads">
+          <div class="order-download-head">
+            <div>
+              <div class="order-exec-kicker">추가 다운로드</div>
+              <div class="order-download-title">최근 출력 파일</div>
+            </div>
+            <button class="workspace-button" type="button" id="orderDownloadRefresh">새로고침</button>
+          </div>
+          <div class="order-download-list" id="orderDownloadList">
+            <div class="order-download-empty">최근 출력된 파일이 없습니다.</div>
+          </div>
+        </div>
       </section>
 
       <section class="workspace-view" id="importWorkspace">
@@ -5179,6 +5251,8 @@ HTML = r"""<!doctype html>
     const orderWorkspacePanelTitle = document.querySelector("#orderWorkspacePanelTitle");
     const orderWorkspaceDescription = document.querySelector("#orderWorkspaceDescription");
     const orderWorkspaceCards = document.querySelector("#orderWorkspaceCards");
+    const orderDownloadList = document.querySelector("#orderDownloadList");
+    const orderDownloadRefresh = document.querySelector("#orderDownloadRefresh");
     const leaveWorkspace = document.querySelector("#leaveWorkspace");
     const userAdminWorkspace = document.querySelector("#userAdminWorkspace");
     const backupWorkspace = document.querySelector("#backupWorkspace");
@@ -9261,6 +9335,55 @@ HTML = r"""<!doctype html>
       window.setTimeout(() => URL.revokeObjectURL(url), 1000);
     }
 
+    function orderDownloadSizeLabel(size) {
+      const bytes = Number(size || 0);
+      if (!bytes) return "";
+      if (bytes >= 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)}MB`;
+      return `${Math.max(1, Math.round(bytes / 1024))}KB`;
+    }
+
+    function renderOrderDownloads(downloads) {
+      if (!orderDownloadList) return;
+      if (!downloads.length) {
+        orderDownloadList.innerHTML = '<div class="order-download-empty">최근 출력된 파일이 없습니다.</div>';
+        return;
+      }
+      orderDownloadList.innerHTML = downloads.map((item) => {
+        const sizeLabel = orderDownloadSizeLabel(item.size);
+        const meta = [item.workflow, item.created_at, sizeLabel].filter(Boolean).join(" · ");
+        return `
+          <div class="order-download-item">
+            <div>
+              <div class="order-download-name">${escapeHtml(item.filename)}</div>
+              <div class="order-download-meta">${escapeHtml(meta)}</div>
+            </div>
+            <button class="workspace-button" type="button" data-order-download-id="${escapeHtml(item.id)}">다운로드</button>
+          </div>
+        `;
+      }).join("");
+    }
+
+    async function loadOrderDownloads() {
+      if (!orderDownloadList) return;
+      try {
+        const response = await fetch("/api/order-downloads");
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "최근 출력 파일을 불러오지 못했습니다.");
+        renderOrderDownloads(data.downloads || []);
+      } catch (error) {
+        orderDownloadList.innerHTML = `<div class="order-download-empty">${escapeHtml(error.message)}</div>`;
+      }
+    }
+
+    async function downloadSavedOrderFile(downloadId) {
+      const response = await fetch(`/api/order-download?id=${encodeURIComponent(downloadId)}`);
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || "파일을 다운로드하지 못했습니다.");
+      }
+      await downloadWorkbookResponse(response, "발주업무_출력.xlsx");
+    }
+
     const mailPopupTitles = {
       supplier: "공급사 관리",
       seller: "판매사 관리",
@@ -9724,6 +9847,7 @@ HTML = r"""<!doctype html>
       if (orderWorkspaceTitle) orderWorkspaceTitle.textContent = "발주업무";
       if (orderWorkspacePanelTitle) orderWorkspacePanelTitle.textContent = "작업을 선택해주세요.";
       if (orderWorkspaceDescription) orderWorkspaceDescription.textContent = "아래 5가지 작업 중 필요한 항목의 실행 버튼을 누르면 기존 드롭/업로드 실행창이 열립니다.";
+      loadOrderDownloads();
     }
     function openOrderModal(mode) {
       currentOrderMode = ORDER_WORKFLOWS[mode] ? mode : "delivery";
@@ -9788,6 +9912,20 @@ HTML = r"""<!doctype html>
       if (!button) return;
       event.preventDefault();
       openOrderModal(button.dataset.orderExecute);
+    });
+    orderDownloadRefresh?.addEventListener("click", loadOrderDownloads);
+    orderDownloadList?.addEventListener("click", async (event) => {
+      const button = event.target.closest("[data-order-download-id]");
+      if (!button) return;
+      event.preventDefault();
+      button.disabled = true;
+      try {
+        await downloadSavedOrderFile(button.dataset.orderDownloadId);
+      } catch (error) {
+        alert(error.message);
+      } finally {
+        button.disabled = false;
+      }
     });
     crmTabs.forEach((button) => {
       button.addEventListener("click", () => setCrmTab(button.dataset.crmTab));
@@ -10544,6 +10682,7 @@ HTML = r"""<!doctype html>
             throw new Error(data.error || "처리에 실패했습니다.");
           }
           await downloadWorkbookResponse(response, "차량인수증.xlsx");
+          loadOrderDownloads();
           notice.textContent = "차량인수증 다운로드가 시작되었습니다.";
         } else if (currentMode === "delivery") {
           if (!fileInput.files[0]) throw new Error("주소일브릿지 엑셀 파일을 선택해주세요.");
@@ -10561,6 +10700,7 @@ HTML = r"""<!doctype html>
             throw new Error(data.error || "처리에 실패했습니다.");
           }
           await downloadWorkbookResponse(response, "주소일브릿지_매출처별_정리.xlsx");
+          loadOrderDownloads();
           notice.textContent = "매출처별 정리 엑셀 다운로드가 시작되었습니다.";
         } else {
           if (!fileInput.files[0]) {
@@ -10576,6 +10716,7 @@ HTML = r"""<!doctype html>
             response,
             currentMode === "invoice" ? "송장번호_추출.xlsx" : "롯데택배_발주서.xlsx"
           );
+          loadOrderDownloads();
           notice.textContent = "엑셀 파일 다운로드가 시작되었습니다.";
         }
       } catch (error) {
@@ -11183,6 +11324,120 @@ def parse_receipt_date(value: object) -> date:
 
 def now_text() -> str:
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+
+def _safe_order_download_filename(filename: str) -> str:
+    cleaned = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "_", Path(filename).name).strip(" .")
+    return cleaned or "order-output.xlsx"
+
+
+def _load_order_download_history() -> list[dict[str, str | int]]:
+    if not ORDER_DOWNLOAD_HISTORY_PATH.exists():
+        return []
+    try:
+        data = json.loads(ORDER_DOWNLOAD_HISTORY_PATH.read_text(encoding="utf-8"))
+    except Exception:
+        return []
+    if not isinstance(data, list):
+        return []
+    return [item for item in data if isinstance(item, dict)]
+
+
+def _save_order_download_history(history: list[dict[str, str | int]]) -> None:
+    ORDER_DOWNLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    ORDER_DOWNLOAD_HISTORY_PATH.write_text(json.dumps(history, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def _public_order_download(item: dict[str, str | int]) -> dict[str, str | int]:
+    return {
+        "id": str(item.get("id", "")),
+        "filename": str(item.get("filename", "")),
+        "workflow": str(item.get("workflow", "")),
+        "created_at": str(item.get("created_at", "")),
+        "size": int(item.get("size", 0) or 0),
+    }
+
+
+def list_order_downloads() -> list[dict[str, str | int]]:
+    ORDER_DOWNLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    active: list[dict[str, str | int]] = []
+    removed: list[dict[str, str | int]] = []
+    base_dir = ORDER_DOWNLOAD_DIR.resolve()
+    for item in _load_order_download_history():
+        stored_name = str(item.get("stored_name", ""))
+        if not stored_name:
+            continue
+        target = (ORDER_DOWNLOAD_DIR / stored_name).resolve()
+        if base_dir in target.parents and target.is_file():
+            active.append(item)
+        else:
+            removed.append(item)
+
+    keep = active[:ORDER_DOWNLOAD_LIMIT]
+    stale = active[ORDER_DOWNLOAD_LIMIT:] + removed
+    for item in stale:
+        stored_name = str(item.get("stored_name", ""))
+        if not stored_name:
+            continue
+        target = (ORDER_DOWNLOAD_DIR / stored_name).resolve()
+        if base_dir in target.parents and target.exists():
+            target.unlink(missing_ok=True)
+
+    if len(keep) != len(active) or removed:
+        _save_order_download_history(keep)
+    return [_public_order_download(item) for item in keep]
+
+
+def register_order_download(output_path: str | Path, workflow: str) -> dict[str, str | int]:
+    source = Path(output_path)
+    if not source.is_file():
+        raise FileNotFoundError("발주업무 출력 파일을 찾지 못했습니다.")
+
+    ORDER_DOWNLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    download_id = secrets.token_hex(10)
+    safe_filename = _safe_order_download_filename(source.name)
+    stored_name = f"{datetime.now().strftime('%Y%m%d%H%M%S')}_{download_id}_{safe_filename}"
+    target = ORDER_DOWNLOAD_DIR / stored_name
+    target.write_bytes(source.read_bytes())
+
+    item: dict[str, str | int] = {
+        "id": download_id,
+        "filename": source.name,
+        "stored_name": stored_name,
+        "workflow": workflow,
+        "created_at": now_text(),
+        "size": target.stat().st_size,
+    }
+    history = [item] + _load_order_download_history()
+    _save_order_download_history(history[:ORDER_DOWNLOAD_LIMIT])
+
+    base_dir = ORDER_DOWNLOAD_DIR.resolve()
+    for stale in history[ORDER_DOWNLOAD_LIMIT:]:
+        stale_name = str(stale.get("stored_name", ""))
+        stale_path = (ORDER_DOWNLOAD_DIR / stale_name).resolve()
+        if base_dir in stale_path.parents and stale_path.exists():
+            stale_path.unlink(missing_ok=True)
+    return _public_order_download(item)
+
+
+def order_download_path(download_id: str) -> Path:
+    base_dir = ORDER_DOWNLOAD_DIR.resolve()
+    for item in _load_order_download_history():
+        if str(item.get("id", "")) != str(download_id):
+            continue
+        stored_name = str(item.get("stored_name", ""))
+        target = (ORDER_DOWNLOAD_DIR / stored_name).resolve()
+        if base_dir not in target.parents or not target.is_file():
+            raise FileNotFoundError("출력 파일을 찾지 못했습니다.")
+        return target
+    raise FileNotFoundError("출력 파일을 찾지 못했습니다.")
+
+
+def order_download_filename(download_id: str) -> str:
+    for item in _load_order_download_history():
+        if str(item.get("id", "")) == str(download_id):
+            return str(item.get("filename", "")) or "발주업무_출력.xlsx"
+    raise FileNotFoundError("출력 파일을 찾지 못했습니다.")
 
 
 def crm_webhook_token() -> str:
@@ -14781,6 +15036,35 @@ class WorkhubHandler(BaseHTTPRequestHandler):
             })
             return
 
+        if self.path == "/api/order-downloads":
+            if not self.require_permission(user, "excel_download", "엑셀 다운로드"):
+                return
+            self.send_json({"downloads": list_order_downloads(), "limit": ORDER_DOWNLOAD_LIMIT})
+            return
+
+        if self.path.startswith("/api/order-download"):
+            if not self.require_permission(user, "excel_download", "엑셀 다운로드"):
+                return
+            parsed = urlsplit(self.path)
+            params = parse_qs(parsed.query)
+            try:
+                download_id = params.get("id", [""])[0]
+                path = order_download_path(download_id)
+                filename = order_download_filename(download_id)
+            except Exception as exc:  # noqa: BLE001
+                self.send_json({"error": str(exc)}, status=404)
+                return
+            data = path.read_bytes()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+            self.send_header("Content-Disposition", f"attachment; filename*=UTF-8''{quote(filename)}")
+            self.send_header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
+            self.send_header("Pragma", "no-cache")
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+            return
+
         if self.path == "/api/system-update":
             if not self.require_permission(user, "system_update", "시스템 업데이트"):
                 return
@@ -15425,6 +15709,7 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                     output_dir=DOWNLOAD_DIR,
                     output_date=parse_receipt_date(payload.get("receipt_date", "")),
                 )
+                register_order_download(output_path, "차량인수증")
                 filename = quote(output_path.name)
                 self.send_response(200)
                 self.send_header(
@@ -15506,6 +15791,7 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                 upload_path = save_uploaded_file(fields)
                 preview_rows = extract_invoice_rows(upload_path)
                 output_path = export_invoice_numbers(upload_path, DOWNLOAD_DIR)
+                register_order_download(output_path, "송장번호 추출")
                 filename = quote(output_path.name)
                 self.send_response(200)
                 self.send_header(
@@ -15532,6 +15818,7 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                 if not LOTTE_TEMPLATE.exists():
                     raise FileNotFoundError(f"롯데택배 발주서 양식을 찾지 못했습니다: {LOTTE_TEMPLATE}")
                 output_path = convert_lotte_order_form(source_path, LOTTE_TEMPLATE, DOWNLOAD_DIR)
+                register_order_download(output_path, "롯데택배 발주서 변환")
                 filename = quote(output_path.name)
                 self.send_response(200)
                 self.send_header(
@@ -15555,6 +15842,7 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                     return
                 source_path = save_uploaded_file(fields, "file")
                 output_path = convert_sales_vendor_workbook(source_path, DOWNLOAD_DIR)
+                register_order_download(output_path, "매입/매출별 테이터 정리")
                 filename = quote(output_path.name)
                 self.send_response(200)
                 self.send_header(
