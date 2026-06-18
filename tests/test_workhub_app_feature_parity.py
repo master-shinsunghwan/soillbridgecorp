@@ -145,6 +145,23 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
             self.assertIn("function sendAdminMailTestMessage()", html_source)
             self.assertIn('"/api/mail-test"', html_source)
 
+    def test_distribution_mail_tree_only_opens_writable_mail_flows(self) -> None:
+        for app_file in (
+            ROOT / "scripts" / "workhub_delivery_app.py",
+            ROOT / "_workhub_zip_inspect" / "scripts" / "workhub_delivery_app.py",
+        ):
+            html_source = app_file.read_text(encoding="utf-8")
+
+            self.assertNotIn('data-mail-popup="supplier"', html_source)
+            self.assertNotIn('data-mail-popup="seller"', html_source)
+            self.assertIn('data-mail-popup="cs"', html_source)
+            self.assertIn('data-mail-popup="stock"', html_source)
+            self.assertIn("입고 및 품절 공지", html_source)
+            self.assertIn('openModal(type === "stock" ? "mail-stock" : "cs")', html_source)
+            self.assertIn('} else if (mode === "cs" || mode === "mail-stock") {', html_source)
+            self.assertIn('mode === "mail-stock" ? "입고 및 품절 공지" : "업체 CS 요청"', html_source)
+            self.assertIn('mode === "mail-stock" ? "공지 메일 발송" : "메일 전송"', html_source)
+
     def test_vendor_contact_upload_is_managed_from_admin_workspace(self) -> None:
         for app_file in (
             ROOT / "scripts" / "workhub_delivery_app.py",

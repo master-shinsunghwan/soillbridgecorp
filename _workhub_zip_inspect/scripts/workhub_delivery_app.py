@@ -4375,10 +4375,8 @@ HTML = r"""<!doctype html>
           <i class="nav-chevron" data-lucide="chevron-right"></i>
         </button>
         <div class="nav-submenu">
-          <button class="nav-subitem" type="button" data-mail-popup="supplier">공급사 관리</button>
-          <button class="nav-subitem" type="button" data-mail-popup="seller">판매사 관리</button>
           <button class="nav-subitem" type="button" data-mail-popup="cs">CS 요청</button>
-          <button class="nav-subitem" type="button" data-mail-popup="stock">입고 및 품절 관리</button>
+          <button class="nav-subitem" type="button" data-mail-popup="stock">입고 및 품절 공지</button>
         </div>
       </div>
       __LEAVE_NAV__
@@ -6870,8 +6868,12 @@ HTML = r"""<!doctype html>
       return `안녕하세요. (주)소일브릿지 입니다.\n\n\n\n- 원출고일  및 원송장번호 : ${csOriginInput.value.trim()}\n\n\n\n- 상품명 : ${csProductInput.value.trim()} \n\n- 수령인 : ${csReceiverInput.value.trim()}\n\n- 수령인 연락처 : ${csPhoneInput.value.trim()}\n\n- 수령인 주소 : ${csAddressInput.value.trim()}\n\n\n\n- CS내용 : ${csContentInput.value.trim()}\n\n \n\nCS건을 보내드립니다.\n\n \n\n★반품 접수 후 일주일 이상 회신 없으실 경우 자체 환불 및 정산 반영 예정이오니, 처리 결과 꼭 회신 부탁드립니다.\n\n `;
     }
 
+    function defaultStockNoticeBody() {
+      return `안녕하세요. (주)소일브릿지 입니다.\n\n제품 입고 및 품절 안내드립니다.\n\n- 상품명 : ${csProductInput.value.trim()}\n\n- 안내 내용 : ${csContentInput.value.trim()}\n\n확인 후 관련 일정 및 판매 상태 반영 부탁드립니다.\n\n감사합니다.`;
+    }
+
     function refreshCsBody() {
-      csBodyInput.value = defaultCsBody();
+      csBodyInput.value = currentMode === "mail-stock" ? defaultStockNoticeBody() : defaultCsBody();
     }
 
     async function loadMailSettings() {
@@ -7038,7 +7040,7 @@ HTML = r"""<!doctype html>
       vendorTypeSelect.value = selected.vendor_type || "purchase";
       vendorNameInput.value = selected.vendor_name;
       recipientEmailInput.value = selected.email;
-      csSubjectInput.value = defaultCsSubject(selected.vendor_name);
+      csSubjectInput.value = currentMode === "mail-stock" ? "입고 및 품절 공지" : defaultCsSubject(selected.vendor_name);
     }
 
     async function saveCurrentVendorContact() {
@@ -10209,18 +10211,14 @@ HTML = r"""<!doctype html>
     }
 
     const mailPopupTitles = {
-      supplier: "공급사 관리",
-      seller: "판매사 관리",
       cs: "CS 요청",
-      stock: "입고 및 품절 관리",
+      stock: "입고 및 품절 공지",
     };
 
     function openMailMessagePopup(type) {
       const title = mailPopupTitles[type] || "유통사 업무관련 메일 발송";
-      openModal(`mail-${type}`);
+      openModal(type === "stock" ? "mail-stock" : "cs");
       modalTitle.textContent = title;
-      messagePlaceholderTitle.textContent = title;
-      messagePlaceholderBody.textContent = "해당 메시지 작성 화면은 다음 단계에서 생성합니다.";
     }
 
     function openModal(mode) {
@@ -10338,10 +10336,14 @@ HTML = r"""<!doctype html>
         messagePlaceholder.style.display = "none";
         fileInput.required = false;
         templateInput.required = false;
-      } else if (mode === "cs") {
-        modalTitle.textContent = "업체 CS 요청";
-        submitButton.textContent = "메일 전송";
+      } else if (mode === "cs" || mode === "mail-stock") {
+        modalTitle.textContent = mode === "mail-stock" ? "입고 및 품절 공지" : "업체 CS 요청";
+        submitButton.textContent = mode === "mail-stock" ? "공지 메일 발송" : "메일 전송";
         submitButton.className = "btn primary";
+        if (mode === "mail-stock") {
+          csSubjectInput.value = "입고 및 품절 공지";
+          csBodyInput.value = defaultStockNoticeBody();
+        }
         deliveryOptions.style.display = "none";
         templateUpload.style.display = "none";
         vehicleFields.style.display = "none";
@@ -11555,7 +11557,7 @@ HTML = r"""<!doctype html>
       }
     });
     vendorNameInput.addEventListener("input", () => {
-      csSubjectInput.value = defaultCsSubject(vendorNameInput.value.trim());
+      csSubjectInput.value = currentMode === "mail-stock" ? "입고 및 품절 공지" : defaultCsSubject(vendorNameInput.value.trim());
     });
     [csOriginInput, csProductInput, csReceiverInput, csPhoneInput, csAddressInput, csContentInput]
       .forEach((input) => input.addEventListener("input", refreshCsBody));
@@ -11570,9 +11572,9 @@ HTML = r"""<!doctype html>
       notice.textContent = "처리 중입니다.";
       submitButton.disabled = true;
       try {
-        if (currentMode === "ledger" || currentMode === "management" || currentMode.startsWith("mail-")) {
+        if (currentMode === "ledger" || currentMode === "management") {
           closeModal();
-        } else if (currentMode === "cs") {
+        } else if (currentMode === "cs" || currentMode === "mail-stock") {
           refreshCsBody();
           const payload = collectCsPayload();
           if (!payload.recipient_email || !payload.subject || !payload.body) {
