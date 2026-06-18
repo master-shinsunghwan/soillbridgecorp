@@ -73,6 +73,7 @@ DOWNLOAD_DIR = OUTPUT_DIR / "downloads"
 ORDER_DOWNLOAD_DIR = DOWNLOAD_DIR / "order_outputs"
 ORDER_DOWNLOAD_HISTORY_PATH = ORDER_DOWNLOAD_DIR / "history.json"
 ORDER_DOWNLOAD_LIMIT = 10
+SHARED_FILE_DIR = RUNTIME_ROOT / "shared_files"
 CONFIG_DIR = RUNTIME_ROOT / "config"
 DB_PATH = CONFIG_DIR / "workhub.db"
 MAIL_SETTINGS_PATH = CONFIG_DIR / "mail_settings.json"
@@ -2077,6 +2078,76 @@ HTML = r"""<!doctype html>
       font-weight: 800;
       background: #fbfcff;
     }
+    .shared-file-grid {
+      display: grid;
+      grid-template-columns: minmax(280px, 420px) minmax(0, 1fr);
+      gap: 14px;
+      min-height: 0;
+    }
+    .shared-file-panel {
+      display: grid;
+      gap: 12px;
+      align-content: start;
+      padding: 16px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: white;
+      box-shadow: var(--shadow);
+      min-width: 0;
+    }
+    .shared-file-panel.full {
+      min-height: 360px;
+    }
+    .shared-file-message {
+      min-height: 20px;
+      color: #475467;
+      font-size: 13px;
+      font-weight: 800;
+    }
+    .shared-file-table-wrap {
+      overflow: auto;
+      border: 1px solid #dfe5ec;
+      border-radius: 8px;
+      background: white;
+    }
+    .shared-file-table {
+      width: 100%;
+      min-width: 720px;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+    .shared-file-table th,
+    .shared-file-table td {
+      min-height: 42px;
+      padding: 10px 12px;
+      border-bottom: 1px solid #edf1f7;
+      text-align: left;
+      vertical-align: middle;
+    }
+    .shared-file-table th {
+      background: #f8fafc;
+      color: #344054;
+      font-weight: 950;
+      white-space: nowrap;
+    }
+    .shared-file-table td {
+      color: #1f2937;
+      font-weight: 750;
+    }
+    .shared-file-table .empty {
+      text-align: center;
+      color: #667085;
+      font-weight: 850;
+    }
+    .shared-file-actions {
+      display: inline-flex;
+      gap: 7px;
+      align-items: center;
+      white-space: nowrap;
+    }
+    @media (max-width: 980px) {
+      .shared-file-grid { grid-template-columns: 1fr; }
+    }
     .workspace-head {
       display: flex;
       align-items: center;
@@ -4021,9 +4092,8 @@ HTML = r"""<!doctype html>
       </div>
       __LEAVE_NAV__
       __ADMIN_TOOLS_NAV__
-      <div class="nav-section">TOOLS</div>
-      <button class="nav-item" type="button" data-open="invoice"><i data-lucide="file-spreadsheet"></i> <span>송장 추출</span></button>
-      <button class="nav-item" type="button" data-open="vehicle"><i data-lucide="truck"></i> <span>차량인수증</span></button>
+      <div class="nav-section">보조 도구</div>
+      <button class="nav-item" type="button" data-open="fileLibrary"><i data-lucide="download"></i> <span>업무 파일 자료실</span></button>
     </aside>
 
     <main>
@@ -4324,6 +4394,46 @@ HTML = r"""<!doctype html>
           <div class="order-download-list" id="orderDownloadList">
             <div class="order-download-empty">최근 출력된 파일이 없습니다.</div>
           </div>
+        </div>
+      </section>
+
+      <section class="workspace-view" id="fileLibraryWorkspace">
+        <div class="workspace-head">
+          <div class="workspace-title">업무 파일 자료실</div>
+          <div class="workspace-actions">
+            <button class="workspace-button" type="button" id="sharedFileRefresh">새로고침</button>
+          </div>
+        </div>
+        <div class="shared-file-grid">
+          <section class="shared-file-panel" id="sharedFileUploadPanel">
+            <div class="order-exec-kicker">파일 올리기</div>
+            <div class="order-download-title">업무에 필요한 파일을 보관합니다</div>
+            <label class="dropzone" for="sharedFileInput">
+              <span class="drop-main" id="sharedFileDropMain">업무 파일을 선택해주세요.</span>
+              <span class="drop-sub">엑셀, 문서, PDF, 압축파일 등 필요한 파일을 올릴 수 있습니다.</span>
+              <input id="sharedFileInput" name="shared_file" type="file" />
+            </label>
+            <button class="workspace-button" type="button" id="sharedFileUpload">파일 올리기</button>
+            <div class="shared-file-message" id="sharedFileMessage"></div>
+          </section>
+          <section class="shared-file-panel full">
+            <div class="order-download-head">
+              <div>
+                <div class="order-exec-kicker">다운로드</div>
+                <div class="order-download-title">저장된 업무 파일</div>
+              </div>
+            </div>
+            <div class="shared-file-table-wrap">
+              <table class="shared-file-table">
+                <thead>
+                  <tr><th>파일명</th><th>크기</th><th>등록자</th><th>등록일</th><th>작업</th></tr>
+                </thead>
+                <tbody id="sharedFileBody">
+                  <tr><td class="empty" colspan="5">저장된 업무 파일이 없습니다.</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
         </div>
       </section>
 
@@ -5060,6 +5170,7 @@ HTML = r"""<!doctype html>
       setHidden(saveVendorContactButton, !can("mail_send"));
       setHidden(document.querySelector("#distributionMailNavGroup"), !can("mail_send"));
       document.querySelectorAll('[data-open="cs"]').forEach((button) => setHidden(button, !can("mail_send")));
+      setHidden(sharedFileUploadPanel, currentUser.role !== "admin");
       setHidden(importShipmentInputOpen, !can("import_shipment_manage"));
       setHidden(importShipmentWorkspaceOpen, !can("import_shipment_manage"));
       document.querySelectorAll('[data-open="crm"]').forEach((button) => setHidden(button, !can("crm_view")));
@@ -5251,6 +5362,14 @@ HTML = r"""<!doctype html>
     const orderWorkspaceCards = document.querySelector("#orderWorkspaceCards");
     const orderDownloadList = document.querySelector("#orderDownloadList");
     const orderDownloadRefresh = document.querySelector("#orderDownloadRefresh");
+    const fileLibraryWorkspace = document.querySelector("#fileLibraryWorkspace");
+    const sharedFileUploadPanel = document.querySelector("#sharedFileUploadPanel");
+    const sharedFileInput = document.querySelector("#sharedFileInput");
+    const sharedFileDropMain = document.querySelector("#sharedFileDropMain");
+    const sharedFileUpload = document.querySelector("#sharedFileUpload");
+    const sharedFileRefresh = document.querySelector("#sharedFileRefresh");
+    const sharedFileBody = document.querySelector("#sharedFileBody");
+    const sharedFileMessage = document.querySelector("#sharedFileMessage");
     const leaveWorkspace = document.querySelector("#leaveWorkspace");
     const userAdminWorkspace = document.querySelector("#userAdminWorkspace");
     const backupWorkspace = document.querySelector("#backupWorkspace");
@@ -9456,6 +9575,99 @@ HTML = r"""<!doctype html>
       await downloadWorkbookResponse(response, "발주업무_출력.xlsx");
     }
 
+    function sharedFileSizeLabel(size) {
+      const bytes = Number(size || 0);
+      if (!bytes) return "0KB";
+      if (bytes >= 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)}MB`;
+      return `${Math.max(1, Math.round(bytes / 1024))}KB`;
+    }
+
+    function renderSharedFiles(files) {
+      if (!sharedFileBody) return;
+      if (!files.length) {
+        sharedFileBody.innerHTML = '<tr><td class="empty" colspan="5">저장된 업무 파일이 없습니다.</td></tr>';
+        return;
+      }
+      sharedFileBody.innerHTML = files.map((item) => {
+        const deleteButton = currentUser.role === "admin"
+          ? `<button class="workspace-button danger" type="button" data-shared-file-delete="${escapeHtml(item.id)}">삭제</button>`
+          : "";
+        return `
+          <tr>
+            <td>${escapeHtml(item.original_name)}</td>
+            <td>${escapeHtml(sharedFileSizeLabel(item.size))}</td>
+            <td>${escapeHtml(item.uploaded_by || "-")}</td>
+            <td>${escapeHtml(item.uploaded_at || "")}</td>
+            <td>
+              <span class="shared-file-actions">
+                <button class="workspace-button" type="button" data-shared-file-download="${escapeHtml(item.id)}">다운로드</button>
+                ${deleteButton}
+              </span>
+            </td>
+          </tr>
+        `;
+      }).join("");
+    }
+
+    async function loadSharedFiles() {
+      if (!sharedFileBody) return;
+      try {
+        const response = await fetch("/api/shared-files");
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "업무 파일 목록을 불러오지 못했습니다.");
+        renderSharedFiles(data.files || []);
+      } catch (error) {
+        sharedFileBody.innerHTML = `<tr><td class="empty" colspan="5">${escapeHtml(error.message)}</td></tr>`;
+      }
+    }
+
+    async function uploadSharedFile() {
+      if (!sharedFileInput || !sharedFileUpload) return;
+      const file = sharedFileInput.files[0];
+      if (!file) {
+        if (sharedFileMessage) sharedFileMessage.textContent = "올릴 파일을 선택해주세요.";
+        return;
+      }
+      const formData = new FormData();
+      formData.append("file", file);
+      sharedFileUpload.disabled = true;
+      if (sharedFileMessage) sharedFileMessage.textContent = "파일을 올리는 중입니다.";
+      try {
+        const response = await fetch("/api/shared-file-upload", { method: "POST", body: formData });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "파일 업로드에 실패했습니다.");
+        if (sharedFileMessage) sharedFileMessage.textContent = data.message || "파일을 저장했습니다.";
+        sharedFileInput.value = "";
+        if (sharedFileDropMain) sharedFileDropMain.textContent = "업무 파일을 선택해주세요.";
+        renderSharedFiles(data.files || []);
+      } catch (error) {
+        if (sharedFileMessage) sharedFileMessage.textContent = error.message;
+      } finally {
+        sharedFileUpload.disabled = false;
+      }
+    }
+
+    async function downloadSharedFile(fileId) {
+      const response = await fetch(`/api/shared-file-download?id=${encodeURIComponent(fileId)}`);
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || "업무 파일을 다운로드하지 못했습니다.");
+      }
+      await downloadWorkbookResponse(response, "업무파일");
+    }
+
+    async function deleteSharedFile(fileId) {
+      const response = await fetch("/api/shared-file-delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: fileId }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "업무 파일을 삭제하지 못했습니다.");
+      if (sharedFileMessage) sharedFileMessage.textContent = data.message || "파일을 삭제했습니다.";
+      renderSharedFiles(data.files || []);
+    }
+
     const mailPopupTitles = {
       supplier: "공급사 관리",
       seller: "판매사 관리",
@@ -9720,6 +9932,7 @@ HTML = r"""<!doctype html>
       if (mode === "leave" && !leaveWorkspace) mode = "dashboard";
       if (mode === "backup" && !backupWorkspace) mode = "dashboard";
       if (mode === "systemUpdate" && !systemUpdateWorkspace) mode = "dashboard";
+      if (mode === "fileLibrary" && !fileLibraryWorkspace) mode = "dashboard";
       if (mode === "crm" && !can("crm_view")) mode = "dashboard";
       currentMode = mode;
       const showImport = mode === "import";
@@ -9727,12 +9940,14 @@ HTML = r"""<!doctype html>
       const showLedger = mode === "ledger";
       const showCrm = mode === "crm";
       const showLeave = mode === "leave";
+      const showFileLibrary = mode === "fileLibrary" && Boolean(fileLibraryWorkspace);
       const showUserAdmin = mode === "userAdmin" && Boolean(userAdminWorkspace);
       const showBackup = mode === "backup" && Boolean(backupWorkspace);
       const showSystemUpdate = mode === "systemUpdate" && Boolean(systemUpdateWorkspace);
       dashboardContent.style.display = mode === "dashboard" ? "" : "none";
       if (importWorkspace) importWorkspace.classList.toggle("active", showImport);
       if (orderWorkspace) orderWorkspace.classList.toggle("active", false);
+      if (fileLibraryWorkspace) fileLibraryWorkspace.classList.toggle("active", showFileLibrary);
       managementWorkspace.classList.toggle("active", showManagement);
       ledgerWorkspace.classList.toggle("active", showLedger);
       crmWorkspace.classList.toggle("active", showCrm);
@@ -9766,6 +9981,10 @@ HTML = r"""<!doctype html>
         setPageTitle("수출입 업무");
         closeLedgerFilter();
         loadImportShipments();
+      } else if (showFileLibrary) {
+        setPageTitle("업무 파일 자료실");
+        closeLedgerFilter();
+        loadSharedFiles();
       } else if (showLeave) {
         setPageTitle(leaveWorkspace.querySelector(".workspace-title")?.textContent || "연차");
         closeLedgerFilter();
@@ -9903,6 +10122,7 @@ HTML = r"""<!doctype html>
       dashboardContent.style.display = "none";
       if (orderWorkspace) orderWorkspace.classList.toggle("active", true);
       if (importWorkspace) importWorkspace.classList.toggle("active", false);
+      if (fileLibraryWorkspace) fileLibraryWorkspace.classList.toggle("active", false);
       managementWorkspace.classList.toggle("active", false);
       ledgerWorkspace.classList.toggle("active", false);
       crmWorkspace.classList.toggle("active", false);
@@ -9954,7 +10174,7 @@ HTML = r"""<!doctype html>
           showOrderWorkspace();
           return;
         }
-        if (mode === "management" || mode === "ledger" || mode === "crm" || mode === "import" || mode === "userAdmin" || mode === "leave" || mode === "backup" || mode === "systemUpdate") {
+        if (mode === "management" || mode === "ledger" || mode === "crm" || mode === "import" || mode === "fileLibrary" || mode === "userAdmin" || mode === "leave" || mode === "backup" || mode === "systemUpdate") {
           showWorkspace(mode);
           return;
         }
@@ -9989,6 +10209,28 @@ HTML = r"""<!doctype html>
       button.disabled = true;
       try {
         await downloadSavedOrderFile(button.dataset.orderDownloadId);
+      } catch (error) {
+        alert(error.message);
+      } finally {
+        button.disabled = false;
+      }
+    });
+    sharedFileRefresh?.addEventListener("click", loadSharedFiles);
+    sharedFileUpload?.addEventListener("click", uploadSharedFile);
+    sharedFileBody?.addEventListener("click", async (event) => {
+      const downloadButton = event.target.closest("[data-shared-file-download]");
+      const deleteButton = event.target.closest("[data-shared-file-delete]");
+      const button = downloadButton || deleteButton;
+      if (!button) return;
+      event.preventDefault();
+      button.disabled = true;
+      try {
+        if (downloadButton) {
+          await downloadSharedFile(downloadButton.dataset.sharedFileDownload);
+        } else if (deleteButton) {
+          if (!confirm("선택한 업무 파일을 삭제할까요?")) return;
+          await deleteSharedFile(deleteButton.dataset.sharedFileDelete);
+        }
       } catch (error) {
         alert(error.message);
       } finally {
@@ -10503,6 +10745,12 @@ HTML = r"""<!doctype html>
       vendorContactsDropMain,
       "업체구분/업체명/메일주소 엑셀을 선택해주세요."
     );
+    setupDropzone(
+      document.querySelector("label[for='sharedFileInput']"),
+      sharedFileInput,
+      sharedFileDropMain,
+      "업무 파일을 선택해주세요."
+    );
     document.querySelector("#addProductRow").addEventListener("click", () => addProductRow());
     noticeSaveButton.addEventListener("click", saveNoticeTemplate);
     noticeClearButton.addEventListener("click", clearNoticeTemplate);
@@ -10815,7 +11063,7 @@ HTML = r"""<!doctype html>
     });
 
     const initialView = new URLSearchParams(window.location.search).get("view");
-    showWorkspace(["management", "ledger", "crm", "import", "leave", "userAdmin", "backup", "systemUpdate"].includes(initialView) ? initialView : "dashboard");
+    showWorkspace(["management", "ledger", "crm", "import", "fileLibrary", "leave", "userAdmin", "backup", "systemUpdate"].includes(initialView) ? initialView : "dashboard");
   </script>
 </body>
 </html>
@@ -11392,6 +11640,22 @@ def save_uploaded_file(fields: dict[str, tuple[str, bytes] | str], field_name: s
     return path
 
 
+def save_uploaded_shared_file(fields: dict[str, tuple[str, bytes] | str], field_name: str = "file") -> Path:
+    uploaded = fields.get(field_name)
+    if not isinstance(uploaded, tuple):
+        raise ValueError("업로드된 업무 파일이 없습니다.")
+
+    filename, data = uploaded
+    filename = safe_filename(filename)
+    if not filename or not data:
+        raise ValueError("업무 파일을 다시 선택해주세요.")
+
+    UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    path = UPLOAD_DIR / f"{int(time.time() * 1000)}_{filename}"
+    path.write_bytes(data)
+    return path
+
+
 def save_uploaded_backup_zip(fields: dict[str, tuple[str, bytes] | str], field_name: str = "file") -> Path:
     uploaded = fields.get(field_name)
     if not isinstance(uploaded, tuple):
@@ -11532,6 +11796,115 @@ def order_download_filename(download_id: str) -> str:
         if str(item.get("id", "")) == str(download_id):
             return str(item.get("filename", "")) or "발주업무_출력.xlsx"
     raise FileNotFoundError("출력 파일을 찾지 못했습니다.")
+
+
+def _safe_shared_filename(filename: str) -> str:
+    cleaned = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "_", Path(filename).name).strip(" .")
+    return cleaned or "workhub-file"
+
+
+def _shared_file_public(row: sqlite3.Row | dict) -> dict[str, str | int]:
+    return {
+        "id": int(row["id"]),
+        "original_name": str(row["original_name"]),
+        "size": int(row["size"] or 0),
+        "uploaded_by": str(row["uploaded_by"] or ""),
+        "uploaded_at": str(row["uploaded_at"] or ""),
+    }
+
+
+def list_shared_files() -> list[dict[str, str | int]]:
+    init_db()
+    SHARED_FILE_DIR.mkdir(parents=True, exist_ok=True)
+    connection = connect_db()
+    try:
+        rows = connection.execute(
+            """
+            SELECT id, original_name, size, uploaded_by, uploaded_at
+              FROM shared_files
+             ORDER BY id DESC
+            """
+        ).fetchall()
+        return [_shared_file_public(row) for row in rows]
+    finally:
+        connection.close()
+
+
+def save_shared_file(source_path: str | Path, original_name: str, uploaded_by: str = "") -> dict[str, str | int]:
+    source = Path(source_path)
+    if not source.is_file():
+        raise FileNotFoundError("올릴 파일을 찾지 못했습니다.")
+
+    init_db()
+    SHARED_FILE_DIR.mkdir(parents=True, exist_ok=True)
+    safe_original = _safe_shared_filename(original_name or source.name)
+    file_id = secrets.token_hex(10)
+    stored_name = f"{datetime.now().strftime('%Y%m%d%H%M%S')}_{file_id}_{safe_original}"
+    target = SHARED_FILE_DIR / stored_name
+    target.write_bytes(source.read_bytes())
+    uploaded_at = now_text()
+
+    connection = connect_db()
+    try:
+        cursor = connection.execute(
+            """
+            INSERT INTO shared_files (stored_name, original_name, size, uploaded_by, uploaded_at)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (stored_name, safe_original, target.stat().st_size, str(uploaded_by or ""), uploaded_at),
+        )
+        connection.commit()
+        row_id = int(cursor.lastrowid)
+    finally:
+        connection.close()
+    return {
+        "id": row_id,
+        "original_name": safe_original,
+        "size": target.stat().st_size,
+        "uploaded_by": str(uploaded_by or ""),
+        "uploaded_at": uploaded_at,
+    }
+
+
+def shared_file_download_info(file_id: object) -> tuple[Path, dict[str, str | int]]:
+    init_db()
+    try:
+        numeric_id = int(file_id)
+    except (TypeError, ValueError) as exc:
+        raise FileNotFoundError("업무 파일을 찾지 못했습니다.") from exc
+
+    connection = connect_db()
+    try:
+        row = connection.execute(
+            """
+            SELECT id, stored_name, original_name, size, uploaded_by, uploaded_at
+              FROM shared_files
+             WHERE id = ?
+            """,
+            (numeric_id,),
+        ).fetchone()
+    finally:
+        connection.close()
+    if not row:
+        raise FileNotFoundError("업무 파일을 찾지 못했습니다.")
+
+    base_dir = SHARED_FILE_DIR.resolve()
+    target = (SHARED_FILE_DIR / str(row["stored_name"])).resolve()
+    if base_dir not in target.parents or not target.is_file():
+        raise FileNotFoundError("업무 파일을 찾지 못했습니다.")
+    return target, _shared_file_public(row)
+
+
+def delete_shared_file(file_id: object) -> None:
+    path, _ = shared_file_download_info(file_id)
+    numeric_id = int(file_id)
+    connection = connect_db()
+    try:
+        connection.execute("DELETE FROM shared_files WHERE id = ?", (numeric_id,))
+        connection.commit()
+    finally:
+        connection.close()
+    path.unlink(missing_ok=True)
 
 
 def crm_webhook_token() -> str:
@@ -11825,6 +12198,18 @@ def init_db() -> None:
         for column, column_type in user_extra_columns.items():
             if column not in user_columns:
                 connection.execute(f"ALTER TABLE users ADD COLUMN {column} {column_type}")
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS shared_files (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                stored_name TEXT NOT NULL UNIQUE,
+                original_name TEXT NOT NULL,
+                size INTEGER NOT NULL DEFAULT 0,
+                uploaded_by TEXT,
+                uploaded_at TEXT NOT NULL
+            )
+            """
+        )
         connection.execute(
             """
             CREATE TABLE IF NOT EXISTS login_sessions (
@@ -15394,6 +15779,31 @@ class WorkhubHandler(BaseHTTPRequestHandler):
             self.send_json({"downloads": list_order_downloads(), "limit": ORDER_DOWNLOAD_LIMIT})
             return
 
+        if self.path == "/api/shared-files":
+            self.send_json({"files": list_shared_files()})
+            return
+
+        if self.path.startswith("/api/shared-file-download"):
+            parsed = urlsplit(self.path)
+            params = parse_qs(parsed.query)
+            try:
+                path, metadata = shared_file_download_info(params.get("id", [""])[0])
+            except Exception as exc:  # noqa: BLE001
+                self.send_json({"error": str(exc)}, status=404)
+                return
+            data = path.read_bytes()
+            content_type = mimetypes.guess_type(str(path))[0] or "application/octet-stream"
+            filename = quote(str(metadata.get("original_name") or path.name))
+            self.send_response(200)
+            self.send_header("Content-Type", content_type)
+            self.send_header("Content-Disposition", f"attachment; filename*=UTF-8''{filename}")
+            self.send_header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
+            self.send_header("Pragma", "no-cache")
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+            return
+
         if self.path.startswith("/api/order-download"):
             if not self.require_permission(user, "excel_download", "엑셀 다운로드"):
                 return
@@ -16074,6 +16484,15 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                 self.send_json({"message": "업체 메일 주소를 저장했습니다.", "contacts": contacts})
                 return
 
+            if self.path == "/api/shared-file-delete":
+                if not self.require_admin(user, "업무 파일 삭제"):
+                    return
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(length).decode("utf-8"))
+                delete_shared_file(payload.get("id"))
+                self.send_json({"message": "업무 파일을 삭제했습니다.", "files": list_shared_files()})
+                return
+
             if self.path == "/api/vehicle-receipt":
                 if not self.require_permission(user, "excel_download", "엑셀 다운로드"):
                     return
@@ -16105,6 +16524,16 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                 self.send_header("Content-Length", str(len(data)))
                 self.end_headers()
                 self.wfile.write(data)
+                return
+
+            if urlsplit(self.path).path == "/api/shared-file-upload":
+                if not self.require_admin(user, "업무 파일 업로드"):
+                    return
+                fields = parse_multipart(self.headers, self.rfile)
+                upload_path = save_uploaded_shared_file(fields, "file")
+                uploaded_by = str(user.get("display_name") or user.get("username") or "")
+                save_shared_file(upload_path, original_uploaded_filename(upload_path.name), uploaded_by)
+                self.send_json({"message": "업무 파일을 저장했습니다.", "files": list_shared_files()})
                 return
 
             fields = parse_multipart(self.headers, self.rfile)

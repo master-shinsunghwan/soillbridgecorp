@@ -150,6 +150,27 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
             self.assertNotIn('id="vendorContactsFileInput"', cs_contact_slice)
             self.assertNotIn('id="vendorContactsDropMain"', cs_contact_slice)
 
+    def test_tools_sidebar_is_shared_file_library_only(self) -> None:
+        for app_file in (
+            ROOT / "scripts" / "workhub_delivery_app.py",
+            ROOT / "_workhub_zip_inspect" / "scripts" / "workhub_delivery_app.py",
+        ):
+            html_source = app_file.read_text(encoding="utf-8")
+
+            self.assertIn('data-open="fileLibrary"', html_source)
+            self.assertIn('id="fileLibraryWorkspace"', html_source)
+            self.assertIn('id="sharedFileInput"', html_source)
+            self.assertIn('id="sharedFileBody"', html_source)
+            self.assertIn('"/api/shared-files"', html_source)
+            self.assertIn('"/api/shared-file-upload"', html_source)
+            self.assertIn('"/api/shared-file-delete"', html_source)
+            self.assertIn('/api/shared-file-download?id=', html_source)
+            self.assertIn("function loadSharedFiles()", html_source)
+            self.assertIn("function uploadSharedFile()", html_source)
+            self.assertIn("function downloadSharedFile", html_source)
+            self.assertNotIn('data-open="invoice"><i data-lucide="file-spreadsheet"></i>', html_source)
+            self.assertNotIn('data-open="vehicle"><i data-lucide="truck"></i>', html_source)
+
     def test_excel_downloads_keep_object_url_until_browser_starts_download(self) -> None:
         for app_file in (
             ROOT / "scripts" / "workhub_delivery_app.py",
