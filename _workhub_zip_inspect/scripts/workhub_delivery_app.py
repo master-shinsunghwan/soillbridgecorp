@@ -5407,18 +5407,6 @@ HTML = r"""<!doctype html>
             <textarea id="stockSoldoutNoteInput"></textarea>
           </div>
           <div class="text-field">
-            <label class="field-label" for="stockManagerNameInput">담당자명</label>
-            <input id="stockManagerNameInput" type="text" />
-          </div>
-          <div class="text-field">
-            <label class="field-label" for="stockManagerPhoneInput">연락처</label>
-            <input id="stockManagerPhoneInput" type="text" />
-          </div>
-          <div class="text-field">
-            <label class="field-label" for="stockSenderEmailInput">발신메일</label>
-            <input id="stockSenderEmailInput" type="email" />
-          </div>
-          <div class="text-field">
             <label class="field-label" for="stockSubjectInput">메일 제목</label>
             <input id="stockSubjectInput" type="text" />
           </div>
@@ -5743,9 +5731,6 @@ HTML = r"""<!doctype html>
     const stockOutboundBlockedInput = document.querySelector("#stockOutboundBlockedInput");
     const stockRestockScheduleInput = document.querySelector("#stockRestockScheduleInput");
     const stockSoldoutNoteInput = document.querySelector("#stockSoldoutNoteInput");
-    const stockManagerNameInput = document.querySelector("#stockManagerNameInput");
-    const stockManagerPhoneInput = document.querySelector("#stockManagerPhoneInput");
-    const stockSenderEmailInput = document.querySelector("#stockSenderEmailInput");
     const stockSubjectInput = document.querySelector("#stockSubjectInput");
     const stockBodyInput = document.querySelector("#stockBodyInput");
     const ledgerCsPopupClose = document.querySelector("#ledgerCsPopupClose");
@@ -6039,6 +6024,7 @@ HTML = r"""<!doctype html>
     let currentMode = "dashboard";
     let currentOrderMode = "delivery";
     let vendorContacts = [];
+    let cachedMailSettings = {};
     let activeCsCaseId = "";
     let ledgerCases = [];
     let managementRecords = [];
@@ -7026,8 +7012,17 @@ HTML = r"""<!doctype html>
       if (stockBodyInput) stockBodyInput.value = defaultStockNoticeBody();
     }
 
+    function defaultStockContactInfo() {
+      return {
+        managerName: cachedMailSettings.stock_manager_name || currentUser.display_name || currentUser.username || "",
+        managerPhone: cachedMailSettings.stock_manager_phone || "",
+        senderEmail: cachedMailSettings.naver_email || "",
+      };
+    }
+
     function defaultStockNoticeBody() {
       const value = (input) => input?.value.trim() || "";
+      const contact = defaultStockContactInfo();
       return `안녕하세요. (주)소일브릿지 입니다.
 
 제품 입고 및 품절 현황 안내드립니다.
@@ -7059,9 +7054,9 @@ HTML = r"""<!doctype html>
 감사합니다.
 
 (주)소일브릿지
-담당자: ${value(stockManagerNameInput)}
-연락처: ${value(stockManagerPhoneInput)}
-이메일: ${value(stockSenderEmailInput)}`;
+담당자: ${contact.managerName}
+연락처: ${contact.managerPhone}
+이메일: ${contact.senderEmail}`;
     }
 
     async function loadMailSettings() {
@@ -7069,6 +7064,7 @@ HTML = r"""<!doctype html>
         const response = await fetch("/api/mail-settings");
         if (!response.ok) return;
         const data = await response.json();
+        cachedMailSettings = data || {};
         if (adminNaverEmailInput) adminNaverEmailInput.value = data.naver_email || "";
         if (adminNaverPasswordInput) {
           adminNaverPasswordInput.value = "";
@@ -7083,6 +7079,7 @@ HTML = r"""<!doctype html>
         return data;
       } catch {
         // 저장된 메일 설정이 없어도 다른 화면 사용은 계속 가능합니다.
+        cachedMailSettings = {};
       }
     }
 
@@ -9621,9 +9618,6 @@ HTML = r"""<!doctype html>
         stockOutboundBlockedInput,
         stockRestockScheduleInput,
         stockSoldoutNoteInput,
-        stockManagerNameInput,
-        stockManagerPhoneInput,
-        stockSenderEmailInput,
       ].forEach((input) => {
         if (input) input.value = "";
       });
@@ -10655,6 +10649,7 @@ HTML = r"""<!doctype html>
         messagePlaceholder.style.display = "none";
         fileInput.required = false;
         templateInput.required = false;
+        loadMailSettings().then(refreshStockNoticeBody);
         refreshStockNoticeBody();
         loadVendorContacts();
       } else if (mode.startsWith("mail-")) {
@@ -11878,9 +11873,6 @@ HTML = r"""<!doctype html>
       stockOutboundBlockedInput,
       stockRestockScheduleInput,
       stockSoldoutNoteInput,
-      stockManagerNameInput,
-      stockManagerPhoneInput,
-      stockSenderEmailInput,
     ].forEach((input) => input?.addEventListener("input", refreshStockNoticeBody));
     stockNoticeDateInput?.addEventListener("change", refreshStockNoticeBody);
 
