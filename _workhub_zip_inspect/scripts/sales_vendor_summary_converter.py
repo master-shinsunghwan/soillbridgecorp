@@ -84,6 +84,11 @@ def _display_quantity(value: object) -> str:
     return str(value).strip()
 
 
+def _product_summary_line(product_name: str, quantity: str, count: int) -> str:
+    quantity_text = f"{quantity}개" if quantity else "수량 없음"
+    return f"{product_name} - {quantity_text} ({count}건)"
+
+
 def _parse_source_date(value: object) -> date | None:
     if isinstance(value, datetime):
         return value.date()
@@ -151,12 +156,47 @@ def _extract_rows(source_path: Path) -> list[dict[str, object]]:
 
 
 def _summary_text(rows: list[dict[str, object]]) -> str:
-    purchase_groups: OrderedDict[str, list[dict[str, object]]] = OrderedDict()
+    invoice_groups: OrderedDict[str, list[dict[str, object]]] = OrderedDict()
     for row in rows:
+        invoice_number = _clean_text(row.get("배송번호"))
+        if invoice_number:
+            invoice_groups.setdefault(invoice_number, []).append(row)
+
+    package_row_ids = {
+        id(row)
+        for invoice_rows in invoice_groups.values()
+        if len(invoice_rows) > 1
+        for row in invoice_rows
+    }
+    package_lines: list[str] = []
+    for invoice_rows in invoice_groups.values():
+        if len(invoice_rows) <= 1:
+            continue
+
+        product_counts: OrderedDict[tuple[str, str], int] = OrderedDict()
+        for row in invoice_rows:
+            product_name = _clean_text(row.get("제 품 명")) or "상품명 없음"
+            quantity = _display_quantity(row.get("수량"))
+            key = (product_name, quantity)
+            product_counts[key] = product_counts.get(key, 0) + 1
+
+        package_parts = [
+            _product_summary_line(product_name, quantity, count)
+            for (product_name, quantity), count in product_counts.items()
+        ]
+        if package_parts:
+            package_parts[0] = f"☆합포장☆{package_parts[0]}"
+            package_lines.append(" + \n".join(package_parts))
+
+    normal_rows = [row for row in rows if id(row) not in package_row_ids]
+    purchase_groups: OrderedDict[str, list[dict[str, object]]] = OrderedDict()
+    for row in normal_rows:
         purchase_vendor = _normalize_vendor(row.get("매입거래처"))
         purchase_groups.setdefault(purchase_vendor, []).append(row)
 
-    lines: list[str] = []
+    lines: list[str] = list(package_lines)
+    if lines and purchase_groups:
+        lines.append("")
     for group_index, (purchase_vendor, group_rows) in enumerate(purchase_groups.items()):
         if group_index:
             lines.append("")
@@ -171,8 +211,7 @@ def _summary_text(rows: list[dict[str, object]]) -> str:
             product_counts[key] = product_counts.get(key, 0) + 1
 
         for (product_name, quantity), count in product_counts.items():
-            quantity_text = f"{quantity}개" if quantity else "수량 없음"
-            lines.append(f"{product_name} - {quantity_text} ({count}건)")
+            lines.append(_product_summary_line(product_name, quantity, count))
 
     return "\n".join(lines)
 

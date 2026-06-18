@@ -104,6 +104,56 @@ def create_source_workbook(path: Path) -> None:
     )
     worksheet.append(
         [
+            5,
+            "(주)소일브릿지(본사)",
+            "토스",
+            "",
+            "",
+            "2026-06-17 09:15:00",
+            "",
+            "홍길동",
+            "010-0000-0000",
+            "문합포",
+            "010-5555-5555",
+            "아이제나흐 에센 스텐 찜솥 28cm",
+            6,
+            "서울시 테스트로 5",
+            "CJ대한통운",
+            "777",
+            "",
+            "ITEM-5",
+            "P-4",
+            "ORDER-5",
+            "",
+        ]
+    )
+    worksheet.append(
+        [
+            6,
+            "(주)소일브릿지(본사)",
+            "토스",
+            "",
+            "",
+            "2026-06-17 09:16:00",
+            "",
+            "홍길동",
+            "010-0000-0000",
+            "문합포",
+            "010-5555-5555",
+            "아이제나흐 에쎈 레인지 쿡 12종/24P",
+            1,
+            "서울시 테스트로 5",
+            "CJ대한통운",
+            "777",
+            "",
+            "ITEM-6",
+            "P-5",
+            "ORDER-6",
+            "",
+        ]
+    )
+    worksheet.append(
+        [
             3,
             "탑스미넬(주) ",
             "후후커머스",
@@ -172,12 +222,17 @@ class SalesVendorSummaryConverterTests(unittest.TestCase):
 
                     toss_sheet = workbook["토스"]
                     self.assertEqual(toss_sheet["A1"].value, "토스 요약")
-                    self.assertEqual(toss_sheet["A3"].value, "소일 테스트 상품 - 1개 (2건)")
+                    self.assertEqual(
+                        toss_sheet["A3"].value,
+                        "☆합포장☆아이제나흐 에센 스텐 찜솥 28cm - 6개 (1건) + \n"
+                        "아이제나흐 에쎈 레인지 쿡 12종/24P - 1개 (1건)\n\n"
+                        "소일 테스트 상품 - 1개 (2건)",
+                    )
                     self.assertIn("A1:H1", [str(range_ref) for range_ref in toss_sheet.merged_cells.ranges])
-                    self.assertIn("A3:H3", [str(range_ref) for range_ref in toss_sheet.merged_cells.ranges])
-                    self.assertEqual([toss_sheet.cell(5, col).value for col in range(1, 22)], SUPPLY_HEADERS)
-                    self.assertEqual(toss_sheet["A6"].value, 1)
-                    self.assertEqual(toss_sheet["L7"].value, "소일 테스트 상품")
+                    self.assertIn("A3:H6", [str(range_ref) for range_ref in toss_sheet.merged_cells.ranges])
+                    self.assertEqual([toss_sheet.cell(8, col).value for col in range(1, 22)], SUPPLY_HEADERS)
+                    self.assertEqual(toss_sheet["A9"].value, 1)
+                    self.assertEqual(toss_sheet["L10"].value, "소일 테스트 상품")
 
                     huhu_sheet = workbook["후후커머스"]
                     self.assertEqual(huhu_sheet["A1"].value, "후후커머스 요약")
