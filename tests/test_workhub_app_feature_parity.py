@@ -102,6 +102,24 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
             self.assertIn('companyActiveTab === "notice" && panel.dataset.companyPanel === "calendar"', html_source)
             self.assertIn("loadDashboardEntryData().catch", html_source)
 
+    def test_sidebar_navigation_uses_hierarchical_text_colors(self) -> None:
+        html_source = (ROOT / "scripts" / "workhub_delivery_app.py").read_text(encoding="utf-8")
+
+        for color_token in (
+            "--sidebar-text-primary",
+            "--sidebar-text-secondary",
+            "--sidebar-text-muted",
+            "--sidebar-text-subtle",
+            "--sidebar-accent",
+        ):
+            self.assertIn(color_token, html_source)
+        self.assertIn(".nav-item .nav-label span", html_source)
+        self.assertIn(".nav-item svg", html_source)
+        self.assertIn(".nav-subitem.active", html_source)
+        self.assertIn("color: var(--sidebar-text-primary)", html_source)
+        self.assertIn("color: var(--sidebar-text-secondary)", html_source)
+        self.assertIn("color: var(--sidebar-text-muted)", html_source)
+
     def test_leave_workflow_has_multi_step_approval_cancel_and_accrual_ui(self) -> None:
         for app_file in (
             ROOT / "scripts" / "workhub_delivery_app.py",

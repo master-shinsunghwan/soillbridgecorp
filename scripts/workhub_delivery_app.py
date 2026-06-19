@@ -221,6 +221,11 @@ HTML = r"""<!doctype html>
       --purple-soft: #ede9fe;
       --red: #dc2626;
       --red-soft: #fee2e2;
+      --sidebar-text-primary: #f8fbff;
+      --sidebar-text-secondary: #d7e4ff;
+      --sidebar-text-muted: #9fb0d3;
+      --sidebar-text-subtle: #b8c7e6;
+      --sidebar-accent: #93c5fd;
       --shadow: 0 10px 28px rgba(15, 23, 42, .08);
       font-family: Pretendard, Inter, "Noto Sans KR", "Malgun Gothic", Arial, sans-serif;
     }
@@ -249,7 +254,7 @@ HTML = r"""<!doctype html>
     body.standalone .topbar { grid-template-columns: 1fr; }
     .sidebar {
       background: linear-gradient(180deg, var(--navy), #081430);
-      color: white;
+      color: var(--sidebar-text-primary);
       padding: 22px 16px;
       overflow-y: auto;
       scrollbar-width: thin;
@@ -273,7 +278,7 @@ HTML = r"""<!doctype html>
       margin-bottom: 14px;
       padding: 0 4px;
     }
-    .brand-label { font-size: 18px; font-weight: 900; line-height: 1.32; margin: 0; }
+    .brand-label { font-size: 18px; font-weight: 900; line-height: 1.32; margin: 0; color: var(--sidebar-text-primary); }
     .sidebar-search {
       position: relative;
       margin: 0 0 18px;
@@ -285,7 +290,7 @@ HTML = r"""<!doctype html>
       transform: translateY(-50%);
       width: 15px;
       height: 15px;
-      color: #9fb0d3;
+      color: var(--sidebar-text-muted);
       pointer-events: none;
     }
     .sidebar-search input {
@@ -463,7 +468,7 @@ HTML = r"""<!doctype html>
     .nav-item, .nav-section, .app-add {
       display: flex; align-items: center; gap: 13px;
       min-height: 43px; padding: 0 12px; border-radius: 8px;
-      font-size: 14px; font-weight: 750; color: #d9e3ff;
+      font-size: 14px; font-weight: 750; color: var(--sidebar-text-secondary);
       margin-bottom: 6px;
       border: 0;
       background: transparent;
@@ -474,16 +479,30 @@ HTML = r"""<!doctype html>
       transition: background .16s ease, color .16s ease, transform .16s ease, box-shadow .16s ease;
     }
     .nav-item.active {
-      color: white;
+      color: var(--sidebar-text-primary);
       background: rgba(72, 118, 255, .28);
       box-shadow: inset 0 0 0 1px rgba(255,255,255,.08);
     }
-    .nav-item svg { width: 18px; height: 18px; flex: 0 0 auto; }
+    .nav-item svg { width: 18px; height: 18px; flex: 0 0 auto; color: var(--sidebar-text-muted); }
     .nav-item .nav-label {
       display: flex;
       align-items: center;
       gap: 13px;
       min-width: 0;
+    }
+    .nav-item .nav-label span,
+    .nav-item > span {
+      color: var(--sidebar-text-secondary);
+    }
+    .nav-item:hover .nav-label span,
+    .nav-item:hover > span,
+    .nav-item.active .nav-label span,
+    .nav-item.active > span {
+      color: var(--sidebar-text-primary);
+    }
+    .nav-item:hover svg,
+    .nav-item.active svg {
+      color: var(--sidebar-accent);
     }
     .nav-item .nav-chevron {
       margin-left: auto;
@@ -505,7 +524,7 @@ HTML = r"""<!doctype html>
       border: 0;
       border-radius: 7px;
       background: transparent;
-      color: #c9d6f4;
+      color: var(--sidebar-text-subtle);
       font-family: inherit;
       font-size: 13px;
       font-weight: 750;
@@ -516,24 +535,24 @@ HTML = r"""<!doctype html>
     .nav-subitem:hover,
     .nav-item:hover {
       background: rgba(255,255,255,.08);
-      color: white;
+      color: var(--sidebar-text-primary);
       transform: translateX(1px);
     }
     .nav-item.active,
     .nav-subitem.active {
       background: rgba(72, 118, 255, .28);
-      color: white;
+      color: var(--sidebar-text-primary);
       box-shadow: inset 3px 0 0 rgba(147, 197, 253, .9);
     }
     .nav-section {
       min-height: auto;
       padding: 0 8px 8px;
       margin: 18px 0 0;
-      color: #9fb0d3;
+      color: var(--sidebar-text-muted);
       font-size: 12px;
       font-weight: 850;
     }
-    .hash { font-size: 15px; width: 22px; text-align: center; color: #d9e3ff; font-weight: 900; }
+    .hash { font-size: 15px; width: 22px; text-align: center; color: var(--sidebar-accent); font-weight: 900; }
     .divider { height: 1px; background: rgba(255,255,255,.12); margin: 18px 6px; }
 
     main {
