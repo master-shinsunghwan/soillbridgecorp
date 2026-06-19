@@ -218,6 +218,19 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
             self.assertIn("저장된 네이버 메일 계정으로 1건만 발송합니다.", html_source)
             self.assertIn("테스트 메일을 발송했습니다.", html_source)
 
+    def test_mail_settings_redirects_cleanly_when_login_session_expires(self) -> None:
+        for app_file in (
+            ROOT / "scripts" / "workhub_delivery_app.py",
+            ROOT / "_workhub_zip_inspect" / "scripts" / "workhub_delivery_app.py",
+        ):
+            html_source = app_file.read_text(encoding="utf-8")
+
+            self.assertIn("function handleLoginRequiredResponse", html_source)
+            self.assertIn("response.status === 401", html_source)
+            self.assertIn("로그인이 만료되었습니다. 다시 로그인해주세요.", html_source)
+            self.assertIn('window.location.href = "/login"', html_source)
+            self.assertIn('credentials: "same-origin"', html_source)
+
     def test_distribution_mail_tree_only_opens_writable_mail_flows(self) -> None:
         for app_file in (
             ROOT / "scripts" / "workhub_delivery_app.py",

@@ -6830,9 +6830,23 @@ HTML = r"""<!doctype html>
 이메일: ${contact.senderEmail}`;
     }
 
+    function handleLoginRequiredResponse(response, messageTarget) {
+      if (response.status === 401) {
+        if (messageTarget) {
+          messageTarget.textContent = "로그인이 만료되었습니다. 다시 로그인해주세요.";
+        }
+        window.setTimeout(() => {
+          window.location.href = "/login";
+        }, 700);
+        return true;
+      }
+      return false;
+    }
+
     async function loadMailSettings() {
       try {
-        const response = await fetch("/api/mail-settings");
+        const response = await fetch("/api/mail-settings", { credentials: "same-origin" });
+        if (handleLoginRequiredResponse(response, adminMailSettingsMessage || adminMailTechnicalMessage)) return {};
         if (!response.ok) return;
         const data = await response.json();
         cachedMailSettings = data || {};
@@ -6877,9 +6891,11 @@ HTML = r"""<!doctype html>
       try {
         const response = await fetch("/api/mail-settings", {
           method: "POST",
+          credentials: "same-origin",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload),
         });
+        if (handleLoginRequiredResponse(response, adminMailSettingsMessage)) return;
         const data = await response.json();
         if (!response.ok) throw new Error(data.error || "메일 기본정보 저장에 실패했습니다.");
         adminNaverPasswordInput.value = "";
@@ -6919,9 +6935,11 @@ HTML = r"""<!doctype html>
       try {
         const response = await fetch("/api/mail-settings", {
           method: "POST",
+          credentials: "same-origin",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload),
         });
+        if (handleLoginRequiredResponse(response, adminMailTechnicalMessage)) return;
         const data = await response.json();
         if (!response.ok) throw new Error(data.error || "단체메일 기술 설정 저장에 실패했습니다.");
         if (adminSmtpPort) adminSmtpPort.value = String(data.smtp_port || payload.smtp_port);
@@ -6946,9 +6964,11 @@ HTML = r"""<!doctype html>
       try {
         const response = await fetch("/api/mail-test", {
           method: "POST",
+          credentials: "same-origin",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ recipient_email: recipient }),
         });
+        if (handleLoginRequiredResponse(response, adminMailTechnicalMessage)) return;
         const data = await response.json();
         if (!response.ok) throw new Error(data.error || "테스트 메일 발송에 실패했습니다.");
         adminMailTechnicalMessage.textContent = data.message || "테스트 메일을 발송했습니다.";
