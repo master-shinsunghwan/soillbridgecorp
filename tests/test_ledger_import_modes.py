@@ -100,6 +100,39 @@ def create_management_workbook(path: Path, *, order_item_id: str, receiver_name:
     workbook.save(path)
 
 
+def create_invalid_management_workbook(path: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    workbook = Workbook()
+    worksheet = workbook.active
+    worksheet.title = "통합"
+    worksheet.append(MANAGEMENT_HEADERS)
+    worksheet.append(
+        [
+            "거래처A",
+            "판매처A",
+            "매출",
+            "",
+            "2026-06-19",
+            "2026-06-20",
+            "김주문",
+            "010-1111-2222",
+            "",
+            "010-3333-4444",
+            "테스트 제품",
+            "한개",
+            "서울시 테스트구 테스트로 1",
+            "롯데택배",
+            "1234567890",
+            "",
+            "ITEM-INVALID",
+            "P-001",
+            "ORDER-INVALID",
+            "기본",
+        ]
+    )
+    workbook.save(path)
+
+
 def create_cs_workbook(path: Path, *, cs_content: str = "파손 접수") -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     workbook = Workbook()
@@ -132,6 +165,38 @@ def create_cs_workbook(path: Path, *, cs_content: str = "파손 접수") -> None
     workbook.save(path)
 
 
+def create_invalid_cs_workbook(path: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    workbook = Workbook()
+    worksheet = workbook.active
+    worksheet.title = "CS"
+    worksheet.append(["CS 처리대장"])
+    worksheet.append(CS_HEADERS)
+    worksheet.append(
+        [
+            "2026-06-19",
+            "판매처A",
+            "거래처A",
+            "접수",
+            "",
+            "2026-06-18",
+            "2026-06-19",
+            "김주문",
+            "010-1111-2222",
+            "이수령",
+            "연락처확인",
+            "테스트 제품",
+            "한개",
+            "서울시 테스트구 테스트로 1",
+            "롯데택배",
+            "",
+            "재발송",
+            "파손 접수",
+        ]
+    )
+    workbook.save(path)
+
+
 def test_management_daily_upload_detects_business_duplicates_across_files(tmp_path: Path) -> None:
     app = load_app(tmp_path)
     first = tmp_path / "first.xlsx"
@@ -148,6 +213,33 @@ def test_management_daily_upload_detects_business_duplicates_across_files(tmp_pa
     assert "이수령" in preview["duplicates"][0]["summary"]
 
     assert app.import_management_workbook(second) == (0, 1)
+
+
+def test_management_upload_requires_fixing_invalid_text_and_number_fields(tmp_path: Path) -> None:
+    app = load_app(tmp_path)
+    workbook_path = tmp_path / "invalid-management.xlsx"
+    create_invalid_management_workbook(workbook_path)
+
+    preview = app.preview_management_import(workbook_path)
+    assert preview["total"] == 1
+    assert preview["insertable"] == 0
+    assert preview["invalid_count"] == 1
+    invalid_row = preview["invalid_rows"][0]
+    issue_fields = {issue["field"] for issue in invalid_row["issues"]}
+    assert {"receiver_name", "quantity"}.issubset(issue_fields)
+
+    assert app.import_management_workbook(workbook_path) == (0, 1)
+    assert app.import_management_workbook(
+        workbook_path,
+        corrections=[
+            {
+                "source_sheet": "통합",
+                "source_row": 2,
+                "receiver_name": "이수령",
+                "quantity": "1",
+            }
+        ],
+    ) == (1, 0)
 
 
 def test_management_replace_upload_clears_existing_rows(tmp_path: Path) -> None:
@@ -183,13 +275,45 @@ def test_cs_daily_upload_detects_business_duplicates_across_files(tmp_path: Path
     assert app.import_cs_cases_from_workbook(second) == (0, 1)
 
 
+def test_cs_upload_requires_fixing_invalid_text_and_number_fields(tmp_path: Path) -> None:
+    app = load_app(tmp_path)
+    workbook_path = tmp_path / "invalid-cs.xlsx"
+    create_invalid_cs_workbook(workbook_path)
+
+    preview = app.preview_cs_cases_import(workbook_path)
+    assert preview["total"] == 1
+    assert preview["insertable"] == 0
+    assert preview["invalid_count"] == 1
+    invalid_row = preview["invalid_rows"][0]
+    issue_fields = {issue["field"] for issue in invalid_row["issues"]}
+    assert {"original_invoice", "receiver_phone", "quantity"}.issubset(issue_fields)
+
+    assert app.import_cs_cases_from_workbook(workbook_path) == (0, 1)
+    assert app.import_cs_cases_from_workbook(
+        workbook_path,
+        corrections=[
+            {
+                "source_sheet": "CS",
+                "source_row": 3,
+                "original_invoice": "1234567890",
+                "receiver_phone": "010-3333-4444",
+                "quantity": "1",
+            }
+        ],
+    ) == (1, 0)
+
+
 def main() -> None:
     with tempfile.TemporaryDirectory() as directory:
         test_management_daily_upload_detects_business_duplicates_across_files(Path(directory) / "management-daily")
     with tempfile.TemporaryDirectory() as directory:
+        test_management_upload_requires_fixing_invalid_text_and_number_fields(Path(directory) / "management-invalid")
+    with tempfile.TemporaryDirectory() as directory:
         test_management_replace_upload_clears_existing_rows(Path(directory) / "management-replace")
     with tempfile.TemporaryDirectory() as directory:
         test_cs_daily_upload_detects_business_duplicates_across_files(Path(directory) / "cs-daily")
+    with tempfile.TemporaryDirectory() as directory:
+        test_cs_upload_requires_fixing_invalid_text_and_number_fields(Path(directory) / "cs-invalid")
 
 
 if __name__ == "__main__":

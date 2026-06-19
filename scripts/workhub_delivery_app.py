@@ -952,6 +952,70 @@ HTML = r"""<!doctype html>
       gap: 10px;
       margin-top: 18px;
     }
+    .import-correction-dialog {
+      width: min(920px, 100%);
+    }
+    .import-correction-list {
+      display: grid;
+      gap: 14px;
+      max-height: min(58vh, 560px);
+      overflow: auto;
+      padding-right: 4px;
+    }
+    .import-correction-row {
+      border: 1px solid #d7dce5;
+      border-radius: 8px;
+      background: #fbfcff;
+      padding: 12px;
+    }
+    .import-correction-row-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 10px;
+      color: #344054;
+      font-size: 13px;
+      font-weight: 900;
+    }
+    .import-correction-summary {
+      color: #667085;
+      font-size: 12px;
+      font-weight: 800;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .import-correction-fields {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 10px;
+    }
+    .import-correction-field label {
+      display: block;
+      margin-bottom: 5px;
+      color: #344054;
+      font-size: 12px;
+      font-weight: 900;
+    }
+    .import-correction-field input {
+      width: 100%;
+      height: 36px;
+      border: 1px solid #cbd5e1;
+      border-radius: 8px;
+      padding: 0 10px;
+      font-family: inherit;
+      font-size: 13px;
+      font-weight: 750;
+      background: white;
+    }
+    .import-correction-message {
+      margin-top: 5px;
+      color: #b42318;
+      font-size: 11px;
+      font-weight: 800;
+      line-height: 1.35;
+    }
     .workhub-modal.ledger-modal {
       width: calc(100vw - 18px);
       height: calc(100vh - 18px);
@@ -5426,6 +5490,18 @@ HTML = r"""<!doctype html>
     </div>
   </div>
 
+  <div class="safe-number-dialog-backdrop" id="importCorrectionDialog" aria-hidden="true">
+    <div class="safe-number-dialog import-correction-dialog" role="dialog" aria-modal="true" aria-labelledby="importCorrectionTitle">
+      <h2 class="safe-number-dialog-title" id="importCorrectionTitle">업로드 전 형식 수정</h2>
+      <p class="safe-number-dialog-description" id="importCorrectionDescription"></p>
+      <div class="import-correction-list" id="importCorrectionList"></div>
+      <div class="safe-number-dialog-actions">
+        <button class="btn" id="importCorrectionCancel" type="button">취소</button>
+        <button class="btn primary" id="importCorrectionApply" type="button">수정 후 적용</button>
+      </div>
+    </div>
+  </div>
+
   <script type="module">
     import { createIcons, BriefcaseBusiness, Home, MessageCircle, Info, ChevronDown, ChevronRight, PlusSquare, RefreshCw, Ellipsis, Headphones, Package, ClipboardCheck, CircleDollarSign, FileText, FileSpreadsheet, ClipboardList, BarChart3, CopyCheck, Bell, Download, Truck, Mail, Upload, Database, CalendarDays, X, Settings } from "/lucide/dist/esm/lucide.js";
     createIcons({ icons: { BriefcaseBusiness, Home, MessageCircle, Info, ChevronDown, ChevronRight, PlusSquare, RefreshCw, Ellipsis, Headphones, Package, ClipboardCheck, CircleDollarSign, FileText, FileSpreadsheet, ClipboardList, BarChart3, CopyCheck, Bell, Download, Truck, Mail, Upload, Database, CalendarDays, X, Settings, "package": Package, "file-text": FileText, "file-spreadsheet": FileSpreadsheet, "truck": Truck } });
@@ -5651,6 +5727,12 @@ HTML = r"""<!doctype html>
     const importWarningPreview = document.querySelector("#importWarningPreview");
     const importWarningCancel = document.querySelector("#importWarningCancel");
     const importWarningProceed = document.querySelector("#importWarningProceed");
+    const importCorrectionDialog = document.querySelector("#importCorrectionDialog");
+    const importCorrectionTitle = document.querySelector("#importCorrectionTitle");
+    const importCorrectionDescription = document.querySelector("#importCorrectionDescription");
+    const importCorrectionList = document.querySelector("#importCorrectionList");
+    const importCorrectionCancel = document.querySelector("#importCorrectionCancel");
+    const importCorrectionApply = document.querySelector("#importCorrectionApply");
     const pageTitle = document.querySelector(".title");
     const dashboardContent = document.querySelector("#dashboardContent");
     const companyTabs = Array.from(document.querySelectorAll(".company-tab"));
@@ -9682,7 +9764,6 @@ HTML = r"""<!doctype html>
     }
 
     async function previewLedgerImport(file, mode) {
-      if (mode !== "daily") return null;
       const formData = new FormData();
       formData.append("file", file);
       formData.append("mode", mode);
@@ -9696,7 +9777,6 @@ HTML = r"""<!doctype html>
     }
 
     async function previewManagementImport(file, mode) {
-      if (mode !== "daily") return null;
       const formData = new FormData();
       formData.append("file", file);
       formData.append("mode", mode);
@@ -9707,6 +9787,98 @@ HTML = r"""<!doctype html>
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "통합관리대장 업로드 검토에 실패했습니다.");
       return data;
+    }
+
+    function correctionFieldsForRow(row) {
+      const fields = new Map();
+      (row.issues || []).forEach((issue) => {
+        if (!issue.field) return;
+        fields.set(issue.field, {
+          field: issue.field,
+          label: issue.label || issue.field,
+          inputType: issue.input_type || "text",
+          message: issue.message || "",
+        });
+      });
+      return Array.from(fields.values());
+    }
+
+    function renderImportCorrectionRows(rows) {
+      if (!importCorrectionList) return;
+      importCorrectionList.innerHTML = rows.map((row, rowIndex) => {
+        const fields = correctionFieldsForRow(row);
+        const fieldHtml = fields.map((field) => {
+          const value = row.record?.[field.field] || "";
+          const inputType = field.inputType === "number" ? "number" : "text";
+          return `
+            <div class="import-correction-field">
+              <label for="importCorrection_${rowIndex}_${escapeHtml(field.field)}">${escapeHtml(field.label)}</label>
+              <input
+                id="importCorrection_${rowIndex}_${escapeHtml(field.field)}"
+                type="${inputType}"
+                value="${escapeHtml(value)}"
+                data-correction-row="${rowIndex}"
+                data-correction-field="${escapeHtml(field.field)}"
+              />
+              <div class="import-correction-message">${escapeHtml(field.message)}</div>
+            </div>
+          `;
+        }).join("");
+        return `
+          <section class="import-correction-row" data-correction-card="${rowIndex}">
+            <div class="import-correction-row-head">
+              <span>${escapeHtml(row.source_sheet || "")} ${escapeHtml(row.row || "")}행</span>
+              <span class="import-correction-summary">${escapeHtml(row.summary || "수정 후 적용할 데이터")}</span>
+            </div>
+            <div class="import-correction-fields">${fieldHtml}</div>
+          </section>
+        `;
+      }).join("");
+    }
+
+    function requestImportCorrectionApproval({ ledgerName, preview }) {
+      const rows = Array.isArray(preview?.invalid_rows) ? preview.invalid_rows : [];
+      if (!rows.length) return Promise.resolve([]);
+      if (!importCorrectionDialog || !importCorrectionTitle || !importCorrectionDescription || !importCorrectionList || !importCorrectionCancel || !importCorrectionApply) {
+        return Promise.resolve(null);
+      }
+      importCorrectionTitle.textContent = `${ledgerName} 업로드 전 형식 수정`;
+      importCorrectionDescription.textContent = `기존 양식과 맞지 않는 행 ${rows.length}건이 있습니다. 텍스트/숫자 값을 수정한 뒤 적용해주세요.`;
+      renderImportCorrectionRows(rows);
+      importCorrectionDialog.classList.add("open");
+      importCorrectionDialog.setAttribute("aria-hidden", "false");
+      return new Promise((resolve) => {
+        const finish = (payload) => {
+          importCorrectionDialog.classList.remove("open");
+          importCorrectionDialog.setAttribute("aria-hidden", "true");
+          importCorrectionCancel.removeEventListener("click", cancel);
+          importCorrectionApply.removeEventListener("click", apply);
+          importCorrectionDialog.removeEventListener("click", backdropCancel);
+          resolve(payload);
+        };
+        const cancel = () => finish(null);
+        const apply = () => {
+          const corrections = rows.map((row, rowIndex) => {
+            const correction = {
+              source_sheet: row.source_sheet || row.record?.source_sheet || "",
+              source_row: row.source_row || row.record?.source_row || row.row || "",
+            };
+            importCorrectionList.querySelectorAll(`[data-correction-row="${rowIndex}"]`).forEach((input) => {
+              correction[input.dataset.correctionField] = input.value.trim();
+            });
+            return correction;
+          });
+          finish(corrections);
+        };
+        const backdropCancel = (event) => {
+          if (event.target === importCorrectionDialog) finish(null);
+        };
+        importCorrectionCancel.addEventListener("click", cancel);
+        importCorrectionApply.addEventListener("click", apply);
+        importCorrectionDialog.addEventListener("click", backdropCancel);
+        const firstInput = importCorrectionList.querySelector("input");
+        if (firstInput) firstInput.focus();
+      });
     }
 
     async function confirmImportIfNeeded({ ledgerName, mode, preview }) {
@@ -9736,6 +9908,11 @@ HTML = r"""<!doctype html>
       notice.textContent = `CS 처리대장 ${importModeLabel(mode)} 검토 중입니다.`;
       try {
         const preview = await previewLedgerImport(file, mode);
+        const corrections = await requestImportCorrectionApproval({ ledgerName: "CS 처리대장", preview });
+        if (corrections === null) {
+          notice.textContent = "CS 처리대장 업로드를 취소했습니다.";
+          return;
+        }
         const approved = await confirmImportIfNeeded({ ledgerName: "CS 처리대장", mode, preview });
         if (!approved) {
           notice.textContent = "CS 처리대장 업로드를 취소했습니다.";
@@ -9744,6 +9921,7 @@ HTML = r"""<!doctype html>
         const formData = new FormData();
         formData.append("file", file);
         formData.append("mode", mode);
+        if (corrections.length) formData.append("corrections", JSON.stringify(corrections));
         notice.textContent = `CS 처리대장 ${importModeLabel(mode)} 진행 중입니다.`;
         const response = await fetch("/api/cs-cases-import", {
           method: "POST",
@@ -9886,6 +10064,11 @@ HTML = r"""<!doctype html>
       notice.textContent = `통합관리대장 ${importModeLabel(mode)} 검토 중입니다.`;
       try {
         const preview = await previewManagementImport(file, mode);
+        const corrections = await requestImportCorrectionApproval({ ledgerName: "통합관리대장", preview });
+        if (corrections === null) {
+          notice.textContent = "통합관리대장 업로드를 취소했습니다.";
+          return;
+        }
         const approved = await confirmImportIfNeeded({ ledgerName: "통합관리대장", mode, preview });
         if (!approved) {
           notice.textContent = "통합관리대장 업로드를 취소했습니다.";
@@ -9894,6 +10077,7 @@ HTML = r"""<!doctype html>
         const formData = new FormData();
         formData.append("file", file);
         formData.append("mode", mode);
+        if (corrections.length) formData.append("corrections", JSON.stringify(corrections));
         notice.textContent = `통합관리대장 ${importModeLabel(mode)} 진행 중입니다.`;
         const response = await fetch("/api/management-import", {
           method: "POST",
@@ -16392,6 +16576,7 @@ MANAGEMENT_IMPORT_COLUMNS = [
     "order_number",
     "customer_option",
 ]
+MANAGEMENT_IMPORT_EDITABLE_FIELDS = set(MANAGEMENT_IMPORT_COLUMNS) - {"created_at", "source_file", "source_sheet", "source_row"}
 
 
 def normalize_duplicate_token(value: object) -> str:
@@ -16459,13 +16644,165 @@ def duplicate_summary(record: dict[str, object], fields: list[str]) -> str:
     return " / ".join(value for value in values if value)[:160]
 
 
-def import_preview_payload(records: list[dict[str, object]], existing_keys: set[str], key_func, summary_fields: list[str]) -> dict[str, object]:
+def digit_count(value: object) -> int:
+    return len(re.sub(r"\D+", "", clean_cell(value)))
+
+
+def is_quantity_text(value: object) -> bool:
+    text = clean_cell(value)
+    if not text:
+        return False
+    if not re.fullmatch(r"\d+(\.\d+)?", text):
+        return False
+    try:
+        return float(text) > 0
+    except ValueError:
+        return False
+
+
+def is_numeric_identifier(value: object, minimum_digits: int = 5) -> bool:
+    text = clean_cell(value)
+    if not text:
+        return False
+    return digit_count(text) >= minimum_digits and not re.search(r"[가-힣a-zA-Z]", text)
+
+
+def import_issue(field: str, label: str, message: str, input_type: str = "text") -> dict[str, str]:
+    return {
+        "field": field,
+        "label": label,
+        "message": message,
+        "input_type": input_type,
+    }
+
+
+def require_text_issue(record: dict[str, object], field: str, label: str) -> dict[str, str] | None:
+    if clean_cell(record.get(field)):
+        return None
+    return import_issue(field, label, f"{label} 값을 입력해주세요.", "text")
+
+
+def quantity_issue(record: dict[str, object], field: str = "quantity", label: str = "수량") -> dict[str, str] | None:
+    if is_quantity_text(record.get(field)):
+        return None
+    return import_issue(field, label, f"{label}은 숫자로 입력해주세요.", "number")
+
+
+def optional_numeric_issue(record: dict[str, object], field: str, label: str, minimum_digits: int = 5) -> dict[str, str] | None:
+    value = clean_cell(record.get(field))
+    if not value or is_numeric_identifier(value, minimum_digits):
+        return None
+    return import_issue(field, label, f"{label} 형식이 숫자와 맞지 않습니다.", "text")
+
+
+def required_numeric_issue(record: dict[str, object], field: str, label: str, minimum_digits: int = 5) -> dict[str, str] | None:
+    if is_numeric_identifier(record.get(field), minimum_digits):
+        return None
+    return import_issue(field, label, f"{label}을 숫자 형식으로 입력해주세요.", "text")
+
+
+def management_import_issues(record: dict[str, object]) -> list[dict[str, str]]:
+    issues: list[dict[str, str]] = []
+    for field, label in (
+        ("receiver_name", "수령자"),
+        ("product_name", "제품명"),
+        ("receiver_address", "상세주소"),
+    ):
+        issue = require_text_issue(record, field, label)
+        if issue:
+            issues.append(issue)
+    issue = quantity_issue(record)
+    if issue:
+        issues.append(issue)
+    for field, label, digits in (
+        ("receiver_phone", "수령자연락처", 7),
+        ("sender_phone", "발신자연락처", 7),
+        ("invoice_number", "운송장번호", 5),
+    ):
+        issue = optional_numeric_issue(record, field, label, digits)
+        if issue:
+            issues.append(issue)
+    return issues
+
+
+def cs_import_issues(record: dict[str, object]) -> list[dict[str, str]]:
+    issues: list[dict[str, str]] = []
+    for field, label in (
+        ("receiver_name", "수령자"),
+        ("product_name", "제품명"),
+        ("cs_content", "CS내용"),
+    ):
+        issue = require_text_issue(record, field, label)
+        if issue:
+            issues.append(issue)
+    for issue in (
+        required_numeric_issue(record, "original_invoice", "기존운송장번호", 5),
+        required_numeric_issue(record, "receiver_phone", "수령자연락처", 7),
+        quantity_issue(record),
+    ):
+        if issue:
+            issues.append(issue)
+    return issues
+
+
+def import_row_identity(record: dict[str, object]) -> tuple[str, int]:
+    try:
+        row_number = int(record.get("source_row") or 0)
+    except (TypeError, ValueError):
+        row_number = 0
+    return clean_cell(record.get("source_sheet")), row_number
+
+
+def apply_import_corrections(records: list[dict[str, object]], corrections: list[dict[str, object]] | None, allowed_fields: set[str]) -> None:
+    if not corrections:
+        return
+    correction_map: dict[tuple[str, int], dict[str, object]] = {}
+    for correction in corrections:
+        if not isinstance(correction, dict):
+            continue
+        key = import_row_identity(correction)
+        if not key[0] or not key[1]:
+            continue
+        correction_map[key] = correction
+    for record in records:
+        correction = correction_map.get(import_row_identity(record))
+        if not correction:
+            continue
+        for field in allowed_fields:
+            if field in correction:
+                record[field] = clean_cell(correction.get(field))
+
+
+def invalid_import_rows(records: list[dict[str, object]], issue_func, summary_fields: list[str]) -> list[dict[str, object]]:
+    invalid_rows = []
+    for record in records:
+        issues = issue_func(record)
+        if not issues:
+            continue
+        invalid_rows.append({
+            "source_sheet": record.get("source_sheet", ""),
+            "source_row": record.get("source_row", ""),
+            "row": record.get("source_row", ""),
+            "summary": duplicate_summary(record, summary_fields),
+            "record": {key: clean_cell(value) for key, value in record.items() if key not in {"created_at", "updated_at"}},
+            "issues": issues,
+        })
+    return invalid_rows
+
+
+def valid_import_records(records: list[dict[str, object]], issue_func) -> list[dict[str, object]]:
+    return [record for record in records if not issue_func(record)]
+
+
+def import_preview_payload(records: list[dict[str, object]], existing_keys: set[str], key_func, summary_fields: list[str], issue_func=None) -> dict[str, object]:
+    invalid_rows = invalid_import_rows(records, issue_func, summary_fields) if issue_func else []
+    records_for_duplicate_check = valid_import_records(records, issue_func) if issue_func else records
     seen: set[str] = set()
     duplicates: list[dict[str, object]] = []
     duplicate_existing = 0
     duplicate_in_file = 0
     insertable = 0
-    for record in records:
+    for record in records_for_duplicate_check:
         key = key_func(record)
         if key in existing_keys:
             duplicate_existing += 1
@@ -16491,11 +16828,14 @@ def import_preview_payload(records: list[dict[str, object]], existing_keys: set[
     return {
         "total": len(records),
         "insertable": insertable,
+        "invalid_count": len(invalid_rows),
+        "invalid_rows": invalid_rows,
         "duplicate_existing": duplicate_existing,
         "duplicate_in_file": duplicate_in_file,
         "skipped": skipped,
         "duplicates": duplicates,
         "has_duplicates": skipped > 0,
+        "has_invalid_rows": len(invalid_rows) > 0,
     }
 
 
@@ -16572,26 +16912,30 @@ def preview_management_import(path: Path) -> dict[str, object]:
         existing_keys,
         management_duplicate_key,
         ["receiver_name", "receiver_phone", "product_name", "quantity", "invoice_number", "order_number"],
+        management_import_issues,
     )
 
 
-def import_management_workbook(path: Path, mode: str = "daily") -> tuple[int, int]:
+def import_management_workbook(path: Path, mode: str = "daily", corrections: list[dict[str, object]] | None = None) -> tuple[int, int]:
     init_db()
     records = parse_management_import_records(path)
+    apply_import_corrections(records, corrections, MANAGEMENT_IMPORT_EDITABLE_FIELDS)
     placeholders = ", ".join("?" for _ in MANAGEMENT_IMPORT_COLUMNS)
     insert_sql = f"INSERT OR IGNORE INTO management_records ({', '.join(MANAGEMENT_IMPORT_COLUMNS)}) VALUES ({placeholders})"
     connection = connect_db()
     inserted = 0
     skipped = 0
     try:
+        valid_records = valid_import_records(records, management_import_issues)
+        skipped += len(records) - len(valid_records)
         if mode == "replace":
             connection.execute("DELETE FROM management_records")
-            import_records = records
+            import_records = valid_records
         else:
             existing_keys = existing_management_duplicate_keys(connection)
             seen_keys: set[str] = set()
             import_records = []
-            for record in records:
+            for record in valid_records:
                 key = management_duplicate_key(record)
                 if key in existing_keys or key in seen_keys:
                     skipped += 1
@@ -16748,6 +17092,7 @@ CS_IMPORT_COLUMNS = [
     "courier",
     "quantity",
 ]
+CS_IMPORT_EDITABLE_FIELDS = set(CS_IMPORT_COLUMNS) - {"created_at", "updated_at", "source_file", "source_sheet", "source_row"}
 
 
 def existing_cs_duplicate_keys(connection: sqlite3.Connection) -> set[str]:
@@ -16774,12 +17119,14 @@ def preview_cs_cases_import(path: Path) -> dict[str, object]:
         existing_keys,
         cs_duplicate_key,
         ["occurred_at", "receiver_name", "product_name", "original_invoice", "cs_type", "cs_content"],
+        cs_import_issues,
     )
 
 
-def import_cs_cases_from_workbook(path: Path, mode: str = "daily") -> tuple[int, int]:
+def import_cs_cases_from_workbook(path: Path, mode: str = "daily", corrections: list[dict[str, object]] | None = None) -> tuple[int, int]:
     init_db()
     records = parse_cs_case_import_records(path)
+    apply_import_corrections(records, corrections, CS_IMPORT_EDITABLE_FIELDS)
     placeholders = ", ".join("?" for _ in CS_IMPORT_COLUMNS)
     insert_sql = f"""
         INSERT OR IGNORE INTO cs_cases ({', '.join(CS_IMPORT_COLUMNS)})
@@ -16789,14 +17136,16 @@ def import_cs_cases_from_workbook(path: Path, mode: str = "daily") -> tuple[int,
     inserted = 0
     skipped = 0
     try:
+        valid_records = valid_import_records(records, cs_import_issues)
+        skipped += len(records) - len(valid_records)
         if mode == "replace":
             connection.execute("DELETE FROM cs_cases")
-            import_records = records
+            import_records = valid_records
         else:
             existing_keys = existing_cs_duplicate_keys(connection)
             seen_keys: set[str] = set()
             import_records = []
-            for record in records:
+            for record in valid_records:
                 key = cs_duplicate_key(record)
                 if key in existing_keys or key in seen_keys:
                     skipped += 1
@@ -16813,6 +17162,16 @@ def import_cs_cases_from_workbook(path: Path, mode: str = "daily") -> tuple[int,
     finally:
         connection.close()
     return inserted, skipped
+
+
+def parse_import_corrections(fields: dict[str, tuple[str, bytes] | str]) -> list[dict[str, object]] | None:
+    raw = fields.get("corrections")
+    if not isinstance(raw, str) or not raw.strip():
+        return None
+    parsed = json.loads(raw)
+    if not isinstance(parsed, list):
+        raise ValueError("수정 데이터 형식이 올바르지 않습니다.")
+    return [item for item in parsed if isinstance(item, dict)]
 
 
 class DataBlob(ctypes.Structure):
@@ -18412,7 +18771,8 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                 elif not self.require_permission(user, "excel_upload", "엑셀 업로드"):
                     return
                 upload_path = save_uploaded_file(fields, "file")
-                inserted, skipped = import_cs_cases_from_workbook(upload_path, mode=mode)
+                corrections = parse_import_corrections(fields)
+                inserted, skipped = import_cs_cases_from_workbook(upload_path, mode=mode, corrections=corrections)
                 mode_label = "전체 교체" if mode == "replace" else "일일 추가"
                 self.send_json({
                     "message": f"CS 처리대장 {mode_label} {inserted}건 완료, 중복 {skipped}건 제외했습니다.",
@@ -18438,7 +18798,8 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                 elif not self.require_permission(user, "excel_upload", "엑셀 업로드"):
                     return
                 upload_path = save_uploaded_file(fields, "file")
-                inserted, skipped = import_management_workbook(upload_path, mode=mode)
+                corrections = parse_import_corrections(fields)
+                inserted, skipped = import_management_workbook(upload_path, mode=mode, corrections=corrections)
                 mode_label = "전체 교체" if mode == "replace" else "일일 추가"
                 self.send_json({
                     "message": f"통합관리대장 {mode_label} {inserted}건 완료, 중복 {skipped}건 제외했습니다.",
