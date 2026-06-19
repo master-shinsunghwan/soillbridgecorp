@@ -469,6 +469,10 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         self.assertIn('id="salesReportUploadMessage"', html_source)
         self.assertIn('id="salesReportRecentList"', html_source)
         self.assertIn('id="salesReportUploadCard"', html_source)
+        self.assertIn('id="salesReportNavGroup"', html_source)
+        self.assertIn('id="salesReportNavToggle"', html_source)
+        self.assertIn('"sales_report_manage"', html_source)
+        self.assertIn("__SALES_REPORT_NAV__", html_source)
         self.assertIn('accept=".xlsx,.xlsm,.csv"', html_source)
         self.assertIn('data-admin-focus="salesReport">매출표 업로드</button>', html_source)
         self.assertIn('"/api/sales-report-upload"', html_source)
@@ -476,7 +480,13 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         self.assertIn("function uploadSalesReportWorkbook()", html_source)
         self.assertIn("function loadSalesReportUploads()", html_source)
         self.assertIn("function focusAdminSalesReportUpload()", html_source)
+        self.assertIn('document.querySelector("#salesReportNavToggle")?.addEventListener("click"', html_source)
         self.assertIn('label[for=\'salesReportFileInput\']', html_source)
+
+        admin_nav_start = html_source.index("ADMIN_TOOLS_NAV_HTML")
+        admin_nav_end = html_source.index("SALES_REPORT_NAV_HTML", admin_nav_start)
+        admin_nav_slice = html_source[admin_nav_start:admin_nav_end]
+        self.assertNotIn('data-admin-focus="salesReport"', admin_nav_slice)
 
         admin_start = html_source.index('id="userAdminWorkspace"')
         admin_end = html_source.index('id="userAdminBody"', admin_start)

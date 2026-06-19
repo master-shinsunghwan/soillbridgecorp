@@ -129,6 +129,7 @@ PERMISSION_DEFINITIONS = (
     ("user_admin", "사용자 관리", "계정 추가/수정/권한 변경"),
     ("backup_manage", "백업 관리", "수동/자동 백업 파일 관리"),
     ("system_update", "시스템 업데이트", "GitHub 업데이트 확인/적용"),
+    ("sales_report_manage", "매출현황 관리", "매출표 업로드 및 매출현황 관리"),
     ("leave_view", "연차 조회", "연차 내역 조회"),
     ("leave_approve", "연차 승인", "연차 신청 승인/반려"),
     ("leave_approve_team", "\uC5F0\uCC28 \uD300\uC7A5 \uC2B9\uC778", "\uC5F0\uCC28 \uC2E0\uCCAD \uD300\uC7A5 \uD655\uC778"),
@@ -4429,6 +4430,7 @@ HTML = r"""<!doctype html>
         </div>
       </div>
       __LEAVE_NAV__
+      __SALES_REPORT_NAV__
       __ADMIN_TOOLS_NAV__
       <div class="nav-section">보조 도구</div>
       <button class="nav-item" type="button" data-open="fileLibrary"><i data-lucide="download"></i> <span>업무 파일 자료실</span></button>
@@ -12022,6 +12024,9 @@ HTML = r"""<!doctype html>
     document.querySelector("#adminNavToggle")?.addEventListener("click", () => {
       document.querySelector("#adminNavGroup")?.classList.toggle("open");
     });
+    document.querySelector("#salesReportNavToggle")?.addEventListener("click", () => {
+      document.querySelector("#salesReportNavGroup")?.classList.toggle("open");
+    });
     document.querySelector("#noticeInputOpen").addEventListener("click", openNoticePopup);
     importShipmentInputOpen.addEventListener("click", () => {
       showWorkspace("import");
@@ -12741,8 +12746,19 @@ ADMIN_TOOLS_NAV_HTML = r"""
           <button class="nav-subitem" type="button" data-ledger-import-mode="replace">CS처리대장 전체 데이터 교체 업로드</button>
           <button class="nav-subitem" type="button" data-open="systemUpdate">업데이트 관리</button>
           <button class="nav-subitem" type="button" data-open="backup">백업 관리</button>
-          <button class="nav-subitem" type="button" data-open="userAdmin" data-admin-focus="salesReport">매출표 업로드</button>
           <button class="nav-subitem" type="button" data-open="userAdmin">권한설정</button>
+        </div>
+      </div>
+"""
+
+SALES_REPORT_NAV_HTML = r"""
+      <div class="nav-group" id="salesReportNavGroup">
+        <button class="nav-item" id="salesReportNavToggle" type="button">
+          <span class="nav-label"><i data-lucide="bar-chart-3"></i> <span>매출현황 및 관리</span></span>
+          <i class="nav-chevron" data-lucide="chevron-right"></i>
+        </button>
+        <div class="nav-submenu">
+          <button class="nav-subitem" type="button" data-open="userAdmin" data-admin-focus="salesReport">매출표 업로드</button>
         </div>
       </div>
 """
@@ -13695,6 +13711,7 @@ def render_app_html(user: dict[str, str]) -> str:
     leave_title = "연차 관리 및 신청" if any(permission in permissions for permission in ("leave_approve", "leave_manage")) else "연차 신청 및 확인"
     leave_nav = LEAVE_NAV_HTML.replace("__LEAVE_TITLE__", leave_title) if leave_enabled else ""
     leave_workspace = LEAVE_WORKSPACE_HTML.replace("__LEAVE_TITLE__", leave_title) if leave_enabled else ""
+    sales_report_nav = SALES_REPORT_NAV_HTML if is_admin and "sales_report_manage" in permissions else ""
     admin_tools_nav = ADMIN_TOOLS_NAV_HTML if is_admin else ""
     admin_workspace = ADMIN_WORKSPACE_HTML.replace("__PERMISSION_CHECKBOXES__", permissions_html()) if is_admin else ""
     backup_workspace = BACKUP_WORKSPACE_HTML if is_admin else ""
@@ -13709,6 +13726,7 @@ def render_app_html(user: dict[str, str]) -> str:
             "role": user.get("role", "user"),
         }, ensure_ascii=False))
         .replace("__LEAVE_NAV__", leave_nav)
+        .replace("__SALES_REPORT_NAV__", sales_report_nav)
         .replace("__LEAVE_WORKSPACE__", leave_workspace)
         .replace("__ADMIN_TOOLS_NAV__", admin_tools_nav)
         .replace("__ADMIN_WORKSPACE__", admin_workspace)
