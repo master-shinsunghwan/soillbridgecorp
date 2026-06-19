@@ -2553,6 +2553,68 @@ HTML = r"""<!doctype html>
       gap: 12px;
       align-items: start;
     }
+    .dashboard-calendar-panel {
+      margin-top: 10px;
+    }
+    .dashboard-calendar-panel .company-calendar-shell {
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      align-items: stretch;
+    }
+    .dashboard-calendar-card .company-calendar-grid {
+      min-height: 360px;
+    }
+    .dashboard-calendar-card .calendar-day {
+      min-height: 60px;
+      padding: 6px;
+      gap: 4px;
+    }
+    .dashboard-calendar-card .calendar-event {
+      min-height: 18px;
+      padding: 3px 5px;
+      font-size: 10px;
+    }
+    .dashboard-sales-panel {
+      display: grid;
+      gap: 12px;
+      align-content: start;
+    }
+    .dashboard-sales-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+    }
+    .dashboard-sales-metric {
+      min-height: 72px;
+      padding: 12px;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      background: #f8fafc;
+    }
+    .dashboard-sales-metric span {
+      display: block;
+      margin-bottom: 8px;
+      color: #667085;
+      font-size: 11px;
+      font-weight: 850;
+    }
+    .dashboard-sales-metric strong {
+      color: #111827;
+      font-size: 18px;
+      font-weight: 950;
+      line-height: 1.25;
+    }
+    .dashboard-sales-placeholder {
+      margin-top: 12px;
+      padding: 13px 14px;
+      border: 1px dashed #cbd5e1;
+      border-radius: 8px;
+      background: #fbfcff;
+      color: #667085;
+      font-size: 12px;
+      font-weight: 850;
+      line-height: 1.5;
+      text-align: center;
+    }
     .company-calendar-toolbar {
       display: flex;
       align-items: center;
@@ -4327,9 +4389,9 @@ HTML = r"""<!doctype html>
           </div>
         </section>
 
-        <section class="company-panel active" data-company-panel="calendar">
+        <section class="company-panel active dashboard-calendar-panel" data-company-panel="calendar">
           <div class="company-calendar-shell">
-            <article class="company-card">
+            <article class="company-card dashboard-calendar-card">
               <div class="company-calendar-toolbar">
                 <div class="company-calendar-title" id="companyCalendarTitle">캘린더</div>
                 <div class="company-calendar-actions">
@@ -4352,7 +4414,19 @@ HTML = r"""<!doctype html>
                 <div class="calendar-empty">캘린더를 불러오는 중입니다.</div>
               </div>
             </article>
-            <aside class="company-calendar-side">
+            <aside class="dashboard-sales-panel" id="dashboardSalesPanel">
+              <article class="company-card">
+                <div class="company-card-head"><span>매출 현황</span><span>연동 대기</span></div>
+                <div class="company-card-body">
+                  <div class="dashboard-sales-grid">
+                    <div class="dashboard-sales-metric"><span>오늘 매출</span><strong>-</strong></div>
+                    <div class="dashboard-sales-metric"><span>이번 달 매출</span><strong>-</strong></div>
+                    <div class="dashboard-sales-metric"><span>주문 건수</span><strong>-</strong></div>
+                    <div class="dashboard-sales-metric"><span>평균 객단가</span><strong>-</strong></div>
+                  </div>
+                  <div class="dashboard-sales-placeholder">발주모아 매출 데이터 연결 대기 중</div>
+                </div>
+              </article>
               <article class="company-card">
                 <div class="company-card-head"><span>선택한 날짜</span><button class="crm-mini-button" type="button" data-open="crm" data-crm-nav-tab="tasks">업무보드</button></div>
                 <div class="company-card-body">
