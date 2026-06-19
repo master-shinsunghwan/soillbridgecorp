@@ -1130,16 +1130,6 @@ HTML = r"""<!doctype html>
     #userAdminWorkspace:not(.sales-report-only) #salesReportUploadCard {
       display: none;
     }
-    .sales-upload-actions {
-      display: flex;
-      align-items: center;
-      flex-wrap: wrap;
-      gap: 8px;
-      margin-bottom: 8px;
-    }
-    .sales-upload-actions .admin-message {
-      margin: 0;
-    }
     .sales-dashboard {
       display: grid;
       gap: 12px;
@@ -5773,7 +5763,6 @@ HTML = r"""<!doctype html>
         setHidden(button, currentUser.role !== "admin");
       });
       setHidden(document.querySelector("label[for='vendorContactsFileInput']"), !can("excel_upload"));
-      setHidden(document.querySelector("#salesReportChooseFile"), !can("sales_report_manage"));
       setHidden(saveVendorContactButton, !can("mail_send"));
       setHidden(document.querySelector("#distributionMailNavGroup"), !can("mail_send"));
       document.querySelectorAll("[data-mail-popup]").forEach((button) => setHidden(button, !can("mail_send")));
@@ -5836,7 +5825,6 @@ HTML = r"""<!doctype html>
     const vendorContactsFileInput = document.querySelector("#vendorContactsFileInput");
     const vendorContactsDropMain = document.querySelector("#vendorContactsDropMain");
     const salesReportFileInput = document.querySelector("#salesReportFileInput");
-    const salesReportChooseFile = document.querySelector("#salesReportChooseFile");
     const salesReportUploadMessage = document.querySelector("#salesReportUploadMessage");
     const salesReportRecentList = document.querySelector("#salesReportRecentList");
     const salesReportKpiGrid = document.querySelector("#salesReportKpiGrid");
@@ -7892,6 +7880,11 @@ HTML = r"""<!doctype html>
       } finally {
         salesReportFileInput.value = "";
       }
+    }
+
+    function openSalesReportUploadPicker() {
+      if (!salesReportFileInput || !can("sales_report_manage")) return;
+      salesReportFileInput.click();
     }
 
     function collectCsPayload() {
@@ -11623,7 +11616,7 @@ HTML = r"""<!doctype html>
         loadAdminMailSettings();
         loadUserAccounts();
       } else if (showSalesReport) {
-        setPageTitle("매출표 업로드");
+        setPageTitle("매출현황");
         closeLedgerFilter();
         loadSalesReportUploads();
         loadSalesReportDashboard();
@@ -11810,6 +11803,9 @@ HTML = r"""<!doctype html>
         }
         if (mode === "management" || mode === "ledger" || mode === "crm" || mode === "import" || mode === "fileLibrary" || mode === "userAdmin" || mode === "salesReport" || mode === "leave" || mode === "backup" || mode === "systemUpdate") {
           showWorkspace(mode);
+          if (mode === "salesReport" && button.closest("#salesReportNavGroup")) {
+            openSalesReportUploadPicker();
+          }
           return;
         }
         openModal(mode);
@@ -12434,9 +12430,6 @@ HTML = r"""<!doctype html>
     vendorContactSelect.addEventListener("change", applySelectedVendor);
     saveVendorContactButton.addEventListener("click", saveCurrentVendorContact);
     if (vendorContactsFileInput) vendorContactsFileInput.addEventListener("change", uploadVendorContactsWorkbook);
-    if (salesReportChooseFile && salesReportFileInput) {
-      salesReportChooseFile.addEventListener("click", () => salesReportFileInput.click());
-    }
     if (salesReportFileInput) salesReportFileInput.addEventListener("change", uploadSalesReportWorkbook);
     saveCsCaseButton.addEventListener("click", saveCurrentCsCase);
     ledgerRefresh.addEventListener("click", loadLedgerCases);
@@ -13220,14 +13213,8 @@ ADMIN_WORKSPACE_HTML = r"""
               <div class="admin-message">매입처/매출처 업체 메일 주소록 엑셀을 업로드하면 DB에 저장됩니다.</div>
             </div>
             <div class="admin-card" id="salesReportUploadCard">
-              <div class="admin-section-title">매출표 업로드</div>
-              <div class="sales-upload-actions">
-                <button class="workspace-button" type="button" id="salesReportChooseFile">매출표 파일 선택</button>
-                <span class="admin-message">지원 형식: 매출 통계.xlsx, Statistics_Good_YYYY-MM-DD.xls, 매출처별.xlsx</span>
-                <input id="salesReportFileInput" name="sales_report" type="file" accept=".xlsx,.xlsm,.xls,.csv" hidden />
-              </div>
-              <div class="admin-message" id="salesReportUploadMessage">최근 업로드한 매출표가 여기에 표시됩니다.</div>
-              <div class="admin-message" id="salesReportRecentList"></div>
+              <div class="admin-section-title">매출현황</div>
+              <input id="salesReportFileInput" name="sales_report" type="file" accept=".xlsx,.xlsm,.xls,.csv" hidden />
               <div class="sales-dashboard" id="salesReportDashboard">
                 <div class="sales-kpi-grid" id="salesReportKpiGrid"></div>
                 <div class="sales-dashboard-grid">
