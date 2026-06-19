@@ -144,7 +144,11 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
             self.assertIn("safe_number_candidates", html_source)
             self.assertIn("approved_text", html_source)
             self.assertIn("안심번호 합포 후보", html_source)
-            self.assertIn("window.confirm(safeNumberConfirmMessage", html_source)
+            self.assertIn('id="safeNumberPackageDialog"', html_source)
+            self.assertIn("function requestSafeNumberPackageApproval", html_source)
+            self.assertIn('id="safeNumberPackageApprove"', html_source)
+            self.assertIn('id="safeNumberPackageReject"', html_source)
+            self.assertNotIn("window.confirm(safeNumberConfirmMessage", html_source)
 
     def test_order_workspace_has_right_side_execution_cards(self) -> None:
         html_source = (SCRIPTS / "workhub_delivery_app.py").read_text(encoding="utf-8")

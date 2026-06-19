@@ -899,6 +899,59 @@ HTML = r"""<!doctype html>
       opacity: 1;
       pointer-events: auto;
     }
+    .safe-number-dialog-backdrop {
+      position: fixed;
+      inset: 0;
+      display: none;
+      place-items: center;
+      z-index: 3000;
+      background: rgba(15, 23, 42, .34);
+      padding: 18px;
+    }
+    .safe-number-dialog-backdrop.open { display: grid; }
+    .safe-number-dialog {
+      width: min(640px, 100%);
+      max-height: calc(100vh - 36px);
+      overflow: auto;
+      border: 1px solid #b7bdc8;
+      border-radius: 12px;
+      background: white;
+      box-shadow: 0 18px 46px rgba(15, 23, 42, .18);
+      padding: 22px 24px 24px;
+      color: #1a2230;
+    }
+    .safe-number-dialog-title {
+      margin: 0 0 8px;
+      font-size: 20px;
+      font-weight: 950;
+    }
+    .safe-number-dialog-description {
+      margin: 0 0 14px;
+      color: #475467;
+      font-size: 14px;
+      line-height: 1.55;
+      font-weight: 750;
+    }
+    .safe-number-dialog-preview {
+      max-height: 280px;
+      overflow: auto;
+      margin: 0;
+      padding: 13px 14px;
+      border: 1px solid #d7dce5;
+      border-radius: 8px;
+      background: #f8fafc;
+      color: #1f2937;
+      font-family: "Malgun Gothic", "Noto Sans KR", sans-serif;
+      font-size: 13px;
+      line-height: 1.55;
+      white-space: pre-wrap;
+    }
+    .safe-number-dialog-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 10px;
+      margin-top: 18px;
+    }
     .workhub-modal.ledger-modal {
       width: calc(100vw - 18px);
       height: calc(100vh - 18px);
@@ -5280,6 +5333,20 @@ HTML = r"""<!doctype html>
     </div>
   </div>
 
+  <div class="safe-number-dialog-backdrop" id="safeNumberPackageDialog" aria-hidden="true">
+    <div class="safe-number-dialog" role="dialog" aria-modal="true" aria-labelledby="safeNumberPackageTitle">
+      <h2 class="safe-number-dialog-title" id="safeNumberPackageTitle">안심번호 합포 후보 확인</h2>
+      <p class="safe-number-dialog-description">
+        동일한 수령자명과 주소인데 연락처만 다른 건입니다. 합포장으로 출력할지 확인해주세요.
+      </p>
+      <pre class="safe-number-dialog-preview" id="safeNumberPackagePreview"></pre>
+      <div class="safe-number-dialog-actions">
+        <button class="btn" type="button" id="safeNumberPackageReject">개별건으로 출력</button>
+        <button class="btn blue" type="button" id="safeNumberPackageApprove">합포장으로 출력</button>
+      </div>
+    </div>
+  </div>
+
   <script type="module">
     import { createIcons, BriefcaseBusiness, Home, MessageCircle, Info, ChevronDown, ChevronRight, PlusSquare, RefreshCw, Ellipsis, Headphones, Package, ClipboardCheck, CircleDollarSign, FileText, FileSpreadsheet, ClipboardList, BarChart3, CopyCheck, Bell, Download, Truck, Mail, Upload, Database, CalendarDays, X, Settings } from "/lucide/dist/esm/lucide.js";
     createIcons({ icons: { BriefcaseBusiness, Home, MessageCircle, Info, ChevronDown, ChevronRight, PlusSquare, RefreshCw, Ellipsis, Headphones, Package, ClipboardCheck, CircleDollarSign, FileText, FileSpreadsheet, ClipboardList, BarChart3, CopyCheck, Bell, Download, Truck, Mail, Upload, Database, CalendarDays, X, Settings, "package": Package, "file-text": FileText, "file-spreadsheet": FileSpreadsheet, "truck": Truck } });
@@ -5489,6 +5556,10 @@ HTML = r"""<!doctype html>
     const resultText = document.querySelector("#resultText");
     const notice = document.querySelector("#notice");
     const submitButton = document.querySelector("#submitButton");
+    const safeNumberPackageDialog = document.querySelector("#safeNumberPackageDialog");
+    const safeNumberPackagePreview = document.querySelector("#safeNumberPackagePreview");
+    const safeNumberPackageApprove = document.querySelector("#safeNumberPackageApprove");
+    const safeNumberPackageReject = document.querySelector("#safeNumberPackageReject");
     const pageTitle = document.querySelector(".title");
     const dashboardContent = document.querySelector("#dashboardContent");
     const companyTabs = Array.from(document.querySelectorAll(".company-tab"));
@@ -10106,7 +10177,40 @@ HTML = r"""<!doctype html>
         return `${index + 1}. ${candidate.name || "수령자 미확인"} / ${phones}\n   ${candidate.address || "주소 미확인"}\n   ${items}${extra}`;
       }).join("\n\n");
       const hiddenCount = candidates.length > 5 ? `\n\n외 ${candidates.length - 5}개 후보가 더 있습니다.` : "";
-      return `안심번호 합포 후보가 있습니다.\n\n동일한 수령자명과 주소인데 연락처만 다른 건입니다.\n확인을 누르면 합포장으로 출력하고, 취소를 누르면 개별건으로 출력합니다.\n\n${preview}${hiddenCount}`;
+      return `안심번호 합포 후보가 있습니다.\n\n동일한 수령자명과 주소인데 연락처만 다른 건입니다.\n합포장으로 출력 버튼을 누르면 합포장으로 출력하고, 개별건으로 출력 버튼을 누르면 개별건으로 출력합니다.\n\n${preview}${hiddenCount}`;
+    }
+
+    function requestSafeNumberPackageApproval(candidates) {
+      if (!safeNumberPackageDialog || !safeNumberPackagePreview || !safeNumberPackageApprove || !safeNumberPackageReject) {
+        return Promise.resolve(false);
+      }
+      safeNumberPackagePreview.textContent = safeNumberConfirmMessage(candidates);
+      safeNumberPackageDialog.classList.add("open");
+      safeNumberPackageDialog.setAttribute("aria-hidden", "false");
+      safeNumberPackageApprove.focus();
+      return new Promise((resolve) => {
+        const finish = (approved) => {
+          safeNumberPackageDialog.classList.remove("open");
+          safeNumberPackageDialog.setAttribute("aria-hidden", "true");
+          safeNumberPackageApprove.removeEventListener("click", approve);
+          safeNumberPackageReject.removeEventListener("click", reject);
+          safeNumberPackageDialog.removeEventListener("click", backdropReject);
+          document.removeEventListener("keydown", escapeReject);
+          resolve(approved);
+        };
+        const approve = () => finish(true);
+        const reject = () => finish(false);
+        const backdropReject = (event) => {
+          if (event.target === safeNumberPackageDialog) finish(false);
+        };
+        const escapeReject = (event) => {
+          if (event.key === "Escape") finish(false);
+        };
+        safeNumberPackageApprove.addEventListener("click", approve);
+        safeNumberPackageReject.addEventListener("click", reject);
+        safeNumberPackageDialog.addEventListener("click", backdropReject);
+        document.addEventListener("keydown", escapeReject);
+      });
     }
 
     function orderDownloadSizeLabel(size) {
@@ -11663,7 +11767,7 @@ HTML = r"""<!doctype html>
           let outputText = data.text;
           let safeNumberNotice = "";
           if (safeNumberCandidates.length && data.approved_text && data.approved_text !== data.text) {
-            const approvedSafePackages = window.confirm(safeNumberConfirmMessage(safeNumberCandidates));
+            const approvedSafePackages = await requestSafeNumberPackageApproval(safeNumberCandidates);
             if (approvedSafePackages) {
               outputText = data.approved_text;
               safeNumberNotice = ` 안심번호 합포 후보 ${safeNumberCandidates.length}건을 합포장으로 반영했습니다.`;
