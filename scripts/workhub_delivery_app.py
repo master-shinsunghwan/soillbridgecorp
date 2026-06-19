@@ -74,6 +74,7 @@ ORDER_DOWNLOAD_DIR = DOWNLOAD_DIR / "order_outputs"
 ORDER_DOWNLOAD_HISTORY_PATH = ORDER_DOWNLOAD_DIR / "history.json"
 ORDER_DOWNLOAD_LIMIT = 10
 SHARED_FILE_DIR = RUNTIME_ROOT / "shared_files"
+SALES_REPORT_DIR = RUNTIME_ROOT / "sales_reports"
 CONFIG_DIR = RUNTIME_ROOT / "config"
 DB_PATH = CONFIG_DIR / "workhub.db"
 MAIL_SETTINGS_PATH = CONFIG_DIR / "mail_settings.json"
@@ -5637,6 +5638,7 @@ HTML = r"""<!doctype html>
         setHidden(button, currentUser.role !== "admin");
       });
       setHidden(document.querySelector("label[for='vendorContactsFileInput']"), !can("excel_upload"));
+      setHidden(document.querySelector("label[for='salesReportFileInput']"), !can("excel_upload"));
       setHidden(saveVendorContactButton, !can("mail_send"));
       setHidden(document.querySelector("#distributionMailNavGroup"), !can("mail_send"));
       document.querySelectorAll("[data-mail-popup]").forEach((button) => setHidden(button, !can("mail_send")));
@@ -5698,6 +5700,10 @@ HTML = r"""<!doctype html>
     const vendorContactSelect = document.querySelector("#vendorContactSelect");
     const vendorContactsFileInput = document.querySelector("#vendorContactsFileInput");
     const vendorContactsDropMain = document.querySelector("#vendorContactsDropMain");
+    const salesReportFileInput = document.querySelector("#salesReportFileInput");
+    const salesReportDropMain = document.querySelector("#salesReportDropMain");
+    const salesReportUploadMessage = document.querySelector("#salesReportUploadMessage");
+    const salesReportRecentList = document.querySelector("#salesReportRecentList");
     const vendorTypeSelect = document.querySelector("#vendorTypeSelect");
     const recipientEmailInput = document.querySelector("#recipientEmailInput");
     const vendorNameInput = document.querySelector("#vendorNameInput");
@@ -7569,6 +7575,54 @@ HTML = r"""<!doctype html>
         notice.textContent = error.message;
       } finally {
         vendorContactsFileInput.value = "";
+      }
+    }
+
+    function renderSalesReportUploads(files = []) {
+      if (!salesReportRecentList) return;
+      const recent = files.slice(0, 5);
+      if (!recent.length) {
+        salesReportRecentList.textContent = "업로드된 매출표가 없습니다.";
+        return;
+      }
+      salesReportRecentList.innerHTML = recent
+        .map((file) => `${escapeHtml(file.original_name || "")} · ${escapeHtml(file.uploaded_at || "")}`)
+        .join("<br />");
+    }
+
+    async function loadSalesReportUploads() {
+      if (!salesReportRecentList) return;
+      try {
+        const response = await fetch("/api/sales-report-uploads");
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "매출표 업로드 목록을 불러오지 못했습니다.");
+        renderSalesReportUploads(data.files || []);
+      } catch (error) {
+        salesReportRecentList.textContent = error.message;
+      }
+    }
+
+    async function uploadSalesReportWorkbook() {
+      if (!salesReportFileInput) return;
+      const file = salesReportFileInput.files[0];
+      if (!file) return;
+      if (salesReportDropMain) salesReportDropMain.textContent = file.name;
+      const formData = new FormData();
+      formData.append("file", file);
+      if (salesReportUploadMessage) salesReportUploadMessage.textContent = "매출표를 업로드하는 중입니다.";
+      try {
+        const response = await fetch("/api/sales-report-upload", {
+          method: "POST",
+          body: formData,
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "매출표 업로드에 실패했습니다.");
+        renderSalesReportUploads(data.files || []);
+        if (salesReportUploadMessage) salesReportUploadMessage.textContent = data.message || "매출표를 저장했습니다.";
+      } catch (error) {
+        if (salesReportUploadMessage) salesReportUploadMessage.textContent = error.message;
+      } finally {
+        salesReportFileInput.value = "";
       }
     }
 
@@ -11288,6 +11342,7 @@ HTML = r"""<!doctype html>
         closeLedgerFilter();
         resetUserAdminForm();
         loadAdminMailSettings();
+        loadSalesReportUploads();
         loadUserAccounts();
       } else if (showBackup) {
         setPageTitle("백업 관리");
@@ -12079,6 +12134,12 @@ HTML = r"""<!doctype html>
       "업체구분/업체명/메일주소 엑셀을 선택해주세요."
     );
     setupDropzone(
+      document.querySelector("label[for='salesReportFileInput']"),
+      salesReportFileInput,
+      salesReportDropMain,
+      "매출표 엑셀 또는 CSV 파일을 선택해주세요."
+    );
+    setupDropzone(
       document.querySelector("label[for='sharedFileInput']"),
       sharedFileInput,
       sharedFileDropMain,
@@ -12093,6 +12154,7 @@ HTML = r"""<!doctype html>
     vendorContactSelect.addEventListener("change", applySelectedVendor);
     saveVendorContactButton.addEventListener("click", saveCurrentVendorContact);
     if (vendorContactsFileInput) vendorContactsFileInput.addEventListener("change", uploadVendorContactsWorkbook);
+    if (salesReportFileInput) salesReportFileInput.addEventListener("change", uploadSalesReportWorkbook);
     saveCsCaseButton.addEventListener("click", saveCurrentCsCase);
     ledgerRefresh.addEventListener("click", loadLedgerCases);
     ledgerStatusFilter.addEventListener("change", applyLedgerFilters);
@@ -12862,6 +12924,16 @@ ADMIN_WORKSPACE_HTML = r"""
               </label>
               <div class="admin-message">매입처/매출처 업체 메일 주소록 엑셀을 업로드하면 DB에 저장됩니다.</div>
             </div>
+            <div class="admin-card">
+              <div class="admin-section-title">매출표 업로드</div>
+              <label class="dropzone" for="salesReportFileInput">
+                <span class="drop-main" id="salesReportDropMain">매출표 엑셀 또는 CSV 파일을 선택해주세요.</span>
+                <span class="drop-sub">지원 형식: xlsx, xlsm, csv / 업로드 기록은 DB에 저장됩니다.</span>
+                <input id="salesReportFileInput" name="sales_report" type="file" accept=".xlsx,.xlsm,.csv" />
+              </label>
+              <div class="admin-message" id="salesReportUploadMessage">최근 업로드한 매출표가 여기에 표시됩니다.</div>
+              <div class="admin-message" id="salesReportRecentList"></div>
+            </div>
             <div class="admin-form">
               <input id="userAdminId" type="hidden" />
               <label>아이디
@@ -13152,6 +13224,24 @@ def save_uploaded_shared_file(fields: dict[str, tuple[str, bytes] | str], field_
     return path
 
 
+def save_uploaded_sales_report_file(fields: dict[str, tuple[str, bytes] | str], field_name: str = "file") -> Path:
+    uploaded = fields.get(field_name)
+    if not isinstance(uploaded, tuple):
+        raise ValueError("업로드된 매출표 파일이 없습니다.")
+
+    filename, data = uploaded
+    filename = safe_filename(filename)
+    if not filename.lower().endswith((".xlsx", ".xlsm", ".csv")):
+        raise ValueError("매출표는 xlsx, xlsm, csv 파일만 업로드할 수 있습니다.")
+    if not data:
+        raise ValueError("매출표 파일을 다시 선택해주세요.")
+
+    UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    path = UPLOAD_DIR / f"{int(time.time() * 1000)}_{filename}"
+    path.write_bytes(data)
+    return path
+
+
 def save_uploaded_backup_zip(fields: dict[str, tuple[str, bytes] | str], field_name: str = "file") -> Path:
     uploaded = fields.get(field_name)
     if not isinstance(uploaded, tuple):
@@ -13401,6 +13491,72 @@ def delete_shared_file(file_id: object) -> None:
     finally:
         connection.close()
     path.unlink(missing_ok=True)
+
+
+def _sales_report_public(row: sqlite3.Row | dict) -> dict[str, str | int]:
+    return {
+        "id": int(row["id"]),
+        "original_name": str(row["original_name"]),
+        "size": int(row["size"] or 0),
+        "uploaded_by": str(row["uploaded_by"] or ""),
+        "uploaded_at": str(row["uploaded_at"] or ""),
+    }
+
+
+def list_sales_report_uploads(limit: int = 5) -> list[dict[str, str | int]]:
+    init_db()
+    SALES_REPORT_DIR.mkdir(parents=True, exist_ok=True)
+    safe_limit = max(1, min(int(limit or 5), 20))
+    connection = connect_db()
+    try:
+        rows = connection.execute(
+            """
+            SELECT id, original_name, size, uploaded_by, uploaded_at
+              FROM sales_report_uploads
+             ORDER BY id DESC
+             LIMIT ?
+            """,
+            (safe_limit,),
+        ).fetchall()
+        return [_sales_report_public(row) for row in rows]
+    finally:
+        connection.close()
+
+
+def save_sales_report_file(source_path: str | Path, original_name: str, uploaded_by: str = "") -> dict[str, str | int]:
+    source = Path(source_path)
+    if not source.is_file():
+        raise FileNotFoundError("매출표 파일을 찾지 못했습니다.")
+
+    init_db()
+    SALES_REPORT_DIR.mkdir(parents=True, exist_ok=True)
+    safe_original = _safe_shared_filename(original_name or source.name)
+    file_id = secrets.token_hex(10)
+    stored_name = f"{datetime.now().strftime('%Y%m%d%H%M%S')}_{file_id}_{safe_original}"
+    target = SALES_REPORT_DIR / stored_name
+    target.write_bytes(source.read_bytes())
+    uploaded_at = now_text()
+
+    connection = connect_db()
+    try:
+        cursor = connection.execute(
+            """
+            INSERT INTO sales_report_uploads (stored_name, original_name, size, uploaded_by, uploaded_at)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (stored_name, safe_original, target.stat().st_size, str(uploaded_by or ""), uploaded_at),
+        )
+        connection.commit()
+        row_id = int(cursor.lastrowid)
+    finally:
+        connection.close()
+    return {
+        "id": row_id,
+        "original_name": safe_original,
+        "size": target.stat().st_size,
+        "uploaded_by": str(uploaded_by or ""),
+        "uploaded_at": uploaded_at,
+    }
 
 
 def crm_webhook_token() -> str:
@@ -13735,6 +13891,18 @@ def init_db() -> None:
         connection.execute(
             """
             CREATE TABLE IF NOT EXISTS shared_files (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                stored_name TEXT NOT NULL UNIQUE,
+                original_name TEXT NOT NULL,
+                size INTEGER NOT NULL DEFAULT 0,
+                uploaded_by TEXT,
+                uploaded_at TEXT NOT NULL
+            )
+            """
+        )
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS sales_report_uploads (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 stored_name TEXT NOT NULL UNIQUE,
                 original_name TEXT NOT NULL,
@@ -18426,6 +18594,12 @@ class WorkhubHandler(BaseHTTPRequestHandler):
             self.send_json({"files": list_shared_files()})
             return
 
+        if self.path == "/api/sales-report-uploads":
+            if not self.require_permission(user, "excel_upload", "매출표 업로드"):
+                return
+            self.send_json({"files": list_sales_report_uploads()})
+            return
+
         if self.path.startswith("/api/shared-file-download"):
             parsed = urlsplit(self.path)
             params = parse_qs(parsed.query)
@@ -19267,6 +19441,19 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                     "message": f"업체 메일 주소 {saved_count}건을 저장했습니다.",
                     "saved_count": saved_count,
                     "contacts": contacts,
+                })
+                return
+
+            if self.path == "/api/sales-report-upload":
+                if not self.require_permission(user, "excel_upload", "매출표 업로드"):
+                    return
+                upload_path = save_uploaded_sales_report_file(fields, "file")
+                uploaded_by = str(user.get("display_name") or user.get("username") or "")
+                saved = save_sales_report_file(upload_path, original_uploaded_filename(upload_path.name), uploaded_by)
+                self.send_json({
+                    "message": "매출표를 저장했습니다.",
+                    "file": saved,
+                    "files": list_sales_report_uploads(),
                 })
                 return
 

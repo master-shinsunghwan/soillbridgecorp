@@ -461,6 +461,26 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
             self.assertNotIn('id="vendorContactsFileInput"', cs_contact_slice)
             self.assertNotIn('id="vendorContactsDropMain"', cs_contact_slice)
 
+    def test_sales_report_upload_is_managed_from_admin_workspace(self) -> None:
+        html_source = (ROOT / "scripts" / "workhub_delivery_app.py").read_text(encoding="utf-8")
+
+        self.assertIn('id="salesReportFileInput"', html_source)
+        self.assertIn('id="salesReportDropMain"', html_source)
+        self.assertIn('id="salesReportUploadMessage"', html_source)
+        self.assertIn('id="salesReportRecentList"', html_source)
+        self.assertIn('accept=".xlsx,.xlsm,.csv"', html_source)
+        self.assertIn('"/api/sales-report-upload"', html_source)
+        self.assertIn('"/api/sales-report-uploads"', html_source)
+        self.assertIn("function uploadSalesReportWorkbook()", html_source)
+        self.assertIn("function loadSalesReportUploads()", html_source)
+        self.assertIn('label[for=\'salesReportFileInput\']', html_source)
+
+        admin_start = html_source.index('id="userAdminWorkspace"')
+        admin_end = html_source.index('id="userAdminBody"', admin_start)
+        admin_slice = html_source[admin_start:admin_end]
+        self.assertIn('id="salesReportFileInput"', admin_slice)
+        self.assertIn('id="salesReportDropMain"', admin_slice)
+
     def test_tools_sidebar_is_shared_file_library_only(self) -> None:
         for app_file in (
             ROOT / "scripts" / "workhub_delivery_app.py",
