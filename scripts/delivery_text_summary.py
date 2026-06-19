@@ -44,6 +44,10 @@ def normalize_header(value: Any) -> str:
     return re.sub(r"\s+", "", clean_cell(value)).lower()
 
 
+def normalize_package_address(value: Any) -> str:
+    return re.sub(r"[\s,.\-]+", "", clean_cell(value)).lower()
+
+
 def find_column(headers: list[Any], candidates: tuple[str, ...], label: str) -> int:
     normalized = [normalize_header(header) for header in headers]
     for candidate in candidates:
@@ -94,62 +98,109 @@ def format_title(delivery_date: date) -> str:
     return f"★{delivery_date.month}월{delivery_date.day}일({weekday}) 개별 택배건 전달드립니다★"
 
 
-def summarize_workbook(
+def parse_delivery_workbook(
     path: Path,
     sheet_name: str | None = None,
-    sort_mode: str = "name",
-) -> tuple[str, list[str]]:
+) -> tuple[list[dict[str, Any]], list[str]]:
     workbook = load_workbook(path, read_only=True, data_only=True)
-    worksheet = workbook[sheet_name] if sheet_name else workbook[workbook.sheetnames[0]]
-
-    rows = worksheet.iter_rows(values_only=True)
-    headers = list(next(rows))
-    product_idx = find_column(headers, PRODUCT_HEADERS, "상품명")
-    quantity_idx = find_column(headers, QUANTITY_HEADERS, "수량")
-    receiver_name_idx = find_column(headers, RECEIVER_NAME_HEADERS, "받으시는분 성함")
-    receiver_phone_idx = find_column(headers, RECEIVER_PHONE_HEADERS, "받으시는분 연락처")
-    detail_address_idx = find_column(headers, DETAIL_ADDRESS_HEADERS, "상세주소")
-
     try:
-        order_idx = find_column(headers, ORDER_HEADERS, "주문번호")
-    except ValueError:
-        order_idx = -1
+        worksheet = workbook[sheet_name] if sheet_name else workbook[workbook.sheetnames[0]]
 
-    parsed_rows: list[dict[str, Any]] = []
+        rows = worksheet.iter_rows(values_only=True)
+        headers = list(next(rows))
+        product_idx = find_column(headers, PRODUCT_HEADERS, "상품명")
+        quantity_idx = find_column(headers, QUANTITY_HEADERS, "수량")
+        receiver_name_idx = find_column(headers, RECEIVER_NAME_HEADERS, "받으시는분 성함")
+        receiver_phone_idx = find_column(headers, RECEIVER_PHONE_HEADERS, "받으시는분 연락처")
+        detail_address_idx = find_column(headers, DETAIL_ADDRESS_HEADERS, "상세주소")
+
+        parsed_rows: list[dict[str, Any]] = []
+
+        for row in rows:
+            if not any(row):
+                continue
+            product_name = normalize_product_name(clean_cell(row[product_idx]))
+            if not product_name:
+                continue
+            quantity = parse_quantity(row[quantity_idx])
+            receiver_name = clean_cell(row[receiver_name_idx])
+            receiver_phone = clean_cell(row[receiver_phone_idx])
+            detail_address = clean_cell(row[detail_address_idx])
+            recipient_key = (receiver_name, receiver_phone, detail_address)
+            parsed_rows.append(
+                {
+                    "product_name": product_name,
+                    "quantity": quantity,
+                    "recipient_key": recipient_key,
+                    "safe_recipient_key": (receiver_name, normalize_package_address(detail_address)),
+                    "receiver_name": receiver_name,
+                    "receiver_phone": receiver_phone,
+                    "detail_address": detail_address,
+                }
+            )
+
+        return parsed_rows, list(workbook.sheetnames)
+    finally:
+        workbook.close()
+
+
+def recipient_count_map(parsed_rows: list[dict[str, Any]]) -> OrderedDict[tuple[str, str, str], int]:
     recipient_counts: OrderedDict[tuple[str, str, str], int] = OrderedDict()
-    order_numbers: list[str] = []
-
-    for row in rows:
-        if not any(row):
-            continue
-        product_name = normalize_product_name(clean_cell(row[product_idx]))
-        if not product_name:
-            continue
-        quantity = parse_quantity(row[quantity_idx])
-        recipient_key = (
-            clean_cell(row[receiver_name_idx]),
-            clean_cell(row[receiver_phone_idx]),
-            clean_cell(row[detail_address_idx]),
-        )
-        parsed_rows.append(
-            {
-                "product_name": product_name,
-                "quantity": quantity,
-                "recipient_key": recipient_key,
-            }
-        )
+    for parsed_row in parsed_rows:
+        recipient_key = parsed_row["recipient_key"]
         if all(recipient_key):
             recipient_counts[recipient_key] = recipient_counts.get(recipient_key, 0) + 1
-        if order_idx >= 0:
-            order_numbers.append(clean_cell(row[order_idx]))
+    return recipient_counts
 
+
+def safe_number_candidates(parsed_rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    grouped: OrderedDict[tuple[str, str], list[dict[str, Any]]] = OrderedDict()
+    for parsed_row in parsed_rows:
+        safe_key = parsed_row["safe_recipient_key"]
+        if all(safe_key):
+            grouped.setdefault(safe_key, []).append(parsed_row)
+
+    candidates: list[dict[str, Any]] = []
+    for rows in grouped.values():
+        phones = []
+        for row in rows:
+            phone = row["receiver_phone"]
+            if phone and phone not in phones:
+                phones.append(phone)
+        if len(rows) < 2 or len(phones) < 2:
+            continue
+        first = rows[0]
+        candidates.append(
+            {
+                "name": first["receiver_name"],
+                "address": first["detail_address"],
+                "phones": phones,
+                "items": [
+                    f"{row['product_name']} - {row['quantity']}개"
+                    for row in rows
+                ],
+            }
+        )
+    return candidates
+
+
+def render_summary(
+    parsed_rows: list[dict[str, Any]],
+    sort_mode: str = "name",
+    approved_safe_keys: set[tuple[str, str]] | None = None,
+) -> str:
+    approved_safe_keys = approved_safe_keys or set()
+    recipient_counts = recipient_count_map(parsed_rows)
     grouped: OrderedDict[tuple[str, int], int] = OrderedDict()
-    combined_recipients: OrderedDict[tuple[str, str, str], list[tuple[str, int]]] = OrderedDict()
+    combined_recipients: OrderedDict[tuple[Any, ...], list[tuple[str, int]]] = OrderedDict()
     for parsed_row in parsed_rows:
         key = (parsed_row["product_name"], parsed_row["quantity"])
         recipient_key = parsed_row["recipient_key"]
-        if recipient_counts.get(recipient_key, 0) > 1:
-            combined_recipients.setdefault(recipient_key, []).append(key)
+        safe_key = parsed_row["safe_recipient_key"]
+        if safe_key in approved_safe_keys:
+            combined_recipients.setdefault(("safe", *safe_key), []).append(key)
+        elif recipient_counts.get(recipient_key, 0) > 1:
+            combined_recipients.setdefault(("strict", *recipient_key), []).append(key)
         else:
             grouped[key] = grouped.get(key, 0) + 1
 
@@ -173,9 +224,40 @@ def summarize_workbook(
         f"{product_name} - {quantity}개 ({count}건)"
         for (product_name, quantity), count in items
     )
-    result = "\n".join(lines), list(workbook.sheetnames)
-    workbook.close()
-    return result
+    return "\n".join(lines)
+
+
+def build_summary_payload(
+    path: Path,
+    sheet_name: str | None = None,
+    sort_mode: str = "name",
+) -> dict[str, Any]:
+    parsed_rows, sheet_names = parse_delivery_workbook(path, sheet_name)
+    candidates = safe_number_candidates(parsed_rows)
+    approved_keys = {
+        (
+            candidate["name"],
+            normalize_package_address(candidate["address"]),
+        )
+        for candidate in candidates
+    }
+    text = render_summary(parsed_rows, sort_mode)
+    approved_text = render_summary(parsed_rows, sort_mode, approved_keys) if candidates else text
+    return {
+        "text": text,
+        "approved_text": approved_text,
+        "safe_number_candidates": candidates,
+        "sheet_names": sheet_names,
+    }
+
+
+def summarize_workbook(
+    path: Path,
+    sheet_name: str | None = None,
+    sort_mode: str = "name",
+) -> tuple[str, list[str]]:
+    payload = build_summary_payload(path, sheet_name, sort_mode)
+    return payload["text"], payload["sheet_names"]
 
 
 def build_output_path(input_path: Path, output_dir: Path) -> Path:

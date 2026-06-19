@@ -60,6 +60,49 @@ def create_delivery_workbook(path: Path) -> None:
     workbook.save(path)
 
 
+def create_safe_number_delivery_workbook(path: Path) -> None:
+    workbook = Workbook()
+    worksheet = workbook.active
+    worksheet.title = "SafeNumber"
+    worksheet.append(
+        [
+            "순서",
+            "주문일",
+            "주문번호",
+            "수령자",
+            "수령자연락처",
+            "제 품 명",
+            "수량",
+            "상 세 주 소",
+        ]
+    )
+    worksheet.append(
+        [
+            1,
+            "2026-06-18 09:30:46",
+            "WSO260618-000000001",
+            "홍길동",
+            "0504-1111-2222",
+            "아이제나흐 에센 스텐 찜솥 28cm",
+            6,
+            "서울시 테스트로 1",
+        ]
+    )
+    worksheet.append(
+        [
+            2,
+            "2026-06-18 09:31:10",
+            "WSO260618-000000002",
+            "홍길동",
+            "0504-3333-4444",
+            "아이제나흐 에쎈 레인지 쿡 12종/24P",
+            1,
+            "서울시 테스트로 1",
+        ]
+    )
+    workbook.save(path)
+
+
 def create_invoice_workbook(path: Path) -> None:
     workbook = Workbook()
     worksheet = workbook.active
@@ -114,6 +157,25 @@ class OrderWorkflowRegressionTests(unittest.TestCase):
 
                     self.assertEqual(sheet_names, ["Supply"])
                     self.assertIn("\ud14c\uc2a4\ud2b8 \uc0c1\ud488 - 2\uac1c (1\uac74)", summary)
+
+    def test_delivery_summary_builds_safe_number_approval_payload_in_all_script_copies(self) -> None:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+            workbook_path = Path(tmp) / "delivery-safe-number.xlsx"
+            create_safe_number_delivery_workbook(workbook_path)
+
+            for scripts_dir in MODULE_SETS:
+                with self.subTest(scripts_dir=scripts_dir):
+                    module = load_module(scripts_dir / "delivery_text_summary.py")
+                    payload = module.build_summary_payload(workbook_path)
+
+                    self.assertEqual(payload["sheet_names"], ["SafeNumber"])
+                    self.assertEqual(len(payload["safe_number_candidates"]), 1)
+                    self.assertIn("아이제나흐 에센 스텐 찜솥 28cm - 6개 (1건)", payload["text"])
+                    self.assertIn("아이제나흐 에쎈 레인지 쿡 12종/24P - 1개 (1건)", payload["text"])
+                    self.assertIn(
+                        "★합포장 확인 요청★아이제나흐 에센 스텐 찜솥 28cm - 6개 + 아이제나흐 에쎈 레인지 쿡 12종/24P - 1개",
+                        payload["approved_text"],
+                    )
 
     def test_invoice_export_preserves_duplicate_invoice_numbers_in_all_script_copies(self) -> None:
         with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:

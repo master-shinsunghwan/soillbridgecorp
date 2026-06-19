@@ -31,7 +31,7 @@ from urllib.parse import parse_qs, quote, unquote, urlsplit
 from openpyxl import Workbook, load_workbook
 from openpyxl.utils import get_column_letter
 
-from delivery_text_summary import summarize_workbook
+from delivery_text_summary import build_summary_payload
 from invoice_number_exporter import export_invoice_numbers, extract_invoice_rows
 from lotte_order_form_converter import convert_lotte_order_form
 from sales_vendor_summary_converter import convert_sales_vendor_workbook
@@ -10098,6 +10098,17 @@ HTML = r"""<!doctype html>
       window.setTimeout(() => URL.revokeObjectURL(url), 1000);
     }
 
+    function safeNumberConfirmMessage(candidates) {
+      const preview = candidates.slice(0, 5).map((candidate, index) => {
+        const phones = Array.isArray(candidate.phones) ? candidate.phones.join(", ") : "";
+        const items = Array.isArray(candidate.items) ? candidate.items.slice(0, 4).join(" + ") : "";
+        const extra = Array.isArray(candidate.items) && candidate.items.length > 4 ? ` 외 ${candidate.items.length - 4}건` : "";
+        return `${index + 1}. ${candidate.name || "수령자 미확인"} / ${phones}\n   ${candidate.address || "주소 미확인"}\n   ${items}${extra}`;
+      }).join("\n\n");
+      const hiddenCount = candidates.length > 5 ? `\n\n외 ${candidates.length - 5}개 후보가 더 있습니다.` : "";
+      return `안심번호 합포 후보가 있습니다.\n\n동일한 수령자명과 주소인데 연락처만 다른 건입니다.\n확인을 누르면 합포장으로 출력하고, 취소를 누르면 개별건으로 출력합니다.\n\n${preview}${hiddenCount}`;
+    }
+
     function orderDownloadSizeLabel(size) {
       const bytes = Number(size || 0);
       if (!bytes) return "";
@@ -11648,9 +11659,21 @@ HTML = r"""<!doctype html>
           const response = await fetch("/api/delivery-summary", { method: "POST", body: formData });
           const data = await response.json();
           if (!response.ok) throw new Error(data.error || "처리에 실패했습니다.");
-          resultText.value = data.text;
+          const safeNumberCandidates = Array.isArray(data.safe_number_candidates) ? data.safe_number_candidates : [];
+          let outputText = data.text;
+          let safeNumberNotice = "";
+          if (safeNumberCandidates.length && data.approved_text && data.approved_text !== data.text) {
+            const approvedSafePackages = window.confirm(safeNumberConfirmMessage(safeNumberCandidates));
+            if (approvedSafePackages) {
+              outputText = data.approved_text;
+              safeNumberNotice = ` 안심번호 합포 후보 ${safeNumberCandidates.length}건을 합포장으로 반영했습니다.`;
+            } else {
+              safeNumberNotice = ` 안심번호 합포 후보 ${safeNumberCandidates.length}건은 개별건으로 유지했습니다.`;
+            }
+          }
+          resultText.value = outputText;
           result.classList.add("open");
-          notice.textContent = `${data.line_count}개 묶음이 생성되었습니다.`;
+          notice.textContent = `${data.line_count}개 묶음이 생성되었습니다.${safeNumberNotice}`;
         } else if (currentMode === "salesVendor") {
           if (!fileInput.files[0]) throw new Error("주소일브릿지 원본 엑셀 파일을 선택해주세요.");
           const response = await fetch("/api/sales-vendor-summary", { method: "POST", body: formData });
@@ -17827,9 +17850,15 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                 sort_mode = fields.get("sort", "name")
                 if sort_mode not in {"name", "count", "first"}:
                     sort_mode = "name"
-                text, _ = summarize_workbook(upload_path, sort_mode=str(sort_mode))
+                summary_payload = build_summary_payload(upload_path, sort_mode=str(sort_mode))
+                text = summary_payload["text"]
                 lines = [line for line in text.splitlines() if " - " in line]
-                self.send_json({"text": text, "line_count": len(lines)})
+                self.send_json({
+                    "text": text,
+                    "approved_text": summary_payload.get("approved_text", text),
+                    "safe_number_candidates": summary_payload.get("safe_number_candidates", []),
+                    "line_count": len(lines),
+                })
                 return
 
             if self.path == "/api/invoice-export":

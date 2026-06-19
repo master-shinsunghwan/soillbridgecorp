@@ -132,6 +132,20 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         self.assertIn('data-order-execute="delivery">실행</button>', html_source)
         self.assertIn('modalTitle.textContent = "개별 택배건 정리";', html_source)
 
+    def test_delivery_summary_supports_safe_number_confirmation(self) -> None:
+        for app_file in (
+            ROOT / "scripts" / "workhub_delivery_app.py",
+            ROOT / "_workhub_zip_inspect" / "scripts" / "workhub_delivery_app.py",
+        ):
+            html_source = app_file.read_text(encoding="utf-8")
+
+            self.assertIn("build_summary_payload", html_source)
+            self.assertIn("safeNumberConfirmMessage", html_source)
+            self.assertIn("safe_number_candidates", html_source)
+            self.assertIn("approved_text", html_source)
+            self.assertIn("안심번호 합포 후보", html_source)
+            self.assertIn("window.confirm(safeNumberConfirmMessage", html_source)
+
     def test_order_workspace_has_right_side_execution_cards(self) -> None:
         html_source = (SCRIPTS / "workhub_delivery_app.py").read_text(encoding="utf-8")
 
