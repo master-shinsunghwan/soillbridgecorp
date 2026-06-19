@@ -6,6 +6,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from openpyxl import Workbook
 
@@ -157,6 +158,71 @@ class VendorContactMailWorkflowTests(unittest.TestCase):
 
             private_settings = app.load_mail_settings(include_password=True)
             self.assertEqual(private_settings["naver_password"], "application-password")
+
+    def test_naver_test_mail_uses_saved_account_and_clear_korean_content(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            app = load_app(Path(directory))
+            app.save_mail_settings(
+                "soilbridge",
+                "application-password",
+                bulk_settings={
+                    "smtp_port": "587",
+                    "smtp_security": "tls",
+                    "bulk_test_recipient": "recipient@example.com",
+                },
+            )
+
+            with patch.object(app, "send_naver_mail") as send_mail:
+                app.send_mail_test({})
+
+            send_mail.assert_called_once()
+            args = send_mail.call_args.args
+            kwargs = send_mail.call_args.kwargs
+            self.assertEqual(args[:3], ("soilbridge@naver.com", "application-password", "recipient@example.com"))
+            self.assertEqual(args[3], "[소일브릿지] 네이버 메일 SMTP 테스트")
+            self.assertIn("소일브릿지 업무자동화 프로그램", args[4])
+            self.assertEqual(kwargs["smtp_port"], 587)
+            self.assertEqual(kwargs["smtp_security"], "tls")
+
+    def test_naver_mail_message_uses_soillbridge_sender_name(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            app = load_app(Path(directory))
+
+            sent_messages = []
+
+            class FakeSmtp:
+                def __init__(self, *args, **kwargs):
+                    pass
+
+                def __enter__(self):
+                    return self
+
+                def __exit__(self, exc_type, exc, tb):
+                    return False
+
+                def starttls(self, context=None):
+                    return None
+
+                def login(self, email, password):
+                    self.login_args = (email, password)
+
+                def send_message(self, message):
+                    sent_messages.append(message)
+
+            with patch.object(app.smtplib, "SMTP", FakeSmtp):
+                app.send_naver_mail(
+                    "soilbridge@naver.com",
+                    "application-password",
+                    "recipient@example.com",
+                    "제목",
+                    "본문",
+                    smtp_port=587,
+                    smtp_security="tls",
+                )
+
+            self.assertEqual(len(sent_messages), 1)
+            self.assertIn("(주)소일브릿지", sent_messages[0]["From"])
+            self.assertEqual(sent_messages[0]["To"], "recipient@example.com")
 
 
 if __name__ == "__main__":

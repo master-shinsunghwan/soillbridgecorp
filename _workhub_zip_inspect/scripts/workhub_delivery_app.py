@@ -12033,7 +12033,7 @@ ADMIN_WORKSPACE_HTML = r"""
         <div class="workspace-mount">
           <div class="admin-panel">
             <div class="admin-card">
-              <div class="admin-section-title">메일 기본정보</div>
+              <div class="admin-section-title">네이버 메일 연동</div>
               <div class="admin-form">
                 <label>네이버 메일 아이디
                   <input id="adminNaverEmailInput" type="text" placeholder="예) soilbridge@naver.com" />
@@ -12074,9 +12074,9 @@ ADMIN_WORKSPACE_HTML = r"""
                   <input id="adminBulkTestRecipient" type="email" placeholder="예) test@example.com" />
                 </label>
                 <button class="workspace-button" type="button" id="adminMailTechnicalSave">단체메일 기술 설정 저장</button>
-                <button class="workspace-button ghost" type="button" id="adminMailTestSend">테스트 메일 발송</button>
+                <button class="workspace-button ghost" type="button" id="adminMailTestSend">연동 테스트 메일 발송</button>
               </div>
-              <div class="admin-message" id="adminMailTechnicalMessage">테스트 발송은 저장된 네이버 메일 계정으로 1건만 발송합니다.</div>
+              <div class="admin-message" id="adminMailTechnicalMessage">저장된 네이버 메일 계정으로 1건만 발송합니다.</div>
             </div>
             <div class="admin-card">
               <div class="admin-section-title">업체 메일 주소록</div>

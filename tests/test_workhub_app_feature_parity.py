@@ -204,6 +204,20 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
             self.assertIn("function sendAdminMailTestMessage()", html_source)
             self.assertIn('"/api/mail-test"', html_source)
 
+    def test_naver_mail_integration_admin_ui_uses_clear_operating_text(self) -> None:
+        for app_file in (
+            ROOT / "scripts" / "workhub_delivery_app.py",
+            ROOT / "_workhub_zip_inspect" / "scripts" / "workhub_delivery_app.py",
+        ):
+            html_source = app_file.read_text(encoding="utf-8")
+
+            self.assertIn("네이버 메일 연동", html_source)
+            self.assertIn("네이버 메일 아이디", html_source)
+            self.assertIn("네이버 메일 비밀번호", html_source)
+            self.assertIn("연동 테스트 메일 발송", html_source)
+            self.assertIn("저장된 네이버 메일 계정으로 1건만 발송합니다.", html_source)
+            self.assertIn("테스트 메일을 발송했습니다.", html_source)
+
     def test_distribution_mail_tree_only_opens_writable_mail_flows(self) -> None:
         for app_file in (
             ROOT / "scripts" / "workhub_delivery_app.py",
