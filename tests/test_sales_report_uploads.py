@@ -281,7 +281,7 @@ class SalesReportUploadTests(unittest.TestCase):
         self.assertEqual(dashboard["seller_top"][0]["profit_sales_amount"], 900)
         self.assertEqual(dashboard["product_top"][0]["profit_sales_amount"], 700)
 
-    def test_sales_supplier_report_feeds_review_panel(self) -> None:
+    def test_sales_supplier_report_feeds_purchase_total_panel(self) -> None:
         base = Path(self.tempdir.name)
         supplier = base / "Statistics_Sales_Suppler_2026-06-19.xls"
         self.write_supplier_report(supplier)
@@ -296,10 +296,12 @@ class SalesReportUploadTests(unittest.TestCase):
 
         self.app.save_sales_report_file(supplier, supplier.name, "admin")
         dashboard = self.app.sales_report_dashboard_payload("2026-06", "2026-06-19")
-        supplier_reviews = [row for row in dashboard["reviews"] if row["kind"] == "supplier"]
+        purchase_totals = dashboard["supplier_purchase_totals"]
 
-        self.assertTrue(supplier_reviews)
-        self.assertEqual(supplier_reviews[0]["name"], "공급사A")
+        self.assertEqual(purchase_totals[0]["name"], "공급사B")
+        self.assertEqual(purchase_totals[0]["purchase_total"], 900)
+        self.assertEqual(purchase_totals[1]["name"], "공급사A")
+        self.assertEqual(purchase_totals[1]["purchase_total"], 750)
 
 
 if __name__ == "__main__":

@@ -7819,28 +7819,17 @@ HTML = r"""<!doctype html>
         renderSalesEmpty(salesReportProductBody, 4, "상품별 Statistics_Good 파일을 업로드해주세요.");
       }
 
-      const reviewRows = [];
-      if (!consistency.ok) {
-        reviewRows.push(["파일 합계", `월 누적과 매출처별 합계 차이 ${formatSalesNumber(consistency.difference)}`, "확인 필요"]);
-      }
-      (data.reviews || []).forEach((row) => {
-        const kindLabel = row.kind === "seller" ? "매출처" : (row.kind === "supplier" ? "공급사" : "상품");
-        reviewRows.push([
-          kindLabel,
-          `${row.name || ""} / CS ${formatSalesNumber(row.cs_amount || row.cs_margin || 0)} / 마진 ${formatSalesNumber(row.profit_margin)}`,
-          "상세 확인",
-        ]);
-      });
-      if (reviewRows.length) {
-        salesReportReviewBody.innerHTML = reviewRows.slice(0, 10).map(([kind, body, status]) => `
+      const purchaseRows = data.supplier_purchase_totals || [];
+      if (purchaseRows.length) {
+        salesReportReviewBody.innerHTML = purchaseRows.slice(0, 10).map((row) => `
           <tr>
-            <td>${escapeHtml(kind)}</td>
-            <td>${escapeHtml(body)}</td>
-            <td>${escapeHtml(status)}</td>
+            <td>${escapeHtml(row.name || "")}</td>
+            <td>${formatSalesNumber(row.purchase_total)}</td>
+            <td>${formatSalesNumber(row.quantity)}</td>
           </tr>
         `).join("");
       } else {
-        renderSalesEmpty(salesReportReviewBody, 3, "확인 필요한 항목이 없습니다.");
+        renderSalesEmpty(salesReportReviewBody, 3, "공급사별 매입금액 파일을 업로드해주세요.");
       }
     }
 
@@ -13243,9 +13232,9 @@ ADMIN_WORKSPACE_HTML = r"""
                     </table>
                   </div>
                   <div class="sales-panel">
-                    <div class="sales-panel-head">파일 검증 / 확인 필요 <span>차이와 CS</span></div>
+                    <div class="sales-panel-head">업체별 총 매입금액 <span>공급사별</span></div>
                     <table class="sales-table">
-                      <thead><tr><th>구분</th><th>내용</th><th>상태</th></tr></thead>
+                      <thead><tr><th>업체</th><th>총 매입금액</th><th>수량</th></tr></thead>
                       <tbody id="salesReportReviewBody"></tbody>
                     </table>
                   </div>
@@ -14362,6 +14351,14 @@ def _sales_report_named_public(row: sqlite3.Row) -> dict[str, object]:
     }
 
 
+def _sales_report_purchase_public(row: sqlite3.Row) -> dict[str, object]:
+    return {
+        "name": str(row["name"] or ""),
+        "quantity": int(row["quantity"] or 0),
+        "purchase_total": int(row["purchase_total"] or 0),
+    }
+
+
 def sales_report_dashboard_payload(period: str = "", report_date: str = "") -> dict[str, object]:
     init_db()
     connection = connect_db()
@@ -14469,6 +14466,19 @@ def sales_report_dashboard_payload(period: str = "", report_date: str = "") -> d
             """,
             (selected_date, selected_date, selected_period),
         ).fetchall()
+        supplier_purchase_rows = connection.execute(
+            """
+            SELECT supplier_name AS name,
+                   COALESCE(SUM(quantity), 0) AS quantity,
+                   COALESCE(SUM(supply_total), 0) AS purchase_total
+              FROM sales_report_supplier_rows
+             WHERE period = ?
+             GROUP BY supplier_name
+             ORDER BY purchase_total DESC
+             LIMIT 10
+            """,
+            (selected_period,),
+        ).fetchall()
         review_rows = connection.execute(
             """
             SELECT 'supplier' AS kind, supplier_name AS name, cs_amount, cs_margin,
@@ -14532,6 +14542,7 @@ def sales_report_dashboard_payload(period: str = "", report_date: str = "") -> d
         "daily_rows": [_sales_report_daily_public(row) for row in daily_rows],
         "seller_top": [_sales_report_named_public(row) for row in seller_rows],
         "product_top": [_sales_report_named_public(row) for row in product_rows],
+        "supplier_purchase_totals": [_sales_report_purchase_public(row) for row in supplier_purchase_rows],
         "reviews": [
             {
                 "kind": str(row["kind"] or ""),
