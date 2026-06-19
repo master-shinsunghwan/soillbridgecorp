@@ -465,7 +465,7 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         html_source = (ROOT / "scripts" / "workhub_delivery_app.py").read_text(encoding="utf-8")
 
         self.assertIn('id="salesReportFileInput"', html_source)
-        self.assertIn('id="salesReportDropMain"', html_source)
+        self.assertIn('id="salesReportChooseFile"', html_source)
         self.assertIn('id="salesReportUploadMessage"', html_source)
         self.assertIn('id="salesReportRecentList"', html_source)
         self.assertIn('id="salesReportUploadCard"', html_source)
@@ -483,7 +483,8 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         self.assertIn("function uploadSalesReportWorkbook()", html_source)
         self.assertIn("function loadSalesReportUploads()", html_source)
         self.assertIn('document.querySelector("#salesReportNavToggle")?.addEventListener("click"', html_source)
-        self.assertIn('label[for=\'salesReportFileInput\']', html_source)
+        self.assertNotIn('id="salesReportDropMain"', html_source)
+        self.assertNotIn('label[for=\'salesReportFileInput\']', html_source)
 
         admin_nav_start = html_source.index("ADMIN_TOOLS_NAV_HTML")
         admin_nav_end = html_source.index("SALES_REPORT_NAV_HTML", admin_nav_start)
@@ -495,7 +496,7 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         admin_end = html_source.index('id="userAdminBody"', admin_start)
         admin_slice = html_source[admin_start:admin_end]
         self.assertIn('id="salesReportFileInput"', admin_slice)
-        self.assertIn('id="salesReportDropMain"', admin_slice)
+        self.assertIn('id="salesReportChooseFile"', admin_slice)
 
     def test_sales_report_dashboard_layout_uses_three_report_types(self) -> None:
         html_source = (ROOT / "scripts" / "workhub_delivery_app.py").read_text(encoding="utf-8")

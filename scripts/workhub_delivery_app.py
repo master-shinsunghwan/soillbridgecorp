@@ -1130,6 +1130,16 @@ HTML = r"""<!doctype html>
     #userAdminWorkspace:not(.sales-report-only) #salesReportUploadCard {
       display: none;
     }
+    .sales-upload-actions {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+    .sales-upload-actions .admin-message {
+      margin: 0;
+    }
     .sales-dashboard {
       display: grid;
       gap: 12px;
@@ -5763,7 +5773,7 @@ HTML = r"""<!doctype html>
         setHidden(button, currentUser.role !== "admin");
       });
       setHidden(document.querySelector("label[for='vendorContactsFileInput']"), !can("excel_upload"));
-      setHidden(document.querySelector("label[for='salesReportFileInput']"), !can("sales_report_manage"));
+      setHidden(document.querySelector("#salesReportChooseFile"), !can("sales_report_manage"));
       setHidden(saveVendorContactButton, !can("mail_send"));
       setHidden(document.querySelector("#distributionMailNavGroup"), !can("mail_send"));
       document.querySelectorAll("[data-mail-popup]").forEach((button) => setHidden(button, !can("mail_send")));
@@ -5826,7 +5836,7 @@ HTML = r"""<!doctype html>
     const vendorContactsFileInput = document.querySelector("#vendorContactsFileInput");
     const vendorContactsDropMain = document.querySelector("#vendorContactsDropMain");
     const salesReportFileInput = document.querySelector("#salesReportFileInput");
-    const salesReportDropMain = document.querySelector("#salesReportDropMain");
+    const salesReportChooseFile = document.querySelector("#salesReportChooseFile");
     const salesReportUploadMessage = document.querySelector("#salesReportUploadMessage");
     const salesReportRecentList = document.querySelector("#salesReportRecentList");
     const salesReportKpiGrid = document.querySelector("#salesReportKpiGrid");
@@ -7864,7 +7874,6 @@ HTML = r"""<!doctype html>
       if (!salesReportFileInput) return;
       const file = salesReportFileInput.files[0];
       if (!file) return;
-      if (salesReportDropMain) salesReportDropMain.textContent = file.name;
       const formData = new FormData();
       formData.append("file", file);
       if (salesReportUploadMessage) salesReportUploadMessage.textContent = "매출표를 업로드하는 중입니다.";
@@ -12411,12 +12420,6 @@ HTML = r"""<!doctype html>
       "업체구분/업체명/메일주소 엑셀을 선택해주세요."
     );
     setupDropzone(
-      document.querySelector("label[for='salesReportFileInput']"),
-      salesReportFileInput,
-      salesReportDropMain,
-      "매출표 엑셀 또는 CSV 파일을 선택해주세요."
-    );
-    setupDropzone(
       document.querySelector("label[for='sharedFileInput']"),
       sharedFileInput,
       sharedFileDropMain,
@@ -12431,6 +12434,9 @@ HTML = r"""<!doctype html>
     vendorContactSelect.addEventListener("change", applySelectedVendor);
     saveVendorContactButton.addEventListener("click", saveCurrentVendorContact);
     if (vendorContactsFileInput) vendorContactsFileInput.addEventListener("change", uploadVendorContactsWorkbook);
+    if (salesReportChooseFile && salesReportFileInput) {
+      salesReportChooseFile.addEventListener("click", () => salesReportFileInput.click());
+    }
     if (salesReportFileInput) salesReportFileInput.addEventListener("change", uploadSalesReportWorkbook);
     saveCsCaseButton.addEventListener("click", saveCurrentCsCase);
     ledgerRefresh.addEventListener("click", loadLedgerCases);
@@ -13215,11 +13221,11 @@ ADMIN_WORKSPACE_HTML = r"""
             </div>
             <div class="admin-card" id="salesReportUploadCard">
               <div class="admin-section-title">매출표 업로드</div>
-              <label class="dropzone" for="salesReportFileInput">
-                <span class="drop-main" id="salesReportDropMain">날짜별/상품별/매출처별 매출표를 선택해주세요.</span>
-                <span class="drop-sub">지원 형식: 매출 통계.xlsx, Statistics_Good_YYYY-MM-DD.xls, 매출처별.xlsx</span>
-                <input id="salesReportFileInput" name="sales_report" type="file" accept=".xlsx,.xlsm,.xls,.csv" />
-              </label>
+              <div class="sales-upload-actions">
+                <button class="workspace-button" type="button" id="salesReportChooseFile">매출표 파일 선택</button>
+                <span class="admin-message">지원 형식: 매출 통계.xlsx, Statistics_Good_YYYY-MM-DD.xls, 매출처별.xlsx</span>
+                <input id="salesReportFileInput" name="sales_report" type="file" accept=".xlsx,.xlsm,.xls,.csv" hidden />
+              </div>
               <div class="admin-message" id="salesReportUploadMessage">최근 업로드한 매출표가 여기에 표시됩니다.</div>
               <div class="admin-message" id="salesReportRecentList"></div>
               <div class="sales-dashboard" id="salesReportDashboard">
