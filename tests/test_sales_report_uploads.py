@@ -156,6 +156,60 @@ class SalesReportUploadTests(unittest.TestCase):
 </table></body></html>"""
         path.write_bytes(html.encode("euc-kr"))
 
+    def write_supplier_report(self, path: Path) -> None:
+        headers = [
+            "공급사",
+            "소비자가",
+            "판매-수량",
+            "판매-금액",
+            "판매-공급금액",
+            "판매-판매배송비",
+            "판매-공급배송비",
+            "판매-판매합계",
+            "판매-공급합계",
+            "판매-마진",
+            "CS-출고전취소",
+            "CS-출고전취소금액(판매)",
+            "CS-출고전취소금액(공급)",
+            "CS-판매사 반품",
+            "CS-공급사 반품",
+            "CS-금액",
+            "CS-공급금액",
+            "CS-반품배송비(판매)",
+            "CS-반품배송비(공급)",
+            "CS-교환배송비(판매)",
+            "CS-교환배송비(공급)",
+            "CS-추가금액(판매)",
+            "CS-추가금액 배송비(판매)",
+            "CS-추가금액(공급)",
+            "CS-추가금액 배송비(공급)",
+            "CS-교환금액(판매)",
+            "CS-교환금액 배송비(판매)",
+            "CS-교환금액(공급)",
+            "CS-교환금액 배송비(공급)",
+            "CS-마진",
+            "손익-수량 판매사기준",
+            "손익-수량 공급사기준",
+            "손익-판매금액",
+            "손익-공급금액",
+            "손익-판매마진",
+            "손익-판매배송비",
+            "손익-공급배송비",
+            "손익-배송비",
+            "손익-마진",
+            "손익-마진율",
+        ]
+        rows = [
+            ["공급사A", 0, 5, 1000, 700, 100, 50, 1100, 750, 350, 0, 0, 0, 0, 0, -80, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -80, 5, 5, 920, 700, 220, 100, 50, 50, 270, "29.3%"],
+            ["공급사B", 0, 2, 500, 900, 0, 0, 500, 900, -400, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 2, 500, 900, -400, 0, 0, 0, -400, "-80%"],
+        ]
+        table_rows = ["<tr>" + "".join(f"<td>{cell}</td>" for cell in headers) + "</tr>"]
+        table_rows.extend("<tr>" + "".join(f"<td>{cell}</td>" for cell in row) + "</tr>" for row in rows)
+        html = """<!DOCTYPE html>
+<html lang="ko"><head><meta http-equiv="Content-Type" content="text/html; charset=euc-kr" /></head>
+<body><table border="1">""" + "".join(table_rows) + "</table></body></html>"
+        path.write_bytes(html.encode("euc-kr"))
+
     def test_sales_report_parser_detects_three_supported_report_types(self) -> None:
         base = Path(self.tempdir.name)
         daily = base / "매출 통계.xlsx"
@@ -226,6 +280,26 @@ class SalesReportUploadTests(unittest.TestCase):
         self.assertFalse(dashboard["daily_rows"])
         self.assertEqual(dashboard["seller_top"][0]["profit_sales_amount"], 900)
         self.assertEqual(dashboard["product_top"][0]["profit_sales_amount"], 700)
+
+    def test_sales_supplier_report_feeds_review_panel(self) -> None:
+        base = Path(self.tempdir.name)
+        supplier = base / "Statistics_Sales_Suppler_2026-06-19.xls"
+        self.write_supplier_report(supplier)
+
+        self.assertEqual(self.app.detect_sales_report_type(supplier, supplier.name), "supplier")
+        parsed = self.app.parse_sales_report_file(supplier, supplier.name)
+        self.assertEqual(parsed["report_type"], "supplier")
+        self.assertEqual(parsed["period"], "2026-06")
+        self.assertEqual(parsed["report_date"], "2026-06-19")
+        self.assertEqual(parsed["rows"][0]["name"], "공급사A")
+        self.assertEqual(parsed["rows"][0]["cs_amount"], -80)
+
+        self.app.save_sales_report_file(supplier, supplier.name, "admin")
+        dashboard = self.app.sales_report_dashboard_payload("2026-06", "2026-06-19")
+        supplier_reviews = [row for row in dashboard["reviews"] if row["kind"] == "supplier"]
+
+        self.assertTrue(supplier_reviews)
+        self.assertEqual(supplier_reviews[0]["name"], "공급사A")
 
 
 if __name__ == "__main__":

@@ -7824,8 +7824,9 @@ HTML = r"""<!doctype html>
         reviewRows.push(["파일 합계", `월 누적과 매출처별 합계 차이 ${formatSalesNumber(consistency.difference)}`, "확인 필요"]);
       }
       (data.reviews || []).forEach((row) => {
+        const kindLabel = row.kind === "seller" ? "매출처" : (row.kind === "supplier" ? "공급사" : "상품");
         reviewRows.push([
-          row.kind === "seller" ? "매출처" : "상품",
+          kindLabel,
           `${row.name || ""} / CS ${formatSalesNumber(row.cs_amount || row.cs_margin || 0)} / 마진 ${formatSalesNumber(row.profit_margin)}`,
           "상세 확인",
         ]);
@@ -13978,6 +13979,8 @@ def detect_sales_report_type(path: str | Path, original_name: str = "") -> str:
         return "daily"
     if "판매사" in header_set:
         return "seller"
+    if "공급사" in header_set:
+        return "supplier"
     if "상품코드" in header_set and "상품명" in header_set:
         return "product"
     lowered_name = str(original_name or Path(path).name).lower()
@@ -14059,6 +14062,41 @@ def _parse_seller_sales_report(headers: list[str], rows: list[list[object]], ori
     return {"report_type": "seller", "report_date": _sales_report_date(original_name), "period": period, "rows": parsed_rows}
 
 
+def _parse_supplier_sales_report(headers: list[str], rows: list[list[object]], original_name: str = "") -> dict[str, object]:
+    parsed_rows: list[dict[str, object]] = []
+    for raw in rows:
+        row = _sales_report_row_dict(headers, raw)
+        name = _sales_report_text(_sales_report_value(row, "공급사"))
+        if not name:
+            continue
+        parsed_rows.append({
+            "name": name,
+            "quantity": _sales_report_int(_sales_report_value(row, "판매-수량")),
+            "sales_amount": _sales_report_int(_sales_report_value(row, "판매-금액")),
+            "supply_amount": _sales_report_int(_sales_report_value(row, "판매-공급금액")),
+            "sales_total": _sales_report_int(_sales_report_value(row, "판매-판매합계")),
+            "supply_total": _sales_report_int(_sales_report_value(row, "판매-공급합계")),
+            "sales_margin": _sales_report_int(_sales_report_value(row, "판매-마진")),
+            "cs_amount": _sales_report_int(_sales_report_value(row, "CS-금액")),
+            "cs_supply_amount": _sales_report_int(_sales_report_value(row, "CS-공급금액")),
+            "cs_margin": _sales_report_int(_sales_report_value(row, "CS-마진")),
+            "profit_quantity_sales": _sales_report_int(_sales_report_value(row, "손익-수량 판매사기준")),
+            "profit_quantity_supply": _sales_report_int(_sales_report_value(row, "손익-수량 공급사기준")),
+            "profit_sales_amount": _sales_report_int(_sales_report_value(row, "손익-판매금액")),
+            "profit_supply_amount": _sales_report_int(_sales_report_value(row, "손익-공급금액")),
+            "profit_sales_margin": _sales_report_int(_sales_report_value(row, "손익-판매마진")),
+            "profit_shipping": _sales_report_int(_sales_report_value(row, "손익-배송비")),
+            "profit_margin": _sales_report_int(_sales_report_value(row, "손익-마진")),
+            "margin_rate": _sales_report_percent(_sales_report_value(row, "손익-마진율")),
+        })
+    return {
+        "report_type": "supplier",
+        "report_date": _sales_report_date(original_name),
+        "period": _sales_report_period(original_name),
+        "rows": parsed_rows,
+    }
+
+
 def _parse_product_sales_report(headers: list[str], rows: list[list[object]], original_name: str = "") -> dict[str, object]:
     parsed_rows: list[dict[str, object]] = []
     for raw in rows:
@@ -14102,6 +14140,8 @@ def parse_sales_report_file(path: str | Path, original_name: str = "") -> dict[s
         if not parsed.get("period") and Path(path).suffix.lower() in {".xlsx", ".xlsm"}:
             parsed["period"] = _sales_report_period(_sales_report_xlsx_sheet_title(path))
         return parsed
+    if report_type == "supplier":
+        return _parse_supplier_sales_report(headers, rows, original_name or Path(path).name)
     if report_type == "product":
         return _parse_product_sales_report(headers, rows, original_name or Path(path).name)
     raise ValueError("지원하는 매출표 형식이 아닙니다.")
@@ -14183,6 +14223,43 @@ def save_sales_report_snapshot(file_id: int, parsed: dict[str, object]) -> None:
                     """
                     INSERT INTO sales_report_seller_rows (
                         period, report_date, file_id, seller_name, quantity, sales_amount, supply_amount,
+                        sales_total, supply_total, sales_margin, cs_amount, cs_supply_amount, cs_margin,
+                        profit_quantity_sales, profit_quantity_supply, profit_sales_amount, profit_supply_amount,
+                        profit_sales_margin, profit_shipping, profit_margin, margin_rate
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        period,
+                        report_date,
+                        file_id,
+                        row.get("name", ""),
+                        row.get("quantity", 0),
+                        row.get("sales_amount", 0),
+                        row.get("supply_amount", 0),
+                        row.get("sales_total", 0),
+                        row.get("supply_total", 0),
+                        row.get("sales_margin", 0),
+                        row.get("cs_amount", 0),
+                        row.get("cs_supply_amount", 0),
+                        row.get("cs_margin", 0),
+                        row.get("profit_quantity_sales", 0),
+                        row.get("profit_quantity_supply", 0),
+                        row.get("profit_sales_amount", 0),
+                        row.get("profit_supply_amount", 0),
+                        row.get("profit_sales_margin", 0),
+                        row.get("profit_shipping", 0),
+                        row.get("profit_margin", 0),
+                        row.get("margin_rate", 0),
+                    ),
+                )
+        elif report_type == "supplier":
+            connection.execute("DELETE FROM sales_report_supplier_rows WHERE period = ?", (period,))
+            for row in rows:
+                connection.execute(
+                    """
+                    INSERT INTO sales_report_supplier_rows (
+                        period, report_date, file_id, supplier_name, quantity, sales_amount, supply_amount,
                         sales_total, supply_total, sales_margin, cs_amount, cs_supply_amount, cs_margin,
                         profit_quantity_sales, profit_quantity_supply, profit_sales_amount, profit_supply_amount,
                         profit_sales_margin, profit_shipping, profit_margin, margin_rate
@@ -14303,6 +14380,8 @@ def sales_report_dashboard_payload(period: str = "", report_date: str = "") -> d
                         UNION ALL
                         SELECT period FROM sales_report_seller_rows WHERE period != ''
                         UNION ALL
+                        SELECT period FROM sales_report_supplier_rows WHERE period != ''
+                        UNION ALL
                         SELECT period FROM sales_report_product_rows WHERE period != ''
                        )
                  ORDER BY period DESC
@@ -14392,6 +14471,11 @@ def sales_report_dashboard_payload(period: str = "", report_date: str = "") -> d
         ).fetchall()
         review_rows = connection.execute(
             """
+            SELECT 'supplier' AS kind, supplier_name AS name, cs_amount, cs_margin,
+                   profit_sales_amount, profit_margin
+              FROM sales_report_supplier_rows
+             WHERE period = ? AND (cs_amount != 0 OR cs_margin != 0 OR profit_margin < 0)
+            UNION ALL
             SELECT 'seller' AS kind, seller_name AS name, cs_amount, cs_margin,
                    profit_sales_amount, profit_margin
               FROM sales_report_seller_rows
@@ -14404,7 +14488,7 @@ def sales_report_dashboard_payload(period: str = "", report_date: str = "") -> d
                AND (cs_amount != 0 OR cs_margin != 0 OR profit_margin < 0)
              LIMIT 10
             """,
-            (selected_period, selected_date, selected_date, selected_period),
+            (selected_period, selected_period, selected_date, selected_date, selected_period),
         ).fetchall()
     finally:
         connection.close()
@@ -14943,6 +15027,35 @@ def init_db() -> None:
             """
         )
         connection.execute("CREATE INDEX IF NOT EXISTS idx_sales_report_seller_period ON sales_report_seller_rows(period)")
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS sales_report_supplier_rows (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                period TEXT NOT NULL,
+                report_date TEXT,
+                file_id INTEGER NOT NULL,
+                supplier_name TEXT,
+                quantity INTEGER DEFAULT 0,
+                sales_amount INTEGER DEFAULT 0,
+                supply_amount INTEGER DEFAULT 0,
+                sales_total INTEGER DEFAULT 0,
+                supply_total INTEGER DEFAULT 0,
+                sales_margin INTEGER DEFAULT 0,
+                cs_amount INTEGER DEFAULT 0,
+                cs_supply_amount INTEGER DEFAULT 0,
+                cs_margin INTEGER DEFAULT 0,
+                profit_quantity_sales INTEGER DEFAULT 0,
+                profit_quantity_supply INTEGER DEFAULT 0,
+                profit_sales_amount INTEGER DEFAULT 0,
+                profit_supply_amount INTEGER DEFAULT 0,
+                profit_sales_margin INTEGER DEFAULT 0,
+                profit_shipping INTEGER DEFAULT 0,
+                profit_margin INTEGER DEFAULT 0,
+                margin_rate REAL DEFAULT 0
+            )
+            """
+        )
+        connection.execute("CREATE INDEX IF NOT EXISTS idx_sales_report_supplier_period ON sales_report_supplier_rows(period)")
         connection.execute(
             """
             CREATE TABLE IF NOT EXISTS sales_report_product_rows (
