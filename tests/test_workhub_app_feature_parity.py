@@ -461,7 +461,7 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
             self.assertNotIn('id="vendorContactsFileInput"', cs_contact_slice)
             self.assertNotIn('id="vendorContactsDropMain"', cs_contact_slice)
 
-    def test_sales_report_upload_is_managed_from_admin_workspace(self) -> None:
+    def test_sales_report_upload_has_dedicated_sales_workspace_mode(self) -> None:
         html_source = (ROOT / "scripts" / "workhub_delivery_app.py").read_text(encoding="utf-8")
 
         self.assertIn('id="salesReportFileInput"', html_source)
@@ -474,12 +474,14 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         self.assertIn('"sales_report_manage"', html_source)
         self.assertIn("__SALES_REPORT_NAV__", html_source)
         self.assertIn('accept=".xlsx,.xlsm,.csv"', html_source)
-        self.assertIn('data-admin-focus="salesReport">매출표 업로드</button>', html_source)
+        self.assertIn('data-open="salesReport">매출표 업로드</button>', html_source)
+        self.assertIn('mode === "salesReport"', html_source)
+        self.assertIn("sales-report-only", html_source)
+        self.assertIn('!can("sales_report_manage")', html_source)
         self.assertIn('"/api/sales-report-upload"', html_source)
         self.assertIn('"/api/sales-report-uploads"', html_source)
         self.assertIn("function uploadSalesReportWorkbook()", html_source)
         self.assertIn("function loadSalesReportUploads()", html_source)
-        self.assertIn("function focusAdminSalesReportUpload()", html_source)
         self.assertIn('document.querySelector("#salesReportNavToggle")?.addEventListener("click"', html_source)
         self.assertIn('label[for=\'salesReportFileInput\']', html_source)
 
@@ -487,6 +489,7 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         admin_nav_end = html_source.index("SALES_REPORT_NAV_HTML", admin_nav_start)
         admin_nav_slice = html_source[admin_nav_start:admin_nav_end]
         self.assertNotIn('data-admin-focus="salesReport"', admin_nav_slice)
+        self.assertNotIn('data-open="salesReport"', admin_nav_slice)
 
         admin_start = html_source.index('id="userAdminWorkspace"')
         admin_end = html_source.index('id="userAdminBody"', admin_start)

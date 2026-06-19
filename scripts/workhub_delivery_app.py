@@ -1118,6 +1118,17 @@ HTML = r"""<!doctype html>
       border-radius: 8px;
       background: #fbfcff;
     }
+    #userAdminWorkspace.sales-report-only .workspace-actions,
+    #userAdminWorkspace.sales-report-only .admin-panel > .admin-card:not(#salesReportUploadCard),
+    #userAdminWorkspace.sales-report-only .admin-panel > .admin-form,
+    #userAdminWorkspace.sales-report-only .admin-panel > .permission-grid,
+    #userAdminWorkspace.sales-report-only .admin-panel > .admin-message,
+    #userAdminWorkspace.sales-report-only .admin-panel > .admin-table-wrap {
+      display: none;
+    }
+    #userAdminWorkspace:not(.sales-report-only) #salesReportUploadCard {
+      display: none;
+    }
     .admin-section-title {
       font-size: 14px;
       font-weight: 950;
@@ -5640,7 +5651,7 @@ HTML = r"""<!doctype html>
         setHidden(button, currentUser.role !== "admin");
       });
       setHidden(document.querySelector("label[for='vendorContactsFileInput']"), !can("excel_upload"));
-      setHidden(document.querySelector("label[for='salesReportFileInput']"), !can("excel_upload"));
+      setHidden(document.querySelector("label[for='salesReportFileInput']"), !can("sales_report_manage"));
       setHidden(saveVendorContactButton, !can("mail_send"));
       setHidden(document.querySelector("#distributionMailNavGroup"), !can("mail_send"));
       document.querySelectorAll("[data-mail-popup]").forEach((button) => setHidden(button, !can("mail_send")));
@@ -7602,14 +7613,6 @@ HTML = r"""<!doctype html>
       } catch (error) {
         salesReportRecentList.textContent = error.message;
       }
-    }
-
-    function focusAdminSalesReportUpload() {
-      const card = document.querySelector("#salesReportUploadCard");
-      if (!card) return;
-      card.scrollIntoView({ behavior: "smooth", block: "center" });
-      card.classList.add("selected");
-      setTimeout(() => card.classList.remove("selected"), 1200);
     }
 
     async function uploadSalesReportWorkbook() {
@@ -11279,6 +11282,12 @@ HTML = r"""<!doctype html>
         document.querySelector("#ledgerNavGroup")?.classList.add("open");
         return;
       }
+      if (mode === "salesReport") {
+        document.querySelector("#salesReportNavToggle")?.classList.add("active");
+        document.querySelector("#salesReportNavGroup")?.classList.add("open");
+        document.querySelector('#salesReportNavGroup [data-open="salesReport"]')?.classList.add("active");
+        return;
+      }
       const selector = `[data-open="${mode}"]`;
       const activeItem = document.querySelector(selector);
       if (activeItem) activeItem.classList.add("active");
@@ -11287,6 +11296,7 @@ HTML = r"""<!doctype html>
     function showWorkspace(mode) {
       closeModal();
       if (mode === "userAdmin" && !userAdminWorkspace) mode = "dashboard";
+      if (mode === "salesReport" && (!userAdminWorkspace || !can("sales_report_manage"))) mode = "dashboard";
       if (mode === "leave" && !leaveWorkspace) mode = "dashboard";
       if (mode === "backup" && !backupWorkspace) mode = "dashboard";
       if (mode === "systemUpdate" && !systemUpdateWorkspace) mode = "dashboard";
@@ -11300,6 +11310,7 @@ HTML = r"""<!doctype html>
       const showLeave = mode === "leave";
       const showFileLibrary = mode === "fileLibrary" && Boolean(fileLibraryWorkspace);
       const showUserAdmin = mode === "userAdmin" && Boolean(userAdminWorkspace);
+      const showSalesReport = mode === "salesReport" && Boolean(userAdminWorkspace);
       const showBackup = mode === "backup" && Boolean(backupWorkspace);
       const showSystemUpdate = mode === "systemUpdate" && Boolean(systemUpdateWorkspace);
       dashboardContent.style.display = mode === "dashboard" ? "" : "none";
@@ -11310,7 +11321,10 @@ HTML = r"""<!doctype html>
       ledgerWorkspace.classList.toggle("active", showLedger);
       crmWorkspace.classList.toggle("active", showCrm);
       if (leaveWorkspace) leaveWorkspace.classList.toggle("active", showLeave);
-      if (userAdminWorkspace) userAdminWorkspace.classList.toggle("active", showUserAdmin);
+      if (userAdminWorkspace) {
+        userAdminWorkspace.classList.toggle("active", showUserAdmin || showSalesReport);
+        userAdminWorkspace.classList.toggle("sales-report-only", showSalesReport);
+      }
       if (backupWorkspace) backupWorkspace.classList.toggle("active", showBackup);
       if (systemUpdateWorkspace) systemUpdateWorkspace.classList.toggle("active", showSystemUpdate);
       setActiveNav(mode);
@@ -11352,8 +11366,11 @@ HTML = r"""<!doctype html>
         closeLedgerFilter();
         resetUserAdminForm();
         loadAdminMailSettings();
-        loadSalesReportUploads();
         loadUserAccounts();
+      } else if (showSalesReport) {
+        setPageTitle("매출표 업로드");
+        closeLedgerFilter();
+        loadSalesReportUploads();
       } else if (showBackup) {
         setPageTitle("백업 관리");
         closeLedgerFilter();
@@ -11535,11 +11552,8 @@ HTML = r"""<!doctype html>
           showOrderWorkspace();
           return;
         }
-        if (mode === "management" || mode === "ledger" || mode === "crm" || mode === "import" || mode === "fileLibrary" || mode === "userAdmin" || mode === "leave" || mode === "backup" || mode === "systemUpdate") {
+        if (mode === "management" || mode === "ledger" || mode === "crm" || mode === "import" || mode === "fileLibrary" || mode === "userAdmin" || mode === "salesReport" || mode === "leave" || mode === "backup" || mode === "systemUpdate") {
           showWorkspace(mode);
-          if (mode === "userAdmin" && button.dataset.adminFocus === "salesReport") {
-            setTimeout(focusAdminSalesReportUpload, 80);
-          }
           return;
         }
         openModal(mode);
@@ -12536,7 +12550,7 @@ HTML = r"""<!doctype html>
     });
 
     const initialView = new URLSearchParams(window.location.search).get("view");
-    showWorkspace(["management", "ledger", "crm", "import", "fileLibrary", "leave", "userAdmin", "backup", "systemUpdate"].includes(initialView) ? initialView : "dashboard");
+    showWorkspace(["management", "ledger", "crm", "import", "fileLibrary", "leave", "userAdmin", "salesReport", "backup", "systemUpdate"].includes(initialView) ? initialView : "dashboard");
   </script>
 </body>
 </html>
@@ -12758,7 +12772,7 @@ SALES_REPORT_NAV_HTML = r"""
           <i class="nav-chevron" data-lucide="chevron-right"></i>
         </button>
         <div class="nav-submenu">
-          <button class="nav-subitem" type="button" data-open="userAdmin" data-admin-focus="salesReport">매출표 업로드</button>
+          <button class="nav-subitem" type="button" data-open="salesReport">매출표 업로드</button>
         </div>
       </div>
 """
@@ -18625,7 +18639,7 @@ class WorkhubHandler(BaseHTTPRequestHandler):
             return
 
         if self.path == "/api/sales-report-uploads":
-            if not self.require_permission(user, "excel_upload", "매출표 업로드"):
+            if not self.require_permission(user, "sales_report_manage", "매출표 업로드"):
                 return
             self.send_json({"files": list_sales_report_uploads()})
             return
@@ -19475,7 +19489,7 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                 return
 
             if self.path == "/api/sales-report-upload":
-                if not self.require_permission(user, "excel_upload", "매출표 업로드"):
+                if not self.require_permission(user, "sales_report_manage", "매출표 업로드"):
                     return
                 upload_path = save_uploaded_sales_report_file(fields, "file")
                 uploaded_by = str(user.get("display_name") or user.get("username") or "")
