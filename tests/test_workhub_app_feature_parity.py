@@ -129,6 +129,35 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         self.assertNotIn('companyGroup?.classList.toggle("open"', html_source)
         self.assertNotIn('document.querySelector("#companyNavGroup").classList.toggle("open");', html_source)
 
+    def test_daily_ledger_uploads_live_under_each_ledger_sidebar_group(self) -> None:
+        html_source = (ROOT / "scripts" / "workhub_delivery_app.py").read_text(encoding="utf-8")
+
+        management_group_start = html_source.index('id="managementNavGroup"')
+        ledger_group_start = html_source.index('id="ledgerNavGroup"')
+        crm_group_start = html_source.index('id="crmNavGroup"')
+        admin_group_start = html_source.index('id="adminNavGroup"')
+        admin_group_end = html_source.index('id="leaveWorkspace"', admin_group_start)
+        management_group = html_source[management_group_start:ledger_group_start]
+        ledger_group = html_source[ledger_group_start:crm_group_start]
+        admin_group = html_source[admin_group_start:admin_group_end]
+
+        self.assertIn('data-open="management"', management_group)
+        self.assertIn('id="managementImportOpen"', management_group)
+        self.assertIn('data-management-import-mode="daily"', management_group)
+        self.assertIn("통합관리대장 일일 추가 업로드", management_group)
+
+        self.assertIn('data-open="ledger"', ledger_group)
+        self.assertIn('id="ledgerImportOpen"', ledger_group)
+        self.assertIn('data-ledger-import-mode="daily"', ledger_group)
+        self.assertIn("CS처리대장 일일 추가 업로드", ledger_group)
+
+        self.assertIn('data-management-import-mode="replace"', admin_group)
+        self.assertIn('data-ledger-import-mode="replace"', admin_group)
+        self.assertNotIn('data-management-import-mode="daily"', admin_group)
+        self.assertNotIn('data-ledger-import-mode="daily"', admin_group)
+        self.assertIn('#managementNavToggle', html_source)
+        self.assertIn('#ledgerNavToggle', html_source)
+
     def test_leave_workflow_has_multi_step_approval_cancel_and_accrual_ui(self) -> None:
         for app_file in (
             ROOT / "scripts" / "workhub_delivery_app.py",

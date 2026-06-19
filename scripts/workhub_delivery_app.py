@@ -4374,8 +4374,24 @@ HTML = r"""<!doctype html>
           <span class="nav-label"><i data-lucide="clipboard-list"></i> <span>발주업무</span></span>
         </button>
       </div>
-      <button class="nav-item" type="button" data-open="management"><i data-lucide="database"></i> <span>통합관리대장 관리</span></button>
-      <button class="nav-item" type="button" data-open="ledger"><i data-lucide="clipboard-check"></i> <span>CS 처리대장</span></button>
+      <div class="nav-group" id="managementNavGroup">
+        <button class="nav-item" id="managementNavToggle" type="button" data-open="management">
+          <span class="nav-label"><i data-lucide="database"></i> <span>통합관리대장 관리</span></span>
+          <i class="nav-chevron" data-lucide="chevron-right"></i>
+        </button>
+        <div class="nav-submenu">
+          <button class="nav-subitem" id="managementImportOpen" type="button" data-management-import-mode="daily">통합관리대장 일일 추가 업로드</button>
+        </div>
+      </div>
+      <div class="nav-group" id="ledgerNavGroup">
+        <button class="nav-item" id="ledgerNavToggle" type="button" data-open="ledger">
+          <span class="nav-label"><i data-lucide="clipboard-check"></i> <span>CS 처리대장</span></span>
+          <i class="nav-chevron" data-lucide="chevron-right"></i>
+        </button>
+        <div class="nav-submenu">
+          <button class="nav-subitem" id="ledgerImportOpen" type="button" data-ledger-import-mode="daily">CS처리대장 일일 추가 업로드</button>
+        </div>
+      </div>
       <div class="nav-group" id="crmNavGroup">
         <button class="nav-item" id="crmNavToggle" type="button" data-open="crm" data-crm-nav-tab="dashboard">
           <span class="nav-label"><i data-lucide="message-circle"></i> <span>업무관리</span></span>
@@ -11142,6 +11158,16 @@ HTML = r"""<!doctype html>
         document.querySelector("#orderNavToggle")?.classList.add("active");
         return;
       }
+      if (mode === "management") {
+        document.querySelector("#managementNavToggle")?.classList.add("active");
+        document.querySelector("#managementNavGroup")?.classList.add("open");
+        return;
+      }
+      if (mode === "ledger") {
+        document.querySelector("#ledgerNavToggle")?.classList.add("active");
+        document.querySelector("#ledgerNavGroup")?.classList.add("open");
+        return;
+      }
       const selector = `[data-open="${mode}"]`;
       const activeItem = document.querySelector(selector);
       if (activeItem) activeItem.classList.add("active");
@@ -11861,6 +11887,12 @@ HTML = r"""<!doctype html>
     document.querySelector("#orderNavToggle").addEventListener("click", () => {
       document.querySelector("#orderNavGroup").classList.toggle("open");
     });
+    document.querySelector("#managementNavToggle")?.addEventListener("click", () => {
+      document.querySelector("#managementNavGroup")?.classList.add("open");
+    });
+    document.querySelector("#ledgerNavToggle")?.addEventListener("click", () => {
+      document.querySelector("#ledgerNavGroup")?.classList.add("open");
+    });
     document.querySelector("#distributionMailNavToggle")?.addEventListener("click", () => {
       document.querySelector("#distributionMailNavGroup")?.classList.toggle("open");
     });
@@ -12576,9 +12608,7 @@ ADMIN_TOOLS_NAV_HTML = r"""
           <i class="nav-chevron" data-lucide="chevron-right"></i>
         </button>
         <div class="nav-submenu">
-          <button class="nav-subitem" id="managementImportOpen" type="button" data-management-import-mode="daily">통합관리대장 일일 추가 업로드</button>
           <button class="nav-subitem" type="button" data-management-import-mode="replace">통합관리대장 전체 데이터 교체 업로드</button>
-          <button class="nav-subitem" id="ledgerImportOpen" type="button" data-ledger-import-mode="daily">CS처리대장 일일 추가 업로드</button>
           <button class="nav-subitem" type="button" data-ledger-import-mode="replace">CS처리대장 전체 데이터 교체 업로드</button>
           <button class="nav-subitem" type="button" data-open="systemUpdate">업데이트 관리</button>
           <button class="nav-subitem" type="button" data-open="backup">백업 관리</button>
