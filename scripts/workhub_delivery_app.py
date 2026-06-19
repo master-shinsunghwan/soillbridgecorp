@@ -24,6 +24,7 @@ from datetime import date, datetime, timedelta
 from email.message import EmailMessage
 from email.utils import formataddr
 from html import escape as html_escape
+from html.parser import HTMLParser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, quote, unquote, urlsplit
@@ -1128,6 +1129,117 @@ HTML = r"""<!doctype html>
     }
     #userAdminWorkspace:not(.sales-report-only) #salesReportUploadCard {
       display: none;
+    }
+    .sales-dashboard {
+      display: grid;
+      gap: 12px;
+      margin-top: 2px;
+    }
+    .sales-kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(6, minmax(0, 1fr));
+      gap: 8px;
+    }
+    .sales-kpi {
+      min-height: 88px;
+      padding: 10px;
+      border: 1px solid #d8e0ec;
+      border-radius: 8px;
+      background: white;
+    }
+    .sales-kpi.primary {
+      border: 2px solid #2563eb;
+    }
+    .sales-kpi.warning {
+      border-color: #fed7aa;
+      background: #fffaf0;
+    }
+    .sales-kpi.danger {
+      border-color: #fecaca;
+      background: #fff7f7;
+    }
+    .sales-kpi-label {
+      font-size: 12px;
+      color: #64748b;
+      font-weight: 950;
+    }
+    .sales-kpi-value {
+      margin-top: 6px;
+      font-size: 20px;
+      font-weight: 950;
+      color: #0f172a;
+    }
+    .sales-kpi-note {
+      margin-top: 4px;
+      font-size: 11px;
+      color: #64748b;
+      font-weight: 800;
+    }
+    .sales-dashboard-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      gap: 10px;
+    }
+    .sales-panel {
+      overflow: hidden;
+      border: 1px solid #d8e0ec;
+      border-radius: 8px;
+      background: white;
+    }
+    .sales-panel-head {
+      min-height: 40px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 0 12px;
+      border-bottom: 1px solid #e2e8f0;
+      background: #f8fafc;
+      font-size: 13px;
+      font-weight: 950;
+    }
+    .sales-panel-head span {
+      color: #64748b;
+      font-size: 11px;
+      font-weight: 850;
+    }
+    .sales-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+    }
+    .sales-table th {
+      height: 32px;
+      padding: 0 8px;
+      background: #f1f5f9;
+      color: #475569;
+      border-bottom: 1px solid #e2e8f0;
+      text-align: right;
+      font-weight: 950;
+      white-space: nowrap;
+    }
+    .sales-table th:first-child,
+    .sales-table td:first-child {
+      text-align: left;
+    }
+    .sales-table td {
+      height: 32px;
+      padding: 5px 8px;
+      border-bottom: 1px solid #eef2f7;
+      text-align: right;
+      font-weight: 750;
+      white-space: nowrap;
+    }
+    .sales-table .empty {
+      text-align: center;
+      color: #667085;
+      height: 46px;
+    }
+    .sales-positive { color: #047857; }
+    .sales-negative { color: #b91c1c; }
+    @media (max-width: 1280px) {
+      .sales-kpi-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+      .sales-dashboard-grid { grid-template-columns: 1fr; }
     }
     .admin-section-title {
       font-size: 14px;
@@ -5717,6 +5829,11 @@ HTML = r"""<!doctype html>
     const salesReportDropMain = document.querySelector("#salesReportDropMain");
     const salesReportUploadMessage = document.querySelector("#salesReportUploadMessage");
     const salesReportRecentList = document.querySelector("#salesReportRecentList");
+    const salesReportKpiGrid = document.querySelector("#salesReportKpiGrid");
+    const salesReportDailyBody = document.querySelector("#salesReportDailyBody");
+    const salesReportSellerBody = document.querySelector("#salesReportSellerBody");
+    const salesReportProductBody = document.querySelector("#salesReportProductBody");
+    const salesReportReviewBody = document.querySelector("#salesReportReviewBody");
     const vendorTypeSelect = document.querySelector("#vendorTypeSelect");
     const recipientEmailInput = document.querySelector("#recipientEmailInput");
     const vendorNameInput = document.querySelector("#vendorNameInput");
@@ -7615,6 +7732,134 @@ HTML = r"""<!doctype html>
       }
     }
 
+    function formatSalesNumber(value) {
+      const number = Number(value || 0);
+      return number.toLocaleString("ko-KR");
+    }
+
+    function formatSalesPercent(value) {
+      const number = Number(value || 0);
+      return `${number.toLocaleString("ko-KR", { maximumFractionDigits: 1 })}%`;
+    }
+
+    function salesAmountClass(value) {
+      const number = Number(value || 0);
+      if (number > 0) return "sales-positive";
+      if (number < 0) return "sales-negative";
+      return "";
+    }
+
+    function renderSalesEmpty(tbody, colspan, message) {
+      if (!tbody) return;
+      tbody.innerHTML = `<tr><td class="empty" colspan="${colspan}">${escapeHtml(message)}</td></tr>`;
+    }
+
+    function renderSalesReportDashboard(data) {
+      if (!salesReportKpiGrid) return;
+      const today = data.today || {};
+      const yesterday = data.yesterday || {};
+      const comparison = data.comparison || {};
+      const month = data.month || {};
+      const sellerTotal = data.seller_total || {};
+      const consistency = data.consistency || {};
+      salesReportKpiGrid.innerHTML = [
+        ["오늘 손익 매출", formatSalesNumber(today.profit_sales_amount), `수량 ${formatSalesNumber(today.quantity)}`, "primary"],
+        ["어제 손익 매출", formatSalesNumber(yesterday.profit_sales_amount), `수량 ${formatSalesNumber(yesterday.quantity)}`, ""],
+        ["전일 대비", formatSalesPercent(comparison.profit_sales_amount_delta_rate), formatSalesNumber(comparison.profit_sales_amount_delta), Number(comparison.profit_sales_amount_delta || 0) < 0 ? "danger" : ""],
+        ["월 누적 매출", formatSalesNumber(month.profit_sales_amount), data.period || "", ""],
+        ["매출처별 합계", formatSalesNumber(sellerTotal.profit_sales_amount), `판매사 수량 ${formatSalesNumber(sellerTotal.quantity)}`, ""],
+        ["파일 검증", formatSalesNumber(consistency.difference), consistency.ok ? "차이 없음" : "확인 필요", consistency.ok ? "" : "warning"],
+      ].map(([label, value, note, variant]) => `
+        <div class="sales-kpi ${variant}">
+          <div class="sales-kpi-label">${escapeHtml(label)}</div>
+          <div class="sales-kpi-value ${label === "전일 대비" ? salesAmountClass(comparison.profit_sales_amount_delta) : ""}">${escapeHtml(value)}</div>
+          <div class="sales-kpi-note">${escapeHtml(note)}</div>
+        </div>
+      `).join("");
+
+      const dailyRows = data.daily_rows || [];
+      if (dailyRows.length) {
+        salesReportDailyBody.innerHTML = dailyRows.map((row) => `
+          <tr>
+            <td>${escapeHtml(row.label || row.report_date || "")}</td>
+            <td>${formatSalesNumber(row.quantity)}</td>
+            <td>${formatSalesNumber(row.profit_sales_amount)}</td>
+            <td>${formatSalesNumber(row.sales_total)}</td>
+            <td class="${salesAmountClass(row.profit_margin)}">${formatSalesNumber(row.profit_margin)}</td>
+          </tr>
+        `).join("");
+      } else {
+        renderSalesEmpty(salesReportDailyBody, 5, "날짜별 매출 통계 파일을 업로드해주세요.");
+      }
+
+      const sellerRows = data.seller_top || [];
+      if (sellerRows.length) {
+        salesReportSellerBody.innerHTML = sellerRows.map((row) => `
+          <tr>
+            <td>${escapeHtml(row.name || "")}</td>
+            <td>${formatSalesNumber(row.quantity)}</td>
+            <td>${formatSalesNumber(row.profit_sales_amount)}</td>
+            <td class="${salesAmountClass(row.profit_margin)}">${formatSalesNumber(row.profit_margin)}</td>
+          </tr>
+        `).join("");
+      } else {
+        renderSalesEmpty(salesReportSellerBody, 4, "매출처별 파일을 업로드해주세요.");
+      }
+
+      const productRows = data.product_top || [];
+      if (productRows.length) {
+        salesReportProductBody.innerHTML = productRows.map((row) => `
+          <tr>
+            <td>${escapeHtml(row.name || "")}</td>
+            <td>${formatSalesNumber(row.quantity)}</td>
+            <td>${formatSalesNumber(row.profit_sales_amount)}</td>
+            <td class="${salesAmountClass(row.profit_margin)}">${formatSalesNumber(row.profit_margin)}</td>
+          </tr>
+        `).join("");
+      } else {
+        renderSalesEmpty(salesReportProductBody, 4, "상품별 Statistics_Good 파일을 업로드해주세요.");
+      }
+
+      const reviewRows = [];
+      if (!consistency.ok) {
+        reviewRows.push(["파일 합계", `월 누적과 매출처별 합계 차이 ${formatSalesNumber(consistency.difference)}`, "확인 필요"]);
+      }
+      (data.reviews || []).forEach((row) => {
+        reviewRows.push([
+          row.kind === "seller" ? "매출처" : "상품",
+          `${row.name || ""} / CS ${formatSalesNumber(row.cs_amount || row.cs_margin || 0)} / 마진 ${formatSalesNumber(row.profit_margin)}`,
+          "상세 확인",
+        ]);
+      });
+      if (reviewRows.length) {
+        salesReportReviewBody.innerHTML = reviewRows.slice(0, 10).map(([kind, body, status]) => `
+          <tr>
+            <td>${escapeHtml(kind)}</td>
+            <td>${escapeHtml(body)}</td>
+            <td>${escapeHtml(status)}</td>
+          </tr>
+        `).join("");
+      } else {
+        renderSalesEmpty(salesReportReviewBody, 3, "확인 필요한 항목이 없습니다.");
+      }
+    }
+
+    async function loadSalesReportDashboard() {
+      if (!salesReportKpiGrid) return;
+      try {
+        const response = await fetch("/api/sales-report-dashboard");
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "매출현황을 불러오지 못했습니다.");
+        renderSalesReportDashboard(data);
+      } catch (error) {
+        salesReportKpiGrid.innerHTML = `<div class="admin-message">${escapeHtml(error.message)}</div>`;
+        renderSalesEmpty(salesReportDailyBody, 5, "매출현황을 불러오지 못했습니다.");
+        renderSalesEmpty(salesReportSellerBody, 4, "매출현황을 불러오지 못했습니다.");
+        renderSalesEmpty(salesReportProductBody, 4, "매출현황을 불러오지 못했습니다.");
+        renderSalesEmpty(salesReportReviewBody, 3, "매출현황을 불러오지 못했습니다.");
+      }
+    }
+
     async function uploadSalesReportWorkbook() {
       if (!salesReportFileInput) return;
       const file = salesReportFileInput.files[0];
@@ -7631,6 +7876,7 @@ HTML = r"""<!doctype html>
         const data = await response.json();
         if (!response.ok) throw new Error(data.error || "매출표 업로드에 실패했습니다.");
         renderSalesReportUploads(data.files || []);
+        loadSalesReportDashboard();
         if (salesReportUploadMessage) salesReportUploadMessage.textContent = data.message || "매출표를 저장했습니다.";
       } catch (error) {
         if (salesReportUploadMessage) salesReportUploadMessage.textContent = error.message;
@@ -11371,6 +11617,7 @@ HTML = r"""<!doctype html>
         setPageTitle("매출표 업로드");
         closeLedgerFilter();
         loadSalesReportUploads();
+        loadSalesReportDashboard();
       } else if (showBackup) {
         setPageTitle("백업 관리");
         closeLedgerFilter();
@@ -12969,12 +13216,45 @@ ADMIN_WORKSPACE_HTML = r"""
             <div class="admin-card" id="salesReportUploadCard">
               <div class="admin-section-title">매출표 업로드</div>
               <label class="dropzone" for="salesReportFileInput">
-                <span class="drop-main" id="salesReportDropMain">매출표 엑셀 또는 CSV 파일을 선택해주세요.</span>
-                <span class="drop-sub">지원 형식: xlsx, xlsm, csv / 업로드 기록은 DB에 저장됩니다.</span>
-                <input id="salesReportFileInput" name="sales_report" type="file" accept=".xlsx,.xlsm,.csv" />
+                <span class="drop-main" id="salesReportDropMain">날짜별/상품별/매출처별 매출표를 선택해주세요.</span>
+                <span class="drop-sub">지원 형식: 매출 통계.xlsx, Statistics_Good_YYYY-MM-DD.xls, 매출처별.xlsx</span>
+                <input id="salesReportFileInput" name="sales_report" type="file" accept=".xlsx,.xlsm,.xls,.csv" />
               </label>
               <div class="admin-message" id="salesReportUploadMessage">최근 업로드한 매출표가 여기에 표시됩니다.</div>
               <div class="admin-message" id="salesReportRecentList"></div>
+              <div class="sales-dashboard" id="salesReportDashboard">
+                <div class="sales-kpi-grid" id="salesReportKpiGrid"></div>
+                <div class="sales-dashboard-grid">
+                  <div class="sales-panel">
+                    <div class="sales-panel-head">일자별 매출 흐름 <span>매출 통계.xlsx</span></div>
+                    <table class="sales-table">
+                      <thead><tr><th>일자</th><th>수량</th><th>손익매출</th><th>판매합계</th><th>손익마진</th></tr></thead>
+                      <tbody id="salesReportDailyBody"></tbody>
+                    </table>
+                  </div>
+                  <div class="sales-panel">
+                    <div class="sales-panel-head">매출처별 TOP <span>매출처별.xlsx</span></div>
+                    <table class="sales-table">
+                      <thead><tr><th>판매사</th><th>수량</th><th>손익매출</th><th>마진</th></tr></thead>
+                      <tbody id="salesReportSellerBody"></tbody>
+                    </table>
+                  </div>
+                  <div class="sales-panel">
+                    <div class="sales-panel-head">상품별 TOP <span>Statistics_Good</span></div>
+                    <table class="sales-table">
+                      <thead><tr><th>상품명</th><th>수량</th><th>손익매출</th><th>마진</th></tr></thead>
+                      <tbody id="salesReportProductBody"></tbody>
+                    </table>
+                  </div>
+                  <div class="sales-panel">
+                    <div class="sales-panel-head">파일 검증 / 확인 필요 <span>차이와 CS</span></div>
+                    <table class="sales-table">
+                      <thead><tr><th>구분</th><th>내용</th><th>상태</th></tr></thead>
+                      <tbody id="salesReportReviewBody"></tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
             </div>
             <div class="admin-form">
               <input id="userAdminId" type="hidden" />
@@ -13273,8 +13553,8 @@ def save_uploaded_sales_report_file(fields: dict[str, tuple[str, bytes] | str], 
 
     filename, data = uploaded
     filename = safe_filename(filename)
-    if not filename.lower().endswith((".xlsx", ".xlsm", ".csv")):
-        raise ValueError("매출표는 xlsx, xlsm, csv 파일만 업로드할 수 있습니다.")
+    if not filename.lower().endswith((".xlsx", ".xlsm", ".xls", ".csv")):
+        raise ValueError("매출표는 xlsx, xlsm, xls, csv 파일만 업로드할 수 있습니다.")
     if not data:
         raise ValueError("매출표 파일을 다시 선택해주세요.")
 
@@ -13565,6 +13845,628 @@ def list_sales_report_uploads(limit: int = 5) -> list[dict[str, str | int]]:
         connection.close()
 
 
+class _SalesReportTableParser(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__()
+        self.rows: list[list[str]] = []
+        self._current_row: list[str] | None = None
+        self._current_cell: list[str] | None = None
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag.lower() == "tr":
+            self._current_row = []
+        elif tag.lower() in {"td", "th"} and self._current_row is not None:
+            self._current_cell = []
+
+    def handle_data(self, data: str) -> None:
+        if self._current_cell is not None:
+            self._current_cell.append(data)
+
+    def handle_endtag(self, tag: str) -> None:
+        lowered = tag.lower()
+        if lowered in {"td", "th"} and self._current_row is not None and self._current_cell is not None:
+            self._current_row.append("".join(self._current_cell).strip())
+            self._current_cell = None
+        elif lowered == "tr" and self._current_row is not None:
+            if any(str(cell).strip() for cell in self._current_row):
+                self.rows.append(self._current_row)
+            self._current_row = None
+
+
+def _sales_report_text(value: object) -> str:
+    return str(value or "").replace("\xa0", " ").strip()
+
+
+def _sales_report_number(value: object) -> float:
+    text = _sales_report_text(value).replace(",", "").replace("%", "")
+    if not text or text.lower() == "nan":
+        return 0.0
+    try:
+        return float(text)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _sales_report_int(value: object) -> int:
+    return int(round(_sales_report_number(value)))
+
+
+def _sales_report_percent(value: object) -> float:
+    text = _sales_report_text(value)
+    number = _sales_report_number(text)
+    if "%" in text:
+        return round(number / 100, 6)
+    return round(number, 6)
+
+
+def _sales_report_date(value: object) -> str:
+    if isinstance(value, datetime):
+        return value.date().isoformat()
+    if isinstance(value, date):
+        return value.isoformat()
+    match = re.search(r"(20\d{2})[-./](\d{1,2})[-./](\d{1,2})", _sales_report_text(value))
+    if not match:
+        return ""
+    year, month, day = match.groups()
+    return f"{int(year):04d}-{int(month):02d}-{int(day):02d}"
+
+
+def _sales_report_period(value: object) -> str:
+    parsed = _sales_report_date(value)
+    if parsed:
+        return parsed[:7]
+    match = re.search(r"(20\d{2})[-./](\d{1,2})", _sales_report_text(value))
+    if match:
+        year, month = match.groups()
+        return f"{int(year):04d}-{int(month):02d}"
+    return ""
+
+
+def _sales_report_rows_from_xlsx(path: str | Path) -> list[list[object]]:
+    workbook = load_workbook(path, data_only=True, read_only=True)
+    try:
+        worksheet = workbook.worksheets[0]
+        rows: list[list[object]] = []
+        for row in worksheet.iter_rows(values_only=True):
+            values = list(row)
+            if any(_sales_report_text(value) for value in values):
+                rows.append(values)
+        return rows
+    finally:
+        workbook.close()
+
+
+def _sales_report_xlsx_sheet_title(path: str | Path) -> str:
+    workbook = load_workbook(path, data_only=True, read_only=True)
+    try:
+        return str(workbook.worksheets[0].title or "")
+    finally:
+        workbook.close()
+
+
+def _sales_report_rows_from_html_table(path: str | Path) -> list[list[str]]:
+    data = Path(path).read_bytes()
+    text = ""
+    for encoding in ("utf-8", "euc-kr", "cp949"):
+        try:
+            text = data.decode(encoding)
+            break
+        except UnicodeDecodeError:
+            continue
+    if not text:
+        text = data.decode("utf-8", errors="ignore")
+    parser = _SalesReportTableParser()
+    parser.feed(text)
+    return parser.rows
+
+
+def _sales_report_table(path: str | Path) -> tuple[list[str], list[list[object]]]:
+    source = Path(path)
+    suffix = source.suffix.lower()
+    if suffix == ".xls" and source.read_bytes()[:32].lstrip().lower().startswith(b"<!doctype"):
+        rows = _sales_report_rows_from_html_table(source)
+    else:
+        rows = _sales_report_rows_from_xlsx(source)
+    if not rows:
+        return [], []
+    headers = [_sales_report_text(value) for value in rows[0]]
+    return headers, rows[1:]
+
+
+def detect_sales_report_type(path: str | Path, original_name: str = "") -> str:
+    try:
+        headers, _ = _sales_report_table(path)
+    except Exception:
+        return ""
+    header_set = {_sales_report_text(header) for header in headers}
+    if "일자" in header_set:
+        return "daily"
+    if "판매사" in header_set:
+        return "seller"
+    if "상품코드" in header_set and "상품명" in header_set:
+        return "product"
+    lowered_name = str(original_name or Path(path).name).lower()
+    if "statistics_good" in lowered_name:
+        return "product"
+    return ""
+
+
+def _sales_report_row_dict(headers: list[str], row: list[object]) -> dict[str, object]:
+    return {header: row[index] if index < len(row) else "" for index, header in enumerate(headers)}
+
+
+def _sales_report_value(row: dict[str, object], key: str) -> object:
+    return row.get(key, "")
+
+
+def _parse_daily_sales_report(headers: list[str], rows: list[list[object]]) -> dict[str, object]:
+    parsed_rows: list[dict[str, object]] = []
+    for raw in rows:
+        row = _sales_report_row_dict(headers, raw)
+        report_date = _sales_report_date(_sales_report_value(row, "일자"))
+        if not report_date:
+            continue
+        parsed_rows.append({
+            "report_date": report_date,
+            "period": report_date[:7],
+            "label": _sales_report_text(_sales_report_value(row, "일자")),
+            "quantity": _sales_report_int(_sales_report_value(row, "판매-수량")),
+            "sales_amount": _sales_report_int(_sales_report_value(row, "판매-금액")),
+            "supply_amount": _sales_report_int(_sales_report_value(row, "판매-공급금액")),
+            "sales_total": _sales_report_int(_sales_report_value(row, "판매-판매합계")),
+            "supply_total": _sales_report_int(_sales_report_value(row, "판매-공급합계")),
+            "sales_margin": _sales_report_int(_sales_report_value(row, "판매-마진")),
+            "cs_margin": _sales_report_int(_sales_report_value(row, "CS-마진")),
+            "profit_quantity_sales": _sales_report_int(_sales_report_value(row, "손익-수량 판매사기준")),
+            "profit_quantity_supply": _sales_report_int(_sales_report_value(row, "손익-수량 공급사기준")),
+            "profit_sales_amount": _sales_report_int(_sales_report_value(row, "손익-판매금액")),
+            "profit_supply_amount": _sales_report_int(_sales_report_value(row, "손익-공급금액")),
+            "profit_sales_margin": _sales_report_int(_sales_report_value(row, "손익-판매마진")),
+            "profit_shipping_sales": _sales_report_int(_sales_report_value(row, "손익-판매배송비")),
+            "profit_shipping_supply": _sales_report_int(_sales_report_value(row, "손익-공급배송비")),
+            "profit_shipping": _sales_report_int(_sales_report_value(row, "손익-배송비")),
+            "profit_margin": _sales_report_int(_sales_report_value(row, "손익-마진")),
+            "margin_rate": _sales_report_percent(_sales_report_value(row, "손익-마진율")),
+        })
+    report_date = parsed_rows[0]["report_date"] if parsed_rows else ""
+    period = str(report_date)[:7] if report_date else ""
+    return {"report_type": "daily", "report_date": report_date, "period": period, "rows": parsed_rows}
+
+
+def _parse_seller_sales_report(headers: list[str], rows: list[list[object]], original_name: str = "") -> dict[str, object]:
+    parsed_rows: list[dict[str, object]] = []
+    for raw in rows:
+        row = _sales_report_row_dict(headers, raw)
+        name = _sales_report_text(_sales_report_value(row, "판매사"))
+        if not name:
+            continue
+        parsed_rows.append({
+            "name": name,
+            "quantity": _sales_report_int(_sales_report_value(row, "판매-수량")),
+            "sales_amount": _sales_report_int(_sales_report_value(row, "판매-금액")),
+            "supply_amount": _sales_report_int(_sales_report_value(row, "판매-공급금액")),
+            "sales_total": _sales_report_int(_sales_report_value(row, "판매-판매합계")),
+            "supply_total": _sales_report_int(_sales_report_value(row, "판매-공급합계")),
+            "sales_margin": _sales_report_int(_sales_report_value(row, "판매-마진")),
+            "cs_amount": _sales_report_int(_sales_report_value(row, "CS-금액")),
+            "cs_supply_amount": _sales_report_int(_sales_report_value(row, "CS-공급금액")),
+            "cs_margin": _sales_report_int(_sales_report_value(row, "CS-마진")),
+            "profit_quantity_sales": _sales_report_int(_sales_report_value(row, "손익-수량 판매사기준")),
+            "profit_quantity_supply": _sales_report_int(_sales_report_value(row, "손익-수량 공급사기준")),
+            "profit_sales_amount": _sales_report_int(_sales_report_value(row, "손익-판매금액")),
+            "profit_supply_amount": _sales_report_int(_sales_report_value(row, "손익-공급금액")),
+            "profit_sales_margin": _sales_report_int(_sales_report_value(row, "손익-판매마진")),
+            "profit_shipping": _sales_report_int(_sales_report_value(row, "손익-배송비")),
+            "profit_margin": _sales_report_int(_sales_report_value(row, "손익-마진")),
+            "margin_rate": _sales_report_percent(_sales_report_value(row, "손익-마진율")),
+        })
+    period = _sales_report_period(original_name)
+    return {"report_type": "seller", "report_date": _sales_report_date(original_name), "period": period, "rows": parsed_rows}
+
+
+def _parse_product_sales_report(headers: list[str], rows: list[list[object]], original_name: str = "") -> dict[str, object]:
+    parsed_rows: list[dict[str, object]] = []
+    for raw in rows:
+        row = _sales_report_row_dict(headers, raw)
+        code = _sales_report_text(_sales_report_value(row, "상품코드"))
+        name = _sales_report_text(_sales_report_value(row, "상품명"))
+        if not code and not name:
+            continue
+        parsed_rows.append({
+            "code": code,
+            "name": name,
+            "quantity": _sales_report_int(_sales_report_value(row, "판매-수량")),
+            "sales_amount": _sales_report_int(_sales_report_value(row, "판매-금액")),
+            "supply_amount": _sales_report_int(_sales_report_value(row, "판매-공급금액")),
+            "sales_margin": _sales_report_int(_sales_report_value(row, "판매-마진")),
+            "cs_amount": _sales_report_int(_sales_report_value(row, "CS-금액")),
+            "cs_supply_amount": _sales_report_int(_sales_report_value(row, "CS-공급금액")),
+            "cs_margin": _sales_report_int(_sales_report_value(row, "CS-마진")),
+            "profit_quantity_sales": _sales_report_int(_sales_report_value(row, "손익-수량 판매사기준")),
+            "profit_quantity_supply": _sales_report_int(_sales_report_value(row, "손익-수량 공급사기준")),
+            "profit_sales_amount": _sales_report_int(_sales_report_value(row, "손익-판매금액")),
+            "profit_supply_amount": _sales_report_int(_sales_report_value(row, "손익-공급금액")),
+            "profit_margin": _sales_report_int(_sales_report_value(row, "손익-마진")),
+            "margin_rate": _sales_report_percent(_sales_report_value(row, "손익-마진율")),
+        })
+    return {
+        "report_type": "product",
+        "report_date": _sales_report_date(original_name),
+        "period": _sales_report_period(original_name),
+        "rows": parsed_rows,
+    }
+
+
+def parse_sales_report_file(path: str | Path, original_name: str = "") -> dict[str, object]:
+    headers, rows = _sales_report_table(path)
+    report_type = detect_sales_report_type(path, original_name)
+    if report_type == "daily":
+        return _parse_daily_sales_report(headers, rows)
+    if report_type == "seller":
+        parsed = _parse_seller_sales_report(headers, rows, original_name or Path(path).name)
+        if not parsed.get("period") and Path(path).suffix.lower() in {".xlsx", ".xlsm"}:
+            parsed["period"] = _sales_report_period(_sales_report_xlsx_sheet_title(path))
+        return parsed
+    if report_type == "product":
+        return _parse_product_sales_report(headers, rows, original_name or Path(path).name)
+    raise ValueError("지원하는 매출표 형식이 아닙니다.")
+
+
+def _sales_row_sum(rows: list[dict[str, object]], key: str) -> int:
+    return int(sum(_sales_report_int(row.get(key, 0)) for row in rows))
+
+
+def save_sales_report_snapshot(file_id: int, parsed: dict[str, object]) -> None:
+    report_type = str(parsed.get("report_type") or "")
+    report_date = str(parsed.get("report_date") or "")
+    period = str(parsed.get("period") or report_date[:7] or "")
+    rows = [row for row in parsed.get("rows", []) if isinstance(row, dict)]
+    connection = connect_db()
+    try:
+        if report_type == "daily":
+            for row in rows:
+                connection.execute(
+                    """
+                    INSERT INTO sales_report_daily_rows (
+                        report_date, period, file_id, label, quantity, sales_amount, supply_amount,
+                        sales_total, supply_total, sales_margin, cs_margin, profit_quantity_sales,
+                        profit_quantity_supply, profit_sales_amount, profit_supply_amount,
+                        profit_sales_margin, profit_shipping_sales, profit_shipping_supply,
+                        profit_shipping, profit_margin, margin_rate
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(report_date) DO UPDATE SET
+                        period = excluded.period,
+                        file_id = excluded.file_id,
+                        label = excluded.label,
+                        quantity = excluded.quantity,
+                        sales_amount = excluded.sales_amount,
+                        supply_amount = excluded.supply_amount,
+                        sales_total = excluded.sales_total,
+                        supply_total = excluded.supply_total,
+                        sales_margin = excluded.sales_margin,
+                        cs_margin = excluded.cs_margin,
+                        profit_quantity_sales = excluded.profit_quantity_sales,
+                        profit_quantity_supply = excluded.profit_quantity_supply,
+                        profit_sales_amount = excluded.profit_sales_amount,
+                        profit_supply_amount = excluded.profit_supply_amount,
+                        profit_sales_margin = excluded.profit_sales_margin,
+                        profit_shipping_sales = excluded.profit_shipping_sales,
+                        profit_shipping_supply = excluded.profit_shipping_supply,
+                        profit_shipping = excluded.profit_shipping,
+                        profit_margin = excluded.profit_margin,
+                        margin_rate = excluded.margin_rate
+                    """,
+                    (
+                        row.get("report_date"),
+                        row.get("period"),
+                        file_id,
+                        row.get("label", ""),
+                        row.get("quantity", 0),
+                        row.get("sales_amount", 0),
+                        row.get("supply_amount", 0),
+                        row.get("sales_total", 0),
+                        row.get("supply_total", 0),
+                        row.get("sales_margin", 0),
+                        row.get("cs_margin", 0),
+                        row.get("profit_quantity_sales", 0),
+                        row.get("profit_quantity_supply", 0),
+                        row.get("profit_sales_amount", 0),
+                        row.get("profit_supply_amount", 0),
+                        row.get("profit_sales_margin", 0),
+                        row.get("profit_shipping_sales", 0),
+                        row.get("profit_shipping_supply", 0),
+                        row.get("profit_shipping", 0),
+                        row.get("profit_margin", 0),
+                        row.get("margin_rate", 0),
+                    ),
+                )
+        elif report_type == "seller":
+            connection.execute("DELETE FROM sales_report_seller_rows WHERE period = ?", (period,))
+            for row in rows:
+                connection.execute(
+                    """
+                    INSERT INTO sales_report_seller_rows (
+                        period, report_date, file_id, seller_name, quantity, sales_amount, supply_amount,
+                        sales_total, supply_total, sales_margin, cs_amount, cs_supply_amount, cs_margin,
+                        profit_quantity_sales, profit_quantity_supply, profit_sales_amount, profit_supply_amount,
+                        profit_sales_margin, profit_shipping, profit_margin, margin_rate
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        period,
+                        report_date,
+                        file_id,
+                        row.get("name", ""),
+                        row.get("quantity", 0),
+                        row.get("sales_amount", 0),
+                        row.get("supply_amount", 0),
+                        row.get("sales_total", 0),
+                        row.get("supply_total", 0),
+                        row.get("sales_margin", 0),
+                        row.get("cs_amount", 0),
+                        row.get("cs_supply_amount", 0),
+                        row.get("cs_margin", 0),
+                        row.get("profit_quantity_sales", 0),
+                        row.get("profit_quantity_supply", 0),
+                        row.get("profit_sales_amount", 0),
+                        row.get("profit_supply_amount", 0),
+                        row.get("profit_sales_margin", 0),
+                        row.get("profit_shipping", 0),
+                        row.get("profit_margin", 0),
+                        row.get("margin_rate", 0),
+                    ),
+                )
+        elif report_type == "product":
+            if report_date:
+                connection.execute("DELETE FROM sales_report_product_rows WHERE report_date = ?", (report_date,))
+            else:
+                connection.execute("DELETE FROM sales_report_product_rows WHERE file_id = ?", (file_id,))
+            for row in rows:
+                connection.execute(
+                    """
+                    INSERT INTO sales_report_product_rows (
+                        period, report_date, file_id, product_code, product_name, quantity, sales_amount,
+                        supply_amount, sales_margin, cs_amount, cs_supply_amount, cs_margin,
+                        profit_quantity_sales, profit_quantity_supply, profit_sales_amount, profit_supply_amount,
+                        profit_margin, margin_rate
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        period,
+                        report_date,
+                        file_id,
+                        row.get("code", ""),
+                        row.get("name", ""),
+                        row.get("quantity", 0),
+                        row.get("sales_amount", 0),
+                        row.get("supply_amount", 0),
+                        row.get("sales_margin", 0),
+                        row.get("cs_amount", 0),
+                        row.get("cs_supply_amount", 0),
+                        row.get("cs_margin", 0),
+                        row.get("profit_quantity_sales", 0),
+                        row.get("profit_quantity_supply", 0),
+                        row.get("profit_sales_amount", 0),
+                        row.get("profit_supply_amount", 0),
+                        row.get("profit_margin", 0),
+                        row.get("margin_rate", 0),
+                    ),
+                )
+        connection.commit()
+    finally:
+        connection.close()
+
+
+def _sales_report_daily_public(row: sqlite3.Row | None) -> dict[str, object]:
+    if row is None:
+        return {}
+    return {
+        "report_date": str(row["report_date"] or ""),
+        "label": str(row["label"] or ""),
+        "quantity": int(row["quantity"] or 0),
+        "sales_amount": int(row["sales_amount"] or 0),
+        "sales_total": int(row["sales_total"] or 0),
+        "profit_sales_amount": int(row["profit_sales_amount"] or 0),
+        "profit_supply_amount": int(row["profit_supply_amount"] or 0),
+        "profit_margin": int(row["profit_margin"] or 0),
+        "margin_rate": float(row["margin_rate"] or 0),
+    }
+
+
+def _sales_report_named_public(row: sqlite3.Row) -> dict[str, object]:
+    name = row["name"] if "name" in row.keys() else row[0]
+    return {
+        "name": str(name or ""),
+        "quantity": int(row["quantity"] or 0),
+        "sales_amount": int(row["sales_amount"] or 0),
+        "profit_sales_amount": int(row["profit_sales_amount"] or 0),
+        "profit_margin": int(row["profit_margin"] or 0),
+        "margin_rate": float(row["margin_rate"] or 0),
+        "cs_amount": int(row["cs_amount"] or 0) if "cs_amount" in row.keys() else 0,
+        "cs_margin": int(row["cs_margin"] or 0) if "cs_margin" in row.keys() else 0,
+    }
+
+
+def sales_report_dashboard_payload(period: str = "", report_date: str = "") -> dict[str, object]:
+    init_db()
+    connection = connect_db()
+    try:
+        selected_date = report_date or ""
+        if not selected_date:
+            row = connection.execute("SELECT MAX(report_date) AS report_date FROM sales_report_daily_rows").fetchone()
+            selected_date = str(row["report_date"] or "") if row else ""
+        selected_period = period or selected_date[:7]
+        if not selected_period:
+            row = connection.execute(
+                """
+                SELECT period
+                  FROM (
+                        SELECT period FROM sales_report_daily_rows WHERE period != ''
+                        UNION ALL
+                        SELECT period FROM sales_report_seller_rows WHERE period != ''
+                        UNION ALL
+                        SELECT period FROM sales_report_product_rows WHERE period != ''
+                       )
+                 ORDER BY period DESC
+                 LIMIT 1
+                """
+            ).fetchone()
+            selected_period = str(row["period"] or "") if row else ""
+        if not selected_date and selected_period:
+            row = connection.execute(
+                "SELECT MAX(report_date) AS report_date FROM sales_report_daily_rows WHERE period = ?",
+                (selected_period,),
+            ).fetchone()
+            selected_date = str(row["report_date"] or "") if row else ""
+        if not selected_date and selected_period:
+            row = connection.execute(
+                "SELECT MAX(report_date) AS report_date FROM sales_report_product_rows WHERE period = ? AND report_date != ''",
+                (selected_period,),
+            ).fetchone()
+            selected_date = str(row["report_date"] or "") if row else ""
+        today = connection.execute(
+            "SELECT * FROM sales_report_daily_rows WHERE report_date = ?",
+            (selected_date,),
+        ).fetchone()
+        yesterday = None
+        if selected_date:
+            previous_date = (date.fromisoformat(selected_date) - timedelta(days=1)).isoformat()
+            yesterday = connection.execute(
+                "SELECT * FROM sales_report_daily_rows WHERE report_date = ?",
+                (previous_date,),
+            ).fetchone()
+        month = connection.execute(
+            """
+            SELECT COALESCE(SUM(quantity), 0) AS quantity,
+                   COALESCE(SUM(sales_amount), 0) AS sales_amount,
+                   COALESCE(SUM(sales_total), 0) AS sales_total,
+                   COALESCE(SUM(profit_sales_amount), 0) AS profit_sales_amount,
+                   COALESCE(SUM(profit_supply_amount), 0) AS profit_supply_amount,
+                   COALESCE(SUM(profit_margin), 0) AS profit_margin
+              FROM sales_report_daily_rows
+             WHERE period = ?
+            """,
+            (selected_period,),
+        ).fetchone()
+        seller_total = connection.execute(
+            """
+            SELECT COALESCE(SUM(quantity), 0) AS quantity,
+                   COALESCE(SUM(sales_amount), 0) AS sales_amount,
+                   COALESCE(SUM(profit_sales_amount), 0) AS profit_sales_amount,
+                   COALESCE(SUM(profit_margin), 0) AS profit_margin
+              FROM sales_report_seller_rows
+             WHERE period = ?
+            """,
+            (selected_period,),
+        ).fetchone()
+        daily_rows = connection.execute(
+            """
+            SELECT report_date, label, quantity, sales_amount, sales_total, profit_sales_amount,
+                   profit_supply_amount, profit_margin, margin_rate
+              FROM sales_report_daily_rows
+             WHERE period = ?
+             ORDER BY report_date DESC
+             LIMIT 10
+            """,
+            (selected_period,),
+        ).fetchall()
+        seller_rows = connection.execute(
+            """
+            SELECT seller_name AS name, quantity, sales_amount, profit_sales_amount,
+                   profit_margin, margin_rate, cs_amount, cs_margin
+              FROM sales_report_seller_rows
+             WHERE period = ?
+             ORDER BY profit_sales_amount DESC
+             LIMIT 10
+            """,
+            (selected_period,),
+        ).fetchall()
+        product_rows = connection.execute(
+            """
+            SELECT product_name AS name, quantity, sales_amount, profit_sales_amount,
+                   profit_margin, margin_rate, cs_amount, cs_margin
+              FROM sales_report_product_rows
+             WHERE (? = '' OR report_date = ? OR period = ?)
+             ORDER BY profit_sales_amount DESC
+             LIMIT 10
+            """,
+            (selected_date, selected_date, selected_period),
+        ).fetchall()
+        review_rows = connection.execute(
+            """
+            SELECT 'seller' AS kind, seller_name AS name, cs_amount, cs_margin,
+                   profit_sales_amount, profit_margin
+              FROM sales_report_seller_rows
+             WHERE period = ? AND (cs_amount != 0 OR cs_margin != 0 OR profit_margin < 0)
+            UNION ALL
+            SELECT 'product' AS kind, product_name AS name, cs_amount, cs_margin,
+                   profit_sales_amount, profit_margin
+              FROM sales_report_product_rows
+             WHERE (? = '' OR report_date = ? OR period = ?)
+               AND (cs_amount != 0 OR cs_margin != 0 OR profit_margin < 0)
+             LIMIT 10
+            """,
+            (selected_period, selected_date, selected_date, selected_period),
+        ).fetchall()
+    finally:
+        connection.close()
+
+    today_public = _sales_report_daily_public(today)
+    yesterday_public = _sales_report_daily_public(yesterday)
+    today_amount = int(today_public.get("profit_sales_amount", 0) or 0)
+    yesterday_amount = int(yesterday_public.get("profit_sales_amount", 0) or 0)
+    delta = today_amount - yesterday_amount
+    delta_rate = round((delta / yesterday_amount) * 100, 1) if yesterday_amount else 0
+    month_total = {
+        "quantity": int(month["quantity"] or 0),
+        "sales_amount": int(month["sales_amount"] or 0),
+        "sales_total": int(month["sales_total"] or 0),
+        "profit_sales_amount": int(month["profit_sales_amount"] or 0),
+        "profit_supply_amount": int(month["profit_supply_amount"] or 0),
+        "profit_margin": int(month["profit_margin"] or 0),
+    }
+    seller_total_public = {
+        "quantity": int(seller_total["quantity"] or 0),
+        "sales_amount": int(seller_total["sales_amount"] or 0),
+        "profit_sales_amount": int(seller_total["profit_sales_amount"] or 0),
+        "profit_margin": int(seller_total["profit_margin"] or 0),
+    }
+    difference = month_total["profit_sales_amount"] - seller_total_public["profit_sales_amount"]
+    return {
+        "period": selected_period,
+        "selected_date": selected_date,
+        "today": today_public,
+        "yesterday": yesterday_public,
+        "comparison": {
+            "profit_sales_amount_delta": delta,
+            "profit_sales_amount_delta_rate": delta_rate,
+        },
+        "month": month_total,
+        "seller_total": seller_total_public,
+        "consistency": {
+            "difference": difference,
+            "ok": difference == 0,
+        },
+        "daily_rows": [_sales_report_daily_public(row) for row in daily_rows],
+        "seller_top": [_sales_report_named_public(row) for row in seller_rows],
+        "product_top": [_sales_report_named_public(row) for row in product_rows],
+        "reviews": [
+            {
+                "kind": str(row["kind"] or ""),
+                "name": str(row["name"] or ""),
+                "cs_amount": int(row["cs_amount"] or 0),
+                "cs_margin": int(row["cs_margin"] or 0),
+                "profit_sales_amount": int(row["profit_sales_amount"] or 0),
+                "profit_margin": int(row["profit_margin"] or 0),
+            }
+            for row in review_rows
+        ],
+    }
+
+
 def save_sales_report_file(source_path: str | Path, original_name: str, uploaded_by: str = "") -> dict[str, str | int]:
     source = Path(source_path)
     if not source.is_file():
@@ -13578,26 +14480,50 @@ def save_sales_report_file(source_path: str | Path, original_name: str, uploaded
     target = SALES_REPORT_DIR / stored_name
     target.write_bytes(source.read_bytes())
     uploaded_at = now_text()
+    report_type = detect_sales_report_type(target, safe_original)
+    parsed_report: dict[str, object] | None = None
+    report_date = ""
+    period = ""
+    if report_type:
+        parsed_report = parse_sales_report_file(target, safe_original)
+        report_date = str(parsed_report.get("report_date") or "")
+        period = str(parsed_report.get("period") or report_date[:7] or "")
 
     connection = connect_db()
     try:
         cursor = connection.execute(
             """
-            INSERT INTO sales_report_uploads (stored_name, original_name, size, uploaded_by, uploaded_at)
-            VALUES (?, ?, ?, ?, ?)
+            INSERT INTO sales_report_uploads (
+                stored_name, original_name, size, uploaded_by, uploaded_at, report_type, report_date, period
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (stored_name, safe_original, target.stat().st_size, str(uploaded_by or ""), uploaded_at),
+            (
+                stored_name,
+                safe_original,
+                target.stat().st_size,
+                str(uploaded_by or ""),
+                uploaded_at,
+                report_type,
+                report_date,
+                period,
+            ),
         )
         connection.commit()
         row_id = int(cursor.lastrowid)
     finally:
         connection.close()
+    if parsed_report:
+        save_sales_report_snapshot(row_id, parsed_report)
     return {
         "id": row_id,
         "original_name": safe_original,
         "size": target.stat().st_size,
         "uploaded_by": str(uploaded_by or ""),
         "uploaded_at": uploaded_at,
+        "report_type": report_type,
+        "report_date": report_date,
+        "period": period,
     }
 
 
@@ -13956,6 +14882,99 @@ def init_db() -> None:
             )
             """
         )
+        sales_upload_columns = {
+            row["name"] for row in connection.execute("PRAGMA table_info(sales_report_uploads)").fetchall()
+        }
+        for column, column_type in {
+            "report_type": "TEXT",
+            "report_date": "TEXT",
+            "period": "TEXT",
+        }.items():
+            if column not in sales_upload_columns:
+                connection.execute(f"ALTER TABLE sales_report_uploads ADD COLUMN {column} {column_type}")
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS sales_report_daily_rows (
+                report_date TEXT PRIMARY KEY,
+                period TEXT NOT NULL,
+                file_id INTEGER NOT NULL,
+                label TEXT,
+                quantity INTEGER NOT NULL DEFAULT 0,
+                sales_amount INTEGER NOT NULL DEFAULT 0,
+                supply_amount INTEGER NOT NULL DEFAULT 0,
+                sales_total INTEGER NOT NULL DEFAULT 0,
+                supply_total INTEGER NOT NULL DEFAULT 0,
+                sales_margin INTEGER NOT NULL DEFAULT 0,
+                cs_margin INTEGER NOT NULL DEFAULT 0,
+                profit_quantity_sales INTEGER NOT NULL DEFAULT 0,
+                profit_quantity_supply INTEGER NOT NULL DEFAULT 0,
+                profit_sales_amount INTEGER NOT NULL DEFAULT 0,
+                profit_supply_amount INTEGER NOT NULL DEFAULT 0,
+                profit_sales_margin INTEGER NOT NULL DEFAULT 0,
+                profit_shipping_sales INTEGER NOT NULL DEFAULT 0,
+                profit_shipping_supply INTEGER NOT NULL DEFAULT 0,
+                profit_shipping INTEGER NOT NULL DEFAULT 0,
+                profit_margin INTEGER NOT NULL DEFAULT 0,
+                margin_rate REAL NOT NULL DEFAULT 0
+            )
+            """
+        )
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS sales_report_seller_rows (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                period TEXT NOT NULL,
+                report_date TEXT,
+                file_id INTEGER NOT NULL,
+                seller_name TEXT NOT NULL,
+                quantity INTEGER NOT NULL DEFAULT 0,
+                sales_amount INTEGER NOT NULL DEFAULT 0,
+                supply_amount INTEGER NOT NULL DEFAULT 0,
+                sales_total INTEGER NOT NULL DEFAULT 0,
+                supply_total INTEGER NOT NULL DEFAULT 0,
+                sales_margin INTEGER NOT NULL DEFAULT 0,
+                cs_amount INTEGER NOT NULL DEFAULT 0,
+                cs_supply_amount INTEGER NOT NULL DEFAULT 0,
+                cs_margin INTEGER NOT NULL DEFAULT 0,
+                profit_quantity_sales INTEGER NOT NULL DEFAULT 0,
+                profit_quantity_supply INTEGER NOT NULL DEFAULT 0,
+                profit_sales_amount INTEGER NOT NULL DEFAULT 0,
+                profit_supply_amount INTEGER NOT NULL DEFAULT 0,
+                profit_sales_margin INTEGER NOT NULL DEFAULT 0,
+                profit_shipping INTEGER NOT NULL DEFAULT 0,
+                profit_margin INTEGER NOT NULL DEFAULT 0,
+                margin_rate REAL NOT NULL DEFAULT 0
+            )
+            """
+        )
+        connection.execute("CREATE INDEX IF NOT EXISTS idx_sales_report_seller_period ON sales_report_seller_rows(period)")
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS sales_report_product_rows (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                period TEXT,
+                report_date TEXT,
+                file_id INTEGER NOT NULL,
+                product_code TEXT,
+                product_name TEXT NOT NULL,
+                quantity INTEGER NOT NULL DEFAULT 0,
+                sales_amount INTEGER NOT NULL DEFAULT 0,
+                supply_amount INTEGER NOT NULL DEFAULT 0,
+                sales_margin INTEGER NOT NULL DEFAULT 0,
+                cs_amount INTEGER NOT NULL DEFAULT 0,
+                cs_supply_amount INTEGER NOT NULL DEFAULT 0,
+                cs_margin INTEGER NOT NULL DEFAULT 0,
+                profit_quantity_sales INTEGER NOT NULL DEFAULT 0,
+                profit_quantity_supply INTEGER NOT NULL DEFAULT 0,
+                profit_sales_amount INTEGER NOT NULL DEFAULT 0,
+                profit_supply_amount INTEGER NOT NULL DEFAULT 0,
+                profit_margin INTEGER NOT NULL DEFAULT 0,
+                margin_rate REAL NOT NULL DEFAULT 0
+            )
+            """
+        )
+        connection.execute("CREATE INDEX IF NOT EXISTS idx_sales_report_product_date ON sales_report_product_rows(report_date)")
+        connection.execute("CREATE INDEX IF NOT EXISTS idx_sales_report_product_period ON sales_report_product_rows(period)")
         connection.execute(
             """
             CREATE TABLE IF NOT EXISTS login_sessions (
@@ -18642,6 +19661,17 @@ class WorkhubHandler(BaseHTTPRequestHandler):
             if not self.require_permission(user, "sales_report_manage", "매출표 업로드"):
                 return
             self.send_json({"files": list_sales_report_uploads()})
+            return
+
+        if self.path.startswith("/api/sales-report-dashboard"):
+            if not self.require_permission(user, "sales_report_manage", "매출현황"):
+                return
+            parsed = urlsplit(self.path)
+            params = parse_qs(parsed.query)
+            self.send_json(sales_report_dashboard_payload(
+                period=params.get("period", [""])[0],
+                report_date=params.get("date", [""])[0],
+            ))
             return
 
         if self.path.startswith("/api/shared-file-download"):

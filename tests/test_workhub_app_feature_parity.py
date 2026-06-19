@@ -473,7 +473,7 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         self.assertIn('id="salesReportNavToggle"', html_source)
         self.assertIn('"sales_report_manage"', html_source)
         self.assertIn("__SALES_REPORT_NAV__", html_source)
-        self.assertIn('accept=".xlsx,.xlsm,.csv"', html_source)
+        self.assertIn('accept=".xlsx,.xlsm,.xls,.csv"', html_source)
         self.assertIn('data-open="salesReport">매출표 업로드</button>', html_source)
         self.assertIn('mode === "salesReport"', html_source)
         self.assertIn("sales-report-only", html_source)
@@ -496,6 +496,25 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         admin_slice = html_source[admin_start:admin_end]
         self.assertIn('id="salesReportFileInput"', admin_slice)
         self.assertIn('id="salesReportDropMain"', admin_slice)
+
+    def test_sales_report_dashboard_layout_uses_three_report_types(self) -> None:
+        html_source = (ROOT / "scripts" / "workhub_delivery_app.py").read_text(encoding="utf-8")
+
+        self.assertIn('"/api/sales-report-dashboard"', html_source)
+        self.assertIn("sales_report_dashboard_payload", html_source)
+        self.assertIn("function loadSalesReportDashboard()", html_source)
+        self.assertIn("function renderSalesReportDashboard(data)", html_source)
+        self.assertIn("function formatSalesNumber(value)", html_source)
+        self.assertIn("function formatSalesPercent(value)", html_source)
+        self.assertIn('id="salesReportKpiGrid"', html_source)
+        self.assertIn('id="salesReportDailyBody"', html_source)
+        self.assertIn('id="salesReportSellerBody"', html_source)
+        self.assertIn('id="salesReportProductBody"', html_source)
+        self.assertIn('id="salesReportReviewBody"', html_source)
+        self.assertIn("날짜별", html_source)
+        self.assertIn("상품별", html_source)
+        self.assertIn("매출처별", html_source)
+        self.assertIn("파일 검증", html_source)
 
     def test_tools_sidebar_is_shared_file_library_only(self) -> None:
         for app_file in (
