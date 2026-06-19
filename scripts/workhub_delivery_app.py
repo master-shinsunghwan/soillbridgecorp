@@ -7602,6 +7602,14 @@ HTML = r"""<!doctype html>
       }
     }
 
+    function focusAdminSalesReportUpload() {
+      const card = document.querySelector("#salesReportUploadCard");
+      if (!card) return;
+      card.scrollIntoView({ behavior: "smooth", block: "center" });
+      card.classList.add("selected");
+      setTimeout(() => card.classList.remove("selected"), 1200);
+    }
+
     async function uploadSalesReportWorkbook() {
       if (!salesReportFileInput) return;
       const file = salesReportFileInput.files[0];
@@ -11527,6 +11535,9 @@ HTML = r"""<!doctype html>
         }
         if (mode === "management" || mode === "ledger" || mode === "crm" || mode === "import" || mode === "fileLibrary" || mode === "userAdmin" || mode === "leave" || mode === "backup" || mode === "systemUpdate") {
           showWorkspace(mode);
+          if (mode === "userAdmin" && button.dataset.adminFocus === "salesReport") {
+            setTimeout(focusAdminSalesReportUpload, 80);
+          }
           return;
         }
         openModal(mode);
@@ -12730,6 +12741,7 @@ ADMIN_TOOLS_NAV_HTML = r"""
           <button class="nav-subitem" type="button" data-ledger-import-mode="replace">CS처리대장 전체 데이터 교체 업로드</button>
           <button class="nav-subitem" type="button" data-open="systemUpdate">업데이트 관리</button>
           <button class="nav-subitem" type="button" data-open="backup">백업 관리</button>
+          <button class="nav-subitem" type="button" data-open="userAdmin" data-admin-focus="salesReport">매출표 업로드</button>
           <button class="nav-subitem" type="button" data-open="userAdmin">권한설정</button>
         </div>
       </div>
@@ -12924,7 +12936,7 @@ ADMIN_WORKSPACE_HTML = r"""
               </label>
               <div class="admin-message">매입처/매출처 업체 메일 주소록 엑셀을 업로드하면 DB에 저장됩니다.</div>
             </div>
-            <div class="admin-card">
+            <div class="admin-card" id="salesReportUploadCard">
               <div class="admin-section-title">매출표 업로드</div>
               <label class="dropzone" for="salesReportFileInput">
                 <span class="drop-main" id="salesReportDropMain">매출표 엑셀 또는 CSV 파일을 선택해주세요.</span>
