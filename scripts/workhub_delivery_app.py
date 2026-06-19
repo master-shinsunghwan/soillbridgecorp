@@ -1119,6 +1119,7 @@ HTML = r"""<!doctype html>
       border-radius: 8px;
       background: #fbfcff;
     }
+    #userAdminWorkspace.sales-report-only > .workspace-head,
     #userAdminWorkspace.sales-report-only .workspace-actions,
     #userAdminWorkspace.sales-report-only .admin-panel > .admin-card:not(#salesReportUploadCard),
     #userAdminWorkspace.sales-report-only .admin-panel > .admin-form,
@@ -12291,7 +12292,8 @@ HTML = r"""<!doctype html>
       document.querySelector("#adminNavGroup")?.classList.toggle("open");
     });
     document.querySelector("#salesReportNavToggle")?.addEventListener("click", () => {
-      document.querySelector("#salesReportNavGroup")?.classList.toggle("open");
+      document.querySelector("#salesReportNavGroup")?.classList.add("open");
+      showWorkspace("salesReport");
     });
     document.querySelector("#noticeInputOpen").addEventListener("click", openNoticePopup);
     importShipmentInputOpen.addEventListener("click", () => {
