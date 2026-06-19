@@ -179,6 +179,21 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         self.assertIn("preview_management_import", html_source)
         self.assertIn("preview_cs_cases_import", html_source)
 
+    def test_backup_workspace_supports_auto_and_selected_backup_settings(self) -> None:
+        html_source = (SCRIPTS / "workhub_delivery_app.py").read_text(encoding="utf-8")
+
+        self.assertIn('id="backupAutoEnabled"', html_source)
+        self.assertIn('id="backupAutoHour"', html_source)
+        self.assertIn('id="backupRetentionDays"', html_source)
+        self.assertIn('id="backupDirInput"', html_source)
+        self.assertIn('id="backupSettingsSave"', html_source)
+        self.assertIn('id="backupCreateSelected"', html_source)
+        self.assertIn("/api/backup-settings", html_source)
+        self.assertIn("function saveBackupSettings", html_source)
+        self.assertIn("function createBackupAtSelectedPath", html_source)
+        self.assertIn("load_backup_settings", html_source)
+        self.assertIn("save_backup_settings", html_source)
+
     def test_order_workspace_has_right_side_execution_cards(self) -> None:
         html_source = (SCRIPTS / "workhub_delivery_app.py").read_text(encoding="utf-8")
 

@@ -79,6 +79,7 @@ DB_PATH = CONFIG_DIR / "workhub.db"
 MAIL_SETTINGS_PATH = CONFIG_DIR / "mail_settings.json"
 VENDOR_CONTACTS_PATH = CONFIG_DIR / "vendor_contacts.json"
 CRM_WEBHOOK_TOKEN_PATH = CONFIG_DIR / "crm_webhook_token.txt"
+BACKUP_SETTINGS_PATH = CONFIG_DIR / "backup_settings.json"
 BACKUP_DIR = Path(os.environ.get("WORKHUB_BACKUP_DIR", str(RUNTIME_ROOT / "backups")))
 LUCIDE_DIR = ROOT / "node_modules" / "lucide"
 STATIC_DIR = ROOT / "static"
@@ -5886,6 +5887,14 @@ HTML = r"""<!doctype html>
     const leaveTabs = Array.from(document.querySelectorAll("[data-leave-tab]"));
     const backupRefresh = document.querySelector("#backupRefresh");
     const backupCreate = document.querySelector("#backupCreate");
+    const backupCreateSelected = document.querySelector("#backupCreateSelected");
+    const backupSettingsSave = document.querySelector("#backupSettingsSave");
+    const backupAutoEnabled = document.querySelector("#backupAutoEnabled");
+    const backupAutoHour = document.querySelector("#backupAutoHour");
+    const backupRetentionDays = document.querySelector("#backupRetentionDays");
+    const backupDirInput = document.querySelector("#backupDirInput");
+    const backupAutoState = document.querySelector("#backupAutoState");
+    const backupRetentionState = document.querySelector("#backupRetentionState");
     const backupRestoreInput = document.querySelector("#backupRestoreInput");
     const backupPath = document.querySelector("#backupPath");
     const backupBody = document.querySelector("#backupBody");
@@ -6313,7 +6322,18 @@ HTML = r"""<!doctype html>
 
     function renderBackups(data) {
       if (!backupBody) return;
+      const settings = data.settings || {};
       backupPath.textContent = data.backup_dir || "-";
+      if (backupAutoState) {
+        backupAutoState.textContent = settings.auto_enabled === false
+          ? "사용 안 함"
+          : `매일 ${String(settings.auto_hour ?? data.auto_backup_hour ?? 3).padStart(2, "0")}:00`;
+      }
+      if (backupRetentionState) backupRetentionState.textContent = `최근 ${settings.retention_days || data.retention_days || 90}일`;
+      if (backupAutoEnabled) backupAutoEnabled.checked = settings.auto_enabled !== false;
+      if (backupAutoHour) backupAutoHour.value = String(settings.auto_hour ?? data.auto_backup_hour ?? 3);
+      if (backupRetentionDays) backupRetentionDays.value = String(settings.retention_days || data.retention_days || 90);
+      if (backupDirInput) backupDirInput.value = settings.backup_dir || data.backup_dir || "";
       const backups = data.backups || [];
       if (!backups.length) {
         backupBody.innerHTML = `<tr><td colspan="4">생성된 백업 파일이 없습니다.</td></tr>`;
@@ -7087,6 +7107,62 @@ HTML = r"""<!doctype html>
         return true;
       }
       return false;
+    }
+
+    function backupSettingsPayload() {
+      return {
+        backup_dir: backupDirInput?.value?.trim() || "",
+        auto_enabled: Boolean(backupAutoEnabled?.checked),
+        auto_hour: Number(backupAutoHour?.value || 3),
+        retention_days: Number(backupRetentionDays?.value || 90),
+      };
+    }
+
+    async function saveBackupSettings() {
+      if (!backupSettingsSave) return;
+      backupSettingsSave.disabled = true;
+      backupMessage.textContent = "백업 설정을 저장하는 중입니다.";
+      try {
+        const response = await fetch("/api/backup-settings", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(backupSettingsPayload()),
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "백업 설정 저장에 실패했습니다.");
+        backupMessage.textContent = data.message || "백업 설정을 저장했습니다.";
+        await loadBackups();
+      } catch (error) {
+        backupMessage.textContent = error.message;
+      } finally {
+        backupSettingsSave.disabled = false;
+      }
+    }
+
+    async function createBackupAtSelectedPath() {
+      if (!backupCreateSelected) return;
+      const backupDir = backupDirInput?.value?.trim() || "";
+      if (!backupDir) {
+        backupMessage.textContent = "지정 백업을 만들 폴더 경로를 입력해주세요.";
+        return;
+      }
+      backupCreateSelected.disabled = true;
+      backupMessage.textContent = "지정 위치로 백업 파일을 생성하는 중입니다.";
+      try {
+        const response = await fetch("/api/backup-create", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ backup_dir: backupDir }),
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "지정 위치 백업 생성에 실패했습니다.");
+        backupMessage.textContent = data.message || "지정 위치에 백업 파일을 생성했습니다.";
+        await loadBackups();
+      } catch (error) {
+        backupMessage.textContent = error.message;
+      } finally {
+        backupCreateSelected.disabled = false;
+      }
     }
 
     async function loadMailSettings() {
@@ -11943,6 +12019,8 @@ HTML = r"""<!doctype html>
     if (userAdminRole) userAdminRole.addEventListener("change", syncPermissionChecksForRole);
     if (backupRefresh) backupRefresh.addEventListener("click", loadBackups);
     if (backupCreate) backupCreate.addEventListener("click", createBackupNow);
+    if (backupSettingsSave) backupSettingsSave.addEventListener("click", saveBackupSettings);
+    if (backupCreateSelected) backupCreateSelected.addEventListener("click", createBackupAtSelectedPath);
     if (backupRestoreInput) backupRestoreInput.addEventListener("change", restoreBackupFromUpload);
     if (systemUpdateRefresh) systemUpdateRefresh.addEventListener("click", loadSystemUpdateStatus);
     if (systemUpdateCheck) systemUpdateCheck.addEventListener("click", checkSystemUpdate);
@@ -12715,11 +12793,11 @@ BACKUP_WORKSPACE_HTML = r"""
             <div class="backup-summary-grid">
               <article class="backup-summary-card">
                 <span>자동 백업</span>
-                <strong>매일 03:00</strong>
+                <strong id="backupAutoState">매일 03:00</strong>
               </article>
               <article class="backup-summary-card">
                 <span>보관 기준</span>
-                <strong>최근 90일</strong>
+                <strong id="backupRetentionState">최근 90일</strong>
               </article>
               <article class="backup-summary-card">
                 <span>백업 위치</span>
@@ -12727,8 +12805,25 @@ BACKUP_WORKSPACE_HTML = r"""
               </article>
             </div>
             <div class="backup-card">
+              <div class="admin-section-title">자동백업 / 지정 백업 설정</div>
+              <div class="admin-form">
+                <label class="admin-check"><input id="backupAutoEnabled" type="checkbox" checked /> 자동 백업 사용</label>
+                <label>자동 백업 시간
+                  <input id="backupAutoHour" type="number" min="0" max="23" value="3" />
+                </label>
+                <label>보관 기간(일)
+                  <input id="backupRetentionDays" type="number" min="1" max="3650" value="90" />
+                </label>
+                <label>백업 저장 위치
+                  <input id="backupDirInput" type="text" placeholder="예) G:\내 드라이브\Soillbridge\Workhub_Backup" />
+                </label>
+                <button class="workspace-button" type="button" id="backupSettingsSave">백업 설정 저장</button>
+                <button class="workspace-button" type="button" id="backupCreateSelected">지정 위치로 지금 백업</button>
+              </div>
+            </div>
+            <div class="backup-card">
               <p class="backup-note">
-                백업에는 업무 DB, 메일 설정, 업체 주소록, 암호화 키가 포함됩니다. 나스에서는 이 백업 폴더를 Synology Hyper Backup 대상으로 잡으면 됩니다.
+                백업에는 업무 DB, 메일 설정, 업체 주소록, 암호화 키가 포함됩니다. VPS 운영 시에는 서버 내부 백업 폴더를 기본으로 두고, 필요하면 rclone/Google Drive 동기화 대상 폴더를 지정하면 됩니다.
                 복원 전에는 현재 데이터를 자동으로 한 번 더 백업합니다.
               </p>
               <div class="backup-message" id="backupMessage"></div>
@@ -14593,21 +14688,94 @@ RESTORE_ALLOWED_FILES = {
     "config/workhub.db": DB_PATH,
     "config/mail_settings.json": MAIL_SETTINGS_PATH,
     "config/vendor_contacts.json": VENDOR_CONTACTS_PATH,
+    "config/backup_settings.json": BACKUP_SETTINGS_PATH,
     "config/secret.key": SECRET_KEY_PATH,
     "config/crm_webhook_token.txt": CRM_WEBHOOK_TOKEN_PATH,
 }
+
+DEFAULT_BACKUP_SETTINGS = {
+    "backup_dir": "",
+    "auto_enabled": True,
+    "auto_hour": AUTO_BACKUP_HOUR,
+    "retention_days": BACKUP_RETENTION_DAYS,
+}
+
+
+def backup_default_dir() -> Path:
+    return BACKUP_DIR
+
+
+def clean_backup_dir(value: object) -> str:
+    text = str(value or "").strip().strip('"')
+    if not text:
+        return ""
+    path = Path(text).expanduser()
+    if not path.is_absolute():
+        path = RUNTIME_ROOT / path
+    return str(path)
+
+
+def normalize_backup_settings(payload: dict | None = None) -> dict[str, object]:
+    source = payload or {}
+    try:
+        auto_hour = int(source.get("auto_hour", DEFAULT_BACKUP_SETTINGS["auto_hour"]))
+    except (TypeError, ValueError):
+        auto_hour = int(DEFAULT_BACKUP_SETTINGS["auto_hour"])
+    auto_hour = min(max(auto_hour, 0), 23)
+    try:
+        retention_days = int(source.get("retention_days", DEFAULT_BACKUP_SETTINGS["retention_days"]))
+    except (TypeError, ValueError):
+        retention_days = int(DEFAULT_BACKUP_SETTINGS["retention_days"])
+    retention_days = min(max(retention_days, 1), 3650)
+    return {
+        "backup_dir": clean_backup_dir(source.get("backup_dir", DEFAULT_BACKUP_SETTINGS["backup_dir"])),
+        "auto_enabled": bool(source.get("auto_enabled", DEFAULT_BACKUP_SETTINGS["auto_enabled"])),
+        "auto_hour": auto_hour,
+        "retention_days": retention_days,
+    }
+
+
+def load_backup_settings() -> dict[str, object]:
+    if not BACKUP_SETTINGS_PATH.exists():
+        return normalize_backup_settings(DEFAULT_BACKUP_SETTINGS)
+    try:
+        raw = json.loads(BACKUP_SETTINGS_PATH.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        raw = {}
+    if not isinstance(raw, dict):
+        raw = {}
+    merged = {**DEFAULT_BACKUP_SETTINGS, **raw}
+    return normalize_backup_settings(merged)
+
+
+def save_backup_settings(payload: dict) -> dict[str, object]:
+    settings = normalize_backup_settings({**load_backup_settings(), **payload})
+    target_dir = backup_dir_path(settings)
+    target_dir.mkdir(parents=True, exist_ok=True)
+    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+    BACKUP_SETTINGS_PATH.write_text(json.dumps(settings, ensure_ascii=False, indent=2), encoding="utf-8")
+    return settings
+
+
+def backup_dir_path(settings: dict[str, object] | None = None, backup_dir: str | Path | None = None) -> Path:
+    if backup_dir:
+        return Path(clean_backup_dir(str(backup_dir))).resolve()
+    current = settings or load_backup_settings()
+    configured = clean_backup_dir(current.get("backup_dir", ""))
+    return Path(configured).resolve() if configured else backup_default_dir().resolve()
 
 
 def valid_backup_name(name: str) -> bool:
     return bool(re.fullmatch(r"workhub_backup_\d{8}_\d{6}(?:_\d+)?\.zip", name))
 
 
-def backup_path_from_name(name: str) -> Path:
+def backup_path_from_name(name: str, backup_dir: str | Path | None = None) -> Path:
     name = Path(name).name
     if not valid_backup_name(name):
         raise ValueError("백업 파일명이 올바르지 않습니다.")
-    path = (BACKUP_DIR / name).resolve()
-    if BACKUP_DIR.resolve() not in path.parents:
+    root = backup_dir_path(backup_dir=backup_dir)
+    path = (root / name).resolve()
+    if root not in path.parents:
         raise ValueError("백업 파일 경로가 올바르지 않습니다.")
     return path
 
@@ -14621,17 +14789,21 @@ def backup_file_info(path: Path) -> dict[str, str | int]:
     }
 
 
-def list_backup_files() -> list[dict[str, str | int]]:
-    BACKUP_DIR.mkdir(parents=True, exist_ok=True)
-    files = [path for path in BACKUP_DIR.glob("workhub_backup_*.zip") if path.is_file() and valid_backup_name(path.name)]
+def list_backup_files(backup_dir: str | Path | None = None) -> list[dict[str, str | int]]:
+    root = backup_dir_path(backup_dir=backup_dir)
+    root.mkdir(parents=True, exist_ok=True)
+    files = [path for path in root.glob("workhub_backup_*.zip") if path.is_file() and valid_backup_name(path.name)]
     files.sort(key=lambda path: path.stat().st_mtime, reverse=True)
     return [backup_file_info(path) for path in files]
 
 
-def cleanup_backup_retention() -> None:
-    BACKUP_DIR.mkdir(parents=True, exist_ok=True)
-    cutoff = time.time() - (BACKUP_RETENTION_DAYS * 24 * 60 * 60)
-    for path in BACKUP_DIR.glob("workhub_backup_*.zip"):
+def cleanup_backup_retention(backup_dir: str | Path | None = None, retention_days: int | None = None) -> None:
+    settings = load_backup_settings()
+    root = backup_dir_path(settings, backup_dir=backup_dir)
+    root.mkdir(parents=True, exist_ok=True)
+    days = retention_days if retention_days is not None else int(settings["retention_days"])
+    cutoff = time.time() - (days * 24 * 60 * 60)
+    for path in root.glob("workhub_backup_*.zip"):
         if path.is_file() and valid_backup_name(path.name) and path.stat().st_mtime < cutoff:
             path.unlink(missing_ok=True)
 
@@ -14648,20 +14820,22 @@ def safe_sqlite_copy(target_db: Path) -> None:
         source.close()
 
 
-def create_workhub_backup(reason: str = "manual") -> dict[str, str | int]:
-    BACKUP_DIR.mkdir(parents=True, exist_ok=True)
+def create_workhub_backup(reason: str = "manual", backup_dir: str | Path | None = None) -> dict[str, str | int]:
+    settings = load_backup_settings()
+    root = backup_dir_path(settings, backup_dir=backup_dir)
+    root.mkdir(parents=True, exist_ok=True)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    output_path = BACKUP_DIR / f"workhub_backup_{timestamp}.zip"
+    output_path = root / f"workhub_backup_{timestamp}.zip"
     counter = 1
     while output_path.exists():
-        output_path = BACKUP_DIR / f"workhub_backup_{timestamp}_{counter}.zip"
+        output_path = root / f"workhub_backup_{timestamp}_{counter}.zip"
         counter += 1
-    with tempfile.TemporaryDirectory(prefix="workhub_backup_", dir=BACKUP_DIR) as temp_dir:
+    with tempfile.TemporaryDirectory(prefix="workhub_backup_", dir=root) as temp_dir:
         temp_db = Path(temp_dir) / "workhub.db"
         safe_sqlite_copy(temp_db)
         with zipfile.ZipFile(output_path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
             archive.write(temp_db, "config/workhub.db")
-            for path in (MAIL_SETTINGS_PATH, VENDOR_CONTACTS_PATH, SECRET_KEY_PATH, CRM_WEBHOOK_TOKEN_PATH):
+            for path in (MAIL_SETTINGS_PATH, VENDOR_CONTACTS_PATH, BACKUP_SETTINGS_PATH, SECRET_KEY_PATH, CRM_WEBHOOK_TOKEN_PATH):
                 if path.exists() and path.is_file():
                     archive.write(path, f"config/{path.name}")
             archive.writestr(
@@ -14671,11 +14845,13 @@ def create_workhub_backup(reason: str = "manual") -> dict[str, str | int]:
                         "created_at": now_text(),
                         "reason": reason,
                         "data_dir": str(RUNTIME_ROOT),
-                        "backup_retention_days": BACKUP_RETENTION_DAYS,
+                        "backup_dir": str(root),
+                        "backup_retention_days": int(settings["retention_days"]),
                         "included": [
                             "config/workhub.db",
                             "config/mail_settings.json",
                             "config/vendor_contacts.json",
+                            "config/backup_settings.json",
                             "config/secret.key",
                             "config/crm_webhook_token.txt",
                         ],
@@ -14684,7 +14860,7 @@ def create_workhub_backup(reason: str = "manual") -> dict[str, str | int]:
                     indent=2,
                 ),
             )
-    cleanup_backup_retention()
+    cleanup_backup_retention(backup_dir=root, retention_days=int(settings["retention_days"]))
     return backup_file_info(output_path)
 
 
@@ -14704,7 +14880,9 @@ def restore_workhub_backup(source_zip: Path) -> dict[str, object]:
 
     pre_restore = create_workhub_backup("pre-restore")
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-    with tempfile.TemporaryDirectory(prefix="workhub_restore_", dir=BACKUP_DIR) as temp_dir:
+    restore_temp_dir = backup_dir_path()
+    restore_temp_dir.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix="workhub_restore_", dir=restore_temp_dir) as temp_dir:
         temp_root = Path(temp_dir)
         extracted: dict[str, Path] = {}
         with zipfile.ZipFile(source_zip) as archive:
@@ -14738,15 +14916,21 @@ def restore_workhub_backup(source_zip: Path) -> dict[str, object]:
 
 
 def has_backup_for_date(date_token: str) -> bool:
-    BACKUP_DIR.mkdir(parents=True, exist_ok=True)
-    return any(BACKUP_DIR.glob(f"workhub_backup_{date_token}_*.zip"))
+    root = backup_dir_path()
+    root.mkdir(parents=True, exist_ok=True)
+    return any(root.glob(f"workhub_backup_{date_token}_*.zip"))
 
 
 def backup_scheduler_loop() -> None:
     while True:
         try:
             now = datetime.now()
-            if now.hour >= AUTO_BACKUP_HOUR and not has_backup_for_date(now.strftime("%Y%m%d")):
+            settings = load_backup_settings()
+            if (
+                settings.get("auto_enabled", True)
+                and now.hour >= int(settings.get("auto_hour", AUTO_BACKUP_HOUR))
+                and not has_backup_for_date(now.strftime("%Y%m%d"))
+            ):
                 created = create_workhub_backup("auto")
                 print(f"자동 백업 완료: {created['name']}")
         except Exception as exc:  # noqa: BLE001
@@ -17916,13 +18100,15 @@ class WorkhubHandler(BaseHTTPRequestHandler):
         if self.path == "/api/backups":
             if not self.require_permission(user, "backup_manage", "백업 관리"):
                 return
+            settings = load_backup_settings()
             backups = list_backup_files()
             self.send_json({
-                "backup_dir": str(BACKUP_DIR),
+                "backup_dir": str(backup_dir_path(settings)),
                 "backups": backups,
                 "last_backup": backups[0]["created_at"] if backups else "",
-                "retention_days": BACKUP_RETENTION_DAYS,
-                "auto_backup_hour": AUTO_BACKUP_HOUR,
+                "retention_days": settings["retention_days"],
+                "auto_backup_hour": settings["auto_hour"],
+                "settings": settings,
             })
             return
 
@@ -18387,8 +18573,26 @@ class WorkhubHandler(BaseHTTPRequestHandler):
             if self.path == "/api/backup-create":
                 if not self.require_permission(user, "backup_manage", "백업 관리"):
                     return
-                backup = create_workhub_backup("manual")
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(length).decode("utf-8")) if length else {}
+                backup_dir = clean_payload_text(payload, "backup_dir") if isinstance(payload, dict) else ""
+                backup = create_workhub_backup("selected" if backup_dir else "manual", backup_dir=backup_dir or None)
                 self.send_json({"message": "백업 파일을 생성했습니다.", "backup": backup})
+                return
+
+            if self.path == "/api/backup-settings":
+                if not self.require_permission(user, "backup_manage", "백업 관리"):
+                    return
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(length).decode("utf-8")) if length else {}
+                if not isinstance(payload, dict):
+                    raise ValueError("백업 설정 형식이 올바르지 않습니다.")
+                settings = save_backup_settings(payload)
+                self.send_json({
+                    "message": "백업 설정을 저장했습니다.",
+                    "settings": settings,
+                    "backup_dir": str(backup_dir_path(settings)),
+                })
                 return
 
             if self.path == "/api/system-update-check":
