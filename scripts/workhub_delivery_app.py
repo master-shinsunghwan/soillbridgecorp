@@ -3460,7 +3460,7 @@ HTML = r"""<!doctype html>
     }
     .crm-task-toolbar {
       display: grid;
-      grid-template-columns: minmax(150px, .9fr) minmax(140px, .9fr) auto auto minmax(180px, 1.2fr) repeat(5, minmax(128px, .8fr)) auto auto auto;
+      grid-template-columns: minmax(150px, .9fr) minmax(180px, 1.2fr) auto auto auto;
       align-items: center;
     }
     .crm-task-toolbar .crm-input,
@@ -3468,6 +3468,14 @@ HTML = r"""<!doctype html>
       width: 100%;
       min-width: 0;
     }
+    .crm-advanced-filters {
+      grid-column: 1 / -1;
+      display: grid;
+      grid-template-columns: minmax(140px, .9fr) auto auto repeat(5, minmax(128px, .8fr)) auto;
+      gap: 8px;
+      align-items: center;
+    }
+    .crm-advanced-filters[hidden] { display: none; }
     .crm-filter-check {
       min-height: 32px;
       display: inline-flex;
@@ -3914,6 +3922,7 @@ HTML = r"""<!doctype html>
       .company-calendar-shell { grid-template-columns: 1fr; }
       .company-staff-layout { grid-template-columns: 1fr; }
       .crm-task-toolbar { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+      .crm-advanced-filters { grid-template-columns: repeat(3, minmax(0, 1fr)); }
       .crm-project-row { grid-template-columns: 1fr; }
       .crm-project-metrics { justify-content: flex-start; }
     }
@@ -3936,6 +3945,7 @@ HTML = r"""<!doctype html>
       .calendar-day { min-height: 92px; padding: 6px; }
       .internal-chat-form { grid-template-columns: 1fr; }
       .crm-task-toolbar { grid-template-columns: 1fr; }
+      .crm-advanced-filters { grid-template-columns: 1fr; }
     }
     .crm-help {
       margin: 0;
@@ -4400,10 +4410,10 @@ HTML = r"""<!doctype html>
           <i class="nav-chevron" data-lucide="chevron-right"></i>
         </button>
         <div class="nav-submenu">
-          <button class="nav-subitem" type="button" data-open="crm" data-crm-nav-tab="dashboard">대시보드</button>
+          <button class="nav-subitem" type="button" data-open="crm" data-crm-nav-tab="dashboard">업무 현황</button>
           <button class="nav-subitem" type="button" data-open="crm" data-crm-nav-tab="mine">내 업무</button>
           <button class="nav-subitem" type="button" data-open="crm" data-crm-nav-tab="tasks">업무보드</button>
-          <button class="nav-subitem" type="button" data-open="crm" data-crm-nav-tab="accounts">직원</button>
+          <button class="nav-subitem" type="button" data-open="crm" data-crm-nav-tab="accounts">직원 현황</button>
           <button class="nav-subitem" type="button" data-open="crm" data-crm-nav-tab="messages">메신저 연동</button>
         </div>
       </div>
@@ -4850,20 +4860,20 @@ HTML = r"""<!doctype html>
       </section>
       <section class="workspace-view" id="crmWorkspace">
         <div class="workspace-head">
-          <div class="workspace-title">업무관리</div>
+          <div class="workspace-title">업무 현황</div>
           <div class="workspace-actions">
             <button class="workspace-button" type="button" id="crmRefresh">새로고침</button>
-            <button class="workspace-button" type="button" id="crmAccountQuick">직원 보기</button>
+            <button class="workspace-button" type="button" id="crmAccountQuick">직원 현황</button>
             <button class="workspace-button" type="button" id="crmTaskQuick">업무 등록</button>
             <button class="workspace-button" type="button" data-open-window="crm">새창으로 열기</button>
           </div>
         </div>
         <div class="crm-tabs" role="tablist" aria-label="CRM 메뉴">
-          <button class="crm-tab active" type="button" role="tab" id="crmTabDashboard" aria-selected="true" aria-controls="crmPanelDashboard" tabindex="0" data-crm-tab="dashboard">대시보드</button>
+          <button class="crm-tab active" type="button" role="tab" id="crmTabDashboard" aria-selected="true" aria-controls="crmPanelDashboard" tabindex="0" data-crm-tab="dashboard">업무 현황</button>
           <button class="crm-tab" type="button" role="tab" id="crmTabMine" aria-selected="false" aria-controls="crmPanelMine" tabindex="-1" data-crm-tab="mine">내 업무</button>
           <button class="crm-tab" type="button" role="tab" id="crmTabTasks" aria-selected="false" aria-controls="crmPanelTasks" tabindex="-1" data-crm-tab="tasks">업무보드</button>
-          <button class="crm-tab" type="button" role="tab" id="crmTabAccounts" aria-selected="false" aria-controls="crmPanelAccounts" tabindex="-1" data-crm-tab="accounts">직원</button>
-          <button class="crm-tab" type="button" role="tab" id="crmMessagesTab" aria-selected="false" aria-controls="crmPanelMessages" tabindex="-1" data-crm-tab="messages">메신저 연동</button>
+          <button class="crm-tab" type="button" role="tab" id="crmTabAccounts" aria-selected="false" aria-controls="crmPanelAccounts" tabindex="-1" data-crm-tab="accounts">직원 현황</button>
+          <button class="crm-tab" type="button" role="tab" id="crmMessagesTab" aria-selected="false" aria-controls="crmPanelMessages" tabindex="-1" data-crm-tab="messages">연동 로그</button>
         </div>
         <div class="crm-message" id="crmMessage" role="status" aria-live="polite"></div>
 
@@ -4976,12 +4986,16 @@ HTML = r"""<!doctype html>
           <div class="crm-toolbar crm-task-toolbar" aria-label="업무 필터">
             <label class="sr-only" for="crmTaskViewSelect">저장뷰</label>
             <select class="crm-select" id="crmTaskViewSelect"><option value="">저장뷰 선택</option></select>
+            <label class="sr-only" for="crmTaskSearch">업무 검색</label>
+            <input class="crm-input" id="crmTaskSearch" type="search" placeholder="업무, 직원, 번호 검색" />
+            <button class="crm-mini-button primary" type="button" id="crmTaskSearchButton">조회</button>
+            <button class="crm-mini-button" type="button" id="crmTaskAdvancedToggle" aria-expanded="false" aria-controls="crmAdvancedFilters">고급 필터</button>
+            <button class="crm-mini-button" type="button" id="crmTaskFilterReset">초기화</button>
+            <div class="crm-advanced-filters" id="crmAdvancedFilters" hidden>
             <label class="sr-only" for="crmTaskViewName">저장뷰 이름</label>
             <input class="crm-input" id="crmTaskViewName" type="text" placeholder="저장뷰 이름" />
             <button class="crm-mini-button" type="button" id="crmTaskViewSave">현재 보기 저장</button>
             <button class="crm-mini-button" type="button" id="crmTaskViewDelete">저장뷰 삭제</button>
-            <label class="sr-only" for="crmTaskSearch">업무 검색</label>
-            <input class="crm-input" id="crmTaskSearch" type="search" placeholder="업무, 직원, 번호 검색" />
             <label class="sr-only" for="crmTaskStatusFilter">상태</label>
             <select class="crm-select" id="crmTaskStatusFilter"><option value="">상태 전체</option><option>대기</option><option>진행중</option><option>완료</option><option>보류</option></select>
             <label class="sr-only" for="crmTaskAssigneeFilter">담당자</label>
@@ -4995,8 +5009,7 @@ HTML = r"""<!doctype html>
             <label class="sr-only" for="crmTaskSort">정렬</label>
             <select class="crm-select" id="crmTaskSort"><option value="smart">추천순</option><option value="due">마감순</option><option value="updated">최근 수정순</option></select>
             <label class="crm-filter-check"><input type="checkbox" id="crmTaskOpenOnly" checked /> 미완료만</label>
-            <button class="crm-mini-button primary" type="button" id="crmTaskSearchButton">조회</button>
-            <button class="crm-mini-button" type="button" id="crmTaskFilterReset">초기화</button>
+            </div>
           </div>
           <div class="crm-task-board-stats" id="crmTaskBoardStats"></div>
           <div class="crm-task-layout">
@@ -6014,6 +6027,8 @@ HTML = r"""<!doctype html>
     const crmTaskSort = document.querySelector("#crmTaskSort");
     const crmTaskOpenOnly = document.querySelector("#crmTaskOpenOnly");
     const crmTaskSearchButton = document.querySelector("#crmTaskSearchButton");
+    const crmTaskAdvancedToggle = document.querySelector("#crmTaskAdvancedToggle");
+    const crmAdvancedFilters = document.querySelector("#crmAdvancedFilters");
     const crmTaskFilterReset = document.querySelector("#crmTaskFilterReset");
     const crmTaskBoardStats = document.querySelector("#crmTaskBoardStats");
     const crmTaskBody = document.querySelector("#crmTaskBody");
@@ -11776,6 +11791,12 @@ HTML = r"""<!doctype html>
     crmTaskSearchButton.addEventListener("click", () => {
       markCrmTaskFiltersDirty();
       loadCrmTasks().catch((error) => setCrmMessage(error.message, true));
+    });
+    crmTaskAdvancedToggle?.addEventListener("click", () => {
+      const open = Boolean(crmAdvancedFilters?.hidden);
+      if (crmAdvancedFilters) crmAdvancedFilters.hidden = !open;
+      crmTaskAdvancedToggle.setAttribute("aria-expanded", open ? "true" : "false");
+      crmTaskAdvancedToggle.textContent = open ? "필터 닫기" : "고급 필터";
     });
     crmTaskSearch.addEventListener("keydown", (event) => {
       if (event.key === "Enter") {

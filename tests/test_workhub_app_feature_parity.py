@@ -175,6 +175,19 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         self.assertIn("attachments=attachments", html_source)
         self.assertIn('document.querySelectorAll("[data-mail-popup]")', html_source)
 
+    def test_crm_task_board_uses_collapsible_advanced_filters_from_branch(self) -> None:
+        html_source = (ROOT / "scripts" / "workhub_delivery_app.py").read_text(encoding="utf-8")
+
+        self.assertIn('id="crmTaskAdvancedToggle"', html_source)
+        self.assertIn('id="crmAdvancedFilters" hidden', html_source)
+        self.assertIn('aria-controls="crmAdvancedFilters"', html_source)
+        self.assertIn(".crm-advanced-filters", html_source)
+        self.assertIn("crmTaskAdvancedToggle?.addEventListener", html_source)
+        self.assertIn('crmTaskAdvancedToggle.textContent = open ? "필터 닫기" : "고급 필터"', html_source)
+        self.assertIn('data-crm-nav-tab="dashboard">업무 현황</button>', html_source)
+        self.assertIn('data-crm-tab="accounts">직원 현황</button>', html_source)
+        self.assertIn('data-crm-tab="messages">연동 로그</button>', html_source)
+
     def test_leave_workflow_has_multi_step_approval_cancel_and_accrual_ui(self) -> None:
         for app_file in (
             ROOT / "scripts" / "workhub_delivery_app.py",

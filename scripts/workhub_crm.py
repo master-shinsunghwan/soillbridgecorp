@@ -322,7 +322,7 @@ def crm_dashboard_payload(db_path: Path) -> dict[str, Any]:
             ).fetchone()[0],
         }
         status_rows = connection.execute(
-            "SELECT status, COUNT(*) AS count FROM crm_tasks GROUP BY status ORDER BY status"
+            "SELECT status, COUNT(*) AS count FROM crm_tasks WHERE status != '완료' GROUP BY status ORDER BY status"
         ).fetchall()
         priority_tasks = connection.execute(
             """
@@ -338,9 +338,11 @@ def crm_dashboard_payload(db_path: Path) -> dict[str, Any]:
         ).fetchall()
         recent_events = connection.execute(
             """
-            SELECT *
-              FROM crm_message_events
-             ORDER BY id DESC
+            SELECT events.*
+              FROM crm_message_events events
+              LEFT JOIN crm_tasks tasks ON tasks.id = events.task_id
+             WHERE events.task_id IS NULL OR tasks.status != '완료'
+             ORDER BY events.id DESC
              LIMIT 8
             """
         ).fetchall()
@@ -365,6 +367,7 @@ def crm_dashboard_payload(db_path: Path) -> dict[str, Any]:
                    MAX(updated_at) AS latest_update
               FROM crm_tasks
              GROUP BY project_key, project_name
+            HAVING SUM(CASE WHEN status != '완료' THEN 1 ELSE 0 END) > 0
              ORDER BY open_tasks DESC,
                       overdue DESC,
                       due_today DESC,
@@ -381,6 +384,7 @@ def crm_dashboard_payload(db_path: Path) -> dict[str, Any]:
                    END AS project_key,
                    *
               FROM crm_tasks
+             WHERE status != '완료'
              ORDER BY CASE status WHEN '대기' THEN 0 WHEN '진행중' THEN 1 WHEN '보류' THEN 2 ELSE 3 END,
                       CASE priority WHEN '높음' THEN 0 WHEN '보통' THEN 1 ELSE 2 END,
                       CASE WHEN due_at IS NULL OR due_at = '' THEN 1 ELSE 0 END,
