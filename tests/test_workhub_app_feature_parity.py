@@ -107,7 +107,7 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
                 self.assertIn(permission, html_source)
             for table_name in ("company_holidays", "leave_notifications"):
                 self.assertIn(table_name, html_source)
-            for endpoint in ("/api/leave-cancel", "/api/leave-accrual"):
+            for endpoint in ("/api/leave-cancel", "/api/leave-accrual", "/api/company-holiday"):
                 self.assertIn(endpoint, html_source)
             for function_name in (
                 "save_company_holiday",
@@ -118,7 +118,10 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
             ):
                 self.assertIn(f"def {function_name}", html_source)
             self.assertIn('id="leaveReservedDays"', html_source)
+            self.assertIn('id="leaveNotificationList"', html_source)
             self.assertIn('id="leaveAccrualApply"', html_source)
+            self.assertIn('id="leaveHolidayDateInput"', html_source)
+            self.assertIn('id="leaveHolidaySave"', html_source)
             self.assertIn('data-leave-comment="${row.id}"', html_source)
             self.assertIn('data-leave-cancel="${row.id}"', html_source)
             self.assertIn('data-leave-decision="override"', html_source)
