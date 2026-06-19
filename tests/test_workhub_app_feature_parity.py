@@ -120,6 +120,15 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         self.assertIn("color: var(--sidebar-text-secondary)", html_source)
         self.assertIn("color: var(--sidebar-text-muted)", html_source)
 
+    def test_company_portal_click_always_opens_submenu_after_workspace_switch(self) -> None:
+        html_source = (ROOT / "scripts" / "workhub_delivery_app.py").read_text(encoding="utf-8")
+
+        self.assertIn("const companyGroup = document.querySelector(\"#companyNavGroup\")", html_source)
+        self.assertIn("companyGroup?.classList.add(\"open\")", html_source)
+        self.assertNotIn("wasCompanyGroupOpen", html_source)
+        self.assertNotIn('companyGroup?.classList.toggle("open"', html_source)
+        self.assertNotIn('document.querySelector("#companyNavGroup").classList.toggle("open");', html_source)
+
     def test_leave_workflow_has_multi_step_approval_cancel_and_accrual_ui(self) -> None:
         for app_file in (
             ROOT / "scripts" / "workhub_delivery_app.py",

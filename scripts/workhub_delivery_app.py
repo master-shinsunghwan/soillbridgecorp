@@ -11406,12 +11406,13 @@ HTML = r"""<!doctype html>
     });
     document.querySelectorAll("[data-view]").forEach((button) => {
       button.addEventListener("click", () => {
+        const companyGroup = document.querySelector("#companyNavGroup");
         showWorkspace(button.dataset.view);
         if (button.dataset.companyTab) setCompanyTab(button.dataset.companyTab);
         if (button.id === "companyNavToggle") {
-          document.querySelector("#companyNavGroup").classList.toggle("open");
+          companyGroup?.classList.add("open");
         } else if (button.dataset.companyTab) {
-          document.querySelector("#companyNavGroup")?.classList.add("open");
+          companyGroup?.classList.add("open");
         }
       });
     });
