@@ -297,7 +297,10 @@ class SalesReportUploadTests(unittest.TestCase):
         self.app.save_sales_report_file(supplier, supplier.name, "admin")
         dashboard = self.app.sales_report_dashboard_payload("2026-06", "2026-06-19")
         purchase_totals = dashboard["supplier_purchase_totals"]
+        purchase_total = dashboard["supplier_purchase_total"]
 
+        self.assertEqual(purchase_total["quantity"], 7)
+        self.assertEqual(purchase_total["purchase_total"], 1650)
         self.assertEqual(purchase_totals[0]["name"], "공급사B")
         self.assertEqual(purchase_totals[0]["purchase_total"], 900)
         self.assertEqual(purchase_totals[1]["name"], "공급사A")

@@ -519,7 +519,8 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         self.assertIn("날짜별", html_source)
         self.assertIn("상품별", html_source)
         self.assertIn("매출처별", html_source)
-        self.assertIn("파일 검증", html_source)
+        self.assertIn("매입처별 총합계 금액", html_source)
+        self.assertNotIn('["파일 검증"', html_source)
 
     def test_tools_sidebar_is_shared_file_library_only(self) -> None:
         for app_file in (

@@ -7760,14 +7760,14 @@ HTML = r"""<!doctype html>
       const comparison = data.comparison || {};
       const month = data.month || {};
       const sellerTotal = data.seller_total || {};
-      const consistency = data.consistency || {};
+      const supplierPurchaseTotal = data.supplier_purchase_total || {};
       salesReportKpiGrid.innerHTML = [
         ["오늘 손익 매출", formatSalesNumber(today.profit_sales_amount), `수량 ${formatSalesNumber(today.quantity)}`, "primary"],
         ["어제 손익 매출", formatSalesNumber(yesterday.profit_sales_amount), `수량 ${formatSalesNumber(yesterday.quantity)}`, ""],
         ["전일 대비", formatSalesPercent(comparison.profit_sales_amount_delta_rate), formatSalesNumber(comparison.profit_sales_amount_delta), Number(comparison.profit_sales_amount_delta || 0) < 0 ? "danger" : ""],
         ["월 누적 매출", formatSalesNumber(month.profit_sales_amount), data.period || "", ""],
         ["매출처별 합계", formatSalesNumber(sellerTotal.profit_sales_amount), `판매사 수량 ${formatSalesNumber(sellerTotal.quantity)}`, ""],
-        ["파일 검증", formatSalesNumber(consistency.difference), consistency.ok ? "차이 없음" : "확인 필요", consistency.ok ? "" : "warning"],
+        ["매입처별 총합계 금액", formatSalesNumber(supplierPurchaseTotal.purchase_total), `공급사 수량 ${formatSalesNumber(supplierPurchaseTotal.quantity)}`, ""],
       ].map(([label, value, note, variant]) => `
         <div class="sales-kpi ${variant}">
           <div class="sales-kpi-label">${escapeHtml(label)}</div>
@@ -14433,6 +14433,15 @@ def sales_report_dashboard_payload(period: str = "", report_date: str = "") -> d
             """,
             (selected_period,),
         ).fetchone()
+        supplier_purchase_total = connection.execute(
+            """
+            SELECT COALESCE(SUM(quantity), 0) AS quantity,
+                   COALESCE(SUM(supply_total), 0) AS purchase_total
+              FROM sales_report_supplier_rows
+             WHERE period = ?
+            """,
+            (selected_period,),
+        ).fetchone()
         daily_rows = connection.execute(
             """
             SELECT report_date, label, quantity, sales_amount, sales_total, profit_sales_amount,
@@ -14523,6 +14532,10 @@ def sales_report_dashboard_payload(period: str = "", report_date: str = "") -> d
         "profit_sales_amount": int(seller_total["profit_sales_amount"] or 0),
         "profit_margin": int(seller_total["profit_margin"] or 0),
     }
+    supplier_purchase_total_public = {
+        "quantity": int(supplier_purchase_total["quantity"] or 0),
+        "purchase_total": int(supplier_purchase_total["purchase_total"] or 0),
+    }
     difference = month_total["profit_sales_amount"] - seller_total_public["profit_sales_amount"]
     return {
         "period": selected_period,
@@ -14535,6 +14548,7 @@ def sales_report_dashboard_payload(period: str = "", report_date: str = "") -> d
         },
         "month": month_total,
         "seller_total": seller_total_public,
+        "supplier_purchase_total": supplier_purchase_total_public,
         "consistency": {
             "difference": difference,
             "ok": difference == 0,
