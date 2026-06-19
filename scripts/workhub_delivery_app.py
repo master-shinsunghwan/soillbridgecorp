@@ -5893,6 +5893,11 @@ HTML = r"""<!doctype html>
     const backupAutoHour = document.querySelector("#backupAutoHour");
     const backupRetentionDays = document.querySelector("#backupRetentionDays");
     const backupDirInput = document.querySelector("#backupDirInput");
+    const backupExternalEnabled = document.querySelector("#backupExternalEnabled");
+    const backupRcloneExecutable = document.querySelector("#backupRcloneExecutable");
+    const backupRcloneRemote = document.querySelector("#backupRcloneRemote");
+    const backupRclonePath = document.querySelector("#backupRclonePath");
+    const backupExternalStatus = document.querySelector("#backupExternalStatus");
     const backupAutoState = document.querySelector("#backupAutoState");
     const backupRetentionState = document.querySelector("#backupRetentionState");
     const backupRestoreInput = document.querySelector("#backupRestoreInput");
@@ -6334,6 +6339,17 @@ HTML = r"""<!doctype html>
       if (backupAutoHour) backupAutoHour.value = String(settings.auto_hour ?? data.auto_backup_hour ?? 3);
       if (backupRetentionDays) backupRetentionDays.value = String(settings.retention_days || data.retention_days || 90);
       if (backupDirInput) backupDirInput.value = settings.backup_dir || data.backup_dir || "";
+      if (backupExternalEnabled) backupExternalEnabled.checked = settings.external_enabled === true;
+      if (backupRcloneExecutable) backupRcloneExecutable.value = settings.rclone_executable || "rclone";
+      if (backupRcloneRemote) backupRcloneRemote.value = settings.rclone_remote || "";
+      if (backupRclonePath) backupRclonePath.value = settings.rclone_path || "";
+      if (backupExternalStatus) {
+        const status = settings.last_external_status || (settings.external_enabled ? "대기" : "사용 안 함");
+        const uploadedAt = settings.last_external_uploaded_at ? ` / ${settings.last_external_uploaded_at}` : "";
+        const target = settings.last_external_target ? ` / ${settings.last_external_target}` : "";
+        const message = settings.last_external_message ? ` / ${settings.last_external_message}` : "";
+        backupExternalStatus.textContent = `Google Drive 업로드 상태: ${status}${uploadedAt}${target}${message}`;
+      }
       const backups = data.backups || [];
       if (!backups.length) {
         backupBody.innerHTML = `<tr><td colspan="4">생성된 백업 파일이 없습니다.</td></tr>`;
@@ -6377,7 +6393,10 @@ HTML = r"""<!doctype html>
         const response = await fetch("/api/backup-create", { method: "POST" });
         const data = await response.json();
         if (!response.ok) throw new Error(data.error || "백업 생성에 실패했습니다.");
-        backupMessage.textContent = data.message || "백업 파일을 생성했습니다.";
+        const external = data.backup?.external_backup;
+        backupMessage.textContent = external && external.status !== "disabled"
+          ? `${data.message || "백업 파일을 생성했습니다."} Google Drive 업로드: ${external.status}`
+          : data.message || "백업 파일을 생성했습니다.";
         await loadBackups();
       } catch (error) {
         backupMessage.textContent = error.message;
@@ -7115,6 +7134,11 @@ HTML = r"""<!doctype html>
         auto_enabled: Boolean(backupAutoEnabled?.checked),
         auto_hour: Number(backupAutoHour?.value || 3),
         retention_days: Number(backupRetentionDays?.value || 90),
+        external_enabled: Boolean(backupExternalEnabled?.checked),
+        external_type: "rclone",
+        rclone_executable: backupRcloneExecutable?.value?.trim() || "rclone",
+        rclone_remote: backupRcloneRemote?.value?.trim() || "",
+        rclone_path: backupRclonePath?.value?.trim() || "",
       };
     }
 
@@ -7156,7 +7180,10 @@ HTML = r"""<!doctype html>
         });
         const data = await response.json();
         if (!response.ok) throw new Error(data.error || "지정 위치 백업 생성에 실패했습니다.");
-        backupMessage.textContent = data.message || "지정 위치에 백업 파일을 생성했습니다.";
+        const external = data.backup?.external_backup;
+        backupMessage.textContent = external && external.status !== "disabled"
+          ? `${data.message || "지정 위치에 백업 파일을 생성했습니다."} Google Drive 업로드: ${external.status}`
+          : data.message || "지정 위치에 백업 파일을 생성했습니다.";
         await loadBackups();
       } catch (error) {
         backupMessage.textContent = error.message;
@@ -12822,6 +12849,22 @@ BACKUP_WORKSPACE_HTML = r"""
               </div>
             </div>
             <div class="backup-card">
+              <div class="admin-section-title">Google Drive 외부 백업 연동(rclone)</div>
+              <div class="admin-form">
+                <label class="admin-check"><input id="backupExternalEnabled" type="checkbox" /> 백업 후 Google Drive 업로드 사용</label>
+                <label>rclone 실행 파일
+                  <input id="backupRcloneExecutable" type="text" placeholder="예) rclone 또는 /usr/bin/rclone" />
+                </label>
+                <label>rclone 원격 이름
+                  <input id="backupRcloneRemote" type="text" placeholder="예) gdrive" />
+                </label>
+                <label>Google Drive 저장 폴더
+                  <input id="backupRclonePath" type="text" placeholder="예) Soillbridge/Workhub_Backup" />
+                </label>
+              </div>
+              <div class="backup-message" id="backupExternalStatus">Google Drive 업로드 상태: 사용 안 함</div>
+            </div>
+            <div class="backup-card">
               <p class="backup-note">
                 백업에는 업무 DB, 메일 설정, 업체 주소록, 암호화 키가 포함됩니다. VPS 운영 시에는 서버 내부 백업 폴더를 기본으로 두고, 필요하면 rclone/Google Drive 동기화 대상 폴더를 지정하면 됩니다.
                 복원 전에는 현재 데이터를 자동으로 한 번 더 백업합니다.
@@ -14698,6 +14741,16 @@ DEFAULT_BACKUP_SETTINGS = {
     "auto_enabled": True,
     "auto_hour": AUTO_BACKUP_HOUR,
     "retention_days": BACKUP_RETENTION_DAYS,
+    "external_enabled": False,
+    "external_type": "rclone",
+    "rclone_remote": "",
+    "rclone_path": "",
+    "rclone_executable": "rclone",
+    "last_external_status": "",
+    "last_external_message": "",
+    "last_external_uploaded_at": "",
+    "last_external_backup_name": "",
+    "last_external_target": "",
 }
 
 
@@ -14732,6 +14785,16 @@ def normalize_backup_settings(payload: dict | None = None) -> dict[str, object]:
         "auto_enabled": bool(source.get("auto_enabled", DEFAULT_BACKUP_SETTINGS["auto_enabled"])),
         "auto_hour": auto_hour,
         "retention_days": retention_days,
+        "external_enabled": bool(source.get("external_enabled", DEFAULT_BACKUP_SETTINGS["external_enabled"])),
+        "external_type": str(source.get("external_type") or DEFAULT_BACKUP_SETTINGS["external_type"]).strip() or "rclone",
+        "rclone_remote": str(source.get("rclone_remote") or "").strip(),
+        "rclone_path": str(source.get("rclone_path") or "").strip().strip("/"),
+        "rclone_executable": str(source.get("rclone_executable") or DEFAULT_BACKUP_SETTINGS["rclone_executable"]).strip() or "rclone",
+        "last_external_status": str(source.get("last_external_status") or "").strip(),
+        "last_external_message": str(source.get("last_external_message") or "").strip(),
+        "last_external_uploaded_at": str(source.get("last_external_uploaded_at") or "").strip(),
+        "last_external_backup_name": str(source.get("last_external_backup_name") or "").strip(),
+        "last_external_target": str(source.get("last_external_target") or "").strip(),
     }
 
 
@@ -14757,12 +14820,109 @@ def save_backup_settings(payload: dict) -> dict[str, object]:
     return settings
 
 
+def update_backup_external_status(result: dict[str, str]) -> dict[str, object]:
+    settings = load_backup_settings()
+    updated = {
+        **settings,
+        "last_external_status": result.get("status", ""),
+        "last_external_message": result.get("message", ""),
+        "last_external_uploaded_at": result.get("uploaded_at", ""),
+        "last_external_backup_name": result.get("backup_name", ""),
+        "last_external_target": result.get("target", ""),
+    }
+    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+    BACKUP_SETTINGS_PATH.write_text(json.dumps(normalize_backup_settings(updated), ensure_ascii=False, indent=2), encoding="utf-8")
+    return normalize_backup_settings(updated)
+
+
 def backup_dir_path(settings: dict[str, object] | None = None, backup_dir: str | Path | None = None) -> Path:
     if backup_dir:
         return Path(clean_backup_dir(str(backup_dir))).resolve()
     current = settings or load_backup_settings()
     configured = clean_backup_dir(current.get("backup_dir", ""))
     return Path(configured).resolve() if configured else backup_default_dir().resolve()
+
+
+def rclone_target(settings: dict[str, object]) -> str:
+    remote = str(settings.get("rclone_remote") or "").strip().rstrip(":")
+    target_path = str(settings.get("rclone_path") or "").strip().strip("/")
+    if not remote:
+        raise ValueError("rclone 원격 이름을 입력해주세요.")
+    return f"{remote}:{target_path}" if target_path else f"{remote}:"
+
+
+def upload_backup_to_external_storage(backup_path: Path, settings: dict[str, object] | None = None, runner=None) -> dict[str, str]:
+    current = settings or load_backup_settings()
+    if not current.get("external_enabled"):
+        return {
+            "status": "disabled",
+            "message": "외부 백업 업로드를 사용하지 않습니다.",
+            "backup_name": backup_path.name,
+            "target": "",
+            "uploaded_at": "",
+        }
+    if str(current.get("external_type") or "rclone") != "rclone":
+        return {
+            "status": "fail",
+            "message": "지원하지 않는 외부 백업 방식입니다.",
+            "backup_name": backup_path.name,
+            "target": "",
+            "uploaded_at": now_text(),
+        }
+    try:
+        target = rclone_target(current)
+    except ValueError as exc:
+        return {
+            "status": "fail",
+            "message": str(exc),
+            "backup_name": backup_path.name,
+            "target": "",
+            "uploaded_at": now_text(),
+        }
+    command = [str(current.get("rclone_executable") or "rclone"), "copy", str(backup_path), target]
+    run = runner or subprocess.run
+    try:
+        completed = run(
+            command,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=300,
+            check=False,
+        )
+    except FileNotFoundError:
+        return {
+            "status": "fail",
+            "message": "rclone 실행 파일을 찾지 못했습니다. VPS에 rclone 설치 및 PATH 설정을 확인해주세요.",
+            "backup_name": backup_path.name,
+            "target": target,
+            "uploaded_at": now_text(),
+        }
+    except subprocess.TimeoutExpired:
+        return {
+            "status": "fail",
+            "message": "rclone 업로드 시간이 초과되었습니다.",
+            "backup_name": backup_path.name,
+            "target": target,
+            "uploaded_at": now_text(),
+        }
+    output = (getattr(completed, "stderr", "") or getattr(completed, "stdout", "") or "").strip()
+    if int(getattr(completed, "returncode", 1)) != 0:
+        return {
+            "status": "fail",
+            "message": output or "rclone 업로드에 실패했습니다.",
+            "backup_name": backup_path.name,
+            "target": target,
+            "uploaded_at": now_text(),
+        }
+    return {
+        "status": "success",
+        "message": output or "Google Drive 업로드가 완료되었습니다.",
+        "backup_name": backup_path.name,
+        "target": target,
+        "uploaded_at": now_text(),
+    }
 
 
 def valid_backup_name(name: str) -> bool:
@@ -14861,7 +15021,12 @@ def create_workhub_backup(reason: str = "manual", backup_dir: str | Path | None 
                 ),
             )
     cleanup_backup_retention(backup_dir=root, retention_days=int(settings["retention_days"]))
-    return backup_file_info(output_path)
+    info = backup_file_info(output_path)
+    external_result = upload_backup_to_external_storage(output_path, settings)
+    info["external_backup"] = external_result
+    if external_result["status"] != "disabled":
+        update_backup_external_status(external_result)
+    return info
 
 
 def validate_restored_db(path: Path) -> None:

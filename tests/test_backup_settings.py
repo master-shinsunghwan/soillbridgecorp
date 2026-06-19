@@ -5,6 +5,7 @@ import os
 import sys
 import tempfile
 from pathlib import Path
+from types import SimpleNamespace
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -54,11 +55,68 @@ def test_create_backup_can_use_one_time_target_dir_without_changing_settings(tmp
     assert app.load_backup_settings()["backup_dir"] == str(configured_dir)
 
 
+def test_rclone_external_backup_upload_builds_google_drive_copy_command(tmp_path: Path) -> None:
+    app = load_app(tmp_path)
+    backup_path = tmp_path / "workhub_backup_20260619_120000.zip"
+    backup_path.parent.mkdir(parents=True, exist_ok=True)
+    backup_path.write_bytes(b"backup")
+    calls = []
+
+    def fake_runner(command, **kwargs):
+        calls.append((command, kwargs))
+        return SimpleNamespace(returncode=0, stdout="copied", stderr="")
+
+    settings = app.save_backup_settings(
+        {
+            "external_enabled": True,
+            "external_type": "rclone",
+            "rclone_remote": "gdrive",
+            "rclone_path": "Soillbridge/Workhub_Backup",
+            "rclone_executable": "rclone",
+        }
+    )
+
+    result = app.upload_backup_to_external_storage(backup_path, settings, runner=fake_runner)
+
+    assert result["status"] == "success"
+    assert result["target"] == "gdrive:Soillbridge/Workhub_Backup"
+    assert calls[0][0] == ["rclone", "copy", str(backup_path), "gdrive:Soillbridge/Workhub_Backup"]
+
+
+def test_external_backup_upload_failure_is_reported_without_deleting_local_backup(tmp_path: Path) -> None:
+    app = load_app(tmp_path)
+    backup_path = tmp_path / "workhub_backup_20260619_120000.zip"
+    backup_path.parent.mkdir(parents=True, exist_ok=True)
+    backup_path.write_bytes(b"backup")
+
+    def fake_runner(command, **kwargs):
+        return SimpleNamespace(returncode=1, stdout="", stderr="remote not found")
+
+    settings = app.save_backup_settings(
+        {
+            "external_enabled": True,
+            "external_type": "rclone",
+            "rclone_remote": "gdrive",
+            "rclone_path": "Soillbridge/Workhub_Backup",
+        }
+    )
+
+    result = app.upload_backup_to_external_storage(backup_path, settings, runner=fake_runner)
+
+    assert result["status"] == "fail"
+    assert "remote not found" in result["message"]
+    assert backup_path.exists()
+
+
 def main() -> None:
     with tempfile.TemporaryDirectory() as directory:
         test_backup_settings_control_auto_and_default_backup_dir(Path(directory) / "settings")
     with tempfile.TemporaryDirectory() as directory:
         test_create_backup_can_use_one_time_target_dir_without_changing_settings(Path(directory) / "selected")
+    with tempfile.TemporaryDirectory() as directory:
+        test_rclone_external_backup_upload_builds_google_drive_copy_command(Path(directory) / "rclone")
+    with tempfile.TemporaryDirectory() as directory:
+        test_external_backup_upload_failure_is_reported_without_deleting_local_backup(Path(directory) / "rclone-fail")
 
 
 if __name__ == "__main__":
