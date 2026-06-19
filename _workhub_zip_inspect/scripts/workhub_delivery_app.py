@@ -106,9 +106,6 @@ LOGIN_FAILURE_WINDOW_SECONDS = 15 * 60
 LOGIN_LOCK_SECONDS = 15 * 60
 PASSWORD_MIN_LENGTH = 10
 PASSWORD_MAX_LENGTH = 128
-MAX_FORM_BODY_BYTES = 128 * 1024
-MAX_JSON_BODY_BYTES = 1024 * 1024
-MAX_MULTIPART_BODY_BYTES = 50 * 1024 * 1024
 BACKUP_RETENTION_DAYS = 90
 AUTO_BACKUP_HOUR = 3
 _BACKUP_SCHEDULER_STARTED = False
@@ -131,6 +128,10 @@ PERMISSION_DEFINITIONS = (
     ("system_update", "시스템 업데이트", "GitHub 업데이트 확인/적용"),
     ("leave_view", "연차 조회", "연차 내역 조회"),
     ("leave_approve", "연차 승인", "연차 신청 승인/반려"),
+    ("leave_approve_team", "\uC5F0\uCC28 \uD300\uC7A5 \uC2B9\uC778", "\uC5F0\uCC28 \uC2E0\uCCAD \uD300\uC7A5 \uD655\uC778"),
+    ("leave_approve_director", "\uC5F0\uCC28 \uC2E4\uC7A5 \uC2B9\uC778", "\uC5F0\uCC28 \uC2E0\uCCAD \uC2E4\uC7A5 \uD655\uC778"),
+    ("leave_approve_ceo", "\uC5F0\uCC28 \uB300\uD45C \uC2B9\uC778", "\uC5F0\uCC28 \uC2E0\uCCAD \uB300\uD45C \uD655\uC778"),
+    ("leave_director_override", "\uC5F0\uCC28 \uC2E4\uC7A5 \uC804\uACB0", "\uD300\uC7A5/\uB300\uD45C \uC9C0\uC5F0 \uC2DC \uC2E4\uC7A5 \uC804\uACB0 \uCC98\uB9AC"),
     ("leave_manage", "연차 관리", "연차 등록/수정/삭제"),
     ("crm_view", "CRM 조회", "CRM 거래처/업무 조회"),
     ("crm_manage", "CRM 관리", "CRM 거래처/업무 등록 및 수정"),
@@ -150,6 +151,9 @@ DEFAULT_ROLE_PERMISSIONS = {
         "import_shipment_manage",
         "leave_view",
         "leave_approve",
+        "leave_approve_team",
+        "leave_approve_director",
+        "leave_director_override",
         "leave_manage",
         "crm_view",
         "crm_manage",
@@ -579,22 +583,15 @@ HTML = r"""<!doctype html>
       gap: 10px;
     }
     .icon-button {
-      min-width: 38px;
+      width: 38px;
       height: 38px;
       border: 1px solid var(--line);
       border-radius: 8px;
       background: white;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      gap: 6px;
+      display: grid;
+      place-items: center;
       color: #344054;
-      font-family: inherit;
-      font-size: 12px;
-      font-weight: 900;
-      padding: 0 10px;
       cursor: default;
-      white-space: nowrap;
     }
     .icon-button svg,
     .top-search svg { width: 17px; height: 17px; }
@@ -1178,6 +1175,16 @@ HTML = r"""<!doctype html>
     }
     .leave-action.approve { border-color: #0b8f55; color: #067647; }
     .leave-action.reject { border-color: #f4a7a7; color: #b42318; }
+    .leave-comment-input {
+      width: 100%;
+      min-width: 160px;
+      margin-bottom: 6px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 8px 10px;
+      font-size: 12px;
+      font-weight: 750;
+    }
     .leave-message { min-height: 20px; color: var(--muted); font-size: 13px; font-weight: 750; }
     .backup-panel { display: grid; gap: 14px; }
     .backup-summary-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
@@ -2444,257 +2451,6 @@ HTML = r"""<!doctype html>
       font-size: 13px;
       font-weight: 950;
     }
-    .company-overview {
-      display: grid;
-      grid-template-columns: minmax(0, 1.1fr) minmax(300px, .9fr);
-      gap: 12px;
-      align-items: stretch;
-    }
-    .company-overview-list,
-    .company-quick-actions {
-      display: grid;
-      gap: 8px;
-    }
-    .company-overview-list {
-      grid-template-columns: repeat(4, minmax(0, 1fr));
-    }
-    .company-overview-item {
-      min-height: 86px;
-      padding: 12px;
-      border: 1px solid #e5e7eb;
-      border-radius: 8px;
-      background: #f8fafc;
-      display: flex;
-      flex-direction: column;
-      justify-content: space-between;
-      gap: 8px;
-    }
-    .company-overview-item span {
-      color: #667085;
-      font-size: 11px;
-      font-weight: 900;
-      line-height: 1.35;
-    }
-    .company-overview-item strong {
-      color: #111827;
-      font-size: 18px;
-      font-weight: 950;
-      line-height: 1.2;
-    }
-    .company-overview-item small {
-      color: #475467;
-      font-size: 11px;
-      font-weight: 800;
-      line-height: 1.35;
-    }
-    .company-quick-actions {
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
-    .company-quick-button {
-      min-height: 64px;
-      padding: 12px;
-      border: 1px solid #d0d5dd;
-      border-radius: 8px;
-      background: #fff;
-      color: #111827;
-      font-family: inherit;
-      font-size: 12px;
-      font-weight: 950;
-      text-align: left;
-      cursor: pointer;
-      display: grid;
-      grid-template-columns: 26px minmax(0, 1fr);
-      gap: 10px;
-      align-items: center;
-    }
-    .company-quick-button i {
-      width: 26px;
-      height: 26px;
-      border-radius: 8px;
-      background: #eef4ff;
-      color: var(--blue);
-      display: grid;
-      place-items: center;
-    }
-    .company-quick-button small {
-      display: block;
-      margin-top: 3px;
-      color: #667085;
-      font-size: 11px;
-      font-weight: 800;
-      line-height: 1.3;
-    }
-    .company-mini-calendar {
-      display: grid;
-      grid-template-columns: minmax(280px, 360px) minmax(0, 1fr);
-      gap: 14px;
-      align-items: start;
-    }
-    .mini-calendar-head {
-      display: grid;
-      grid-template-columns: repeat(7, minmax(0, 1fr));
-      gap: 4px;
-      margin-bottom: 6px;
-      color: #667085;
-      font-size: 10px;
-      font-weight: 950;
-      text-align: center;
-    }
-    .mini-calendar-grid {
-      display: grid;
-      grid-template-columns: repeat(7, minmax(0, 1fr));
-      gap: 4px;
-    }
-    .mini-calendar-day {
-      min-height: 42px;
-      padding: 6px;
-      border: 1px solid #e5e7eb;
-      border-radius: 8px;
-      background: #fff;
-      color: #344054;
-      font-family: inherit;
-      font-size: 11px;
-      font-weight: 900;
-      cursor: pointer;
-      display: flex;
-      flex-direction: column;
-      align-items: flex-start;
-      justify-content: space-between;
-      gap: 4px;
-    }
-    .mini-calendar-day.other-month {
-      background: #f8fafc;
-      color: #98a2b3;
-    }
-    .mini-calendar-day.today {
-      border-color: var(--blue);
-      box-shadow: 0 0 0 2px rgba(21, 91, 200, .12);
-    }
-    .mini-calendar-day.selected {
-      background: #eef4ff;
-      border-color: var(--blue);
-      color: var(--blue);
-    }
-    .mini-calendar-day:focus-visible {
-      outline: 3px solid rgba(21, 91, 200, .25);
-      outline-offset: 2px;
-    }
-    .mini-calendar-dots {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 3px;
-      min-height: 6px;
-    }
-    .mini-calendar-dot {
-      width: 5px;
-      height: 5px;
-      border-radius: 999px;
-      background: #0b8f55;
-    }
-    .mini-calendar-dot.project { background: #155bc8; }
-    .mini-calendar-dot.leave { background: #c2410c; }
-    .mini-calendar-dot.pending { background: #9333ea; }
-    .mini-calendar-side {
-      min-height: 100%;
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-    }
-    .mini-calendar-date {
-      color: #111827;
-      font-size: 15px;
-      font-weight: 950;
-    }
-    .mini-calendar-list {
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-      max-height: 234px;
-      overflow: auto;
-    }
-    .mini-calendar-item {
-      padding: 10px;
-      border: 1px solid #e5e7eb;
-      border-radius: 8px;
-      background: #f8fafc;
-      cursor: pointer;
-    }
-    .mini-calendar-item:focus-visible {
-      outline: 3px solid rgba(21, 91, 200, .25);
-      outline-offset: 2px;
-    }
-    .mini-calendar-title {
-      color: #111827;
-      font-size: 12px;
-      font-weight: 950;
-      line-height: 1.35;
-    }
-    .mini-calendar-meta {
-      margin-top: 3px;
-      color: #667085;
-      font-size: 11px;
-      font-weight: 800;
-    }
-    .company-default-widgets {
-      display: grid;
-      grid-template-columns: repeat(4, minmax(0, 1fr));
-      gap: 10px;
-    }
-    .company-default-widget {
-      min-height: 104px;
-      padding: 12px;
-      border: 1px solid #e5e7eb;
-      border-radius: 8px;
-      background: #fff;
-      display: grid;
-      grid-template-rows: auto 1fr auto;
-      gap: 8px;
-    }
-    .company-default-widget span {
-      color: #667085;
-      font-size: 11px;
-      font-weight: 900;
-      line-height: 1.35;
-    }
-    .company-default-widget strong {
-      color: #111827;
-      font-size: 24px;
-      font-weight: 950;
-      line-height: 1;
-    }
-    .company-default-widget small {
-      color: #475467;
-      font-size: 11px;
-      font-weight: 800;
-      line-height: 1.35;
-    }
-    .company-widget-actions {
-      display: grid;
-      grid-template-columns: repeat(4, minmax(0, 1fr));
-      gap: 8px;
-      margin-top: 12px;
-    }
-    .company-widget-button {
-      min-height: 40px;
-      padding: 0 10px;
-      border: 1px solid #d0d5dd;
-      border-radius: 8px;
-      background: #f8fafc;
-      color: #111827;
-      font-family: inherit;
-      font-size: 12px;
-      font-weight: 950;
-      cursor: pointer;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      gap: 6px;
-      white-space: nowrap;
-    }
-    .company-widget-button i {
-      width: 15px;
-      height: 15px;
-    }
     .company-task-list {
       display: flex;
       flex-direction: column;
@@ -3483,23 +3239,13 @@ HTML = r"""<!doctype html>
     }
     .crm-task-toolbar {
       display: grid;
-      grid-template-columns: minmax(150px, .9fr) minmax(180px, 1.2fr) auto auto auto;
+      grid-template-columns: minmax(150px, .9fr) minmax(140px, .9fr) auto auto minmax(180px, 1.2fr) repeat(5, minmax(128px, .8fr)) auto auto auto;
       align-items: center;
     }
     .crm-task-toolbar .crm-input,
     .crm-task-toolbar .crm-select {
       width: 100%;
       min-width: 0;
-    }
-    .crm-advanced-filters {
-      grid-column: 1 / -1;
-      display: grid;
-      grid-template-columns: repeat(6, minmax(126px, 1fr));
-      gap: 8px;
-      padding-top: 2px;
-    }
-    .crm-advanced-filters[hidden] {
-      display: none;
     }
     .crm-filter-check {
       min-height: 32px;
@@ -3638,11 +3384,6 @@ HTML = r"""<!doctype html>
       font-weight: 900;
       padding: 0 8px;
       cursor: pointer;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      gap: 4px;
-      white-space: nowrap;
     }
     .crm-mini-button.primary {
       border-color: #155bc8;
@@ -3949,12 +3690,9 @@ HTML = r"""<!doctype html>
       .crm-task-layout { grid-template-columns: 1fr; }
       .crm-task-detail { min-height: 320px; }
       .company-grid { grid-template-columns: 1fr; }
-      .company-overview { grid-template-columns: 1fr; }
-      .company-mini-calendar { grid-template-columns: 1fr; }
       .company-calendar-shell { grid-template-columns: 1fr; }
       .company-staff-layout { grid-template-columns: 1fr; }
       .crm-task-toolbar { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-      .crm-advanced-filters { grid-template-columns: repeat(3, minmax(0, 1fr)); }
       .crm-project-row { grid-template-columns: 1fr; }
       .crm-project-metrics { justify-content: flex-start; }
     }
@@ -3970,18 +3708,13 @@ HTML = r"""<!doctype html>
       .crm-staff-person,
       .crm-staff-latest { grid-column: 1 / -1; }
       .company-rule-grid,
-      .company-overview-list,
-      .company-default-widgets,
-      .company-widget-actions,
       .company-mini-grid,
       .internal-chat-side { grid-template-columns: 1fr; }
-      .company-quick-actions { grid-template-columns: 1fr; }
       .company-org-tree { min-width: 560px; }
       .company-calendar-grid { min-height: 520px; }
       .calendar-day { min-height: 92px; padding: 6px; }
       .internal-chat-form { grid-template-columns: 1fr; }
       .crm-task-toolbar { grid-template-columns: 1fr; }
-      .crm-advanced-filters { grid-template-columns: 1fr; }
     }
     .crm-help {
       margin: 0;
@@ -4393,16 +4126,17 @@ HTML = r"""<!doctype html>
         <i data-lucide="search"></i>
         <input id="sidebarSearchInput" name="workhub-menu-search" type="search" placeholder="메뉴 검색" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" />
       </label>
-      <div class="nav-section">오늘 업무</div>
+      <div class="nav-section">MAIN</div>
       <div class="nav-group open" id="companyNavGroup">
         <button class="nav-item active" id="companyNavToggle" type="button" data-view="dashboard" data-company-tab="notice">
           <span class="nav-label"><i data-lucide="home"></i> <span>회사 포털</span></span>
           <i class="nav-chevron" data-lucide="chevron-right"></i>
         </button>
         <div class="nav-submenu">
-          <button class="nav-subitem active" type="button" data-view="dashboard" data-company-tab="notice">업무 홈</button>
+          <button class="nav-subitem active" type="button" data-view="dashboard" data-company-tab="notice">공지사항</button>
           <button class="nav-subitem" type="button" data-view="dashboard" data-company-tab="calendar">캘린더</button>
-          <button class="nav-subitem" type="button" data-view="dashboard" data-company-tab="staff">직원 현황</button>
+          <button class="nav-subitem" type="button" data-view="dashboard" data-company-tab="rules">사규/가이드</button>
+          <button class="nav-subitem" type="button" data-view="dashboard" data-company-tab="staff">직원 대시보드</button>
           <button class="nav-subitem" type="button" data-view="dashboard" data-company-tab="chat">사내 메신저</button>
         </div>
       </div>
@@ -4428,10 +4162,11 @@ HTML = r"""<!doctype html>
           <i class="nav-chevron" data-lucide="chevron-right"></i>
         </button>
         <div class="nav-submenu">
-          <button class="nav-subitem" type="button" data-open="crm" data-crm-nav-tab="dashboard">업무 현황</button>
+          <button class="nav-subitem" type="button" data-open="crm" data-crm-nav-tab="dashboard">대시보드</button>
           <button class="nav-subitem" type="button" data-open="crm" data-crm-nav-tab="mine">내 업무</button>
           <button class="nav-subitem" type="button" data-open="crm" data-crm-nav-tab="tasks">업무보드</button>
-          <button class="nav-subitem" type="button" data-open="crm" data-crm-nav-tab="accounts">직원 현황</button>
+          <button class="nav-subitem" type="button" data-open="crm" data-crm-nav-tab="accounts">직원</button>
+          <button class="nav-subitem" type="button" data-open="crm" data-crm-nav-tab="messages">메신저 연동</button>
         </div>
       </div>
       <div class="nav-group" id="distributionMailNavGroup">
@@ -4453,13 +4188,13 @@ HTML = r"""<!doctype html>
     <main>
       <header class="topbar">
         <div class="title-wrap">
-          <div class="title">업무 홈 <i data-lucide="chevron-down"></i></div>
-          <p class="subtitle">오늘 확인할 공지, 일정, 업무를 먼저 보여줍니다.</p>
+          <div class="title">회사 포털 <i data-lucide="chevron-down"></i></div>
+          <p class="subtitle">공지사항, 사규, 직원 현황을 한 곳에서 확인합니다.</p>
         </div>
-        <div class="top-search"><i data-lucide="file-text"></i> 왼쪽 검색창에서 메뉴를 빠르게 찾을 수 있습니다</div>
+        <div class="top-search"><i data-lucide="file-text"></i> 파일명, 수령인, 송장번호, CS내용 검색</div>
         <div class="top-tools">
-          <button class="icon-button" type="button"><i data-lucide="bell"></i><span>알림</span></button>
-          <button class="icon-button" type="button"><i data-lucide="refresh-cw"></i><span>새로고침</span></button>
+          <button class="icon-button" type="button"><i data-lucide="bell"></i></button>
+          <button class="icon-button" type="button"><i data-lucide="refresh-cw"></i></button>
           <div class="user-chip"><span class="avatar"></span><span>__USER_DISPLAY__</span></div>
           <a class="logout-button" href="/logout">로그아웃</a>
         </div>
@@ -4467,37 +4202,14 @@ HTML = r"""<!doctype html>
 
       <section class="content company-portal" id="dashboardContent">
         <div class="company-tabs">
-          <button class="company-tab active" type="button" data-view="dashboard" data-company-tab="notice">업무 홈</button>
-          <button class="company-tab" type="button" data-view="dashboard" data-company-tab="calendar">캘린더</button>
-          <button class="company-tab" type="button" data-view="dashboard" data-company-tab="staff">직원 현황</button>
-          <button class="company-tab" type="button" data-view="dashboard" data-company-tab="chat">사내 메신저</button>
+          <button class="company-tab active" type="button" data-company-tab="notice">공지사항</button>
+          <button class="company-tab" type="button" data-company-tab="calendar">캘린더</button>
+          <button class="company-tab" type="button" data-company-tab="rules">사규/가이드</button>
+          <button class="company-tab" type="button" data-company-tab="staff">직원 대시보드</button>
+          <button class="company-tab" type="button" data-company-tab="chat">사내 메신저</button>
         </div>
 
         <section class="company-panel active" data-company-panel="notice">
-          <div class="company-overview">
-            <article class="company-card">
-              <div class="company-card-head"><span>오늘 한눈에 보기</span><button class="crm-mini-button" type="button" data-view="dashboard" data-company-tab="calendar">캘린더</button></div>
-              <div class="company-card-body">
-                <div class="company-overview-list">
-                  <div class="company-overview-item"><span>오늘 확인</span><strong>공지</strong><small>중요 전달사항 먼저 확인</small></div>
-                  <div class="company-overview-item"><span>업무 운영</span><strong>보드</strong><small>담당자/마감 기준으로 처리</small></div>
-                  <div class="company-overview-item"><span>팀 상태</span><strong>조직도</strong><small>직원별 진행 업무 확인</small></div>
-                  <div class="company-overview-item"><span>커뮤니케이션</span><strong>메신저</strong><small>/업무 지시 바로 등록</small></div>
-                </div>
-              </div>
-            </article>
-            <article class="company-card">
-              <div class="company-card-head"><span>빠른 실행</span></div>
-              <div class="company-card-body">
-                <div class="company-quick-actions" aria-label="회사 포털 빠른 실행">
-                  <button class="company-quick-button" type="button" data-open="crm" data-crm-nav-tab="tasks"><i data-lucide="kanban-square"></i><span>업무보드<small>상태와 마감 확인</small></span></button>
-                  <button class="company-quick-button" type="button" data-open="crm" data-crm-nav-tab="mine"><i data-lucide="check-circle-2"></i><span>내 업무<small>내가 처리할 일</small></span></button>
-                  <button class="company-quick-button" type="button" data-view="dashboard" data-company-tab="staff"><i data-lucide="network"></i><span>직원 현황<small>조직도와 담당 업무</small></span></button>
-                  <button class="company-quick-button" type="button" data-view="dashboard" data-company-tab="chat"><i data-lucide="message-square-text"></i><span>사내 메신저<small>전체방과 직원 DM</small></span></button>
-                </div>
-              </div>
-            </article>
-          </div>
           <div class="company-grid">
             <section class="notice-board company-notice" id="sidebarNoticePreview" role="button" tabindex="0" aria-label="공지사항 크게 보기">
               <div class="notice-board-kicker">금일 공지사항</div>
@@ -4507,59 +4219,17 @@ HTML = r"""<!doctype html>
             <article class="company-card">
               <div class="company-card-head">
                 <span>공지 관리</span>
-                <button class="workspace-button" id="noticeInputOpen" type="button">공지 입력</button>
+                <button class="workspace-button" id="noticeInputOpen" type="button">공지사항 입력</button>
               </div>
               <div class="company-card-body">
-                <p>출고 마감, 업체 회신 필요 건, 내부 전달사항을 공유합니다.</p>
+                <p>오늘 공유해야 할 출고 마감, 업체 회신 필요 건, 내부 전달사항을 이곳에서 관리합니다.</p>
                 <div class="company-mini-grid">
-                  <div><span>저장</span><strong>workhub.db</strong></div>
-                  <div><span>권한</span><strong>공지 관리</strong></div>
+                  <div><span>저장 방식</span><strong>브라우저 localStorage</strong></div>
+                  <div><span>권한</span><strong>공지사항 관리</strong></div>
                 </div>
               </div>
             </article>
           </div>
-          <article class="company-card">
-            <div class="company-card-head">
-              <span id="companyMiniCalendarTitle">미니 캘린더</span>
-              <button class="crm-mini-button" type="button" data-view="dashboard" data-company-tab="calendar">전체 보기</button>
-            </div>
-            <div class="company-card-body">
-              <div class="company-mini-calendar">
-                <div>
-                  <div class="mini-calendar-head" aria-hidden="true"><span>월</span><span>화</span><span>수</span><span>목</span><span>금</span><span>토</span><span>일</span></div>
-                  <div class="mini-calendar-grid" id="companyMiniCalendarGrid" role="grid" aria-label="회사 포털 미니 캘린더">
-                    <div class="calendar-empty">미니 캘린더를 불러오는 중입니다.</div>
-                  </div>
-                </div>
-                <aside class="mini-calendar-side">
-                  <div class="mini-calendar-date" id="companyMiniCalendarDate">오늘</div>
-                  <div class="mini-calendar-list" id="companyMiniCalendarList">
-                    <div class="calendar-empty">날짜를 선택하면 일정이 표시됩니다.</div>
-                  </div>
-                </aside>
-              </div>
-            </div>
-          </article>
-          <article class="company-card">
-            <div class="company-card-head">
-              <span>운영 요약</span>
-              <button class="crm-mini-button" type="button" data-open="crm" data-crm-nav-tab="dashboard">업무 현황</button>
-            </div>
-            <div class="company-card-body">
-              <div class="company-default-widgets" aria-label="회사 포털 기본 위젯">
-                <div class="company-default-widget"><span>오늘 일정</span><strong id="companyWidgetToday">0건</strong><small id="companyWidgetTodayHint">오늘 확인할 일정</small></div>
-                <div class="company-default-widget"><span>업무 마감</span><strong id="companyWidgetTasks">0건</strong><small>이번 달 업무 마감</small></div>
-                <div class="company-default-widget"><span>연차/대기</span><strong id="companyWidgetLeave">0건</strong><small>승인 연차와 대기 건</small></div>
-                <div class="company-default-widget"><span>주의 필요</span><strong id="companyWidgetRisk">0건</strong><small>지연, 높음, 승인대기</small></div>
-              </div>
-              <div class="company-widget-actions" aria-label="기본 위젯 빠른 이동">
-                <button class="company-widget-button" type="button" data-open="crm" data-crm-nav-tab="tasks"><i data-lucide="list-checks"></i>업무보드</button>
-                <button class="company-widget-button" type="button" data-view="dashboard" data-company-tab="calendar"><i data-lucide="calendar-days"></i>캘린더</button>
-                <button class="company-widget-button" type="button" data-open="leave"><i data-lucide="umbrella"></i>연차</button>
-                <button class="company-widget-button" type="button" data-view="dashboard" data-company-tab="chat"><i data-lucide="message-circle"></i>사내 메신저</button>
-              </div>
-            </div>
-          </article>
         </section>
 
         <section class="import-progress-card dashboard-import-card open" id="dashboardImportScheduleCard">
@@ -4598,9 +4268,9 @@ HTML = r"""<!doctype html>
               <div class="company-calendar-toolbar">
                 <div class="company-calendar-title" id="companyCalendarTitle">캘린더</div>
                 <div class="company-calendar-actions">
-                  <button class="crm-mini-button" type="button" id="companyCalendarPrev" aria-label="이전 달"><i data-lucide="chevron-left"></i><span>이전</span></button>
+                  <button class="crm-mini-button" type="button" id="companyCalendarPrev" aria-label="이전 달"><i data-lucide="chevron-left"></i></button>
                   <button class="crm-mini-button" type="button" id="companyCalendarToday">오늘</button>
-                  <button class="crm-mini-button" type="button" id="companyCalendarNext" aria-label="다음 달"><span>다음</span><i data-lucide="chevron-right"></i></button>
+                  <button class="crm-mini-button" type="button" id="companyCalendarNext" aria-label="다음 달"><i data-lucide="chevron-right"></i></button>
                   <button class="crm-mini-button" type="button" id="companyCalendarRefresh">새로고침</button>
                 </div>
               </div>
@@ -4726,7 +4396,7 @@ HTML = r"""<!doctype html>
                 </div>
                 <div class="company-quick-links">
                   <button class="workspace-button" type="button" data-open="crm" data-crm-nav-tab="tasks">업무보드</button>
-                  <button class="workspace-button" type="button" data-view="dashboard" data-company-tab="staff">직원 현황</button>
+                  <button class="workspace-button" type="button" data-view="dashboard" data-company-tab="staff">조직도</button>
                 </div>
               </div>
             </article>
@@ -4950,20 +4620,20 @@ HTML = r"""<!doctype html>
       </section>
       <section class="workspace-view" id="crmWorkspace">
         <div class="workspace-head">
-          <div class="workspace-title">업무 현황</div>
+          <div class="workspace-title">업무관리</div>
           <div class="workspace-actions">
             <button class="workspace-button" type="button" id="crmRefresh">새로고침</button>
-            <button class="workspace-button" type="button" id="crmAccountQuick">직원 현황</button>
+            <button class="workspace-button" type="button" id="crmAccountQuick">직원 보기</button>
             <button class="workspace-button" type="button" id="crmTaskQuick">업무 등록</button>
             <button class="workspace-button" type="button" data-open-window="crm">새창으로 열기</button>
           </div>
         </div>
         <div class="crm-tabs" role="tablist" aria-label="CRM 메뉴">
-          <button class="crm-tab active" type="button" role="tab" id="crmTabDashboard" aria-selected="true" aria-controls="crmPanelDashboard" tabindex="0" data-crm-tab="dashboard">업무 현황</button>
+          <button class="crm-tab active" type="button" role="tab" id="crmTabDashboard" aria-selected="true" aria-controls="crmPanelDashboard" tabindex="0" data-crm-tab="dashboard">대시보드</button>
           <button class="crm-tab" type="button" role="tab" id="crmTabMine" aria-selected="false" aria-controls="crmPanelMine" tabindex="-1" data-crm-tab="mine">내 업무</button>
           <button class="crm-tab" type="button" role="tab" id="crmTabTasks" aria-selected="false" aria-controls="crmPanelTasks" tabindex="-1" data-crm-tab="tasks">업무보드</button>
-          <button class="crm-tab" type="button" role="tab" id="crmTabAccounts" aria-selected="false" aria-controls="crmPanelAccounts" tabindex="-1" data-crm-tab="accounts">직원 현황</button>
-          <button class="crm-tab" type="button" role="tab" id="crmMessagesTab" aria-selected="false" aria-controls="crmPanelMessages" tabindex="-1" data-crm-tab="messages">연동 로그</button>
+          <button class="crm-tab" type="button" role="tab" id="crmTabAccounts" aria-selected="false" aria-controls="crmPanelAccounts" tabindex="-1" data-crm-tab="accounts">직원</button>
+          <button class="crm-tab" type="button" role="tab" id="crmMessagesTab" aria-selected="false" aria-controls="crmPanelMessages" tabindex="-1" data-crm-tab="messages">메신저 연동</button>
         </div>
         <div class="crm-message" id="crmMessage" role="status" aria-live="polite"></div>
 
@@ -5076,16 +4746,12 @@ HTML = r"""<!doctype html>
           <div class="crm-toolbar crm-task-toolbar" aria-label="업무 필터">
             <label class="sr-only" for="crmTaskViewSelect">저장뷰</label>
             <select class="crm-select" id="crmTaskViewSelect"><option value="">저장뷰 선택</option></select>
-            <label class="sr-only" for="crmTaskSearch">업무 검색</label>
-            <input class="crm-input" id="crmTaskSearch" type="search" placeholder="업무, 직원, 번호 검색" />
-            <button class="crm-mini-button primary" type="button" id="crmTaskSearchButton">조회</button>
-            <button class="crm-mini-button" type="button" id="crmTaskAdvancedToggle" aria-expanded="false" aria-controls="crmAdvancedFilters">고급 필터</button>
-            <button class="crm-mini-button" type="button" id="crmTaskFilterReset">초기화</button>
-            <div class="crm-advanced-filters" id="crmAdvancedFilters" hidden>
             <label class="sr-only" for="crmTaskViewName">저장뷰 이름</label>
             <input class="crm-input" id="crmTaskViewName" type="text" placeholder="저장뷰 이름" />
             <button class="crm-mini-button" type="button" id="crmTaskViewSave">현재 보기 저장</button>
             <button class="crm-mini-button" type="button" id="crmTaskViewDelete">저장뷰 삭제</button>
+            <label class="sr-only" for="crmTaskSearch">업무 검색</label>
+            <input class="crm-input" id="crmTaskSearch" type="search" placeholder="업무, 직원, 번호 검색" />
             <label class="sr-only" for="crmTaskStatusFilter">상태</label>
             <select class="crm-select" id="crmTaskStatusFilter"><option value="">상태 전체</option><option>대기</option><option>진행중</option><option>완료</option><option>보류</option></select>
             <label class="sr-only" for="crmTaskAssigneeFilter">담당자</label>
@@ -5099,7 +4765,8 @@ HTML = r"""<!doctype html>
             <label class="sr-only" for="crmTaskSort">정렬</label>
             <select class="crm-select" id="crmTaskSort"><option value="smart">추천순</option><option value="due">마감순</option><option value="updated">최근 수정순</option></select>
             <label class="crm-filter-check"><input type="checkbox" id="crmTaskOpenOnly" checked /> 미완료만</label>
-            </div>
+            <button class="crm-mini-button primary" type="button" id="crmTaskSearchButton">조회</button>
+            <button class="crm-mini-button" type="button" id="crmTaskFilterReset">초기화</button>
           </div>
           <div class="crm-task-board-stats" id="crmTaskBoardStats"></div>
           <div class="crm-task-layout">
@@ -5812,7 +5479,6 @@ HTML = r"""<!doctype html>
     const submitButton = document.querySelector("#submitButton");
     const pageTitle = document.querySelector(".title");
     const dashboardContent = document.querySelector("#dashboardContent");
-    const companyTabsContainer = document.querySelector(".company-tabs");
     const companyTabs = Array.from(document.querySelectorAll(".company-tab"));
     const companyNavTabs = Array.from(document.querySelectorAll(".nav-subitem[data-company-tab]"));
     const companyPanels = Array.from(document.querySelectorAll("[data-company-panel]"));
@@ -5833,15 +5499,6 @@ HTML = r"""<!doctype html>
     const companyCalendarTaskCount = document.querySelector("#companyCalendarTaskCount");
     const companyCalendarLeaveCount = document.querySelector("#companyCalendarLeaveCount");
     const companyCalendarRiskCount = document.querySelector("#companyCalendarRiskCount");
-    const companyMiniCalendarTitle = document.querySelector("#companyMiniCalendarTitle");
-    const companyMiniCalendarGrid = document.querySelector("#companyMiniCalendarGrid");
-    const companyMiniCalendarDate = document.querySelector("#companyMiniCalendarDate");
-    const companyMiniCalendarList = document.querySelector("#companyMiniCalendarList");
-    const companyWidgetToday = document.querySelector("#companyWidgetToday");
-    const companyWidgetTodayHint = document.querySelector("#companyWidgetTodayHint");
-    const companyWidgetTasks = document.querySelector("#companyWidgetTasks");
-    const companyWidgetLeave = document.querySelector("#companyWidgetLeave");
-    const companyWidgetRisk = document.querySelector("#companyWidgetRisk");
     const internalChatRoomList = document.querySelector("#internalChatRoomList");
     const internalChatTitle = document.querySelector("#internalChatTitle");
     const internalChatHint = document.querySelector("#internalChatHint");
@@ -5943,6 +5600,7 @@ HTML = r"""<!doctype html>
     const leaveRefresh = document.querySelector("#leaveRefresh");
     const leaveTotalDays = document.querySelector("#leaveTotalDays");
     const leaveUsedDays = document.querySelector("#leaveUsedDays");
+    const leaveReservedDays = document.querySelector("#leaveReservedDays");
     const leaveRemainingDays = document.querySelector("#leaveRemainingDays");
     const leaveMessage = document.querySelector("#leaveMessage");
     const leaveBalanceBody = document.querySelector("#leaveBalanceBody");
@@ -5958,6 +5616,7 @@ HTML = r"""<!doctype html>
     const leaveAdminTotalInput = document.querySelector("#leaveAdminTotalInput");
     const leaveAdminUsedInput = document.querySelector("#leaveAdminUsedInput");
     const leaveBalanceSave = document.querySelector("#leaveBalanceSave");
+    const leaveAccrualApply = document.querySelector("#leaveAccrualApply");
     const leaveUsageUserSelect = document.querySelector("#leaveUsageUserSelect");
     const leaveUsageDatesInput = document.querySelector("#leaveUsageDatesInput");
     const leaveUsageNoteInput = document.querySelector("#leaveUsageNoteInput");
@@ -6035,8 +5694,6 @@ HTML = r"""<!doctype html>
     const crmTaskSort = document.querySelector("#crmTaskSort");
     const crmTaskOpenOnly = document.querySelector("#crmTaskOpenOnly");
     const crmTaskSearchButton = document.querySelector("#crmTaskSearchButton");
-    const crmTaskAdvancedToggle = document.querySelector("#crmTaskAdvancedToggle");
-    const crmAdvancedFilters = document.querySelector("#crmAdvancedFilters");
     const crmTaskFilterReset = document.querySelector("#crmTaskFilterReset");
     const crmTaskBoardStats = document.querySelector("#crmTaskBoardStats");
     const crmTaskBody = document.querySelector("#crmTaskBody");
@@ -6124,10 +5781,7 @@ HTML = r"""<!doctype html>
     });
     renderManagementPeriodControls();
     applyStaticPermissions();
-    loadNoticeTemplate().catch((error) => {
-      notice.textContent = error.message;
-      renderNoticePreview();
-    });
+    loadNoticeTemplate();
     loadImportShipments();
 
     function addProductRow(productName = "", quantity = "", packQuantity = "") {
@@ -6618,10 +6272,11 @@ HTML = r"""<!doctype html>
       if (!leaveWorkspace) return;
       leaveTotalDays.textContent = dayText(data.summary?.total_days);
       leaveUsedDays.textContent = dayText(data.summary?.used_days);
+      if (leaveReservedDays) leaveReservedDays.textContent = dayText(data.summary?.reserved_days);
       leaveRemainingDays.textContent = dayText(data.summary?.remaining_days);
       leaveBalanceBody.innerHTML = (data.balances || []).length
         ? data.balances.map((row) => `
-          <tr><td>${escapeHtml(row.name)}</td><td>${dayText(row.total_days)}</td><td>${dayText(row.used_days)}</td><td><strong>${dayText(row.remaining_days)}</strong></td></tr>
+          <tr><td>${escapeHtml(row.name)}</td><td>${dayText(row.total_days)}</td><td>${dayText(row.used_days)} / 예약 ${dayText(row.reserved_days)}</td><td><strong>${dayText(row.remaining_days)}</strong></td></tr>
         `).join("")
         : `<tr><td colspan="4">연차 기준이 아직 설정되지 않았습니다.</td></tr>`;
       leaveHistoryBody.innerHTML = (data.requests || []).length
@@ -6630,8 +6285,8 @@ HTML = r"""<!doctype html>
             <td>${escapeHtml(row.start_date)}${row.start_date === row.end_date ? "" : ` ~ ${escapeHtml(row.end_date)}`}</td>
             <td>${escapeHtml(row.unit_label)}</td>
             <td>${dayText(row.requested_days)}</td>
-            <td>${escapeHtml(row.status_label)}</td>
-            <td>${escapeHtml(row.reason)}</td>
+            <td>${escapeHtml(row.status_label)}${row.status === "PENDING" ? ` ? ${escapeHtml(row.approval_step_label)}` : ""}</td>
+            <td>${escapeHtml(row.reason)}${row.status === "PENDING" ? `<div class="leave-action-row"><input class="leave-comment-input" data-leave-cancel-reason="${row.id}" placeholder="?? ??" /><button class="leave-action reject" type="button" data-leave-cancel="${row.id}">??</button></div>` : ""}</td>
           </tr>
         `).join("")
         : `<tr><td colspan="5">연차 사용/신청 이력이 없습니다.</td></tr>`;
@@ -6651,9 +6306,11 @@ HTML = r"""<!doctype html>
             <td>${dayText(row.requested_days)}</td>
             <td>${escapeHtml(row.reason)}</td>
             <td>
+              <input class="leave-comment-input" data-leave-comment="${row.id}" placeholder="??/?? ??" />
               <div class="leave-action-row">
-                <button class="leave-action approve" type="button" data-leave-decision="approve" data-leave-id="${row.id}">승인</button>
-                <button class="leave-action reject" type="button" data-leave-decision="reject" data-leave-id="${row.id}">반려</button>
+                <button class="leave-action approve" type="button" data-leave-decision="approve" data-leave-id="${row.id}">??</button>
+                <button class="leave-action reject" type="button" data-leave-decision="reject" data-leave-id="${row.id}">??</button>
+                ${data.can_override ? `<button class="leave-action approve" type="button" data-leave-decision="override" data-leave-id="${row.id}">?? ??</button>` : ""}
               </div>
             </td>
           </tr>
@@ -6703,7 +6360,6 @@ HTML = r"""<!doctype html>
         leaveMessage.textContent = data.message || "연차 신청이 저장되었습니다.";
         await loadLeaveData();
         if (companyActiveTab === "calendar") await loadCompanyCalendar().catch(() => {});
-        if (companyActiveTab === "notice") await loadCompanyMiniCalendar().catch(() => {});
         setLeaveTab("mine");
       } catch (error) {
         leaveMessage.textContent = error.message;
@@ -6720,7 +6376,8 @@ HTML = r"""<!doctype html>
     }
 
     async function decideLeaveRequest(requestId, decision) {
-      const comment = decision === "reject" ? window.prompt("반려 사유를 입력해주세요.", "반려") || "반려" : "";
+      const commentInput = document.querySelector(`[data-leave-comment="${requestId}"]`);
+      const comment = commentInput?.value?.trim() || (decision === "reject" ? "\uBC18\uB824" : "");
       leaveMessage.textContent = "연차 신청을 처리하는 중입니다.";
       try {
         const response = await fetch("/api/leave-decision", {
@@ -6733,7 +6390,44 @@ HTML = r"""<!doctype html>
         leaveMessage.textContent = data.message || "처리되었습니다.";
         await loadLeaveData();
         if (companyActiveTab === "calendar") await loadCompanyCalendar().catch(() => {});
-        if (companyActiveTab === "notice") await loadCompanyMiniCalendar().catch(() => {});
+      } catch (error) {
+        leaveMessage.textContent = error.message;
+      }
+    }
+
+    async function cancelLeaveRequest(requestId) {
+      const reasonInput = document.querySelector(`[data-leave-cancel-reason="${requestId}"]`);
+      const reason = reasonInput?.value?.trim() || "\uC2E0\uCCAD\uC790 \uCDE8\uC18C";
+      leaveMessage.textContent = "?? ??? ???? ????.";
+      try {
+        const response = await fetch("/api/leave-cancel", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ request_id: requestId, reason }),
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "\uC5F0\uCC28 \uC790\uB3D9 \uBC1C\uC0DD\uC744 \uCC98\uB9AC\uD588\uC2B5\uB2C8\uB2E4.");
+        leaveMessage.textContent = data.message || "\uC5F0\uCC28 \uC2E0\uCCAD\uC744 \uCDE8\uC18C\uD588\uC2B5\uB2C8\uB2E4.";
+        await loadLeaveData();
+        if (companyActiveTab === "calendar") await loadCompanyCalendar().catch(() => {});
+      } catch (error) {
+        leaveMessage.textContent = error.message;
+      }
+    }
+
+    async function applyLeaveAccrual() {
+      const year = new Date().getFullYear();
+      leaveMessage.textContent = `${year}\uB144 \uC5F0\uCC28\uB97C \uC790\uB3D9 \uBC1C\uC0DD\uD558\uB294 \uC911\uC785\uB2C8\uB2E4.`;
+      try {
+        const response = await fetch("/api/leave-accrual", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ year, default_days: 15 }),
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "\uC5F0\uCC28 \uC790\uB3D9 \uBC1C\uC0DD\uC744 \uCC98\uB9AC\uD588\uC2B5\uB2C8\uB2E4.");
+        leaveMessage.textContent = data.message || "\uC5F0\uCC28 \uC790\uB3D9 \uBC1C\uC0DD\uC744 \uCC98\uB9AC\uD588\uC2B5\uB2C8\uB2E4.";
+        await loadLeaveData();
       } catch (error) {
         leaveMessage.textContent = error.message;
       }
@@ -6784,19 +6478,18 @@ HTML = r"""<!doctype html>
       }
     }
 
-    function applyNoticePayload(saved = {}) {
+    function loadNoticeTemplate() {
+      let saved = {};
+      try {
+        saved = JSON.parse(localStorage.getItem("workhub_notice_template") || "{}");
+      } catch {
+        saved = {};
+      }
       noticeDateInput.value = saved.date || todayString();
       noticeTitleInput.value = saved.title || "";
       noticeOwnerInput.value = saved.owner || "";
       noticeBodyInput.value = saved.body || "";
       renderNoticePreview();
-      if (companyStaffNoticeTitle) companyStaffNoticeTitle.textContent = saved.title || "등록 전";
-    }
-
-    async function loadNoticeTemplate() {
-      const data = await crmFetchJson("/api/company-notice");
-      applyNoticePayload(data.notice || {});
-      return data.notice || {};
     }
 
     function noticePayload() {
@@ -6833,12 +6526,12 @@ HTML = r"""<!doctype html>
       `;
     }
 
-    async function openNoticePopup() {
+    function openNoticePopup() {
       if (!can("notice_manage")) {
         notice.textContent = "공지사항 관리 권한이 없습니다.";
         return;
       }
-      await loadNoticeTemplate();
+      loadNoticeTemplate();
       noticePopup.classList.add("open");
       setTimeout(() => noticeTitleInput?.focus(), 0);
     }
@@ -6847,34 +6540,32 @@ HTML = r"""<!doctype html>
       noticePopup.classList.remove("open");
     }
 
-    async function saveNoticeTemplate() {
+    function saveNoticeTemplate() {
       if (!can("notice_manage")) {
         notice.textContent = "공지사항 관리 권한이 없습니다.";
         return;
       }
       const payload = noticePayload();
-      const data = await crmFetchJson("/api/company-notice-save", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-      applyNoticePayload(data.notice || payload);
-      notice.textContent = data.message || "공지사항을 저장했습니다.";
+      localStorage.setItem("workhub_notice_template", JSON.stringify(payload));
+      renderNoticePreview();
+      if (companyStaffNoticeTitle) companyStaffNoticeTitle.textContent = payload.title || "등록 전";
+      notice.textContent = "공지사항을 저장했습니다.";
       closeNoticePopup();
     }
 
-    async function clearNoticeTemplate() {
+    function clearNoticeTemplate() {
       if (!can("notice_manage")) {
         notice.textContent = "공지사항 관리 권한이 없습니다.";
         return;
       }
-      const data = await crmFetchJson("/api/company-notice-clear", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: "{}",
-      });
-      applyNoticePayload(data.notice || {});
-      notice.textContent = data.message || "공지사항 입력 내용을 초기화했습니다.";
+      localStorage.removeItem("workhub_notice_template");
+      noticeTitleInput.value = "";
+      noticeOwnerInput.value = "";
+      noticeBodyInput.value = "";
+      noticeDateInput.value = todayString();
+      renderNoticePreview();
+      if (companyStaffNoticeTitle) companyStaffNoticeTitle.textContent = "등록 전";
+      notice.textContent = "공지사항 입력 내용을 초기화했습니다.";
     }
 
     function resetImportShipmentForm(record = null) {
@@ -7610,72 +7301,6 @@ HTML = r"""<!doctype html>
       `).join("");
     }
 
-    function renderCompanyMiniCalendarSelectedDay() {
-      if (!companyMiniCalendarDate || !companyMiniCalendarList) return;
-      const selected = parseLocalDate(companyCalendarSelectedDay);
-      companyMiniCalendarDate.textContent = selected ? shortKoreanDate(companyCalendarSelectedDay) : companyCalendarSelectedDay;
-      const items = eventsForDay(companyCalendarSelectedDay);
-      if (!items.length) {
-        companyMiniCalendarList.innerHTML = `<div class="calendar-empty">선택한 날짜에 표시할 일정이 없습니다.</div>`;
-        return;
-      }
-      companyMiniCalendarList.innerHTML = items.slice(0, 6).map((event) => `
-        <div class="mini-calendar-item" role="button" tabindex="0" data-calendar-event-id="${escapeHtml(event.id)}" aria-label="${escapeHtml(calendarEventLabel(event))}">
-          <div class="mini-calendar-title">${escapeHtml(event.title || "일정")}</div>
-          <div class="mini-calendar-meta">${escapeHtml(calendarEventLabel(event))}</div>
-        </div>
-      `).join("");
-    }
-
-    function renderCompanyDefaultWidgets() {
-      const todayEvents = eventsForDay(todayString());
-      const summary = companyCalendarSummary || {};
-      if (companyWidgetToday) companyWidgetToday.textContent = `${todayEvents.length}건`;
-      if (companyWidgetTodayHint) {
-        const firstEvent = todayEvents[0];
-        companyWidgetTodayHint.textContent = firstEvent ? firstEvent.title || "오늘 일정 확인" : "오늘 표시된 일정 없음";
-      }
-      if (companyWidgetTasks) companyWidgetTasks.textContent = `${summary.task || 0}건`;
-      if (companyWidgetLeave) companyWidgetLeave.textContent = `${summary.leave || 0}건`;
-      if (companyWidgetRisk) companyWidgetRisk.textContent = `${summary.risk || 0}건`;
-    }
-
-    function renderCompanyMiniCalendar(payload = {}) {
-      if (!companyMiniCalendarGrid) return;
-      companyCalendarMonth = payload.month || companyCalendarMonth;
-      companyCalendarEvents = payload.events || companyCalendarEvents || [];
-      companyCalendarSummary = payload.summary || companyCalendarSummary || {};
-      const monthStart = parseLocalDate(`${companyCalendarMonth}-01`) || parseLocalDate(`${todayString().slice(0, 7)}-01`);
-      const gridStart = new Date(monthStart);
-      gridStart.setDate(1 - ((monthStart.getDay() + 6) % 7));
-      const today = todayString();
-      if (companyMiniCalendarTitle) companyMiniCalendarTitle.textContent = `미니 캘린더 · ${monthTitle(companyCalendarMonth)}`;
-      const cells = [];
-      for (let index = 0; index < 42; index += 1) {
-        const day = new Date(gridStart);
-        day.setDate(gridStart.getDate() + index);
-        const dayText = localDateString(day);
-        const events = eventsForDay(dayText);
-        const classes = [
-          "mini-calendar-day",
-          day.getMonth() === monthStart.getMonth() ? "" : "other-month",
-          dayText === today ? "today" : "",
-          dayText === companyCalendarSelectedDay ? "selected" : "",
-        ].filter(Boolean).join(" ");
-        cells.push(`
-          <button class="${classes}" type="button" role="gridcell" data-mini-calendar-day="${escapeHtml(dayText)}" aria-label="${escapeHtml(`${shortKoreanDate(dayText)} 일정 ${events.length}건`)}">
-            <span>${escapeHtml(day.getDate())}</span>
-            <span class="mini-calendar-dots" aria-hidden="true">
-              ${events.slice(0, 3).map((event) => `<i class="mini-calendar-dot ${escapeHtml(event.type || "task")}"></i>`).join("")}
-            </span>
-          </button>
-        `);
-      }
-      companyMiniCalendarGrid.innerHTML = cells.join("");
-      renderCompanyMiniCalendarSelectedDay();
-      renderCompanyDefaultWidgets();
-    }
-
     function renderCompanyCalendar(payload = {}) {
       if (!companyCalendarGrid) return;
       companyCalendarMonth = payload.month || companyCalendarMonth;
@@ -7719,7 +7344,6 @@ HTML = r"""<!doctype html>
       }
       companyCalendarGrid.innerHTML = cells.join("");
       renderCompanyCalendarSelectedDay();
-      renderCompanyMiniCalendar();
     }
 
     async function loadCompanyCalendar() {
@@ -7738,21 +7362,7 @@ HTML = r"""<!doctype html>
       tasks.push(loadCompanyCalendar().catch(() => {
         if (companyCalendarGrid) companyCalendarGrid.innerHTML = `<div class="calendar-empty">캘린더를 불러오지 못했습니다.</div>`;
       }));
-      if (typeof loadCompanyMiniCalendar === "function") {
-        tasks.push(loadCompanyMiniCalendar().catch(() => {}));
-      }
       await Promise.allSettled(tasks);
-    }
-
-    async function loadCompanyMiniCalendar() {
-      if (!companyMiniCalendarGrid) return;
-      if (!can("crm_view")) {
-        companyMiniCalendarGrid.innerHTML = `<div class="calendar-empty">CRM 조회 권한이 없어 캘린더를 볼 수 없습니다.</div>`;
-        return;
-      }
-      companyMiniCalendarGrid.innerHTML = `<div class="calendar-empty">미니 캘린더를 불러오는 중입니다.</div>`;
-      const data = await crmFetchJson(`/api/company-calendar-events?month=${encodeURIComponent(companyCalendarMonth)}`);
-      renderCompanyMiniCalendar(data);
     }
 
     function openCalendarEventWidget(eventId) {
@@ -7854,8 +7464,12 @@ HTML = r"""<!doctype html>
     }
 
     async function loadCompanyStaffDashboard() {
-      const noticeData = await crmFetchJson("/api/company-notice").catch(() => ({ notice: {} }));
-      const saved = noticeData.notice || {};
+      let saved = {};
+      try {
+        saved = JSON.parse(localStorage.getItem("workhub_notice_template") || "{}");
+      } catch {
+        saved = {};
+      }
       if (companyStaffNoticeTitle) companyStaffNoticeTitle.textContent = saved.title || "등록 전";
       if (!can("crm_view")) {
         renderCompanyStaffTasks([]);
@@ -7983,7 +7597,6 @@ HTML = r"""<!doctype html>
           loadCrmStaffDashboard().catch(() => {}),
           loadCompanyStaffDashboard().catch(() => {}),
           loadCompanyCalendar().catch(() => {}),
-          loadCompanyMiniCalendar().catch(() => {}),
           loadCrmDashboard().catch(() => {}),
         ]);
       }
@@ -10884,7 +10497,7 @@ HTML = r"""<!doctype html>
         closeLedgerFilter();
         loadLedgerCases();
       } else if (showCrm) {
-        setPageTitle("업무 현황");
+        setPageTitle("업무관리");
         closeLedgerFilter();
         loadCrmAll().catch((error) => setCrmMessage(error.message, true));
       } else if (showImport) {
@@ -10915,7 +10528,7 @@ HTML = r"""<!doctype html>
         loadSystemUpdateStatus();
       } else {
         currentMode = "dashboard";
-        setPageTitle("업무 홈");
+        setPageTitle("회사 포털");
         closeLedgerFilter();
         if (companyActiveTab === "staff") loadCompanyStaffDashboard().catch(() => {});
         else if (companyActiveTab === "notice") loadDashboardEntryData().catch(() => {});
@@ -11172,43 +10785,6 @@ HTML = r"""<!doctype html>
     companyTabs.forEach((button) => {
       button.addEventListener("click", () => setCompanyTab(button.dataset.companyTab));
     });
-    companyTabsContainer?.addEventListener("click", (event) => {
-      const directTab = event.target.closest?.(".company-tab");
-      let targetTab = directTab;
-      if (!targetTab) {
-        targetTab = companyTabs.find((button) => {
-          const rect = button.getBoundingClientRect();
-          return event.clientX >= rect.left && event.clientX <= rect.right && event.clientY >= rect.top && event.clientY <= rect.bottom;
-        });
-      }
-      if (targetTab?.dataset.companyTab) setCompanyTab(targetTab.dataset.companyTab);
-    });
-    companyMiniCalendarGrid?.addEventListener("click", (event) => {
-      const dayButton = event.target.closest("[data-mini-calendar-day]");
-      if (!dayButton) return;
-      companyCalendarSelectedDay = dayButton.dataset.miniCalendarDay;
-      renderCompanyMiniCalendar();
-    });
-    companyMiniCalendarGrid?.addEventListener("keydown", (event) => {
-      if (!["Enter", " "].includes(event.key)) return;
-      const dayButton = event.target.closest("[data-mini-calendar-day]");
-      if (!dayButton) return;
-      event.preventDefault();
-      companyCalendarSelectedDay = dayButton.dataset.miniCalendarDay;
-      renderCompanyMiniCalendar();
-    });
-    companyMiniCalendarList?.addEventListener("click", (event) => {
-      const row = event.target.closest("[data-calendar-event-id]");
-      if (!row) return;
-      openCalendarEventWidget(row.dataset.calendarEventId);
-    });
-    companyMiniCalendarList?.addEventListener("keydown", (event) => {
-      if (!["Enter", " "].includes(event.key)) return;
-      const row = event.target.closest("[data-calendar-event-id]");
-      if (!row) return;
-      event.preventDefault();
-      openCalendarEventWidget(row.dataset.calendarEventId);
-    });
     companyCalendarPrev?.addEventListener("click", () => shiftCalendarMonth(-1).catch(() => {
       if (companyCalendarGrid) companyCalendarGrid.innerHTML = `<div class="calendar-empty">이전 달 캘린더를 불러오지 못했습니다.</div>`;
     }));
@@ -11444,12 +11020,6 @@ HTML = r"""<!doctype html>
       markCrmTaskFiltersDirty();
       loadCrmTasks().catch((error) => setCrmMessage(error.message, true));
     });
-    crmTaskAdvancedToggle?.addEventListener("click", () => {
-      const open = Boolean(crmAdvancedFilters?.hidden);
-      if (crmAdvancedFilters) crmAdvancedFilters.hidden = !open;
-      crmTaskAdvancedToggle.setAttribute("aria-expanded", open ? "true" : "false");
-      crmTaskAdvancedToggle.textContent = open ? "필터 닫기" : "고급 필터";
-    });
     crmTaskSearch.addEventListener("keydown", (event) => {
       if (event.key === "Enter") {
         event.preventDefault();
@@ -11601,11 +11171,7 @@ HTML = r"""<!doctype html>
     document.querySelector("#adminNavToggle")?.addEventListener("click", () => {
       document.querySelector("#adminNavGroup")?.classList.toggle("open");
     });
-    document.querySelector("#noticeInputOpen").addEventListener("click", () => {
-      openNoticePopup().catch((error) => {
-        notice.textContent = error.message;
-      });
-    });
+    document.querySelector("#noticeInputOpen").addEventListener("click", openNoticePopup);
     importShipmentInputOpen.addEventListener("click", () => {
       showWorkspace("import");
       openImportShipmentPopup();
@@ -11716,16 +11282,8 @@ HTML = r"""<!doctype html>
       "업무 파일을 선택해주세요."
     );
     document.querySelector("#addProductRow").addEventListener("click", () => addProductRow());
-    noticeSaveButton.addEventListener("click", () => {
-      saveNoticeTemplate().catch((error) => {
-        notice.textContent = error.message;
-      });
-    });
-    noticeClearButton.addEventListener("click", () => {
-      clearNoticeTemplate().catch((error) => {
-        notice.textContent = error.message;
-      });
-    });
+    noticeSaveButton.addEventListener("click", saveNoticeTemplate);
+    noticeClearButton.addEventListener("click", clearNoticeTemplate);
     [noticeDateInput, noticeTitleInput, noticeOwnerInput, noticeBodyInput]
       .forEach((input) => input.addEventListener("input", renderNoticePreview));
     receiptTypeSelect.addEventListener("change", resetProductRows);
@@ -11819,11 +11377,18 @@ HTML = r"""<!doctype html>
     if (leaveUnitSelect) leaveUnitSelect.addEventListener("change", syncHalfDayDates);
     if (leaveStartDate) leaveStartDate.addEventListener("change", syncHalfDayDates);
     if (leaveBalanceSave) leaveBalanceSave.addEventListener("click", saveLeaveBalance);
+    if (leaveAccrualApply) leaveAccrualApply.addEventListener("click", applyLeaveAccrual);
     if (leaveUsageSave) leaveUsageSave.addEventListener("click", saveHistoricalLeaveUsage);
     if (leaveApprovalBody) {
       leaveApprovalBody.addEventListener("click", (event) => {
         const button = event.target.closest("[data-leave-decision]");
         if (button) decideLeaveRequest(button.dataset.leaveId, button.dataset.leaveDecision);
+      });
+    }
+    if (leaveHistoryBody) {
+      leaveHistoryBody.addEventListener("click", (event) => {
+        const button = event.target.closest("[data-leave-cancel]");
+        if (button) cancelLeaveRequest(button.dataset.leaveCancel);
       });
     }
     managementPageSize.addEventListener("change", loadManagementRecords);
@@ -12074,11 +11639,6 @@ HTML = r"""<!doctype html>
 
     const initialView = new URLSearchParams(window.location.search).get("view");
     showWorkspace(["management", "ledger", "crm", "import", "fileLibrary", "leave", "userAdmin", "backup", "systemUpdate"].includes(initialView) ? initialView : "dashboard");
-    if (!initialView || initialView === "dashboard") {
-      loadCompanyMiniCalendar().catch(() => {
-        if (companyMiniCalendarGrid) companyMiniCalendarGrid.innerHTML = `<div class="calendar-empty">미니 캘린더를 불러오지 못했습니다.</div>`;
-      });
-    }
   </script>
 </body>
 </html>
@@ -12316,6 +11876,10 @@ LEAVE_WORKSPACE_HTML = r"""
                 <span>사용 연차</span>
                 <strong id="leaveUsedDays">0일</strong>
               </article>
+              <article class="leave-summary-card">
+                <span>승인대기 예약</span>
+                <strong id="leaveReservedDays">0일</strong>
+              </article>
               <article class="leave-summary-card accent">
                 <span>남은 연차</span>
                 <strong id="leaveRemainingDays">0일</strong>
@@ -12377,6 +11941,7 @@ LEAVE_WORKSPACE_HTML = r"""
                     <label>시작 연차<input id="leaveAdminTotalInput" type="number" min="0" step="0.5" value="10" /></label>
                     <label>기존 사용 연차<input id="leaveAdminUsedInput" type="number" min="0" step="0.5" value="0" /></label>
                     <button class="workspace-button" type="button" id="leaveBalanceSave">연차 기준 저장</button>
+                    <button class="workspace-button" type="button" id="leaveAccrualApply">올해 연차 자동 발생</button>
                   </div>
                 </div>
                 <div class="leave-card">
@@ -12627,62 +12192,19 @@ def safe_filename(filename: str) -> str:
     return filename or "upload.xlsx"
 
 
-def read_request_body_bytes(headers, rfile, *, max_bytes: int) -> bytes:
-    raw_length = headers.get("Content-Length", "0")
-    try:
-        length = int(raw_length)
-    except ValueError as exc:
-        raise ValueError("Content-Length 값이 올바르지 않습니다.") from exc
-    if length < 0:
-        raise ValueError("Content-Length 값이 음수입니다.")
-    if length > max_bytes:
-        raise ValueError("요청 본문이 너무 큽니다.")
-    data = rfile.read(length)
-    if len(data) < length:
-        raise ValueError("요청 본문이 완료되지 않았습니다.")
-    return data
-
-
-def parse_form_body(headers, rfile, *, max_bytes: int = MAX_FORM_BODY_BYTES, single_values: bool = False) -> dict[str, str | list[str]]:
-    raw_body = read_request_body_bytes(headers, rfile, max_bytes=max_bytes).decode("utf-8", errors="ignore")
-    parsed = parse_qs(raw_body)
-    if not single_values:
-        return parsed
-    return {key: values[0] if isinstance(values, list) and values else "" for key, values in parsed.items()}
-
-
-def parse_json_body(headers, rfile, *, max_bytes: int = MAX_JSON_BODY_BYTES) -> dict:
-    raw_body = read_request_body_bytes(headers, rfile, max_bytes=max_bytes).decode("utf-8", errors="ignore").strip()
-    if not raw_body:
-        return {}
-    try:
-        payload = json.loads(raw_body)
-    except json.JSONDecodeError as exc:
-        raise ValueError("요청 데이터(JSON) 형식이 올바르지 않습니다.") from exc
-    if not isinstance(payload, dict):
-        raise ValueError("요청 JSON은 객체 형태여야 합니다.")
-    return payload
-
-
 def original_uploaded_filename(filename: str) -> str:
     return re.sub(r"^\d{10,}_", "", filename)
 
 
-def parse_multipart(
-    headers,
-    rfile,
-    *,
-    max_bytes: int = MAX_MULTIPART_BODY_BYTES,
-) -> dict[str, tuple[str, bytes] | str]:
+def parse_multipart(headers, rfile) -> dict[str, tuple[str, bytes] | str]:
     content_type = headers.get("Content-Type", "")
     boundary_match = re.search(r"boundary=(.+)", content_type)
     if not boundary_match:
         raise ValueError("업로드 형식이 올바르지 않습니다.")
 
     boundary = boundary_match.group(1).strip().strip('"').encode()
-    body = read_request_body_bytes(headers, rfile, max_bytes=max_bytes)
-    if not body:
-        return {}
+    length = int(headers.get("Content-Length", "0"))
+    body = rfile.read(length)
     fields: dict[str, tuple[str, bytes] | str] = {}
 
     for part in body.split(b"--" + boundary):
@@ -13032,16 +12554,6 @@ def clean_payload_text(payload: dict, key: str) -> str:
     return str(payload.get(key, "") or "").strip()
 
 
-def clean_payload_int(payload: dict, key: str, default: int = 0) -> int:
-    value = payload.get(key, default)
-    if value in (None, ""):
-        return int(default)
-    try:
-        return int(value)
-    except (TypeError, ValueError) as exc:  # noqa: BLE001
-        raise ValueError(f"{key}는 정수로 전달해야 합니다.") from exc
-
-
 def default_permissions_for_role(role: str) -> list[str]:
     return list(DEFAULT_ROLE_PERMISSIONS.get(role, DEFAULT_ROLE_PERMISSIONS["user"]))
 
@@ -13211,23 +12723,61 @@ def clean_leave_days(value: object, label: str) -> float:
     return round(days, 2)
 
 
-def calculate_leave_days(start: date, end: date, unit: str) -> float:
+def company_holiday_dates(start: date, end: date) -> set[str]:
+    connection = connect_db()
+    try:
+        rows = connection.execute(
+            "SELECT holiday_date FROM company_holidays WHERE holiday_date BETWEEN ? AND ?",
+            (start.isoformat(), end.isoformat()),
+        ).fetchall()
+        return {str(row["holiday_date"]) for row in rows}
+    except sqlite3.OperationalError:
+        return set()
+    finally:
+        connection.close()
+
+
+def save_company_holiday(holiday_date: str, name: str, is_substitute: bool = False) -> None:
+    init_db()
+    parsed_date = parse_iso_date(holiday_date)
+    clean_name = str(name or "").strip() or "???"
+    now = now_text()
+    connection = connect_db()
+    try:
+        connection.execute(
+            """
+            INSERT INTO company_holidays (holiday_date, name, is_substitute, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(holiday_date) DO UPDATE SET
+                name = excluded.name,
+                is_substitute = excluded.is_substitute,
+                updated_at = excluded.updated_at
+            """,
+            (parsed_date.isoformat(), clean_name, 1 if is_substitute else 0, now, now),
+        )
+        connection.commit()
+    finally:
+        connection.close()
+
+
+def calculate_leave_days(start: date, end: date, unit: str, excluded_dates: set[str] | None = None) -> float:
     if start > end:
-        raise ValueError("종료일은 시작일보다 빠를 수 없습니다.")
+        raise ValueError("???? ????? ?? ? ????.")
+    excluded_dates = excluded_dates if excluded_dates is not None else company_holiday_dates(start, end)
     if unit == "HALF_DAY":
         if start != end:
-            raise ValueError("반차는 하루 안에서만 신청할 수 있습니다.")
-        if start.weekday() >= 5:
-            raise ValueError("주말에는 반차를 신청할 수 없습니다.")
+            raise ValueError("??? ?? ???? ??? ? ????.")
+        if start.weekday() >= 5 or start.isoformat() in excluded_dates:
+            raise ValueError("?? ?? ????? ??? ??? ? ????.")
         return 0.5
     days = 0
     cursor = start
     while cursor <= end:
-        if cursor.weekday() < 5:
+        if cursor.weekday() < 5 and cursor.isoformat() not in excluded_dates:
             days += 1
         cursor = date.fromordinal(cursor.toordinal() + 1)
     if days <= 0:
-        raise ValueError("신청 가능한 평일이 없습니다.")
+        raise ValueError("?? ??? ??? ????.")
     return float(days)
 
 
@@ -13379,22 +12929,6 @@ def init_db() -> None:
             connection.execute("ALTER TABLE internal_messages ADD COLUMN command_error TEXT")
         connection.execute("CREATE INDEX IF NOT EXISTS idx_internal_messages_created ON internal_messages(created_at)")
         connection.execute("CREATE INDEX IF NOT EXISTS idx_internal_messages_room ON internal_messages(room_type, recipient_user_id, user_id)")
-        connection.execute(
-            """
-            CREATE TABLE IF NOT EXISTS company_notices (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                notice_date TEXT NOT NULL,
-                title TEXT,
-                owner TEXT,
-                body TEXT,
-                created_by INTEGER,
-                updated_by INTEGER,
-                created_at TEXT NOT NULL,
-                updated_at TEXT NOT NULL
-            )
-            """
-        )
-        connection.execute("CREATE INDEX IF NOT EXISTS idx_company_notices_updated ON company_notices(updated_at)")
         connection.execute(
             """
             CREATE TABLE IF NOT EXISTS system_update_history (
@@ -13694,6 +13228,64 @@ def init_db() -> None:
             )
             """
         )
+        leave_balance_columns = {
+            row["name"] for row in connection.execute("PRAGMA table_info(leave_balances)").fetchall()
+        }
+        if "reserved_days" not in leave_balance_columns:
+            connection.execute("ALTER TABLE leave_balances ADD COLUMN reserved_days REAL NOT NULL DEFAULT 0")
+        if "accrual_year" not in leave_balance_columns:
+            connection.execute("ALTER TABLE leave_balances ADD COLUMN accrual_year INTEGER")
+        leave_request_columns = {
+            row["name"] for row in connection.execute("PRAGMA table_info(leave_requests)").fetchall()
+        }
+        leave_request_extra_columns = {
+            "approval_step": "TEXT NOT NULL DEFAULT 'TEAM_LEAD'",
+            "team_status": "TEXT NOT NULL DEFAULT 'PENDING'",
+            "team_decided_by": "INTEGER",
+            "team_decided_at": "TEXT",
+            "team_comment": "TEXT",
+            "director_status": "TEXT NOT NULL DEFAULT 'WAITING'",
+            "director_decided_by": "INTEGER",
+            "director_decided_at": "TEXT",
+            "director_comment": "TEXT",
+            "ceo_status": "TEXT NOT NULL DEFAULT 'WAITING'",
+            "ceo_decided_by": "INTEGER",
+            "ceo_decided_at": "TEXT",
+            "ceo_comment": "TEXT",
+            "cancel_reason": "TEXT",
+            "canceled_at": "TEXT",
+            "canceled_by": "INTEGER",
+        }
+        for column, column_type in leave_request_extra_columns.items():
+            if column not in leave_request_columns:
+                connection.execute(f"ALTER TABLE leave_requests ADD COLUMN {column} {column_type}")
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS company_holidays (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                holiday_date TEXT NOT NULL UNIQUE,
+                name TEXT NOT NULL,
+                is_substitute INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+            """
+        )
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS leave_notifications (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                request_id INTEGER,
+                notification_type TEXT NOT NULL,
+                message TEXT NOT NULL,
+                is_read INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL
+            )
+            """
+        )
+        connection.execute("CREATE INDEX IF NOT EXISTS idx_company_holidays_date ON company_holidays(holiday_date)")
+        connection.execute("CREATE INDEX IF NOT EXISTS idx_leave_notifications_user ON leave_notifications(user_id, is_read)")
         timestamp = now_text()
         for code, name in (("annual", "연차"), ("special", "특별휴가"), ("unpaid", "무급휴가"), ("sick", "병가")):
             connection.execute(
@@ -14095,76 +13687,6 @@ def company_calendar_payload(user: dict[str, str], month_text: str) -> dict:
     }
 
 
-def latest_company_notice() -> dict[str, str | int]:
-    init_db()
-    connection = connect_db()
-    try:
-        row = connection.execute(
-            """
-            SELECT company_notices.id, company_notices.notice_date AS date,
-                   company_notices.title, company_notices.owner, company_notices.body,
-                   company_notices.created_at, company_notices.updated_at,
-                   COALESCE(updater.display_name, updater.username, '') AS updated_by_name
-              FROM company_notices
-              LEFT JOIN users updater ON updater.id = company_notices.updated_by
-             ORDER BY company_notices.updated_at DESC, company_notices.id DESC
-             LIMIT 1
-            """
-        ).fetchone()
-    finally:
-        connection.close()
-    if not row:
-        return {"id": 0, "date": date.today().isoformat(), "title": "", "owner": "", "body": ""}
-    return dict(row)
-
-
-def save_company_notice(payload: dict, user: dict[str, str]) -> int:
-    notice_date = clean_payload_text(payload, "date") or date.today().isoformat()
-    try:
-        date.fromisoformat(notice_date)
-    except ValueError as exc:
-        raise ValueError("공지 날짜 형식이 올바르지 않습니다.") from exc
-    title = clean_payload_text(payload, "title")
-    owner = clean_payload_text(payload, "owner")
-    body = clean_payload_text(payload, "body")
-    if not title and not body:
-        raise ValueError("공지 제목 또는 내용을 입력해주세요.")
-    user_id = int(user.get("id") or 0) or None
-    now = now_text()
-    connection = connect_db()
-    try:
-        cursor = connection.execute(
-            """
-            INSERT INTO company_notices
-                (notice_date, title, owner, body, created_by, updated_by, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (notice_date, title, owner, body, user_id, user_id, now, now),
-        )
-        connection.commit()
-        return int(cursor.lastrowid)
-    finally:
-        connection.close()
-
-
-def clear_company_notice(user: dict[str, str]) -> None:
-    user_id = int(user.get("id") or 0) or None
-    now = now_text()
-    connection = connect_db()
-    try:
-        connection.execute(
-            """
-            INSERT INTO company_notices
-                (notice_date, title, owner, body, created_by, updated_by, created_at, updated_at)
-            VALUES (?, '', '', '', ?, ?, ?, ?)
-            """,
-            (date.today().isoformat(), user_id, user_id, now, now),
-        )
-        connection.commit()
-    finally:
-        connection.close()
-
-
 def list_internal_messages(
     limit: int = 100,
     room_type: str = "global",
@@ -14263,7 +13785,7 @@ def save_internal_message(payload: dict, user: dict[str, str]) -> int:
     if len(body) > 2000:
         raise ValueError("메시지는 2,000자 이하로 입력해주세요.")
     room_type = "dm" if clean_payload_text(payload, "room_type") == "dm" else "global"
-    recipient_user_id = clean_payload_int(payload, "recipient_user_id") if room_type == "dm" else 0
+    recipient_user_id = int(payload.get("recipient_user_id") or 0) if room_type == "dm" else 0
     init_db()
     if room_type == "dm":
         validation_connection = connect_db()
@@ -14330,7 +13852,7 @@ def save_internal_message(payload: dict, user: dict[str, str]) -> int:
 
 def save_user_account(payload: dict, actor: dict[str, str]) -> int:
     init_db()
-    user_id = clean_payload_int(payload, "id")
+    user_id = int(payload.get("id", 0) or 0)
     username = normalize_username(payload.get("username"))
     display_name = clean_payload_text(payload, "display_name")
     role = clean_payload_text(payload, "role") or "user"
@@ -14805,7 +14327,7 @@ def get_leave_type_id(code: str = "annual") -> int:
     try:
         row = connection.execute("SELECT id FROM leave_types WHERE code = ?", (code,)).fetchone()
         if not row:
-            raise ValueError("연차 유형을 찾지 못했습니다.")
+            raise ValueError("?? ??? ?? ?????.")
         return int(row["id"])
     finally:
         connection.close()
@@ -14816,8 +14338,8 @@ def ensure_leave_balance(connection: sqlite3.Connection, user_id: int, leave_typ
     connection.execute(
         """
         INSERT OR IGNORE INTO leave_balances
-            (user_id, leave_type_id, total_days, used_days, remaining_days, created_at, updated_at)
-        VALUES (?, ?, 0, 0, 0, ?, ?)
+            (user_id, leave_type_id, total_days, used_days, remaining_days, reserved_days, created_at, updated_at)
+        VALUES (?, ?, 0, 0, 0, 0, ?, ?)
         """,
         (user_id, leave_type_id, now, now),
     )
@@ -14826,8 +14348,43 @@ def ensure_leave_balance(connection: sqlite3.Connection, user_id: int, leave_typ
         (user_id, leave_type_id),
     ).fetchone()
     if not row:
-        raise ValueError("연차 잔여 정보를 만들지 못했습니다.")
+        raise ValueError("?? ?? ??? ??? ?????.")
     return row
+
+
+def balance_remaining(total_days: float, used_days: float, reserved_days: float) -> float:
+    return round(max(0.0, float(total_days or 0) - float(used_days or 0) - float(reserved_days or 0)), 2)
+
+
+def update_leave_balance_amounts(
+    connection: sqlite3.Connection,
+    balance_id: int,
+    *,
+    total_days: float | None = None,
+    used_days: float | None = None,
+    reserved_days: float | None = None,
+    accrual_year: int | None = None,
+) -> sqlite3.Row:
+    current = connection.execute("SELECT * FROM leave_balances WHERE id = ?", (balance_id,)).fetchone()
+    if not current:
+        raise ValueError("?? ?? ??? ?? ?????.")
+    total = round(float(current["total_days"] if total_days is None else total_days), 2)
+    used = round(float(current["used_days"] if used_days is None else used_days), 2)
+    reserved = round(max(0.0, float(current["reserved_days"] if reserved_days is None else reserved_days)), 2)
+    remaining = balance_remaining(total, used, reserved)
+    if used + reserved > total:
+        raise ValueError("??/?? ??? ?? ???? ????.")
+    if accrual_year is None:
+        connection.execute(
+            "UPDATE leave_balances SET total_days = ?, used_days = ?, reserved_days = ?, remaining_days = ?, updated_at = ? WHERE id = ?",
+            (total, used, reserved, remaining, now_text(), balance_id),
+        )
+    else:
+        connection.execute(
+            "UPDATE leave_balances SET total_days = ?, used_days = ?, reserved_days = ?, remaining_days = ?, accrual_year = ?, updated_at = ? WHERE id = ?",
+            (total, used, reserved, remaining, accrual_year, now_text(), balance_id),
+        )
+    return connection.execute("SELECT * FROM leave_balances WHERE id = ?", (balance_id,)).fetchone()
 
 
 def list_leave_types() -> list[dict[str, str | int]]:
@@ -14863,7 +14420,7 @@ def leave_balance_rows(connection: sqlite3.Connection, user_id: int) -> list[dic
     rows = connection.execute(
         """
         SELECT leave_types.code, leave_types.name, leave_balances.total_days,
-               leave_balances.used_days, leave_balances.remaining_days
+               leave_balances.used_days, leave_balances.reserved_days, leave_balances.remaining_days
           FROM leave_balances
           JOIN leave_types ON leave_types.id = leave_balances.leave_type_id
          WHERE leave_balances.user_id = ?
@@ -14877,10 +14434,104 @@ def leave_balance_rows(connection: sqlite3.Connection, user_id: int) -> list[dic
             "name": row["name"],
             "total_days": round(float(row["total_days"] or 0), 2),
             "used_days": round(float(row["used_days"] or 0), 2),
+            "reserved_days": round(float(row["reserved_days"] or 0), 2),
             "remaining_days": round(float(row["remaining_days"] or 0), 2),
         }
         for row in rows
     ]
+
+
+def leave_approval_label(step: str) -> str:
+    return {
+        "TEAM_LEAD": "?? ??",
+        "DIRECTOR": "?? ??",
+        "CEO": "?? ??",
+        "COMPLETED": "?? ??",
+    }.get(step, step)
+
+
+def leave_step_permission(step: str) -> str:
+    return {
+        "TEAM_LEAD": "leave_approve_team",
+        "DIRECTOR": "leave_approve_director",
+        "CEO": "leave_approve_ceo",
+    }.get(step, "leave_approve")
+
+
+def actor_can_approve_leave_step(actor: dict[str, str], step: str) -> bool:
+    return (
+        user_has_permission(actor, "leave_manage")
+        or user_has_permission(actor, "leave_approve")
+        or user_has_permission(actor, leave_step_permission(step))
+    )
+
+
+def actor_can_override_leave(actor: dict[str, str]) -> bool:
+    return user_has_permission(actor, "leave_director_override") or user_has_permission(actor, "leave_manage")
+
+
+def active_users_with_leave_permission(connection: sqlite3.Connection, permissions: list[str]) -> list[sqlite3.Row]:
+    rows = connection.execute(
+        "SELECT id, username, display_name, role, permissions FROM users WHERE active = 1"
+    ).fetchall()
+    matches = []
+    for row in rows:
+        normalized = normalize_permissions(row["permissions"], row["role"])
+        if any(permission in normalized for permission in permissions):
+            matches.append(row)
+    return matches
+
+
+def add_leave_notification(
+    connection: sqlite3.Connection,
+    user_id: int,
+    request_id: int | None,
+    notification_type: str,
+    message: str,
+) -> None:
+    connection.execute(
+        """
+        INSERT INTO leave_notifications (user_id, request_id, notification_type, message, is_read, created_at)
+        VALUES (?, ?, ?, ?, 0, ?)
+        """,
+        (user_id, request_id, notification_type, message, now_text()),
+    )
+
+
+def notify_leave_step(connection: sqlite3.Connection, request_id: int, step: str, requester_name: str) -> None:
+    permission = leave_step_permission(step)
+    permissions = [permission, "leave_manage"]
+    if step == "TEAM_LEAD":
+        permissions.append("leave_approve")
+    if step == "DIRECTOR":
+        permissions.append("leave_director_override")
+    users = active_users_with_leave_permission(connection, permissions)
+    message = f"{requester_name}?? ?? ??? {leave_approval_label(step)} ??? ??????."
+    for user in users:
+        add_leave_notification(connection, int(user["id"]), request_id, "approval_waiting", message)
+
+
+def notify_leave_requester(connection: sqlite3.Connection, user_id: int, request_id: int, message: str) -> None:
+    add_leave_notification(connection, user_id, request_id, "request_update", message)
+
+
+def list_leave_notifications(user: dict[str, str]) -> list[dict[str, str | int]]:
+    init_db()
+    connection = connect_db()
+    try:
+        rows = connection.execute(
+            """
+            SELECT id, request_id, notification_type, message, is_read, created_at
+              FROM leave_notifications
+             WHERE user_id = ?
+             ORDER BY created_at DESC, id DESC
+             LIMIT 30
+            """,
+            (int(user["id"]),),
+        ).fetchall()
+        return [dict(row) for row in rows]
+    finally:
+        connection.close()
 
 
 def list_leave_requests_for_user(connection: sqlite3.Connection, user_id: int) -> list[dict[str, str | float | int]]:
@@ -14899,20 +14550,30 @@ def list_leave_requests_for_user(connection: sqlite3.Connection, user_id: int) -
 
 
 def leave_request_dict(row: sqlite3.Row) -> dict[str, str | float | int]:
+    approval_step = row["approval_step"] if "approval_step" in row.keys() else "COMPLETED"
     return {
         "id": row["id"],
         "user_id": row["user_id"],
         "requester": row["display_name"] if "display_name" in row.keys() else "",
-        "leave_type_name": row["leave_type_name"] if "leave_type_name" in row.keys() else "연차",
+        "leave_type_name": row["leave_type_name"] if "leave_type_name" in row.keys() else "??",
         "start_date": row["start_date"],
         "end_date": row["end_date"],
         "unit": row["unit"],
-        "unit_label": "반차" if row["unit"] == "HALF_DAY" else "연차",
+        "unit_label": "??" if row["unit"] == "HALF_DAY" else "??",
         "requested_days": round(float(row["requested_days"] or 0), 2),
         "reason": row["reason"],
         "status": row["status"],
         "status_label": leave_status_label(row["status"]),
+        "approval_step": approval_step,
+        "approval_step_label": leave_approval_label(approval_step),
+        "team_status": row["team_status"] if "team_status" in row.keys() else "APPROVED",
+        "director_status": row["director_status"] if "director_status" in row.keys() else "APPROVED",
+        "ceo_status": row["ceo_status"] if "ceo_status" in row.keys() else "APPROVED",
+        "team_comment": row["team_comment"] or "" if "team_comment" in row.keys() else "",
+        "director_comment": row["director_comment"] or "" if "director_comment" in row.keys() else "",
+        "ceo_comment": row["ceo_comment"] or "" if "ceo_comment" in row.keys() else "",
         "rejected_reason": row["rejected_reason"] or "",
+        "cancel_reason": row["cancel_reason"] or "" if "cancel_reason" in row.keys() else "",
         "created_at": row["created_at"],
     }
 
@@ -14943,6 +14604,7 @@ def list_leave_admin_balances(connection: sqlite3.Connection) -> list[dict[str, 
             "display_name": user["display_name"],
             "total_days": round(float(balance["total_days"] or 0), 2),
             "used_days": round(float(balance["used_days"] or 0), 2),
+            "reserved_days": round(float(balance["reserved_days"] or 0), 2),
             "remaining_days": round(float(balance["remaining_days"] or 0), 2),
         })
     return rows
@@ -14954,20 +14616,27 @@ def leave_payload(user: dict[str, str]) -> dict:
     try:
         balances = leave_balance_rows(connection, user_id)
         annual = next((row for row in balances if row["code"] == "annual"), balances[0] if balances else {})
+        can_approve = any(
+            user_has_permission(user, permission)
+            for permission in ("leave_approve", "leave_approve_team", "leave_approve_director", "leave_approve_ceo", "leave_director_override", "leave_manage")
+        )
         payload = {
             "summary": {
                 "total_days": annual.get("total_days", 0),
                 "used_days": annual.get("used_days", 0),
+                "reserved_days": annual.get("reserved_days", 0),
                 "remaining_days": annual.get("remaining_days", 0),
             },
             "balances": balances,
             "requests": list_leave_requests_for_user(connection, user_id),
             "leave_types": list_leave_types(),
-            "can_approve": user_has_permission(user, "leave_approve") or user_has_permission(user, "leave_manage"),
+            "can_approve": can_approve,
+            "can_override": actor_can_override_leave(user),
             "can_manage": user_has_permission(user, "leave_manage"),
             "pending_requests": [],
             "users": [],
             "admin_balances": [],
+            "notifications": list_leave_notifications(user),
         }
         if payload["can_approve"]:
             payload["pending_requests"] = list_pending_leave_requests(connection)
@@ -14983,86 +14652,197 @@ def leave_payload(user: dict[str, str]) -> dict:
 def create_leave_request(user: dict[str, str], payload: dict) -> int:
     init_db()
     user_id = int(user["id"])
-    leave_type_id = clean_payload_int(payload, "leave_type_id", get_leave_type_id("annual"))
+    leave_type_id = int(payload.get("leave_type_id") or get_leave_type_id("annual"))
     start = parse_iso_date(payload.get("start_date"))
     end = parse_iso_date(payload.get("end_date"))
     unit = clean_payload_text(payload, "unit") or "FULL_DAY"
     if unit not in {"FULL_DAY", "HALF_DAY"}:
-        raise ValueError("연차 단위가 올바르지 않습니다.")
+        raise ValueError("?? ??? ???? ????.")
     requested_days = calculate_leave_days(start, end, unit)
     reason = clean_payload_text(payload, "reason")
     if not reason:
-        raise ValueError("연차 사유를 입력해주세요.")
+        raise ValueError("\uC5F0\uCC28 \uC2E0\uCCAD\uC744 \uCDE8\uC18C\uD588\uC2B5\uB2C8\uB2E4.")
     now = now_text()
     connection = connect_db()
     try:
         balance = ensure_leave_balance(connection, user_id, leave_type_id)
         if float(balance["remaining_days"] or 0) < requested_days:
-            raise ValueError("남은 연차보다 신청 일수가 많습니다.")
+            raise ValueError("?? ???? ?? ??? ????.")
         cursor = connection.execute(
             """
             INSERT INTO leave_requests
                 (user_id, leave_type_id, start_date, end_date, unit, requested_days, reason,
-                 status, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, 'PENDING', ?, ?)
+                 status, approval_step, team_status, director_status, ceo_status, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, 'PENDING', 'TEAM_LEAD', 'PENDING', 'WAITING', 'WAITING', ?, ?)
             """,
             (user_id, leave_type_id, start.isoformat(), end.isoformat(), unit, requested_days, reason, now, now),
         )
+        request_id = int(cursor.lastrowid)
+        update_leave_balance_amounts(
+            connection,
+            int(balance["id"]),
+            reserved_days=round(float(balance["reserved_days"] or 0) + requested_days, 2),
+        )
+        requester_name = str(user.get("display_name") or user.get("username") or "???")
+        notify_leave_step(connection, request_id, "TEAM_LEAD", requester_name)
         connection.commit()
-        return int(cursor.lastrowid)
+        return request_id
     finally:
         connection.close()
 
 
+def set_leave_step_decision(
+    connection: sqlite3.Connection,
+    request_id: int,
+    step: str,
+    status: str,
+    actor_id: int,
+    comment: str,
+) -> None:
+    prefix = {"TEAM_LEAD": "team", "DIRECTOR": "director", "CEO": "ceo"}[step]
+    connection.execute(
+        f"""
+        UPDATE leave_requests
+           SET {prefix}_status = ?, {prefix}_decided_by = ?, {prefix}_decided_at = ?, {prefix}_comment = ?, updated_at = ?
+         WHERE id = ?
+        """,
+        (status, actor_id, now_text(), comment, now_text(), request_id),
+    )
+
+
+def release_leave_reservation(connection: sqlite3.Connection, row: sqlite3.Row) -> sqlite3.Row:
+    balance = ensure_leave_balance(connection, int(row["user_id"]), int(row["leave_type_id"]))
+    requested_days = float(row["requested_days"] or 0)
+    return update_leave_balance_amounts(
+        connection,
+        int(balance["id"]),
+        reserved_days=round(max(0.0, float(balance["reserved_days"] or 0) - requested_days), 2),
+    )
+
+
+def finalize_leave_approval(
+    connection: sqlite3.Connection,
+    row: sqlite3.Row,
+    actor: dict[str, str],
+    comment: str,
+    overridden: bool = False,
+) -> None:
+    request_id = int(row["id"])
+    now = now_text()
+    balance = ensure_leave_balance(connection, int(row["user_id"]), int(row["leave_type_id"]))
+    requested_days = float(row["requested_days"] or 0)
+    if float(balance["reserved_days"] or 0) < requested_days and float(balance["remaining_days"] or 0) < requested_days:
+        raise ValueError("?? ??? ??? ??? ? ????.")
+    used = round(float(balance["used_days"] or 0) + requested_days, 2)
+    reserved = round(max(0.0, float(balance["reserved_days"] or 0) - requested_days), 2)
+    updated_balance = update_leave_balance_amounts(connection, int(balance["id"]), used_days=used, reserved_days=reserved)
+    connection.execute(
+        """
+        INSERT INTO leave_balance_ledger
+            (balance_id, user_id, actor_id, delta_days, reason, request_id, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        """,
+        (updated_balance["id"], row["user_id"], int(actor["id"]), -requested_days, "?? ?? ??", request_id, now),
+    )
+    if overridden:
+        for step in ("TEAM_LEAD", "DIRECTOR", "CEO"):
+            prefix = {"TEAM_LEAD": "team", "DIRECTOR": "director", "CEO": "ceo"}[step]
+            if row[f"{prefix}_status"] not in {"APPROVED", "REJECTED"}:
+                connection.execute(
+                    f"UPDATE leave_requests SET {prefix}_status = 'OVERRIDDEN', {prefix}_decided_by = ?, {prefix}_decided_at = ?, {prefix}_comment = ? WHERE id = ?",
+                    (int(actor["id"]), now, comment, request_id),
+                )
+    connection.execute(
+        """
+        UPDATE leave_requests
+           SET status = 'APPROVED', approval_step = 'COMPLETED', decided_by = ?, finalized_at = ?, updated_at = ?
+         WHERE id = ?
+        """,
+        (int(actor["id"]), now, now, request_id),
+    )
+    notify_leave_requester(connection, int(row["user_id"]), request_id, "?? ??? ?? ???????.")
+
+
 def decide_leave_request(request_id: int, actor: dict[str, str], decision: str, comment: str = "") -> None:
     init_db()
-    if decision not in {"approve", "reject"}:
-        raise ValueError("처리 값이 올바르지 않습니다.")
+    if decision not in {"approve", "reject", "override"}:
+        raise ValueError("?? ?? ???? ????.")
+    clean_comment = str(comment or "").strip()
     connection = connect_db()
     try:
         row = connection.execute("SELECT * FROM leave_requests WHERE id = ?", (request_id,)).fetchone()
         if not row:
-            raise ValueError("연차 신청건을 찾지 못했습니다.")
+            raise ValueError("?? ???? ?? ?????.")
         if row["status"] != "PENDING":
-            raise ValueError("이미 처리된 연차 신청입니다.")
-        now = now_text()
+            raise ValueError("?? ??? ?? ?????.")
+        step = str(row["approval_step"] or "TEAM_LEAD")
+        if decision == "override":
+            if not actor_can_override_leave(actor):
+                raise ValueError("?? ?? ??? ????.")
+            finalize_leave_approval(connection, row, actor, clean_comment or "?? ??", overridden=True)
+            connection.commit()
+            return
+        if not actor_can_approve_leave_step(actor, step):
+            raise ValueError(f"{leave_approval_label(step)} ??? ????.")
         if decision == "reject":
+            set_leave_step_decision(connection, request_id, step, "REJECTED", int(actor["id"]), clean_comment or "??")
+            release_leave_reservation(connection, row)
+            now = now_text()
             connection.execute(
                 """
                 UPDATE leave_requests
-                   SET status = 'REJECTED', rejected_reason = ?, decided_by = ?,
-                       finalized_at = ?, updated_at = ?
+                   SET status = 'REJECTED', approval_step = 'COMPLETED', rejected_reason = ?, decided_by = ?, finalized_at = ?, updated_at = ?
                  WHERE id = ?
                 """,
-                (comment or "반려", int(actor["id"]), now, now, request_id),
+                (clean_comment or "??", int(actor["id"]), now, now, request_id),
             )
+            notify_leave_requester(connection, int(row["user_id"]), request_id, "?? ??? ???????.")
+            connection.commit()
+            return
+        set_leave_step_decision(connection, request_id, step, "APPROVED", int(actor["id"]), clean_comment)
+        if step == "TEAM_LEAD":
+            connection.execute(
+                "UPDATE leave_requests SET approval_step = 'DIRECTOR', director_status = 'PENDING', updated_at = ? WHERE id = ?",
+                (now_text(), request_id),
+            )
+            notify_leave_step(connection, request_id, "DIRECTOR", row["display_name"] if "display_name" in row.keys() else "???")
+        elif step == "DIRECTOR":
+            connection.execute(
+                "UPDATE leave_requests SET approval_step = 'CEO', ceo_status = 'PENDING', updated_at = ? WHERE id = ?",
+                (now_text(), request_id),
+            )
+            notify_leave_step(connection, request_id, "CEO", row["display_name"] if "display_name" in row.keys() else "???")
         else:
-            balance = ensure_leave_balance(connection, int(row["user_id"]), int(row["leave_type_id"]))
-            requested_days = float(row["requested_days"] or 0)
-            if float(balance["remaining_days"] or 0) < requested_days:
-                raise ValueError("잔여 연차가 부족해 승인할 수 없습니다.")
-            used = round(float(balance["used_days"] or 0) + requested_days, 2)
-            remaining = round(float(balance["remaining_days"] or 0) - requested_days, 2)
-            connection.execute(
-                "UPDATE leave_balances SET used_days = ?, remaining_days = ?, updated_at = ? WHERE id = ?",
-                (used, remaining, now, balance["id"]),
-            )
-            connection.execute(
-                """
-                INSERT INTO leave_balance_ledger
-                    (balance_id, user_id, actor_id, delta_days, reason, request_id, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-                """,
-                (balance["id"], row["user_id"], int(actor["id"]), -requested_days, "연차 승인 차감", request_id, now),
-            )
-            connection.execute(
-                """
-                UPDATE leave_requests
-                   SET status = 'APPROVED', decided_by = ?, finalized_at = ?, updated_at = ?
-                 WHERE id = ?
-                """,
-                (int(actor["id"]), now, now, request_id),
-            )
+            refreshed = connection.execute("SELECT * FROM leave_requests WHERE id = ?", (request_id,)).fetchone()
+            finalize_leave_approval(connection, refreshed, actor, clean_comment)
+        connection.commit()
+    finally:
+        connection.close()
+
+
+def cancel_leave_request(request_id: int, actor: dict[str, str], reason: str = "") -> None:
+    init_db()
+    connection = connect_db()
+    try:
+        row = connection.execute("SELECT * FROM leave_requests WHERE id = ?", (request_id,)).fetchone()
+        if not row:
+            raise ValueError("?? ???? ?? ?????.")
+        if row["status"] != "PENDING":
+            raise ValueError("?? ??/??/??? ??? ??? ? ????.")
+        if int(row["user_id"]) != int(actor["id"]) and not user_has_permission(actor, "leave_manage"):
+            raise ValueError("?? ???? ??? ? ????.")
+        release_leave_reservation(connection, row)
+        now = now_text()
+        clean_reason = str(reason or "").strip() or "??? ??"
+        connection.execute(
+            """
+            UPDATE leave_requests
+               SET status = 'CANCELED', approval_step = 'COMPLETED', cancel_reason = ?, canceled_by = ?, canceled_at = ?, updated_at = ?
+             WHERE id = ?
+            """,
+            (clean_reason, int(actor["id"]), now, now, request_id),
+        )
+        notify_leave_requester(connection, int(row["user_id"]), request_id, "?? ??? ???????.")
         connection.commit()
     finally:
         connection.close()
@@ -15070,34 +14850,26 @@ def decide_leave_request(request_id: int, actor: dict[str, str], decision: str, 
 
 def set_leave_balance(payload: dict, actor: dict[str, str]) -> None:
     init_db()
-    user_id = clean_payload_int(payload, "user_id")
+    user_id = int(payload.get("user_id") or 0)
     if not user_id:
-        raise ValueError("직원을 선택해주세요.")
-    total = clean_leave_days(payload.get("total_days"), "시작 연차")
-    used = clean_leave_days(payload.get("used_days"), "기존 사용 연차")
+        raise ValueError("??? ??????.")
+    total = clean_leave_days(payload.get("total_days"), "?? ??")
+    used = clean_leave_days(payload.get("used_days"), "?? ?? ??")
     if used > total:
-        raise ValueError("기존 사용 연차는 시작 연차보다 클 수 없습니다.")
-    remaining = round(total - used, 2)
+        raise ValueError("?? ?? ??? ?? ???? ? ? ????.")
     leave_type_id = get_leave_type_id("annual")
     now = now_text()
     connection = connect_db()
     try:
         balance = ensure_leave_balance(connection, user_id, leave_type_id)
-        connection.execute(
-            """
-            UPDATE leave_balances
-               SET total_days = ?, used_days = ?, remaining_days = ?, updated_at = ?
-             WHERE id = ?
-            """,
-            (total, used, remaining, now, balance["id"]),
-        )
+        update_leave_balance_amounts(connection, int(balance["id"]), total_days=total, used_days=used, reserved_days=0)
         connection.execute(
             """
             INSERT INTO leave_balance_ledger
                 (balance_id, user_id, actor_id, delta_days, reason, request_id, created_at)
             VALUES (?, ?, ?, ?, ?, NULL, ?)
             """,
-            (balance["id"], user_id, int(actor["id"]), 0, f"초기 연차 설정: 시작 {total}일, 기존 사용 {used}일", now),
+            (balance["id"], user_id, int(actor["id"]), 0, f"?? ?? ??: ?? {total}?, ?? ?? {used}?", now),
         )
         connection.commit()
     finally:
@@ -15111,28 +14883,28 @@ def parse_historical_leave_lines(text: str) -> list[tuple[date, str, float]]:
         line = raw_line.strip()
         if not line:
             continue
-        match = re.match(r"^(\d{4}-\d{2}-\d{2})(?:[\s,]+(반차|0\.5|1|1\.0|연차|일))?$", line)
+        match = re.match(r"^(\d{4}-\d{2}-\d{2})(?:[\s,]+(??|0\.5|1|1\.0|??|?))?$", line)
         if not match:
-            raise ValueError(f"사용 일자 형식이 올바르지 않습니다: {line}")
+            raise ValueError(f"?? ?? ??? ???? ????: {line}")
         used_date = parse_iso_date(match.group(1))
-        unit_text = match.group(2) or "연차"
-        unit = "HALF_DAY" if unit_text in {"반차", "0.5"} else "FULL_DAY"
+        unit_text = match.group(2) or "??"
+        unit = "HALF_DAY" if unit_text in {"??", "0.5"} else "FULL_DAY"
         days = 0.5 if unit == "HALF_DAY" else 1.0
         key = (used_date.isoformat(), days)
         if key in seen:
-            raise ValueError(f"같은 사용 일자가 중복 입력됐습니다: {used_date.isoformat()}")
+            raise ValueError(f"?? ?? ??? ?? ???????: {used_date.isoformat()}")
         seen.add(key)
         entries.append((used_date, unit, days))
     if not entries:
-        raise ValueError("사용 일자를 1개 이상 입력해주세요.")
+        raise ValueError("?? ??? 1? ?? ??????.")
     return entries
 
 
 def add_historical_leave_usage(payload: dict, actor: dict[str, str]) -> int:
     init_db()
-    user_id = clean_payload_int(payload, "user_id")
+    user_id = int(payload.get("user_id") or 0)
     if not user_id:
-        raise ValueError("직원을 선택해주세요.")
+        raise ValueError("??? ??????.")
     entries = parse_historical_leave_lines(str(payload.get("usage_dates", "") or ""))
     note = clean_payload_text(payload, "note")
     leave_type_id = get_leave_type_id("annual")
@@ -15142,15 +14914,15 @@ def add_historical_leave_usage(payload: dict, actor: dict[str, str]) -> int:
         balance = ensure_leave_balance(connection, user_id, leave_type_id)
         total_days = round(sum(entry[2] for entry in entries), 2)
         if float(balance["remaining_days"] or 0) < total_days:
-            raise ValueError("잔여 연차보다 기존 사용 연차가 많습니다.")
+            raise ValueError("?? ???? ?? ?? ??? ????.")
         for used_date, unit, days in entries:
-            reason = f"기존 사용 연차 등록{': ' + note if note else ''}"
+            reason = f"?? ?? ?? ??{': ' + note if note else ''}"
             cursor = connection.execute(
                 """
                 INSERT INTO leave_requests
                     (user_id, leave_type_id, start_date, end_date, unit, requested_days, reason,
-                     status, decided_by, finalized_at, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, 'APPROVED', ?, ?, ?, ?)
+                     status, approval_step, team_status, director_status, ceo_status, decided_by, finalized_at, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, 'APPROVED', 'COMPLETED', 'APPROVED', 'APPROVED', 'APPROVED', ?, ?, ?, ?)
                 """,
                 (user_id, leave_type_id, used_date.isoformat(), used_date.isoformat(), unit, days, reason, int(actor["id"]), now, now, now),
             )
@@ -15162,14 +14934,51 @@ def add_historical_leave_usage(payload: dict, actor: dict[str, str]) -> int:
                 """,
                 (balance["id"], user_id, int(actor["id"]), -days, reason, int(cursor.lastrowid), now),
             )
-        used = round(float(balance["used_days"] or 0) + total_days, 2)
-        remaining = round(float(balance["remaining_days"] or 0) - total_days, 2)
-        connection.execute(
-            "UPDATE leave_balances SET used_days = ?, remaining_days = ?, updated_at = ? WHERE id = ?",
-            (used, remaining, now, balance["id"]),
+        update_leave_balance_amounts(
+            connection,
+            int(balance["id"]),
+            used_days=round(float(balance["used_days"] or 0) + total_days, 2),
         )
         connection.commit()
         return len(entries)
+    finally:
+        connection.close()
+
+
+def apply_annual_leave_accrual(year: int | None = None, actor: dict[str, str] | None = None, default_days: float = 15.0) -> int:
+    init_db()
+    target_year = int(year or date.today().year)
+    annual_type_id = get_leave_type_id("annual")
+    actor_id = int((actor or {}).get("id") or 0) or None
+    now = now_text()
+    updated = 0
+    connection = connect_db()
+    try:
+        users = connection.execute("SELECT id FROM users WHERE active = 1").fetchall()
+        for user in users:
+            balance = ensure_leave_balance(connection, int(user["id"]), annual_type_id)
+            if int(balance["accrual_year"] or 0) == target_year:
+                continue
+            updated_balance = update_leave_balance_amounts(
+                connection,
+                int(balance["id"]),
+                total_days=float(default_days),
+                used_days=0,
+                reserved_days=0,
+                accrual_year=target_year,
+            )
+            connection.execute(
+                """
+                INSERT INTO leave_balance_ledger
+                    (balance_id, user_id, actor_id, delta_days, reason, request_id, created_at)
+                VALUES (?, ?, ?, ?, ?, NULL, ?)
+                """,
+                (updated_balance["id"], user["id"], actor_id, float(default_days), f"{target_year}? ?? ?? ??", now),
+            )
+            add_leave_notification(connection, int(user["id"]), None, "accrual", f"{target_year}? ?? {default_days:g}?? ?? ??????.")
+            updated += 1
+        connection.commit()
+        return updated
     finally:
         connection.close()
 
@@ -15602,7 +15411,7 @@ def save_import_shipment(payload: dict) -> int:
     values = {field: clean_payload_text(payload, field) for field in IMPORT_SHIPMENT_FIELDS}
     if not any(values.values()):
         raise ValueError("수입제품 출고 진행 내용을 입력해주세요.")
-    shipment_id = clean_payload_int(payload, "id")
+    shipment_id = int(payload.get("id") or 0)
     connection = connect_db()
     try:
         if shipment_id:
@@ -15916,9 +15725,6 @@ def apply_cell_style(cell, style: dict) -> None:
 
 
 def clear_management_template_sheet(worksheet, style_row: list[dict], row_height: float | None) -> None:
-    for merged_range in list(worksheet.merged_cells.ranges):
-        if merged_range.min_row <= MANAGEMENT_TEMPLATE_DATA_ROW and merged_range.max_row >= MANAGEMENT_TEMPLATE_HEADER_ROW:
-            worksheet.unmerge_cells(str(merged_range))
     if worksheet.max_row >= MANAGEMENT_TEMPLATE_DATA_ROW:
         worksheet.delete_rows(MANAGEMENT_TEMPLATE_DATA_ROW, worksheet.max_row - MANAGEMENT_TEMPLATE_DATA_ROW + 1)
     for column_index, (_, header) in enumerate(MANAGEMENT_EXPORT_COLUMNS, start=1):
@@ -15927,13 +15733,6 @@ def clear_management_template_sheet(worksheet, style_row: list[dict], row_height
         worksheet.row_dimensions[MANAGEMENT_TEMPLATE_DATA_ROW].height = row_height
     for column_index, style in enumerate(style_row, start=1):
         apply_cell_style(worksheet.cell(MANAGEMENT_TEMPLATE_DATA_ROW, column_index), style)
-
-
-def management_export_cell_value(row: dict, key: str, sequence: int) -> str:
-    if key == "sequence":
-        return clean_cell(row.get(key, "")) or str(sequence)
-    return clean_cell(row.get(key, ""))
-
 
 def populate_management_template_sheet(worksheet, title: str, rows: list[dict], style_row: list[dict], row_height: float | None) -> None:
     worksheet.title = title[:31]
@@ -15949,6 +15748,10 @@ def populate_management_template_sheet(worksheet, title: str, rows: list[dict], 
     worksheet.auto_filter.ref = f"A{MANAGEMENT_TEMPLATE_HEADER_ROW}:{last_column}{last_row}"
     worksheet.freeze_panes = f"A{MANAGEMENT_TEMPLATE_DATA_ROW}"
 
+def management_export_cell_value(row: dict, key: str, sequence: int) -> str:
+    if key == "sequence":
+        return clean_cell(row.get(key, "")) or str(sequence)
+    return clean_cell(row.get(key, ""))
 
 def management_year_from_rows(rows: list[dict], fallback: str = "") -> str:
     for row in rows:
@@ -15999,10 +15802,6 @@ def management_workbook_bytes_from_template(rows: list[dict]) -> bytes:
 
 def management_export_rows_from_payload(payload: dict) -> tuple[list[dict], str]:
     scope = clean_payload_text(payload, "scope") or "selected"
-    if scope == "template":
-        year = clean_payload_text(payload, "year")
-        rows = list_management_records(limit=None, year=year if re.fullmatch(r"\d{4}", year) else "")
-        return rows, management_template_filename_stem(rows, payload)
     if scope == "selected":
         rows = payload.get("rows", [])
         if isinstance(rows, list) and rows:
@@ -16131,18 +15930,6 @@ def find_management_header_row(worksheet, max_scan_rows: int = 10) -> tuple[int,
         if indexes["receiver_name"] is not None and indexes["product_name"] is not None:
             return row_number, indexes
     return None
-
-def find_management_header_row(worksheet, max_scan_rows: int = 10) -> tuple[int, dict[str, int | None]] | None:
-    for row_number, row in enumerate(
-        worksheet.iter_rows(min_row=1, max_row=max_scan_rows, max_col=80, values_only=True),
-        start=1,
-    ):
-        headers = [normalized_header(value) for value in row]
-        indexes = management_header_indexes(headers)
-        if indexes["receiver_name"] is not None and indexes["product_name"] is not None:
-            return row_number, indexes
-    return None
-
 
 def import_management_workbook(path: Path) -> tuple[int, int]:
     init_db()
@@ -17028,7 +16815,6 @@ class WorkhubHandler(BaseHTTPRequestHandler):
         return False
 
     def do_GET(self) -> None:
-        route_path = urlsplit(self.path).path
         if self.path.startswith("/static/"):
             relative = unquote(self.path.removeprefix("/static/"))
             target = (STATIC_DIR / relative).resolve()
@@ -17066,7 +16852,7 @@ class WorkhubHandler(BaseHTTPRequestHandler):
             )
             return
 
-        if route_path == "/logout":
+        if self.path == "/logout":
             delete_login_session(self.cookie_value(SESSION_COOKIE_NAME))
             self.send_response(303)
             self.clear_session_cookie()
@@ -17083,17 +16869,17 @@ class WorkhubHandler(BaseHTTPRequestHandler):
             self.send_redirect("/login")
             return
 
-        if route_path == "/" or self.path.startswith("/?"):
+        if self.path == "/" or self.path.startswith("/?"):
             self.send_bytes(render_app_html(user).encode("utf-8"), "text/html; charset=utf-8")
             return
 
-        if route_path == "/api/users":
+        if self.path == "/api/users":
             if not self.require_permission(user, "user_admin", "사용자 관리"):
                 return
             self.send_json({"users": list_users()})
             return
 
-        if route_path == "/api/backups":
+        if self.path == "/api/backups":
             if not self.require_permission(user, "backup_manage", "백업 관리"):
                 return
             backups = list_backup_files()
@@ -17106,17 +16892,17 @@ class WorkhubHandler(BaseHTTPRequestHandler):
             })
             return
 
-        if route_path == "/api/order-downloads":
+        if self.path == "/api/order-downloads":
             if not self.require_permission(user, "excel_download", "엑셀 다운로드"):
                 return
             self.send_json({"downloads": list_order_downloads(), "limit": ORDER_DOWNLOAD_LIMIT})
             return
 
-        if route_path == "/api/shared-files":
+        if self.path == "/api/shared-files":
             self.send_json({"files": list_shared_files()})
             return
 
-        if route_path == "/api/shared-file-download":
+        if self.path.startswith("/api/shared-file-download"):
             parsed = urlsplit(self.path)
             params = parse_qs(parsed.query)
             try:
@@ -17137,7 +16923,7 @@ class WorkhubHandler(BaseHTTPRequestHandler):
             self.wfile.write(data)
             return
 
-        if route_path == "/api/order-download":
+        if self.path.startswith("/api/order-download"):
             if not self.require_permission(user, "excel_download", "엑셀 다운로드"):
                 return
             parsed = urlsplit(self.path)
@@ -17160,7 +16946,7 @@ class WorkhubHandler(BaseHTTPRequestHandler):
             self.wfile.write(data)
             return
 
-        if route_path == "/api/system-update":
+        if self.path == "/api/system-update":
             if not self.require_permission(user, "system_update", "시스템 업데이트"):
                 return
             self.send_json(system_update_payload(fetch=False))
@@ -17190,20 +16976,20 @@ class WorkhubHandler(BaseHTTPRequestHandler):
             self.wfile.write(data)
             return
 
-        if route_path == "/api/leaves":
+        if self.path == "/api/leaves":
             if not any(user_has_permission(user, permission) for permission in ("leave_view", "leave_approve", "leave_manage")):
                 self.send_json({"error": "연차 조회 권한이 없습니다."}, status=403)
                 return
             self.send_json(leave_payload(user))
             return
 
-        if route_path == "/api/mail-settings":
+        if self.path == "/api/mail-settings":
             if not self.require_permission(user, "mail_send", "메일 발송"):
                 return
             self.send_json(load_mail_settings(include_password=False))
             return
 
-        if route_path == "/api/vendor-contacts":
+        if self.path == "/api/vendor-contacts":
             if not self.require_permission(user, "mail_send", "메일 발송"):
                 return
             self.send_json({"contacts": load_vendor_contacts()})
@@ -17236,11 +17022,11 @@ class WorkhubHandler(BaseHTTPRequestHandler):
             self.send_json({"records": list_management_records(query=query, limit=limit, year=year, month=month)})
             return
 
-        if route_path == "/api/management-periods":
+        if self.path == "/api/management-periods":
             self.send_json({"periods": list_management_periods()})
             return
 
-        if route_path == "/api/company-staff-dashboard":
+        if self.path == "/api/company-staff-dashboard":
             if not self.require_permission(user, "crm_view", "CRM 조회"):
                 return
             self.send_json(company_staff_dashboard_payload(user))
@@ -17255,10 +17041,6 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                 self.send_json(company_calendar_payload(user, params.get("month", [""])[0]))
             except ValueError as exc:
                 self.send_json({"error": str(exc)}, status=400)
-            return
-
-        if route_path == "/api/company-notice":
-            self.send_json({"notice": latest_company_notice()})
             return
 
         if self.path.startswith("/api/internal-messages"):
@@ -17282,7 +17064,7 @@ class WorkhubHandler(BaseHTTPRequestHandler):
             })
             return
 
-        if route_path == "/api/crm-dashboard":
+        if self.path == "/api/crm-dashboard":
             if not self.require_permission(user, "crm_view", "CRM 조회"):
                 return
             self.send_json(crm_dashboard_payload(DB_PATH))
@@ -17337,19 +17119,12 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                 return
             parsed = urlsplit(self.path)
             params = parse_qs(parsed.query)
-            raw_task_id = (params.get("task_id", [""])[0] or "").strip()
-            if not raw_task_id:
-                self.send_json({"error": "task_id를 지정해주세요."}, status=400)
-                return
-            try:
-                task_id = int(raw_task_id)
-            except ValueError:
-                self.send_json({"error": "task_id는 정수로 전달해야 합니다."}, status=400)
-                return
-            try:
-                self.send_json({"comments": list_crm_task_comments(DB_PATH, task_id)})
-            except ValueError as exc:
-                self.send_json({"error": str(exc)}, status=404)
+            self.send_json({
+                "comments": list_crm_task_comments(
+                    DB_PATH,
+                    int(params.get("task_id", ["0"])[0] or 0),
+                )
+            })
             return
 
         if self.path.startswith("/api/crm-saved-views"):
@@ -17366,7 +17141,7 @@ class WorkhubHandler(BaseHTTPRequestHandler):
             })
             return
 
-        if route_path == "/api/crm-message-events":
+        if self.path == "/api/crm-message-events":
             if not self.require_permission(user, "crm_message_manage", "CRM 메신저 연동"):
                 return
             self.send_json({
@@ -17379,7 +17154,7 @@ class WorkhubHandler(BaseHTTPRequestHandler):
             })
             return
 
-        if route_path == "/api/crm-messenger-users":
+        if self.path == "/api/crm-messenger-users":
             if not self.require_permission(user, "crm_view", "CRM 조회"):
                 return
             payload = list_crm_messenger_users(DB_PATH)
@@ -17388,19 +17163,20 @@ class WorkhubHandler(BaseHTTPRequestHandler):
             self.send_json(payload)
             return
 
-        if route_path == "/api/import-shipments":
+        if self.path == "/api/import-shipments":
             self.send_json({"shipments": list_import_shipments()})
             return
 
         self.send_error(404)
 
     def do_POST(self) -> None:
-        route_path = urlsplit(self.path).path
         try:
-            if route_path == "/login":
-                payload = parse_form_body(self.headers, self.rfile, single_values=True)
-                username = payload.get("username", "")
-                password = payload.get("password", "")
+            if self.path == "/login":
+                length = int(self.headers.get("Content-Length", "0"))
+                raw_body = self.rfile.read(length).decode("utf-8")
+                payload = parse_qs(raw_body)
+                username = payload.get("username", [""])[0]
+                password = payload.get("password", [""])[0]
                 locked, lock_message = login_lock_status(username, self.client_ip())
                 if locked:
                     self.send_bytes(
@@ -17429,8 +17205,10 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                 self.end_headers()
                 return
 
-            if route_path == "/register":
-                payload = parse_form_body(self.headers, self.rfile, single_values=True)
+            if self.path == "/register":
+                length = int(self.headers.get("Content-Length", "0"))
+                raw_body = self.rfile.read(length).decode("utf-8")
+                payload = {key: values[0] if values else "" for key, values in parse_qs(raw_body).items()}
                 try:
                     register_user_request(payload)
                 except ValueError as exc:
@@ -17443,13 +17221,14 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                 self.send_redirect("/login?registered=1")
                 return
 
-            if route_path == "/api/crm-messenger-webhook":
+            if self.path == "/api/crm-messenger-webhook":
                 expected_token = crm_webhook_token()
                 received_token = self.headers.get("X-Workhub-Webhook-Token", "")
                 if not hmac.compare_digest(received_token, expected_token):
                     self.send_json({"error": "웹훅 토큰이 올바르지 않습니다."}, status=403)
                     return
-                payload = parse_json_body(self.headers, self.rfile)
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(length).decode("utf-8") or "{}")
                 self.send_json(handle_crm_messenger_webhook(DB_PATH, payload))
                 return
 
@@ -17458,50 +17237,39 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                 self.send_json({"error": "로그인이 필요합니다."}, status=401)
                 return
 
-            if route_path == "/api/internal-message-save":
-                payload = parse_json_body(self.headers, self.rfile)
+            if self.path == "/api/internal-message-save":
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(length).decode("utf-8") or "{}")
                 message_id = save_internal_message(payload, user)
                 self.send_json({"message": "메시지를 저장했습니다.", "message_id": message_id})
                 return
 
-            if route_path == "/api/company-notice-save":
-                if not self.require_permission(user, "notice_manage", "공지사항 관리"):
-                    return
-                payload = parse_json_body(self.headers, self.rfile)
-                notice_id = save_company_notice(payload, user)
-                self.send_json({"message": "공지사항을 저장했습니다.", "notice_id": notice_id, "notice": latest_company_notice()})
-                return
-
-            if route_path == "/api/company-notice-clear":
-                if not self.require_permission(user, "notice_manage", "공지사항 관리"):
-                    return
-                clear_company_notice(user)
-                self.send_json({"message": "공지사항 입력 내용을 초기화했습니다.", "notice": latest_company_notice()})
-                return
-
-            if route_path == "/api/crm-account-save":
+            if self.path == "/api/crm-account-save":
                 if not self.require_permission(user, "crm_manage", "CRM 관리"):
                     return
-                payload = parse_json_body(self.headers, self.rfile)
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(length).decode("utf-8"))
                 account_id = save_crm_account(DB_PATH, payload)
                 self.send_json({"message": "CRM 거래처를 저장했습니다.", "account_id": account_id})
                 return
 
-            if route_path == "/api/crm-task-save":
+            if self.path == "/api/crm-task-save":
                 if not self.require_permission(user, "crm_manage", "CRM 관리"):
                     return
-                payload = parse_json_body(self.headers, self.rfile)
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(length).decode("utf-8"))
                 task_id = save_crm_task(DB_PATH, payload, user)
                 self.send_json({"message": "CRM 업무를 저장했습니다.", "task_id": task_id})
                 return
 
-            if route_path == "/api/crm-task-status":
+            if self.path == "/api/crm-task-status":
                 if not self.require_permission(user, "crm_view", "CRM 조회"):
                     return
-                payload = parse_json_body(self.headers, self.rfile)
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(length).decode("utf-8"))
                 task_id = change_crm_task_status(
                     DB_PATH,
-                    clean_payload_int(payload, "id"),
+                    int(payload.get("id") or 0),
                     str(payload.get("status") or ""),
                     user,
                     comment=str(payload.get("comment") or ""),
@@ -17510,13 +17278,14 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                 self.send_json({"message": "CRM 업무 상태를 저장했습니다.", "task_id": task_id})
                 return
 
-            if route_path == "/api/crm-task-comment":
+            if self.path == "/api/crm-task-comment":
                 if not self.require_permission(user, "crm_view", "CRM 조회"):
                     return
-                payload = parse_json_body(self.headers, self.rfile)
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(length).decode("utf-8"))
                 task_id = add_crm_task_comment(
                     DB_PATH,
-                    clean_payload_int(payload, "id"),
+                    int(payload.get("id") or 0),
                     str(payload.get("body") or ""),
                     user,
                     can_manage=user_has_permission(user, "crm_manage"),
@@ -17524,10 +17293,11 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                 self.send_json({"message": "CRM 업무 댓글을 저장했습니다.", "task_id": task_id})
                 return
 
-            if route_path == "/api/crm-saved-view-save":
+            if self.path == "/api/crm-saved-view-save":
                 if not self.require_permission(user, "crm_view", "CRM 조회"):
                     return
-                payload = parse_json_body(self.headers, self.rfile)
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(length).decode("utf-8"))
                 view_id = save_crm_saved_view(DB_PATH, payload, user)
                 self.send_json({
                     "message": "CRM 저장뷰를 저장했습니다.",
@@ -17536,26 +17306,28 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                 })
                 return
 
-            if route_path == "/api/crm-saved-view-delete":
+            if self.path == "/api/crm-saved-view-delete":
                 if not self.require_permission(user, "crm_view", "CRM 조회"):
                     return
-                payload = parse_json_body(self.headers, self.rfile)
-                delete_crm_saved_view(DB_PATH, clean_payload_int(payload, "id"), user)
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(length).decode("utf-8"))
+                delete_crm_saved_view(DB_PATH, int(payload.get("id") or 0), user)
                 self.send_json({
                     "message": "CRM 저장뷰를 삭제했습니다.",
                     "views": list_crm_saved_views(DB_PATH, int(user.get("id") or 0), scope=str(payload.get("scope") or "tasks")),
                 })
                 return
 
-            if route_path == "/api/crm-messenger-user-save":
+            if self.path == "/api/crm-messenger-user-save":
                 if not self.require_permission(user, "crm_message_manage", "CRM 메신저 연동"):
                     return
-                payload = parse_json_body(self.headers, self.rfile)
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(length).decode("utf-8"))
                 mapping_id = save_crm_messenger_user(DB_PATH, payload)
                 self.send_json({"message": "메신저 사용자 매핑을 저장했습니다.", "mapping_id": mapping_id})
                 return
 
-            if route_path == "/api/crm-webhook-token-rotate":
+            if self.path == "/api/crm-webhook-token-rotate":
                 if not self.require_permission(user, "crm_message_manage", "CRM 메신저 연동"):
                     return
                 token = rotate_crm_webhook_token()
@@ -17569,37 +17341,39 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                 })
                 return
 
-            if route_path == "/api/users-save":
+            if self.path == "/api/users-save":
                 if not self.require_permission(user, "user_admin", "사용자 관리"):
                     return
-                payload = parse_json_body(self.headers, self.rfile)
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(length).decode("utf-8"))
                 user_id = save_user_account(payload, user)
                 self.send_json({"message": "사용자 계정을 저장했습니다.", "user_id": user_id, "users": list_users()})
                 return
 
-            if route_path == "/api/backup-create":
+            if self.path == "/api/backup-create":
                 if not self.require_permission(user, "backup_manage", "백업 관리"):
                     return
                 backup = create_workhub_backup("manual")
                 self.send_json({"message": "백업 파일을 생성했습니다.", "backup": backup})
                 return
 
-            if route_path == "/api/system-update-check":
+            if self.path == "/api/system-update-check":
                 if not self.require_permission(user, "system_update", "시스템 업데이트"):
                     return
                 self.send_json(system_update_payload(fetch=True))
                 return
 
-            if route_path == "/api/system-update-apply":
+            if self.path == "/api/system-update-apply":
                 if not self.require_permission(user, "system_update", "시스템 업데이트"):
                     return
                 self.send_json(apply_system_update())
                 return
 
-            if route_path == "/api/backup-delete":
+            if self.path == "/api/backup-delete":
                 if not self.require_permission(user, "backup_manage", "백업 관리"):
                     return
-                payload = parse_json_body(self.headers, self.rfile)
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(length).decode("utf-8"))
                 path = backup_path_from_name(clean_payload_text(payload, "name"))
                 if not path.exists():
                     raise FileNotFoundError("삭제할 백업 파일을 찾지 못했습니다.")
@@ -17607,58 +17381,79 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                 self.send_json({"message": "백업 파일을 삭제했습니다.", "name": path.name})
                 return
 
-            if route_path == "/api/backup-restore":
+            if self.path == "/api/backup-restore":
                 if not self.require_permission(user, "backup_manage", "백업 관리"):
                     return
-                payload = parse_json_body(self.headers, self.rfile)
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(length).decode("utf-8"))
                 path = backup_path_from_name(clean_payload_text(payload, "name"))
                 if not path.exists():
                     raise FileNotFoundError("복원할 백업 파일을 찾지 못했습니다.")
                 self.send_json(restore_workhub_backup(path))
                 return
 
-            if route_path == "/api/leave-request":
+            if self.path == "/api/leave-request":
                 if not self.require_permission(user, "leave_view", "연차 조회"):
                     return
-                payload = parse_json_body(self.headers, self.rfile)
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(length).decode("utf-8"))
                 request_id = create_leave_request(user, payload)
                 self.send_json({"message": "연차 신청이 저장되었습니다.", "request_id": request_id})
                 return
 
-            if route_path == "/api/leave-decision":
-                if not (user_has_permission(user, "leave_approve") or user_has_permission(user, "leave_manage")):
+            if self.path == "/api/leave-decision":
+                if not any(user_has_permission(user, permission) for permission in ("leave_approve", "leave_approve_team", "leave_approve_director", "leave_approve_ceo", "leave_director_override", "leave_manage")):
                     self.send_json({"error": "연차 승인 권한이 없습니다."}, status=403)
                     return
-                payload = parse_json_body(self.headers, self.rfile)
-                decide_leave_request(
-                    clean_payload_int(payload, "request_id"),
-                    user,
-                    clean_payload_text(payload, "decision"),
-                    clean_payload_text(payload, "comment"),
-                )
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(length).decode("utf-8"))
+                decide_leave_request(int(payload.get("request_id", 0)), user, clean_payload_text(payload, "decision"), clean_payload_text(payload, "comment"))
                 self.send_json({"message": "연차 신청을 처리했습니다."})
                 return
 
-            if route_path == "/api/leave-balance":
+            if self.path == "/api/leave-cancel":
+                if not self.require_permission(user, "leave_view", "?? ??"):
+                    return
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(length).decode("utf-8"))
+                cancel_leave_request(int(payload.get("request_id", 0)), user, clean_payload_text(payload, "reason"))
+                self.send_json({"message": "\uC5F0\uCC28 \uC2E0\uCCAD\uC744 \uCDE8\uC18C\uD588\uC2B5\uB2C8\uB2E4."})
+                return
+
+            if self.path == "/api/leave-accrual":
+                if not self.require_permission(user, "leave_manage", "?? ??"):
+                    return
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(length).decode("utf-8"))
+                year = int(payload.get("year") or date.today().year)
+                default_days = float(payload.get("default_days") or 15)
+                count = apply_annual_leave_accrual(year, actor=user, default_days=default_days)
+                self.send_json({"message": f"{year}? ?? ?? ?? {count}?? ??????.", "count": count})
+                return
+
+            if self.path == "/api/leave-balance":
                 if not self.require_permission(user, "leave_manage", "연차 관리"):
                     return
-                payload = parse_json_body(self.headers, self.rfile)
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(length).decode("utf-8"))
                 set_leave_balance(payload, user)
                 self.send_json({"message": "직원 연차 기준을 저장했습니다."})
                 return
 
-            if route_path == "/api/leave-historical":
+            if self.path == "/api/leave-historical":
                 if not self.require_permission(user, "leave_manage", "연차 관리"):
                     return
-                payload = parse_json_body(self.headers, self.rfile)
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(length).decode("utf-8"))
                 count = add_historical_leave_usage(payload, user)
                 self.send_json({"message": f"기존 사용 연차 {count}건을 등록했습니다.", "count": count})
                 return
 
-            if route_path == "/api/mail-settings":
+            if self.path == "/api/mail-settings":
                 if not self.require_admin(user, "메일 기본정보 저장"):
                     return
-                payload = parse_json_body(self.headers, self.rfile)
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(length).decode("utf-8"))
                 naver_email = normalize_naver_email(payload.get("naver_email"))
                 if not naver_email:
                     raise ValueError("네이버 메일 아이디를 입력해주세요.")
@@ -17679,26 +17474,29 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                 })
                 return
 
-            if route_path == "/api/mail-test":
+            if self.path == "/api/mail-test":
                 if not self.require_admin(user, "메일 테스트 발송"):
                     return
-                payload = parse_json_body(self.headers, self.rfile)
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(length).decode("utf-8"))
                 send_mail_test(payload)
                 self.send_json({"message": "테스트 메일을 발송했습니다."})
                 return
 
-            if route_path == "/api/mail-send":
+            if self.path == "/api/mail-send":
                 if not self.require_permission(user, "mail_send", "메일 발송"):
                     return
-                payload = parse_json_body(self.headers, self.rfile)
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(length).decode("utf-8"))
                 send_general_mail(payload)
                 self.send_json({"message": "메일 발송이 완료되었습니다."})
                 return
 
-            if route_path == "/api/cs-mail":
+            if self.path == "/api/cs-mail":
                 if not self.require_permission(user, "mail_send", "메일 발송"):
                     return
-                payload = parse_json_body(self.headers, self.rfile)
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(length).decode("utf-8"))
                 send_cs_mail(payload)
                 case_id = int(payload.get("case_id") or 0)
                 if case_id:
@@ -17708,29 +17506,32 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                 self.send_json({"message": "CS 요청 메일 전송 및 DB 저장이 완료되었습니다.", "case_id": case_id})
                 return
 
-            if route_path == "/api/cs-case":
+            if self.path == "/api/cs-case":
                 if not self.require_permission(user, "ledger_edit", "대장 수정"):
                     return
-                payload = parse_json_body(self.headers, self.rfile)
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(length).decode("utf-8"))
                 case_id = save_cs_case(payload, status=clean_payload_text(payload, "status") or "접수")
                 self.send_json({"message": "CS건을 DB에 저장했습니다.", "case_id": case_id})
                 return
 
-            if route_path == "/api/cs-case-update":
+            if self.path == "/api/cs-case-update":
                 if not self.require_permission(user, "ledger_edit", "대장 수정"):
                     return
-                payload = parse_json_body(self.headers, self.rfile)
-                case_id = clean_payload_int(payload, "id")
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(length).decode("utf-8"))
+                case_id = int(payload.get("id", 0))
                 if not case_id:
                     raise ValueError("수정할 CS건 ID가 없습니다.")
                 update_cs_case(case_id, payload)
                 self.send_json({"message": "CS 처리내용을 저장했습니다.", "case_id": case_id})
                 return
 
-            if route_path == "/api/cs-cases-delete":
+            if self.path == "/api/cs-cases-delete":
                 if not self.require_permission(user, "ledger_delete", "대장 삭제"):
                     return
-                payload = parse_json_body(self.headers, self.rfile)
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(length).decode("utf-8"))
                 case_ids = [int(value) for value in payload.get("ids", []) if str(value).isdigit()]
                 if not case_ids:
                     raise ValueError("삭제할 CS 처리대장 행이 없습니다.")
@@ -17738,21 +17539,23 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                 self.send_json({"message": f"CS 처리대장 선택 주문 {deleted}건을 삭제했습니다.", "deleted": deleted})
                 return
 
-            if route_path == "/api/management-record-update":
+            if self.path == "/api/management-record-update":
                 if not self.require_permission(user, "ledger_edit", "대장 수정"):
                     return
-                payload = parse_json_body(self.headers, self.rfile)
-                record_id = clean_payload_int(payload, "id")
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(length).decode("utf-8"))
+                record_id = int(payload.get("id", 0))
                 if not record_id:
                     raise ValueError("수정할 통합관리대장 행 ID가 없습니다.")
                 update_management_record(record_id, payload)
                 self.send_json({"message": "통합관리대장 행을 저장했습니다.", "record_id": record_id})
                 return
 
-            if route_path == "/api/management-records-delete":
+            if self.path == "/api/management-records-delete":
                 if not self.require_permission(user, "ledger_delete", "대장 삭제"):
                     return
-                payload = parse_json_body(self.headers, self.rfile)
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(length).decode("utf-8"))
                 record_ids = [int(value) for value in payload.get("ids", []) if str(value).isdigit()]
                 if not record_ids:
                     raise ValueError("삭제할 통합관리대장 행이 없습니다.")
@@ -17760,11 +17563,12 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                 self.send_json({"message": f"통합관리대장 선택 주문 {deleted}건을 삭제했습니다.", "deleted": deleted})
                 return
 
-            if route_path == "/api/management-to-cs":
+            if self.path == "/api/management-to-cs":
                 if not self.require_permission(user, "cs_receive", "CS접수"):
                     return
-                payload = parse_json_body(self.headers, self.rfile)
-                record_id = clean_payload_int(payload, "id")
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(length).decode("utf-8"))
+                record_id = int(payload.get("id", 0))
                 if not record_id:
                     raise ValueError("CS접수할 통합관리대장 행 ID가 없습니다.")
                 case_id = create_cs_case_from_management(record_id)
@@ -17777,26 +17581,29 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                 })
                 return
 
-            if route_path == "/api/import-shipment-save":
+            if self.path == "/api/import-shipment-save":
                 if not self.require_permission(user, "import_shipment_manage", "수입제품 진행 관리"):
                     return
-                payload = parse_json_body(self.headers, self.rfile)
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(length).decode("utf-8"))
                 shipment_id = save_import_shipment(payload)
                 self.send_json({"message": "수입제품 출고 진행 상황을 저장했습니다.", "shipment_id": shipment_id})
                 return
 
-            if route_path == "/api/import-shipment-complete":
+            if self.path == "/api/import-shipment-complete":
                 if not self.require_permission(user, "import_shipment_manage", "수입제품 진행 관리"):
                     return
-                payload = parse_json_body(self.headers, self.rfile)
-                complete_import_shipment(clean_payload_int(payload, "id"))
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(length).decode("utf-8"))
+                complete_import_shipment(int(payload.get("id") or 0))
                 self.send_json({"message": "수입제품 출고 진행 건을 완료 처리했습니다."})
                 return
 
-            if route_path == "/api/management-export":
+            if self.path == "/api/management-export":
                 if not self.require_permission(user, "excel_download", "엑셀 다운로드"):
                     return
-                payload = parse_json_body(self.headers, self.rfile)
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(length).decode("utf-8"))
                 rows, filename_stem = management_export_rows_from_payload(payload)
                 if not rows:
                     raise ValueError("엑셀로 다운로드할 통합관리대장 데이터가 없습니다.")
@@ -17810,10 +17617,11 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                 self.wfile.write(data)
                 return
 
-            if route_path == "/api/cs-cases-export":
+            if self.path == "/api/cs-cases-export":
                 if not self.require_permission(user, "excel_download", "엑셀 다운로드"):
                     return
-                payload = parse_json_body(self.headers, self.rfile)
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(length).decode("utf-8"))
                 rows, filename_stem = ledger_export_rows_from_payload(payload)
                 if not rows:
                     raise ValueError("엑셀로 다운로드할 CS 처리대장 데이터가 없습니다.")
@@ -17827,10 +17635,11 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                 self.wfile.write(data)
                 return
 
-            if route_path == "/api/vendor-contact":
+            if self.path == "/api/vendor-contact":
                 if not self.require_permission(user, "mail_send", "메일 발송"):
                     return
-                payload = parse_json_body(self.headers, self.rfile)
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(length).decode("utf-8"))
                 contacts = save_vendor_contact(
                     str(payload.get("vendor_name", "")),
                     str(payload.get("email", "")),
@@ -17839,18 +17648,20 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                 self.send_json({"message": "업체 메일 주소를 저장했습니다.", "contacts": contacts})
                 return
 
-            if route_path == "/api/shared-file-delete":
+            if self.path == "/api/shared-file-delete":
                 if not self.require_admin(user, "업무 파일 삭제"):
                     return
-                payload = parse_json_body(self.headers, self.rfile)
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(length).decode("utf-8"))
                 delete_shared_file(payload.get("id"))
                 self.send_json({"message": "업무 파일을 삭제했습니다.", "files": list_shared_files()})
                 return
 
-            if route_path == "/api/vehicle-receipt":
+            if self.path == "/api/vehicle-receipt":
                 if not self.require_permission(user, "excel_download", "엑셀 다운로드"):
                     return
-                payload = parse_json_body(self.headers, self.rfile)
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(length).decode("utf-8"))
                 output_path = generate_vehicle_receipt(
                     supplier=payload.get("supplier", ""),
                     items=payload.get("items", []),
@@ -17879,38 +17690,26 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                 self.wfile.write(data)
                 return
 
-            if route_path == "/api/shared-file-upload":
+            if urlsplit(self.path).path == "/api/shared-file-upload":
                 if not self.require_admin(user, "업무 파일 업로드"):
                     return
-                fields = parse_multipart(self.headers, self.rfile, max_bytes=MAX_MULTIPART_BODY_BYTES)
+                fields = parse_multipart(self.headers, self.rfile)
                 upload_path = save_uploaded_shared_file(fields, "file")
                 uploaded_by = str(user.get("display_name") or user.get("username") or "")
                 save_shared_file(upload_path, original_uploaded_filename(upload_path.name), uploaded_by)
                 self.send_json({"message": "업무 파일을 저장했습니다.", "files": list_shared_files()})
                 return
 
-            if route_path in {
-                "/api/backup-restore-upload",
-                "/api/vendor-contacts-import",
-                "/api/cs-cases-import",
-                "/api/management-import",
-                "/api/delivery-summary",
-                "/api/invoice-export",
-                "/api/lotte-order-form",
-                "/api/sales-vendor-summary",
-            }:
-                fields = parse_multipart(self.headers, self.rfile, max_bytes=MAX_MULTIPART_BODY_BYTES)
-            else:
-                fields = {}
+            fields = parse_multipart(self.headers, self.rfile)
 
-            if route_path == "/api/backup-restore-upload":
+            if self.path == "/api/backup-restore-upload":
                 if not self.require_permission(user, "backup_manage", "백업 관리"):
                     return
                 upload_path = save_uploaded_backup_zip(fields, "file")
                 self.send_json(restore_workhub_backup(upload_path))
                 return
 
-            if route_path == "/api/vendor-contacts-import":
+            if self.path == "/api/vendor-contacts-import":
                 if not self.require_permission(user, "excel_upload", "엑셀 업로드"):
                     return
                 upload_path = save_uploaded_file(fields, "file")
@@ -17922,7 +17721,7 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                 })
                 return
 
-            if route_path == "/api/cs-cases-import":
+            if self.path == "/api/cs-cases-import":
                 if not self.require_admin(user, "CS처리대장 업로드"):
                     return
                 upload_path = save_uploaded_file(fields, "file")
@@ -17934,7 +17733,7 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                 })
                 return
 
-            if route_path == "/api/management-import":
+            if self.path == "/api/management-import":
                 if not self.require_admin(user, "통합관리대장 업로드"):
                     return
                 upload_path = save_uploaded_file(fields, "file")
@@ -17946,7 +17745,7 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                 })
                 return
 
-            if route_path == "/api/delivery-summary":
+            if self.path == "/api/delivery-summary":
                 if not self.require_permission(user, "excel_upload", "엑셀 업로드"):
                     return
                 upload_path = save_uploaded_file(fields)
@@ -17958,7 +17757,7 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                 self.send_json({"text": text, "line_count": len(lines)})
                 return
 
-            if route_path == "/api/invoice-export":
+            if self.path == "/api/invoice-export":
                 if not self.require_permission(user, "excel_upload", "엑셀 업로드"):
                     return
                 if not self.require_permission(user, "excel_download", "엑셀 다운로드"):
@@ -17984,7 +17783,7 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                 self.wfile.write(data)
                 return
 
-            if route_path == "/api/lotte-order-form":
+            if self.path == "/api/lotte-order-form":
                 if not self.require_permission(user, "excel_upload", "엑셀 업로드"):
                     return
                 if not self.require_permission(user, "excel_download", "엑셀 다운로드"):
@@ -18010,7 +17809,7 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                 self.wfile.write(data)
                 return
 
-            if route_path == "/api/sales-vendor-summary":
+            if self.path == "/api/sales-vendor-summary":
                 if not self.require_permission(user, "excel_upload", "엑셀 업로드"):
                     return
                 if not self.require_permission(user, "excel_download", "엑셀 다운로드"):
@@ -18037,9 +17836,6 @@ class WorkhubHandler(BaseHTTPRequestHandler):
             self.send_error(404)
         except PermissionError as exc:
             self.send_json({"error": str(exc)}, status=403)
-        except ValueError as exc:
-            status_code = 413 if "요청 본문이 너무 큽니다" in str(exc) else 400
-            self.send_json({"error": str(exc)}, status=status_code)
         except Exception as exc:  # noqa: BLE001
             self.send_json({"error": str(exc)}, status=400)
 
@@ -18060,10 +17856,7 @@ class WorkhubHandler(BaseHTTPRequestHandler):
         self.send_header("Referrer-Policy", "same-origin")
         self.send_header("Content-Length", str(len(data)))
         self.end_headers()
-        try:
-            self.wfile.write(data)
-        except (BrokenPipeError, ConnectionAbortedError, ConnectionResetError):
-            return
+        self.wfile.write(data)
 
     def log_message(self, format: str, *args) -> None:
         return
@@ -18082,4 +17875,3 @@ if __name__ == "__main__":
     selected_port = int(os.environ.get("WORKHUB_PORT", sys.argv[1] if len(sys.argv) > 1 else 8765))
     selected_host = os.environ.get("WORKHUB_HOST", "127.0.0.1")
     run(host=selected_host, port=selected_port)
-

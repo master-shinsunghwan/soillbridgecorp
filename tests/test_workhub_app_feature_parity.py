@@ -91,6 +91,38 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
             self.assertIn('companyActiveTab === "notice" && panel.dataset.companyPanel === "calendar"', html_source)
             self.assertIn("loadDashboardEntryData().catch", html_source)
 
+    def test_leave_workflow_has_multi_step_approval_cancel_and_accrual_ui(self) -> None:
+        for app_file in (
+            ROOT / "scripts" / "workhub_delivery_app.py",
+            ROOT / "_workhub_zip_inspect" / "scripts" / "workhub_delivery_app.py",
+        ):
+            html_source = app_file.read_text(encoding="utf-8")
+
+            for permission in (
+                "leave_approve_team",
+                "leave_approve_director",
+                "leave_approve_ceo",
+                "leave_director_override",
+            ):
+                self.assertIn(permission, html_source)
+            for table_name in ("company_holidays", "leave_notifications"):
+                self.assertIn(table_name, html_source)
+            for endpoint in ("/api/leave-cancel", "/api/leave-accrual"):
+                self.assertIn(endpoint, html_source)
+            for function_name in (
+                "save_company_holiday",
+                "apply_annual_leave_accrual",
+                "cancel_leave_request",
+                "list_leave_notifications",
+                "actor_can_override_leave",
+            ):
+                self.assertIn(f"def {function_name}", html_source)
+            self.assertIn('id="leaveReservedDays"', html_source)
+            self.assertIn('id="leaveAccrualApply"', html_source)
+            self.assertIn('data-leave-comment="${row.id}"', html_source)
+            self.assertIn('data-leave-cancel="${row.id}"', html_source)
+            self.assertIn('data-leave-decision="override"', html_source)
+
     def test_delivery_modal_title_matches_menu_label(self) -> None:
         html_source = (SCRIPTS / "workhub_delivery_app.py").read_text(encoding="utf-8")
 

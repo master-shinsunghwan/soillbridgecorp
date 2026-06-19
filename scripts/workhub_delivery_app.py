@@ -128,6 +128,10 @@ PERMISSION_DEFINITIONS = (
     ("system_update", "시스템 업데이트", "GitHub 업데이트 확인/적용"),
     ("leave_view", "연차 조회", "연차 내역 조회"),
     ("leave_approve", "연차 승인", "연차 신청 승인/반려"),
+    ("leave_approve_team", "\uC5F0\uCC28 \uD300\uC7A5 \uC2B9\uC778", "\uC5F0\uCC28 \uC2E0\uCCAD \uD300\uC7A5 \uD655\uC778"),
+    ("leave_approve_director", "\uC5F0\uCC28 \uC2E4\uC7A5 \uC2B9\uC778", "\uC5F0\uCC28 \uC2E0\uCCAD \uC2E4\uC7A5 \uD655\uC778"),
+    ("leave_approve_ceo", "\uC5F0\uCC28 \uB300\uD45C \uC2B9\uC778", "\uC5F0\uCC28 \uC2E0\uCCAD \uB300\uD45C \uD655\uC778"),
+    ("leave_director_override", "\uC5F0\uCC28 \uC2E4\uC7A5 \uC804\uACB0", "\uD300\uC7A5/\uB300\uD45C \uC9C0\uC5F0 \uC2DC \uC2E4\uC7A5 \uC804\uACB0 \uCC98\uB9AC"),
     ("leave_manage", "연차 관리", "연차 등록/수정/삭제"),
     ("crm_view", "CRM 조회", "CRM 거래처/업무 조회"),
     ("crm_manage", "CRM 관리", "CRM 거래처/업무 등록 및 수정"),
@@ -147,6 +151,9 @@ DEFAULT_ROLE_PERMISSIONS = {
         "import_shipment_manage",
         "leave_view",
         "leave_approve",
+        "leave_approve_team",
+        "leave_approve_director",
+        "leave_director_override",
         "leave_manage",
         "crm_view",
         "crm_manage",
@@ -1168,6 +1175,16 @@ HTML = r"""<!doctype html>
     }
     .leave-action.approve { border-color: #0b8f55; color: #067647; }
     .leave-action.reject { border-color: #f4a7a7; color: #b42318; }
+    .leave-comment-input {
+      width: 100%;
+      min-width: 160px;
+      margin-bottom: 6px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 8px 10px;
+      font-size: 12px;
+      font-weight: 750;
+    }
     .leave-message { min-height: 20px; color: var(--muted); font-size: 13px; font-weight: 750; }
     .backup-panel { display: grid; gap: 14px; }
     .backup-summary-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
@@ -5583,6 +5600,7 @@ HTML = r"""<!doctype html>
     const leaveRefresh = document.querySelector("#leaveRefresh");
     const leaveTotalDays = document.querySelector("#leaveTotalDays");
     const leaveUsedDays = document.querySelector("#leaveUsedDays");
+    const leaveReservedDays = document.querySelector("#leaveReservedDays");
     const leaveRemainingDays = document.querySelector("#leaveRemainingDays");
     const leaveMessage = document.querySelector("#leaveMessage");
     const leaveBalanceBody = document.querySelector("#leaveBalanceBody");
@@ -5598,6 +5616,7 @@ HTML = r"""<!doctype html>
     const leaveAdminTotalInput = document.querySelector("#leaveAdminTotalInput");
     const leaveAdminUsedInput = document.querySelector("#leaveAdminUsedInput");
     const leaveBalanceSave = document.querySelector("#leaveBalanceSave");
+    const leaveAccrualApply = document.querySelector("#leaveAccrualApply");
     const leaveUsageUserSelect = document.querySelector("#leaveUsageUserSelect");
     const leaveUsageDatesInput = document.querySelector("#leaveUsageDatesInput");
     const leaveUsageNoteInput = document.querySelector("#leaveUsageNoteInput");
@@ -6253,10 +6272,11 @@ HTML = r"""<!doctype html>
       if (!leaveWorkspace) return;
       leaveTotalDays.textContent = dayText(data.summary?.total_days);
       leaveUsedDays.textContent = dayText(data.summary?.used_days);
+      if (leaveReservedDays) leaveReservedDays.textContent = dayText(data.summary?.reserved_days);
       leaveRemainingDays.textContent = dayText(data.summary?.remaining_days);
       leaveBalanceBody.innerHTML = (data.balances || []).length
         ? data.balances.map((row) => `
-          <tr><td>${escapeHtml(row.name)}</td><td>${dayText(row.total_days)}</td><td>${dayText(row.used_days)}</td><td><strong>${dayText(row.remaining_days)}</strong></td></tr>
+          <tr><td>${escapeHtml(row.name)}</td><td>${dayText(row.total_days)}</td><td>${dayText(row.used_days)} / 예약 ${dayText(row.reserved_days)}</td><td><strong>${dayText(row.remaining_days)}</strong></td></tr>
         `).join("")
         : `<tr><td colspan="4">연차 기준이 아직 설정되지 않았습니다.</td></tr>`;
       leaveHistoryBody.innerHTML = (data.requests || []).length
@@ -6265,8 +6285,8 @@ HTML = r"""<!doctype html>
             <td>${escapeHtml(row.start_date)}${row.start_date === row.end_date ? "" : ` ~ ${escapeHtml(row.end_date)}`}</td>
             <td>${escapeHtml(row.unit_label)}</td>
             <td>${dayText(row.requested_days)}</td>
-            <td>${escapeHtml(row.status_label)}</td>
-            <td>${escapeHtml(row.reason)}</td>
+            <td>${escapeHtml(row.status_label)}${row.status === "PENDING" ? ` ? ${escapeHtml(row.approval_step_label)}` : ""}</td>
+            <td>${escapeHtml(row.reason)}${row.status === "PENDING" ? `<div class="leave-action-row"><input class="leave-comment-input" data-leave-cancel-reason="${row.id}" placeholder="?? ??" /><button class="leave-action reject" type="button" data-leave-cancel="${row.id}">??</button></div>` : ""}</td>
           </tr>
         `).join("")
         : `<tr><td colspan="5">연차 사용/신청 이력이 없습니다.</td></tr>`;
@@ -6286,9 +6306,11 @@ HTML = r"""<!doctype html>
             <td>${dayText(row.requested_days)}</td>
             <td>${escapeHtml(row.reason)}</td>
             <td>
+              <input class="leave-comment-input" data-leave-comment="${row.id}" placeholder="??/?? ??" />
               <div class="leave-action-row">
-                <button class="leave-action approve" type="button" data-leave-decision="approve" data-leave-id="${row.id}">승인</button>
-                <button class="leave-action reject" type="button" data-leave-decision="reject" data-leave-id="${row.id}">반려</button>
+                <button class="leave-action approve" type="button" data-leave-decision="approve" data-leave-id="${row.id}">??</button>
+                <button class="leave-action reject" type="button" data-leave-decision="reject" data-leave-id="${row.id}">??</button>
+                ${data.can_override ? `<button class="leave-action approve" type="button" data-leave-decision="override" data-leave-id="${row.id}">?? ??</button>` : ""}
               </div>
             </td>
           </tr>
@@ -6354,7 +6376,8 @@ HTML = r"""<!doctype html>
     }
 
     async function decideLeaveRequest(requestId, decision) {
-      const comment = decision === "reject" ? window.prompt("반려 사유를 입력해주세요.", "반려") || "반려" : "";
+      const commentInput = document.querySelector(`[data-leave-comment="${requestId}"]`);
+      const comment = commentInput?.value?.trim() || (decision === "reject" ? "\uBC18\uB824" : "");
       leaveMessage.textContent = "연차 신청을 처리하는 중입니다.";
       try {
         const response = await fetch("/api/leave-decision", {
@@ -6367,6 +6390,44 @@ HTML = r"""<!doctype html>
         leaveMessage.textContent = data.message || "처리되었습니다.";
         await loadLeaveData();
         if (companyActiveTab === "calendar") await loadCompanyCalendar().catch(() => {});
+      } catch (error) {
+        leaveMessage.textContent = error.message;
+      }
+    }
+
+    async function cancelLeaveRequest(requestId) {
+      const reasonInput = document.querySelector(`[data-leave-cancel-reason="${requestId}"]`);
+      const reason = reasonInput?.value?.trim() || "\uC2E0\uCCAD\uC790 \uCDE8\uC18C";
+      leaveMessage.textContent = "?? ??? ???? ????.";
+      try {
+        const response = await fetch("/api/leave-cancel", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ request_id: requestId, reason }),
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "\uC5F0\uCC28 \uC790\uB3D9 \uBC1C\uC0DD\uC744 \uCC98\uB9AC\uD588\uC2B5\uB2C8\uB2E4.");
+        leaveMessage.textContent = data.message || "\uC5F0\uCC28 \uC2E0\uCCAD\uC744 \uCDE8\uC18C\uD588\uC2B5\uB2C8\uB2E4.";
+        await loadLeaveData();
+        if (companyActiveTab === "calendar") await loadCompanyCalendar().catch(() => {});
+      } catch (error) {
+        leaveMessage.textContent = error.message;
+      }
+    }
+
+    async function applyLeaveAccrual() {
+      const year = new Date().getFullYear();
+      leaveMessage.textContent = `${year}\uB144 \uC5F0\uCC28\uB97C \uC790\uB3D9 \uBC1C\uC0DD\uD558\uB294 \uC911\uC785\uB2C8\uB2E4.`;
+      try {
+        const response = await fetch("/api/leave-accrual", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ year, default_days: 15 }),
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "\uC5F0\uCC28 \uC790\uB3D9 \uBC1C\uC0DD\uC744 \uCC98\uB9AC\uD588\uC2B5\uB2C8\uB2E4.");
+        leaveMessage.textContent = data.message || "\uC5F0\uCC28 \uC790\uB3D9 \uBC1C\uC0DD\uC744 \uCC98\uB9AC\uD588\uC2B5\uB2C8\uB2E4.";
+        await loadLeaveData();
       } catch (error) {
         leaveMessage.textContent = error.message;
       }
@@ -11316,11 +11377,18 @@ HTML = r"""<!doctype html>
     if (leaveUnitSelect) leaveUnitSelect.addEventListener("change", syncHalfDayDates);
     if (leaveStartDate) leaveStartDate.addEventListener("change", syncHalfDayDates);
     if (leaveBalanceSave) leaveBalanceSave.addEventListener("click", saveLeaveBalance);
+    if (leaveAccrualApply) leaveAccrualApply.addEventListener("click", applyLeaveAccrual);
     if (leaveUsageSave) leaveUsageSave.addEventListener("click", saveHistoricalLeaveUsage);
     if (leaveApprovalBody) {
       leaveApprovalBody.addEventListener("click", (event) => {
         const button = event.target.closest("[data-leave-decision]");
         if (button) decideLeaveRequest(button.dataset.leaveId, button.dataset.leaveDecision);
+      });
+    }
+    if (leaveHistoryBody) {
+      leaveHistoryBody.addEventListener("click", (event) => {
+        const button = event.target.closest("[data-leave-cancel]");
+        if (button) cancelLeaveRequest(button.dataset.leaveCancel);
       });
     }
     managementPageSize.addEventListener("change", loadManagementRecords);
@@ -11808,6 +11876,10 @@ LEAVE_WORKSPACE_HTML = r"""
                 <span>사용 연차</span>
                 <strong id="leaveUsedDays">0일</strong>
               </article>
+              <article class="leave-summary-card">
+                <span>승인대기 예약</span>
+                <strong id="leaveReservedDays">0일</strong>
+              </article>
               <article class="leave-summary-card accent">
                 <span>남은 연차</span>
                 <strong id="leaveRemainingDays">0일</strong>
@@ -11869,6 +11941,7 @@ LEAVE_WORKSPACE_HTML = r"""
                     <label>시작 연차<input id="leaveAdminTotalInput" type="number" min="0" step="0.5" value="10" /></label>
                     <label>기존 사용 연차<input id="leaveAdminUsedInput" type="number" min="0" step="0.5" value="0" /></label>
                     <button class="workspace-button" type="button" id="leaveBalanceSave">연차 기준 저장</button>
+                    <button class="workspace-button" type="button" id="leaveAccrualApply">올해 연차 자동 발생</button>
                   </div>
                 </div>
                 <div class="leave-card">
@@ -12650,23 +12723,61 @@ def clean_leave_days(value: object, label: str) -> float:
     return round(days, 2)
 
 
-def calculate_leave_days(start: date, end: date, unit: str) -> float:
+def company_holiday_dates(start: date, end: date) -> set[str]:
+    connection = connect_db()
+    try:
+        rows = connection.execute(
+            "SELECT holiday_date FROM company_holidays WHERE holiday_date BETWEEN ? AND ?",
+            (start.isoformat(), end.isoformat()),
+        ).fetchall()
+        return {str(row["holiday_date"]) for row in rows}
+    except sqlite3.OperationalError:
+        return set()
+    finally:
+        connection.close()
+
+
+def save_company_holiday(holiday_date: str, name: str, is_substitute: bool = False) -> None:
+    init_db()
+    parsed_date = parse_iso_date(holiday_date)
+    clean_name = str(name or "").strip() or "???"
+    now = now_text()
+    connection = connect_db()
+    try:
+        connection.execute(
+            """
+            INSERT INTO company_holidays (holiday_date, name, is_substitute, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(holiday_date) DO UPDATE SET
+                name = excluded.name,
+                is_substitute = excluded.is_substitute,
+                updated_at = excluded.updated_at
+            """,
+            (parsed_date.isoformat(), clean_name, 1 if is_substitute else 0, now, now),
+        )
+        connection.commit()
+    finally:
+        connection.close()
+
+
+def calculate_leave_days(start: date, end: date, unit: str, excluded_dates: set[str] | None = None) -> float:
     if start > end:
-        raise ValueError("종료일은 시작일보다 빠를 수 없습니다.")
+        raise ValueError("???? ????? ?? ? ????.")
+    excluded_dates = excluded_dates if excluded_dates is not None else company_holiday_dates(start, end)
     if unit == "HALF_DAY":
         if start != end:
-            raise ValueError("반차는 하루 안에서만 신청할 수 있습니다.")
-        if start.weekday() >= 5:
-            raise ValueError("주말에는 반차를 신청할 수 없습니다.")
+            raise ValueError("??? ?? ???? ??? ? ????.")
+        if start.weekday() >= 5 or start.isoformat() in excluded_dates:
+            raise ValueError("?? ?? ????? ??? ??? ? ????.")
         return 0.5
     days = 0
     cursor = start
     while cursor <= end:
-        if cursor.weekday() < 5:
+        if cursor.weekday() < 5 and cursor.isoformat() not in excluded_dates:
             days += 1
         cursor = date.fromordinal(cursor.toordinal() + 1)
     if days <= 0:
-        raise ValueError("신청 가능한 평일이 없습니다.")
+        raise ValueError("?? ??? ??? ????.")
     return float(days)
 
 
@@ -13117,6 +13228,64 @@ def init_db() -> None:
             )
             """
         )
+        leave_balance_columns = {
+            row["name"] for row in connection.execute("PRAGMA table_info(leave_balances)").fetchall()
+        }
+        if "reserved_days" not in leave_balance_columns:
+            connection.execute("ALTER TABLE leave_balances ADD COLUMN reserved_days REAL NOT NULL DEFAULT 0")
+        if "accrual_year" not in leave_balance_columns:
+            connection.execute("ALTER TABLE leave_balances ADD COLUMN accrual_year INTEGER")
+        leave_request_columns = {
+            row["name"] for row in connection.execute("PRAGMA table_info(leave_requests)").fetchall()
+        }
+        leave_request_extra_columns = {
+            "approval_step": "TEXT NOT NULL DEFAULT 'TEAM_LEAD'",
+            "team_status": "TEXT NOT NULL DEFAULT 'PENDING'",
+            "team_decided_by": "INTEGER",
+            "team_decided_at": "TEXT",
+            "team_comment": "TEXT",
+            "director_status": "TEXT NOT NULL DEFAULT 'WAITING'",
+            "director_decided_by": "INTEGER",
+            "director_decided_at": "TEXT",
+            "director_comment": "TEXT",
+            "ceo_status": "TEXT NOT NULL DEFAULT 'WAITING'",
+            "ceo_decided_by": "INTEGER",
+            "ceo_decided_at": "TEXT",
+            "ceo_comment": "TEXT",
+            "cancel_reason": "TEXT",
+            "canceled_at": "TEXT",
+            "canceled_by": "INTEGER",
+        }
+        for column, column_type in leave_request_extra_columns.items():
+            if column not in leave_request_columns:
+                connection.execute(f"ALTER TABLE leave_requests ADD COLUMN {column} {column_type}")
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS company_holidays (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                holiday_date TEXT NOT NULL UNIQUE,
+                name TEXT NOT NULL,
+                is_substitute INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+            """
+        )
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS leave_notifications (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                request_id INTEGER,
+                notification_type TEXT NOT NULL,
+                message TEXT NOT NULL,
+                is_read INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL
+            )
+            """
+        )
+        connection.execute("CREATE INDEX IF NOT EXISTS idx_company_holidays_date ON company_holidays(holiday_date)")
+        connection.execute("CREATE INDEX IF NOT EXISTS idx_leave_notifications_user ON leave_notifications(user_id, is_read)")
         timestamp = now_text()
         for code, name in (("annual", "연차"), ("special", "특별휴가"), ("unpaid", "무급휴가"), ("sick", "병가")):
             connection.execute(
@@ -14158,7 +14327,7 @@ def get_leave_type_id(code: str = "annual") -> int:
     try:
         row = connection.execute("SELECT id FROM leave_types WHERE code = ?", (code,)).fetchone()
         if not row:
-            raise ValueError("연차 유형을 찾지 못했습니다.")
+            raise ValueError("?? ??? ?? ?????.")
         return int(row["id"])
     finally:
         connection.close()
@@ -14169,8 +14338,8 @@ def ensure_leave_balance(connection: sqlite3.Connection, user_id: int, leave_typ
     connection.execute(
         """
         INSERT OR IGNORE INTO leave_balances
-            (user_id, leave_type_id, total_days, used_days, remaining_days, created_at, updated_at)
-        VALUES (?, ?, 0, 0, 0, ?, ?)
+            (user_id, leave_type_id, total_days, used_days, remaining_days, reserved_days, created_at, updated_at)
+        VALUES (?, ?, 0, 0, 0, 0, ?, ?)
         """,
         (user_id, leave_type_id, now, now),
     )
@@ -14179,8 +14348,43 @@ def ensure_leave_balance(connection: sqlite3.Connection, user_id: int, leave_typ
         (user_id, leave_type_id),
     ).fetchone()
     if not row:
-        raise ValueError("연차 잔여 정보를 만들지 못했습니다.")
+        raise ValueError("?? ?? ??? ??? ?????.")
     return row
+
+
+def balance_remaining(total_days: float, used_days: float, reserved_days: float) -> float:
+    return round(max(0.0, float(total_days or 0) - float(used_days or 0) - float(reserved_days or 0)), 2)
+
+
+def update_leave_balance_amounts(
+    connection: sqlite3.Connection,
+    balance_id: int,
+    *,
+    total_days: float | None = None,
+    used_days: float | None = None,
+    reserved_days: float | None = None,
+    accrual_year: int | None = None,
+) -> sqlite3.Row:
+    current = connection.execute("SELECT * FROM leave_balances WHERE id = ?", (balance_id,)).fetchone()
+    if not current:
+        raise ValueError("?? ?? ??? ?? ?????.")
+    total = round(float(current["total_days"] if total_days is None else total_days), 2)
+    used = round(float(current["used_days"] if used_days is None else used_days), 2)
+    reserved = round(max(0.0, float(current["reserved_days"] if reserved_days is None else reserved_days)), 2)
+    remaining = balance_remaining(total, used, reserved)
+    if used + reserved > total:
+        raise ValueError("??/?? ??? ?? ???? ????.")
+    if accrual_year is None:
+        connection.execute(
+            "UPDATE leave_balances SET total_days = ?, used_days = ?, reserved_days = ?, remaining_days = ?, updated_at = ? WHERE id = ?",
+            (total, used, reserved, remaining, now_text(), balance_id),
+        )
+    else:
+        connection.execute(
+            "UPDATE leave_balances SET total_days = ?, used_days = ?, reserved_days = ?, remaining_days = ?, accrual_year = ?, updated_at = ? WHERE id = ?",
+            (total, used, reserved, remaining, accrual_year, now_text(), balance_id),
+        )
+    return connection.execute("SELECT * FROM leave_balances WHERE id = ?", (balance_id,)).fetchone()
 
 
 def list_leave_types() -> list[dict[str, str | int]]:
@@ -14216,7 +14420,7 @@ def leave_balance_rows(connection: sqlite3.Connection, user_id: int) -> list[dic
     rows = connection.execute(
         """
         SELECT leave_types.code, leave_types.name, leave_balances.total_days,
-               leave_balances.used_days, leave_balances.remaining_days
+               leave_balances.used_days, leave_balances.reserved_days, leave_balances.remaining_days
           FROM leave_balances
           JOIN leave_types ON leave_types.id = leave_balances.leave_type_id
          WHERE leave_balances.user_id = ?
@@ -14230,10 +14434,104 @@ def leave_balance_rows(connection: sqlite3.Connection, user_id: int) -> list[dic
             "name": row["name"],
             "total_days": round(float(row["total_days"] or 0), 2),
             "used_days": round(float(row["used_days"] or 0), 2),
+            "reserved_days": round(float(row["reserved_days"] or 0), 2),
             "remaining_days": round(float(row["remaining_days"] or 0), 2),
         }
         for row in rows
     ]
+
+
+def leave_approval_label(step: str) -> str:
+    return {
+        "TEAM_LEAD": "?? ??",
+        "DIRECTOR": "?? ??",
+        "CEO": "?? ??",
+        "COMPLETED": "?? ??",
+    }.get(step, step)
+
+
+def leave_step_permission(step: str) -> str:
+    return {
+        "TEAM_LEAD": "leave_approve_team",
+        "DIRECTOR": "leave_approve_director",
+        "CEO": "leave_approve_ceo",
+    }.get(step, "leave_approve")
+
+
+def actor_can_approve_leave_step(actor: dict[str, str], step: str) -> bool:
+    return (
+        user_has_permission(actor, "leave_manage")
+        or user_has_permission(actor, "leave_approve")
+        or user_has_permission(actor, leave_step_permission(step))
+    )
+
+
+def actor_can_override_leave(actor: dict[str, str]) -> bool:
+    return user_has_permission(actor, "leave_director_override") or user_has_permission(actor, "leave_manage")
+
+
+def active_users_with_leave_permission(connection: sqlite3.Connection, permissions: list[str]) -> list[sqlite3.Row]:
+    rows = connection.execute(
+        "SELECT id, username, display_name, role, permissions FROM users WHERE active = 1"
+    ).fetchall()
+    matches = []
+    for row in rows:
+        normalized = normalize_permissions(row["permissions"], row["role"])
+        if any(permission in normalized for permission in permissions):
+            matches.append(row)
+    return matches
+
+
+def add_leave_notification(
+    connection: sqlite3.Connection,
+    user_id: int,
+    request_id: int | None,
+    notification_type: str,
+    message: str,
+) -> None:
+    connection.execute(
+        """
+        INSERT INTO leave_notifications (user_id, request_id, notification_type, message, is_read, created_at)
+        VALUES (?, ?, ?, ?, 0, ?)
+        """,
+        (user_id, request_id, notification_type, message, now_text()),
+    )
+
+
+def notify_leave_step(connection: sqlite3.Connection, request_id: int, step: str, requester_name: str) -> None:
+    permission = leave_step_permission(step)
+    permissions = [permission, "leave_manage"]
+    if step == "TEAM_LEAD":
+        permissions.append("leave_approve")
+    if step == "DIRECTOR":
+        permissions.append("leave_director_override")
+    users = active_users_with_leave_permission(connection, permissions)
+    message = f"{requester_name}?? ?? ??? {leave_approval_label(step)} ??? ??????."
+    for user in users:
+        add_leave_notification(connection, int(user["id"]), request_id, "approval_waiting", message)
+
+
+def notify_leave_requester(connection: sqlite3.Connection, user_id: int, request_id: int, message: str) -> None:
+    add_leave_notification(connection, user_id, request_id, "request_update", message)
+
+
+def list_leave_notifications(user: dict[str, str]) -> list[dict[str, str | int]]:
+    init_db()
+    connection = connect_db()
+    try:
+        rows = connection.execute(
+            """
+            SELECT id, request_id, notification_type, message, is_read, created_at
+              FROM leave_notifications
+             WHERE user_id = ?
+             ORDER BY created_at DESC, id DESC
+             LIMIT 30
+            """,
+            (int(user["id"]),),
+        ).fetchall()
+        return [dict(row) for row in rows]
+    finally:
+        connection.close()
 
 
 def list_leave_requests_for_user(connection: sqlite3.Connection, user_id: int) -> list[dict[str, str | float | int]]:
@@ -14252,20 +14550,30 @@ def list_leave_requests_for_user(connection: sqlite3.Connection, user_id: int) -
 
 
 def leave_request_dict(row: sqlite3.Row) -> dict[str, str | float | int]:
+    approval_step = row["approval_step"] if "approval_step" in row.keys() else "COMPLETED"
     return {
         "id": row["id"],
         "user_id": row["user_id"],
         "requester": row["display_name"] if "display_name" in row.keys() else "",
-        "leave_type_name": row["leave_type_name"] if "leave_type_name" in row.keys() else "연차",
+        "leave_type_name": row["leave_type_name"] if "leave_type_name" in row.keys() else "??",
         "start_date": row["start_date"],
         "end_date": row["end_date"],
         "unit": row["unit"],
-        "unit_label": "반차" if row["unit"] == "HALF_DAY" else "연차",
+        "unit_label": "??" if row["unit"] == "HALF_DAY" else "??",
         "requested_days": round(float(row["requested_days"] or 0), 2),
         "reason": row["reason"],
         "status": row["status"],
         "status_label": leave_status_label(row["status"]),
+        "approval_step": approval_step,
+        "approval_step_label": leave_approval_label(approval_step),
+        "team_status": row["team_status"] if "team_status" in row.keys() else "APPROVED",
+        "director_status": row["director_status"] if "director_status" in row.keys() else "APPROVED",
+        "ceo_status": row["ceo_status"] if "ceo_status" in row.keys() else "APPROVED",
+        "team_comment": row["team_comment"] or "" if "team_comment" in row.keys() else "",
+        "director_comment": row["director_comment"] or "" if "director_comment" in row.keys() else "",
+        "ceo_comment": row["ceo_comment"] or "" if "ceo_comment" in row.keys() else "",
         "rejected_reason": row["rejected_reason"] or "",
+        "cancel_reason": row["cancel_reason"] or "" if "cancel_reason" in row.keys() else "",
         "created_at": row["created_at"],
     }
 
@@ -14296,6 +14604,7 @@ def list_leave_admin_balances(connection: sqlite3.Connection) -> list[dict[str, 
             "display_name": user["display_name"],
             "total_days": round(float(balance["total_days"] or 0), 2),
             "used_days": round(float(balance["used_days"] or 0), 2),
+            "reserved_days": round(float(balance["reserved_days"] or 0), 2),
             "remaining_days": round(float(balance["remaining_days"] or 0), 2),
         })
     return rows
@@ -14307,20 +14616,27 @@ def leave_payload(user: dict[str, str]) -> dict:
     try:
         balances = leave_balance_rows(connection, user_id)
         annual = next((row for row in balances if row["code"] == "annual"), balances[0] if balances else {})
+        can_approve = any(
+            user_has_permission(user, permission)
+            for permission in ("leave_approve", "leave_approve_team", "leave_approve_director", "leave_approve_ceo", "leave_director_override", "leave_manage")
+        )
         payload = {
             "summary": {
                 "total_days": annual.get("total_days", 0),
                 "used_days": annual.get("used_days", 0),
+                "reserved_days": annual.get("reserved_days", 0),
                 "remaining_days": annual.get("remaining_days", 0),
             },
             "balances": balances,
             "requests": list_leave_requests_for_user(connection, user_id),
             "leave_types": list_leave_types(),
-            "can_approve": user_has_permission(user, "leave_approve") or user_has_permission(user, "leave_manage"),
+            "can_approve": can_approve,
+            "can_override": actor_can_override_leave(user),
             "can_manage": user_has_permission(user, "leave_manage"),
             "pending_requests": [],
             "users": [],
             "admin_balances": [],
+            "notifications": list_leave_notifications(user),
         }
         if payload["can_approve"]:
             payload["pending_requests"] = list_pending_leave_requests(connection)
@@ -14341,81 +14657,192 @@ def create_leave_request(user: dict[str, str], payload: dict) -> int:
     end = parse_iso_date(payload.get("end_date"))
     unit = clean_payload_text(payload, "unit") or "FULL_DAY"
     if unit not in {"FULL_DAY", "HALF_DAY"}:
-        raise ValueError("연차 단위가 올바르지 않습니다.")
+        raise ValueError("?? ??? ???? ????.")
     requested_days = calculate_leave_days(start, end, unit)
     reason = clean_payload_text(payload, "reason")
     if not reason:
-        raise ValueError("연차 사유를 입력해주세요.")
+        raise ValueError("\uC5F0\uCC28 \uC2E0\uCCAD\uC744 \uCDE8\uC18C\uD588\uC2B5\uB2C8\uB2E4.")
     now = now_text()
     connection = connect_db()
     try:
         balance = ensure_leave_balance(connection, user_id, leave_type_id)
         if float(balance["remaining_days"] or 0) < requested_days:
-            raise ValueError("남은 연차보다 신청 일수가 많습니다.")
+            raise ValueError("?? ???? ?? ??? ????.")
         cursor = connection.execute(
             """
             INSERT INTO leave_requests
                 (user_id, leave_type_id, start_date, end_date, unit, requested_days, reason,
-                 status, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, 'PENDING', ?, ?)
+                 status, approval_step, team_status, director_status, ceo_status, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, 'PENDING', 'TEAM_LEAD', 'PENDING', 'WAITING', 'WAITING', ?, ?)
             """,
             (user_id, leave_type_id, start.isoformat(), end.isoformat(), unit, requested_days, reason, now, now),
         )
+        request_id = int(cursor.lastrowid)
+        update_leave_balance_amounts(
+            connection,
+            int(balance["id"]),
+            reserved_days=round(float(balance["reserved_days"] or 0) + requested_days, 2),
+        )
+        requester_name = str(user.get("display_name") or user.get("username") or "???")
+        notify_leave_step(connection, request_id, "TEAM_LEAD", requester_name)
         connection.commit()
-        return int(cursor.lastrowid)
+        return request_id
     finally:
         connection.close()
 
 
+def set_leave_step_decision(
+    connection: sqlite3.Connection,
+    request_id: int,
+    step: str,
+    status: str,
+    actor_id: int,
+    comment: str,
+) -> None:
+    prefix = {"TEAM_LEAD": "team", "DIRECTOR": "director", "CEO": "ceo"}[step]
+    connection.execute(
+        f"""
+        UPDATE leave_requests
+           SET {prefix}_status = ?, {prefix}_decided_by = ?, {prefix}_decided_at = ?, {prefix}_comment = ?, updated_at = ?
+         WHERE id = ?
+        """,
+        (status, actor_id, now_text(), comment, now_text(), request_id),
+    )
+
+
+def release_leave_reservation(connection: sqlite3.Connection, row: sqlite3.Row) -> sqlite3.Row:
+    balance = ensure_leave_balance(connection, int(row["user_id"]), int(row["leave_type_id"]))
+    requested_days = float(row["requested_days"] or 0)
+    return update_leave_balance_amounts(
+        connection,
+        int(balance["id"]),
+        reserved_days=round(max(0.0, float(balance["reserved_days"] or 0) - requested_days), 2),
+    )
+
+
+def finalize_leave_approval(
+    connection: sqlite3.Connection,
+    row: sqlite3.Row,
+    actor: dict[str, str],
+    comment: str,
+    overridden: bool = False,
+) -> None:
+    request_id = int(row["id"])
+    now = now_text()
+    balance = ensure_leave_balance(connection, int(row["user_id"]), int(row["leave_type_id"]))
+    requested_days = float(row["requested_days"] or 0)
+    if float(balance["reserved_days"] or 0) < requested_days and float(balance["remaining_days"] or 0) < requested_days:
+        raise ValueError("?? ??? ??? ??? ? ????.")
+    used = round(float(balance["used_days"] or 0) + requested_days, 2)
+    reserved = round(max(0.0, float(balance["reserved_days"] or 0) - requested_days), 2)
+    updated_balance = update_leave_balance_amounts(connection, int(balance["id"]), used_days=used, reserved_days=reserved)
+    connection.execute(
+        """
+        INSERT INTO leave_balance_ledger
+            (balance_id, user_id, actor_id, delta_days, reason, request_id, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        """,
+        (updated_balance["id"], row["user_id"], int(actor["id"]), -requested_days, "?? ?? ??", request_id, now),
+    )
+    if overridden:
+        for step in ("TEAM_LEAD", "DIRECTOR", "CEO"):
+            prefix = {"TEAM_LEAD": "team", "DIRECTOR": "director", "CEO": "ceo"}[step]
+            if row[f"{prefix}_status"] not in {"APPROVED", "REJECTED"}:
+                connection.execute(
+                    f"UPDATE leave_requests SET {prefix}_status = 'OVERRIDDEN', {prefix}_decided_by = ?, {prefix}_decided_at = ?, {prefix}_comment = ? WHERE id = ?",
+                    (int(actor["id"]), now, comment, request_id),
+                )
+    connection.execute(
+        """
+        UPDATE leave_requests
+           SET status = 'APPROVED', approval_step = 'COMPLETED', decided_by = ?, finalized_at = ?, updated_at = ?
+         WHERE id = ?
+        """,
+        (int(actor["id"]), now, now, request_id),
+    )
+    notify_leave_requester(connection, int(row["user_id"]), request_id, "?? ??? ?? ???????.")
+
+
 def decide_leave_request(request_id: int, actor: dict[str, str], decision: str, comment: str = "") -> None:
     init_db()
-    if decision not in {"approve", "reject"}:
-        raise ValueError("처리 값이 올바르지 않습니다.")
+    if decision not in {"approve", "reject", "override"}:
+        raise ValueError("?? ?? ???? ????.")
+    clean_comment = str(comment or "").strip()
     connection = connect_db()
     try:
         row = connection.execute("SELECT * FROM leave_requests WHERE id = ?", (request_id,)).fetchone()
         if not row:
-            raise ValueError("연차 신청건을 찾지 못했습니다.")
+            raise ValueError("?? ???? ?? ?????.")
         if row["status"] != "PENDING":
-            raise ValueError("이미 처리된 연차 신청입니다.")
-        now = now_text()
+            raise ValueError("?? ??? ?? ?????.")
+        step = str(row["approval_step"] or "TEAM_LEAD")
+        if decision == "override":
+            if not actor_can_override_leave(actor):
+                raise ValueError("?? ?? ??? ????.")
+            finalize_leave_approval(connection, row, actor, clean_comment or "?? ??", overridden=True)
+            connection.commit()
+            return
+        if not actor_can_approve_leave_step(actor, step):
+            raise ValueError(f"{leave_approval_label(step)} ??? ????.")
         if decision == "reject":
+            set_leave_step_decision(connection, request_id, step, "REJECTED", int(actor["id"]), clean_comment or "??")
+            release_leave_reservation(connection, row)
+            now = now_text()
             connection.execute(
                 """
                 UPDATE leave_requests
-                   SET status = 'REJECTED', rejected_reason = ?, decided_by = ?,
-                       finalized_at = ?, updated_at = ?
+                   SET status = 'REJECTED', approval_step = 'COMPLETED', rejected_reason = ?, decided_by = ?, finalized_at = ?, updated_at = ?
                  WHERE id = ?
                 """,
-                (comment or "반려", int(actor["id"]), now, now, request_id),
+                (clean_comment or "??", int(actor["id"]), now, now, request_id),
             )
+            notify_leave_requester(connection, int(row["user_id"]), request_id, "?? ??? ???????.")
+            connection.commit()
+            return
+        set_leave_step_decision(connection, request_id, step, "APPROVED", int(actor["id"]), clean_comment)
+        if step == "TEAM_LEAD":
+            connection.execute(
+                "UPDATE leave_requests SET approval_step = 'DIRECTOR', director_status = 'PENDING', updated_at = ? WHERE id = ?",
+                (now_text(), request_id),
+            )
+            notify_leave_step(connection, request_id, "DIRECTOR", row["display_name"] if "display_name" in row.keys() else "???")
+        elif step == "DIRECTOR":
+            connection.execute(
+                "UPDATE leave_requests SET approval_step = 'CEO', ceo_status = 'PENDING', updated_at = ? WHERE id = ?",
+                (now_text(), request_id),
+            )
+            notify_leave_step(connection, request_id, "CEO", row["display_name"] if "display_name" in row.keys() else "???")
         else:
-            balance = ensure_leave_balance(connection, int(row["user_id"]), int(row["leave_type_id"]))
-            requested_days = float(row["requested_days"] or 0)
-            if float(balance["remaining_days"] or 0) < requested_days:
-                raise ValueError("잔여 연차가 부족해 승인할 수 없습니다.")
-            used = round(float(balance["used_days"] or 0) + requested_days, 2)
-            remaining = round(float(balance["remaining_days"] or 0) - requested_days, 2)
-            connection.execute(
-                "UPDATE leave_balances SET used_days = ?, remaining_days = ?, updated_at = ? WHERE id = ?",
-                (used, remaining, now, balance["id"]),
-            )
-            connection.execute(
-                """
-                INSERT INTO leave_balance_ledger
-                    (balance_id, user_id, actor_id, delta_days, reason, request_id, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-                """,
-                (balance["id"], row["user_id"], int(actor["id"]), -requested_days, "연차 승인 차감", request_id, now),
-            )
-            connection.execute(
-                """
-                UPDATE leave_requests
-                   SET status = 'APPROVED', decided_by = ?, finalized_at = ?, updated_at = ?
-                 WHERE id = ?
-                """,
-                (int(actor["id"]), now, now, request_id),
-            )
+            refreshed = connection.execute("SELECT * FROM leave_requests WHERE id = ?", (request_id,)).fetchone()
+            finalize_leave_approval(connection, refreshed, actor, clean_comment)
+        connection.commit()
+    finally:
+        connection.close()
+
+
+def cancel_leave_request(request_id: int, actor: dict[str, str], reason: str = "") -> None:
+    init_db()
+    connection = connect_db()
+    try:
+        row = connection.execute("SELECT * FROM leave_requests WHERE id = ?", (request_id,)).fetchone()
+        if not row:
+            raise ValueError("?? ???? ?? ?????.")
+        if row["status"] != "PENDING":
+            raise ValueError("?? ??/??/??? ??? ??? ? ????.")
+        if int(row["user_id"]) != int(actor["id"]) and not user_has_permission(actor, "leave_manage"):
+            raise ValueError("?? ???? ??? ? ????.")
+        release_leave_reservation(connection, row)
+        now = now_text()
+        clean_reason = str(reason or "").strip() or "??? ??"
+        connection.execute(
+            """
+            UPDATE leave_requests
+               SET status = 'CANCELED', approval_step = 'COMPLETED', cancel_reason = ?, canceled_by = ?, canceled_at = ?, updated_at = ?
+             WHERE id = ?
+            """,
+            (clean_reason, int(actor["id"]), now, now, request_id),
+        )
+        notify_leave_requester(connection, int(row["user_id"]), request_id, "?? ??? ???????.")
         connection.commit()
     finally:
         connection.close()
@@ -14425,32 +14852,24 @@ def set_leave_balance(payload: dict, actor: dict[str, str]) -> None:
     init_db()
     user_id = int(payload.get("user_id") or 0)
     if not user_id:
-        raise ValueError("직원을 선택해주세요.")
-    total = clean_leave_days(payload.get("total_days"), "시작 연차")
-    used = clean_leave_days(payload.get("used_days"), "기존 사용 연차")
+        raise ValueError("??? ??????.")
+    total = clean_leave_days(payload.get("total_days"), "?? ??")
+    used = clean_leave_days(payload.get("used_days"), "?? ?? ??")
     if used > total:
-        raise ValueError("기존 사용 연차는 시작 연차보다 클 수 없습니다.")
-    remaining = round(total - used, 2)
+        raise ValueError("?? ?? ??? ?? ???? ? ? ????.")
     leave_type_id = get_leave_type_id("annual")
     now = now_text()
     connection = connect_db()
     try:
         balance = ensure_leave_balance(connection, user_id, leave_type_id)
-        connection.execute(
-            """
-            UPDATE leave_balances
-               SET total_days = ?, used_days = ?, remaining_days = ?, updated_at = ?
-             WHERE id = ?
-            """,
-            (total, used, remaining, now, balance["id"]),
-        )
+        update_leave_balance_amounts(connection, int(balance["id"]), total_days=total, used_days=used, reserved_days=0)
         connection.execute(
             """
             INSERT INTO leave_balance_ledger
                 (balance_id, user_id, actor_id, delta_days, reason, request_id, created_at)
             VALUES (?, ?, ?, ?, ?, NULL, ?)
             """,
-            (balance["id"], user_id, int(actor["id"]), 0, f"초기 연차 설정: 시작 {total}일, 기존 사용 {used}일", now),
+            (balance["id"], user_id, int(actor["id"]), 0, f"?? ?? ??: ?? {total}?, ?? ?? {used}?", now),
         )
         connection.commit()
     finally:
@@ -14464,20 +14883,20 @@ def parse_historical_leave_lines(text: str) -> list[tuple[date, str, float]]:
         line = raw_line.strip()
         if not line:
             continue
-        match = re.match(r"^(\d{4}-\d{2}-\d{2})(?:[\s,]+(반차|0\.5|1|1\.0|연차|일))?$", line)
+        match = re.match(r"^(\d{4}-\d{2}-\d{2})(?:[\s,]+(??|0\.5|1|1\.0|??|?))?$", line)
         if not match:
-            raise ValueError(f"사용 일자 형식이 올바르지 않습니다: {line}")
+            raise ValueError(f"?? ?? ??? ???? ????: {line}")
         used_date = parse_iso_date(match.group(1))
-        unit_text = match.group(2) or "연차"
-        unit = "HALF_DAY" if unit_text in {"반차", "0.5"} else "FULL_DAY"
+        unit_text = match.group(2) or "??"
+        unit = "HALF_DAY" if unit_text in {"??", "0.5"} else "FULL_DAY"
         days = 0.5 if unit == "HALF_DAY" else 1.0
         key = (used_date.isoformat(), days)
         if key in seen:
-            raise ValueError(f"같은 사용 일자가 중복 입력됐습니다: {used_date.isoformat()}")
+            raise ValueError(f"?? ?? ??? ?? ???????: {used_date.isoformat()}")
         seen.add(key)
         entries.append((used_date, unit, days))
     if not entries:
-        raise ValueError("사용 일자를 1개 이상 입력해주세요.")
+        raise ValueError("?? ??? 1? ?? ??????.")
     return entries
 
 
@@ -14485,7 +14904,7 @@ def add_historical_leave_usage(payload: dict, actor: dict[str, str]) -> int:
     init_db()
     user_id = int(payload.get("user_id") or 0)
     if not user_id:
-        raise ValueError("직원을 선택해주세요.")
+        raise ValueError("??? ??????.")
     entries = parse_historical_leave_lines(str(payload.get("usage_dates", "") or ""))
     note = clean_payload_text(payload, "note")
     leave_type_id = get_leave_type_id("annual")
@@ -14495,15 +14914,15 @@ def add_historical_leave_usage(payload: dict, actor: dict[str, str]) -> int:
         balance = ensure_leave_balance(connection, user_id, leave_type_id)
         total_days = round(sum(entry[2] for entry in entries), 2)
         if float(balance["remaining_days"] or 0) < total_days:
-            raise ValueError("잔여 연차보다 기존 사용 연차가 많습니다.")
+            raise ValueError("?? ???? ?? ?? ??? ????.")
         for used_date, unit, days in entries:
-            reason = f"기존 사용 연차 등록{': ' + note if note else ''}"
+            reason = f"?? ?? ?? ??{': ' + note if note else ''}"
             cursor = connection.execute(
                 """
                 INSERT INTO leave_requests
                     (user_id, leave_type_id, start_date, end_date, unit, requested_days, reason,
-                     status, decided_by, finalized_at, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, 'APPROVED', ?, ?, ?, ?)
+                     status, approval_step, team_status, director_status, ceo_status, decided_by, finalized_at, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, 'APPROVED', 'COMPLETED', 'APPROVED', 'APPROVED', 'APPROVED', ?, ?, ?, ?)
                 """,
                 (user_id, leave_type_id, used_date.isoformat(), used_date.isoformat(), unit, days, reason, int(actor["id"]), now, now, now),
             )
@@ -14515,14 +14934,51 @@ def add_historical_leave_usage(payload: dict, actor: dict[str, str]) -> int:
                 """,
                 (balance["id"], user_id, int(actor["id"]), -days, reason, int(cursor.lastrowid), now),
             )
-        used = round(float(balance["used_days"] or 0) + total_days, 2)
-        remaining = round(float(balance["remaining_days"] or 0) - total_days, 2)
-        connection.execute(
-            "UPDATE leave_balances SET used_days = ?, remaining_days = ?, updated_at = ? WHERE id = ?",
-            (used, remaining, now, balance["id"]),
+        update_leave_balance_amounts(
+            connection,
+            int(balance["id"]),
+            used_days=round(float(balance["used_days"] or 0) + total_days, 2),
         )
         connection.commit()
         return len(entries)
+    finally:
+        connection.close()
+
+
+def apply_annual_leave_accrual(year: int | None = None, actor: dict[str, str] | None = None, default_days: float = 15.0) -> int:
+    init_db()
+    target_year = int(year or date.today().year)
+    annual_type_id = get_leave_type_id("annual")
+    actor_id = int((actor or {}).get("id") or 0) or None
+    now = now_text()
+    updated = 0
+    connection = connect_db()
+    try:
+        users = connection.execute("SELECT id FROM users WHERE active = 1").fetchall()
+        for user in users:
+            balance = ensure_leave_balance(connection, int(user["id"]), annual_type_id)
+            if int(balance["accrual_year"] or 0) == target_year:
+                continue
+            updated_balance = update_leave_balance_amounts(
+                connection,
+                int(balance["id"]),
+                total_days=float(default_days),
+                used_days=0,
+                reserved_days=0,
+                accrual_year=target_year,
+            )
+            connection.execute(
+                """
+                INSERT INTO leave_balance_ledger
+                    (balance_id, user_id, actor_id, delta_days, reason, request_id, created_at)
+                VALUES (?, ?, ?, ?, ?, NULL, ?)
+                """,
+                (updated_balance["id"], user["id"], actor_id, float(default_days), f"{target_year}? ?? ?? ??", now),
+            )
+            add_leave_notification(connection, int(user["id"]), None, "accrual", f"{target_year}? ?? {default_days:g}?? ?? ??????.")
+            updated += 1
+        connection.commit()
+        return updated
     finally:
         connection.close()
 
@@ -16946,13 +17402,33 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                 return
 
             if self.path == "/api/leave-decision":
-                if not (user_has_permission(user, "leave_approve") or user_has_permission(user, "leave_manage")):
+                if not any(user_has_permission(user, permission) for permission in ("leave_approve", "leave_approve_team", "leave_approve_director", "leave_approve_ceo", "leave_director_override", "leave_manage")):
                     self.send_json({"error": "연차 승인 권한이 없습니다."}, status=403)
                     return
                 length = int(self.headers.get("Content-Length", "0"))
                 payload = json.loads(self.rfile.read(length).decode("utf-8"))
                 decide_leave_request(int(payload.get("request_id", 0)), user, clean_payload_text(payload, "decision"), clean_payload_text(payload, "comment"))
                 self.send_json({"message": "연차 신청을 처리했습니다."})
+                return
+
+            if self.path == "/api/leave-cancel":
+                if not self.require_permission(user, "leave_view", "?? ??"):
+                    return
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(length).decode("utf-8"))
+                cancel_leave_request(int(payload.get("request_id", 0)), user, clean_payload_text(payload, "reason"))
+                self.send_json({"message": "\uC5F0\uCC28 \uC2E0\uCCAD\uC744 \uCDE8\uC18C\uD588\uC2B5\uB2C8\uB2E4."})
+                return
+
+            if self.path == "/api/leave-accrual":
+                if not self.require_permission(user, "leave_manage", "?? ??"):
+                    return
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(length).decode("utf-8"))
+                year = int(payload.get("year") or date.today().year)
+                default_days = float(payload.get("default_days") or 15)
+                count = apply_annual_leave_accrual(year, actor=user, default_days=default_days)
+                self.send_json({"message": f"{year}? ?? ?? ?? {count}?? ??????.", "count": count})
                 return
 
             if self.path == "/api/leave-balance":
