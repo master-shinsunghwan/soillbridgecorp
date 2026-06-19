@@ -18,6 +18,8 @@ output/
 config/
 backups/
 sales_reports/
+.superpowers/
+work/
 _workhub_zip_inspect/config/
 _workhub_zip_inspect/backups/
 _workhub_zip_inspect/output/
