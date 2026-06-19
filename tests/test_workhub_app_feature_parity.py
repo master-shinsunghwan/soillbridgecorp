@@ -89,6 +89,12 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
             self.assertIn('class="company-card dashboard-calendar-card"', html_source)
             self.assertIn('id="dashboardSalesPanel"', html_source)
             self.assertIn("매출 현황", html_source)
+            sales_panel_start = html_source.index('id="dashboardSalesPanel"')
+            sales_panel_end = html_source.index('</aside>', sales_panel_start)
+            sales_panel_html = html_source[sales_panel_start:sales_panel_end]
+            self.assertIn("발주모아 매출 데이터 연결 대기 중", sales_panel_html)
+            self.assertNotIn("선택한 날짜", sales_panel_html)
+            self.assertNotIn("이번 달 요약", sales_panel_html)
             self.assertIn(".dashboard-calendar-panel", html_source)
             self.assertIn("grid-template-columns: minmax(0, 1fr) minmax(0, 1fr)", html_source)
             self.assertIn("function renderDashboardImportSchedule()", html_source)

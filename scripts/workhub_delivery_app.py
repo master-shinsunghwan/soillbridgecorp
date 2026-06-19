@@ -2576,7 +2576,16 @@ HTML = r"""<!doctype html>
     .dashboard-sales-panel {
       display: grid;
       gap: 12px;
+      align-content: stretch;
+      grid-template-rows: minmax(0, 1fr);
+    }
+    .dashboard-sales-panel > .company-card {
+      height: 100%;
+    }
+    .dashboard-sales-panel .company-card-body {
+      display: grid;
       align-content: start;
+      min-height: 0;
     }
     .dashboard-sales-grid {
       display: grid;
@@ -4425,26 +4434,6 @@ HTML = r"""<!doctype html>
                     <div class="dashboard-sales-metric"><span>평균 객단가</span><strong>-</strong></div>
                   </div>
                   <div class="dashboard-sales-placeholder">발주모아 매출 데이터 연결 대기 중</div>
-                </div>
-              </article>
-              <article class="company-card">
-                <div class="company-card-head"><span>선택한 날짜</span><button class="crm-mini-button" type="button" data-open="crm" data-crm-nav-tab="tasks">업무보드</button></div>
-                <div class="company-card-body">
-                  <div class="calendar-side-date" id="companyCalendarSelectedDate">오늘</div>
-                  <div class="calendar-side-list" id="companyCalendarSelectedList">
-                    <div class="calendar-empty">날짜를 선택하면 일정이 표시됩니다.</div>
-                  </div>
-                </div>
-              </article>
-              <article class="company-card">
-                <div class="company-card-head"><span>이번 달 요약</span></div>
-                <div class="company-card-body">
-                  <div class="company-mini-grid">
-                    <div><span>프로젝트</span><strong id="companyCalendarProjectCount">0건</strong></div>
-                    <div><span>업무 마감</span><strong id="companyCalendarTaskCount">0건</strong></div>
-                    <div><span>연차</span><strong id="companyCalendarLeaveCount">0건</strong></div>
-                    <div><span>지연/높음</span><strong id="companyCalendarRiskCount">0건</strong></div>
-                  </div>
                 </div>
               </article>
             </aside>
