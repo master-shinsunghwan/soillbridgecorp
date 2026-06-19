@@ -5268,6 +5268,8 @@ HTML = r"""<!doctype html>
                 <button type="button" data-ledger-download="selected">선택 다운로드</button>
               </div>
             </div>
+            <button class="btn blue" type="button" data-ledger-import-mode="daily">일일 추가 업로드</button>
+            <button class="btn danger" type="button" data-ledger-import-mode="replace">전체 데이터 교체 업로드</button>
             <button class="btn primary" id="ledgerAddCs" type="button">CS 추가</button>
           </div>
           <div class="cell-edit-bar" id="ledgerCellEditBar">
@@ -5334,6 +5336,8 @@ HTML = r"""<!doctype html>
                 <button type="button" data-management-download="selected">선택 다운로드</button>
               </div>
             </div>
+            <button class="btn blue" type="button" data-management-import-mode="daily">일일 추가 업로드</button>
+            <button class="btn danger" type="button" data-management-import-mode="replace">전체 데이터 교체 업로드</button>
           </div>
           <div class="cell-edit-bar" id="managementCellEditBar">
             <div class="cell-edit-label" id="managementCellEditLabel">셀 선택</div>
@@ -5410,6 +5414,18 @@ HTML = r"""<!doctype html>
     </div>
   </div>
 
+  <div class="safe-number-dialog-backdrop" id="importWarningDialog" aria-hidden="true">
+    <div class="safe-number-dialog" role="dialog" aria-modal="true" aria-labelledby="importWarningTitle">
+      <h2 class="safe-number-dialog-title" id="importWarningTitle">업로드 확인</h2>
+      <p class="safe-number-dialog-description" id="importWarningDescription"></p>
+      <pre class="safe-number-dialog-preview" id="importWarningPreview"></pre>
+      <div class="safe-number-dialog-actions">
+        <button class="btn" id="importWarningCancel" type="button">취소</button>
+        <button class="btn primary" id="importWarningProceed" type="button">진행</button>
+      </div>
+    </div>
+  </div>
+
   <script type="module">
     import { createIcons, BriefcaseBusiness, Home, MessageCircle, Info, ChevronDown, ChevronRight, PlusSquare, RefreshCw, Ellipsis, Headphones, Package, ClipboardCheck, CircleDollarSign, FileText, FileSpreadsheet, ClipboardList, BarChart3, CopyCheck, Bell, Download, Truck, Mail, Upload, Database, CalendarDays, X, Settings } from "/lucide/dist/esm/lucide.js";
     createIcons({ icons: { BriefcaseBusiness, Home, MessageCircle, Info, ChevronDown, ChevronRight, PlusSquare, RefreshCw, Ellipsis, Headphones, Package, ClipboardCheck, CircleDollarSign, FileText, FileSpreadsheet, ClipboardList, BarChart3, CopyCheck, Bell, Download, Truck, Mail, Upload, Database, CalendarDays, X, Settings, "package": Package, "file-text": FileText, "file-spreadsheet": FileSpreadsheet, "truck": Truck } });
@@ -5482,6 +5498,12 @@ HTML = r"""<!doctype html>
       setHidden(saveCsCaseButton, !can("ledger_edit"));
       setHidden(ledgerDownloadMenuButton, !can("excel_download"));
       setHidden(managementDownloadMenuButton, !can("excel_download"));
+      document.querySelectorAll('[data-ledger-import-mode="daily"], [data-management-import-mode="daily"]').forEach((button) => {
+        setHidden(button, !can("excel_upload"));
+      });
+      document.querySelectorAll('[data-ledger-import-mode="replace"], [data-management-import-mode="replace"]').forEach((button) => {
+        setHidden(button, currentUser.role !== "admin");
+      });
       setHidden(document.querySelector("label[for='vendorContactsFileInput']"), !can("excel_upload"));
       setHidden(saveVendorContactButton, !can("mail_send"));
       setHidden(document.querySelector("#distributionMailNavGroup"), !can("mail_send"));
@@ -5623,6 +5645,12 @@ HTML = r"""<!doctype html>
     const safeNumberPackagePreview = document.querySelector("#safeNumberPackagePreview");
     const safeNumberPackageApprove = document.querySelector("#safeNumberPackageApprove");
     const safeNumberPackageReject = document.querySelector("#safeNumberPackageReject");
+    const importWarningDialog = document.querySelector("#importWarningDialog");
+    const importWarningTitle = document.querySelector("#importWarningTitle");
+    const importWarningDescription = document.querySelector("#importWarningDescription");
+    const importWarningPreview = document.querySelector("#importWarningPreview");
+    const importWarningCancel = document.querySelector("#importWarningCancel");
+    const importWarningProceed = document.querySelector("#importWarningProceed");
     const pageTitle = document.querySelector(".title");
     const dashboardContent = document.querySelector("#dashboardContent");
     const companyTabs = Array.from(document.querySelectorAll(".company-tab"));
@@ -5874,6 +5902,8 @@ HTML = r"""<!doctype html>
     let activeCsCaseId = "";
     let ledgerCases = [];
     let managementRecords = [];
+    let ledgerImportMode = "daily";
+    let managementImportMode = "daily";
     let managementPeriods = [];
     let importShipments = [];
     let userAccounts = [];
@@ -9599,13 +9629,122 @@ HTML = r"""<!doctype html>
       }
     }
 
+    function importModeLabel(mode) {
+      return mode === "replace" ? "전체 데이터 교체 업로드" : "일일 추가 업로드";
+    }
+
+    function importPreviewText(preview) {
+      const lines = [
+        `전체 행: ${preview.total || 0}건`,
+        `추가 예정: ${preview.insertable || 0}건`,
+        `이미 DB에 있는 중복: ${preview.duplicate_existing || 0}건`,
+        `파일 안 중복: ${preview.duplicate_in_file || 0}건`,
+      ];
+      const duplicates = Array.isArray(preview.duplicates) ? preview.duplicates : [];
+      if (duplicates.length) {
+        lines.push("", "중복 예시");
+        duplicates.slice(0, 10).forEach((item) => {
+          lines.push(`- ${item.row || ""}행 · ${item.reason || "중복"} · ${item.summary || ""}`);
+        });
+      }
+      return lines.join("\n");
+    }
+
+    function requestImportWarningApproval({ title, description, previewText, proceedLabel = "진행" }) {
+      if (!importWarningDialog || !importWarningTitle || !importWarningDescription || !importWarningPreview || !importWarningCancel || !importWarningProceed) {
+        return Promise.resolve(false);
+      }
+      importWarningTitle.textContent = title;
+      importWarningDescription.textContent = description;
+      importWarningPreview.textContent = previewText;
+      importWarningProceed.textContent = proceedLabel;
+      importWarningDialog.classList.add("open");
+      importWarningDialog.setAttribute("aria-hidden", "false");
+      return new Promise((resolve) => {
+        const finish = (approved) => {
+          importWarningDialog.classList.remove("open");
+          importWarningDialog.setAttribute("aria-hidden", "true");
+          importWarningCancel.removeEventListener("click", cancel);
+          importWarningProceed.removeEventListener("click", proceed);
+          importWarningDialog.removeEventListener("click", backdropCancel);
+          resolve(approved);
+        };
+        const cancel = () => finish(false);
+        const proceed = () => finish(true);
+        const backdropCancel = (event) => {
+          if (event.target === importWarningDialog) finish(false);
+        };
+        importWarningCancel.addEventListener("click", cancel);
+        importWarningProceed.addEventListener("click", proceed);
+        importWarningDialog.addEventListener("click", backdropCancel);
+        importWarningProceed.focus();
+      });
+    }
+
+    async function previewLedgerImport(file, mode) {
+      if (mode !== "daily") return null;
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("mode", mode);
+      const response = await fetch("/api/cs-cases-import-preview", {
+        method: "POST",
+        body: formData,
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "CS 처리대장 업로드 검토에 실패했습니다.");
+      return data;
+    }
+
+    async function previewManagementImport(file, mode) {
+      if (mode !== "daily") return null;
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("mode", mode);
+      const response = await fetch("/api/management-import-preview", {
+        method: "POST",
+        body: formData,
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "통합관리대장 업로드 검토에 실패했습니다.");
+      return data;
+    }
+
+    async function confirmImportIfNeeded({ ledgerName, mode, preview }) {
+      if (mode === "replace") {
+        return requestImportWarningApproval({
+          title: `${ledgerName} 전체 데이터 교체 업로드`,
+          description: "현재 저장된 전체 데이터를 삭제하고 선택한 엑셀 파일 내용으로 다시 저장합니다. 승인된 관리자만 진행할 수 있습니다.",
+          previewText: "기존 데이터는 교체 후 되돌릴 수 없습니다. 필요한 경우 먼저 백업을 만들어주세요.",
+          proceedLabel: "전체 교체 진행",
+        });
+      }
+      if (preview?.has_duplicates) {
+        return requestImportWarningApproval({
+          title: `${ledgerName} 중복 업로드 경고`,
+          description: "이미 올라간 것으로 보이는 데이터가 있습니다. 진행하면 중복 건은 제외하고 새 데이터만 추가합니다.",
+          previewText: importPreviewText(preview),
+          proceedLabel: "새 데이터만 추가",
+        });
+      }
+      return true;
+    }
+
     async function uploadLedgerWorkbook() {
       const file = ledgerImportInput.files[0];
       if (!file) return;
-      const formData = new FormData();
-      formData.append("file", file);
-      notice.textContent = "CS 처리대장 데이터를 DB에 업로드 중입니다.";
+      const mode = ledgerImportMode || "daily";
+      notice.textContent = `CS 처리대장 ${importModeLabel(mode)} 검토 중입니다.`;
       try {
+        const preview = await previewLedgerImport(file, mode);
+        const approved = await confirmImportIfNeeded({ ledgerName: "CS 처리대장", mode, preview });
+        if (!approved) {
+          notice.textContent = "CS 처리대장 업로드를 취소했습니다.";
+          return;
+        }
+        const formData = new FormData();
+        formData.append("file", file);
+        formData.append("mode", mode);
+        notice.textContent = `CS 처리대장 ${importModeLabel(mode)} 진행 중입니다.`;
         const response = await fetch("/api/cs-cases-import", {
           method: "POST",
           body: formData,
@@ -9622,6 +9761,7 @@ HTML = r"""<!doctype html>
         notice.textContent = error.message;
       } finally {
         ledgerImportInput.value = "";
+        ledgerImportMode = "daily";
       }
     }
 
@@ -9742,10 +9882,19 @@ HTML = r"""<!doctype html>
     async function uploadManagementWorkbook() {
       const file = managementImportInput.files[0];
       if (!file) return;
-      const formData = new FormData();
-      formData.append("file", file);
-      notice.textContent = "통합관리대장 데이터를 DB에 업로드 중입니다.";
+      const mode = managementImportMode || "daily";
+      notice.textContent = `통합관리대장 ${importModeLabel(mode)} 검토 중입니다.`;
       try {
+        const preview = await previewManagementImport(file, mode);
+        const approved = await confirmImportIfNeeded({ ledgerName: "통합관리대장", mode, preview });
+        if (!approved) {
+          notice.textContent = "통합관리대장 업로드를 취소했습니다.";
+          return;
+        }
+        const formData = new FormData();
+        formData.append("file", file);
+        formData.append("mode", mode);
+        notice.textContent = `통합관리대장 ${importModeLabel(mode)} 진행 중입니다.`;
         const response = await fetch("/api/management-import", {
           method: "POST",
           body: formData,
@@ -9762,6 +9911,7 @@ HTML = r"""<!doctype html>
         notice.textContent = error.message;
       } finally {
         managementImportInput.value = "";
+        managementImportMode = "daily";
       }
     }
 
@@ -11418,8 +11568,26 @@ HTML = r"""<!doctype html>
       showWorkspace("import");
       openImportShipmentPopup();
     });
-    managementImportOpen?.addEventListener("click", () => managementImportInput.click());
-    ledgerImportOpen?.addEventListener("click", () => ledgerImportInput.click());
+    function openManagementImport(mode = "daily") {
+      managementImportMode = mode;
+      managementImportInput.value = "";
+      showWorkspace("management");
+      managementImportInput.click();
+    }
+
+    function openLedgerImport(mode = "daily") {
+      ledgerImportMode = mode;
+      ledgerImportInput.value = "";
+      showWorkspace("ledger");
+      ledgerImportInput.click();
+    }
+
+    document.querySelectorAll("[data-management-import-mode]").forEach((button) => {
+      button.addEventListener("click", () => openManagementImport(button.dataset.managementImportMode || "daily"));
+    });
+    document.querySelectorAll("[data-ledger-import-mode]").forEach((button) => {
+      button.addEventListener("click", () => openLedgerImport(button.dataset.ledgerImportMode || "daily"));
+    });
     noticePopupClose.addEventListener("click", closeNoticePopup);
     noticePopup.addEventListener("click", (event) => {
       if (event.target === noticePopup) closeNoticePopup();
@@ -12099,8 +12267,10 @@ ADMIN_TOOLS_NAV_HTML = r"""
           <i class="nav-chevron" data-lucide="chevron-right"></i>
         </button>
         <div class="nav-submenu">
-          <button class="nav-subitem" id="managementImportOpen" type="button">통합관리대장 업로드</button>
-          <button class="nav-subitem" id="ledgerImportOpen" type="button">CS처리대장 업로드</button>
+          <button class="nav-subitem" id="managementImportOpen" type="button" data-management-import-mode="daily">통합관리대장 일일 추가 업로드</button>
+          <button class="nav-subitem" type="button" data-management-import-mode="replace">통합관리대장 전체 데이터 교체 업로드</button>
+          <button class="nav-subitem" id="ledgerImportOpen" type="button" data-ledger-import-mode="daily">CS처리대장 일일 추가 업로드</button>
+          <button class="nav-subitem" type="button" data-ledger-import-mode="replace">CS처리대장 전체 데이터 교체 업로드</button>
           <button class="nav-subitem" type="button" data-open="systemUpdate">업데이트 관리</button>
           <button class="nav-subitem" type="button" data-open="backup">백업 관리</button>
           <button class="nav-subitem" type="button" data-open="userAdmin">권한설정</button>
@@ -16196,41 +16366,144 @@ def find_management_header_row(worksheet, max_scan_rows: int = 10) -> tuple[int,
             return row_number, indexes
     return None
 
-def import_management_workbook(path: Path) -> tuple[int, int]:
-    init_db()
+MANAGEMENT_IMPORT_COLUMNS = [
+    "created_at",
+    "source_file",
+    "source_sheet",
+    "source_row",
+    "purchase_vendor",
+    "sales_vendor",
+    "transaction_type",
+    "ledger_checked",
+    "order_date",
+    "ship_date",
+    "orderer_name",
+    "sender_phone",
+    "receiver_name",
+    "receiver_phone",
+    "product_name",
+    "quantity",
+    "receiver_address",
+    "courier",
+    "invoice_number",
+    "memo",
+    "order_item_id",
+    "product_code",
+    "order_number",
+    "customer_option",
+]
+
+
+def normalize_duplicate_token(value: object) -> str:
+    text = clean_cell(value)
+    return re.sub(r"[\s\-()._/]+", "", text).lower()
+
+
+def compact_duplicate_key(prefix: str, values: list[object]) -> str:
+    tokens = [normalize_duplicate_token(value) for value in values]
+    return f"{prefix}:" + "|".join(tokens)
+
+
+def management_duplicate_key(record: dict[str, object]) -> str:
+    order_item_id = normalize_duplicate_token(record.get("order_item_id"))
+    if order_item_id:
+        return f"management-order-item:{order_item_id}"
+    order_number = record.get("order_number")
+    invoice_number = record.get("invoice_number")
+    product_identity = record.get("product_code") or record.get("product_name")
+    if normalize_duplicate_token(order_number) or normalize_duplicate_token(invoice_number):
+        return compact_duplicate_key(
+            "management-order",
+            [
+                order_number,
+                invoice_number,
+                product_identity,
+                record.get("quantity"),
+                record.get("receiver_name"),
+                record.get("receiver_phone"),
+                record.get("receiver_address"),
+            ],
+        )
+    return compact_duplicate_key(
+        "management-fallback",
+        [
+            record.get("order_date"),
+            record.get("ship_date"),
+            record.get("product_name"),
+            record.get("quantity"),
+            record.get("receiver_name"),
+            record.get("receiver_phone"),
+            record.get("receiver_address"),
+        ],
+    )
+
+
+def cs_duplicate_key(record: dict[str, object]) -> str:
+    invoice = extract_invoice_number(record.get("original_invoice")) or record.get("original_invoice")
+    return compact_duplicate_key(
+        "cs-case",
+        [
+            record.get("occurred_at"),
+            invoice,
+            record.get("cs_type"),
+            record.get("cs_content"),
+            record.get("receiver_name"),
+            record.get("receiver_phone"),
+            record.get("product_name"),
+        ],
+    )
+
+
+def duplicate_summary(record: dict[str, object], fields: list[str]) -> str:
+    values = [clean_cell(record.get(field)) for field in fields]
+    return " / ".join(value for value in values if value)[:160]
+
+
+def import_preview_payload(records: list[dict[str, object]], existing_keys: set[str], key_func, summary_fields: list[str]) -> dict[str, object]:
+    seen: set[str] = set()
+    duplicates: list[dict[str, object]] = []
+    duplicate_existing = 0
+    duplicate_in_file = 0
+    insertable = 0
+    for record in records:
+        key = key_func(record)
+        if key in existing_keys:
+            duplicate_existing += 1
+            if len(duplicates) < 20:
+                duplicates.append({
+                    "row": record.get("source_row", ""),
+                    "reason": "이미 DB에 있는 데이터",
+                    "summary": duplicate_summary(record, summary_fields),
+                })
+            continue
+        if key in seen:
+            duplicate_in_file += 1
+            if len(duplicates) < 20:
+                duplicates.append({
+                    "row": record.get("source_row", ""),
+                    "reason": "업로드 파일 안의 중복 데이터",
+                    "summary": duplicate_summary(record, summary_fields),
+                })
+            continue
+        seen.add(key)
+        insertable += 1
+    skipped = duplicate_existing + duplicate_in_file
+    return {
+        "total": len(records),
+        "insertable": insertable,
+        "duplicate_existing": duplicate_existing,
+        "duplicate_in_file": duplicate_in_file,
+        "skipped": skipped,
+        "duplicates": duplicates,
+        "has_duplicates": skipped > 0,
+    }
+
+
+def parse_management_import_records(path: Path) -> list[dict[str, object]]:
     workbook = load_workbook(path, data_only=True, read_only=True)
-    inserted = 0
-    skipped = 0
     timestamp = now_text()
     source_file = original_uploaded_filename(path.name)
-    columns = [
-        "created_at",
-        "source_file",
-        "source_sheet",
-        "source_row",
-        "purchase_vendor",
-        "sales_vendor",
-        "transaction_type",
-        "ledger_checked",
-        "order_date",
-        "ship_date",
-        "orderer_name",
-        "sender_phone",
-        "receiver_name",
-        "receiver_phone",
-        "product_name",
-        "quantity",
-        "receiver_address",
-        "courier",
-        "invoice_number",
-        "memo",
-        "order_item_id",
-        "product_code",
-        "order_number",
-        "customer_option",
-    ]
-    placeholders = ", ".join("?" for _ in columns)
-    connection = connect_db()
+    records: list[dict[str, object]] = []
     try:
         for worksheet in workbook.worksheets:
             header_match = find_management_header_row(worksheet)
@@ -16267,40 +16540,84 @@ def import_management_workbook(path: Path) -> tuple[int, int]:
                 }
                 if not any(record[key] for key in ("receiver_name", "product_name", "invoice_number", "receiver_address")):
                     continue
-                cursor = connection.execute(
-                    f"INSERT OR IGNORE INTO management_records ({', '.join(columns)}) VALUES ({placeholders})",
-                    [record[column] for column in columns],
-                )
-                if cursor.rowcount:
-                    inserted += 1
-                else:
+                records.append(record)
+    finally:
+        workbook.close()
+
+    return records
+
+
+def existing_management_duplicate_keys(connection: sqlite3.Connection) -> set[str]:
+    rows = connection.execute(
+        """
+        SELECT order_date, ship_date, receiver_name, receiver_phone, product_name,
+               quantity, receiver_address, invoice_number, order_item_id,
+               product_code, order_number
+          FROM management_records
+        """
+    ).fetchall()
+    return {management_duplicate_key(dict(row)) for row in rows}
+
+
+def preview_management_import(path: Path) -> dict[str, object]:
+    init_db()
+    records = parse_management_import_records(path)
+    connection = connect_db()
+    try:
+        existing_keys = existing_management_duplicate_keys(connection)
+    finally:
+        connection.close()
+    return import_preview_payload(
+        records,
+        existing_keys,
+        management_duplicate_key,
+        ["receiver_name", "receiver_phone", "product_name", "quantity", "invoice_number", "order_number"],
+    )
+
+
+def import_management_workbook(path: Path, mode: str = "daily") -> tuple[int, int]:
+    init_db()
+    records = parse_management_import_records(path)
+    placeholders = ", ".join("?" for _ in MANAGEMENT_IMPORT_COLUMNS)
+    insert_sql = f"INSERT OR IGNORE INTO management_records ({', '.join(MANAGEMENT_IMPORT_COLUMNS)}) VALUES ({placeholders})"
+    connection = connect_db()
+    inserted = 0
+    skipped = 0
+    try:
+        if mode == "replace":
+            connection.execute("DELETE FROM management_records")
+            import_records = records
+        else:
+            existing_keys = existing_management_duplicate_keys(connection)
+            seen_keys: set[str] = set()
+            import_records = []
+            for record in records:
+                key = management_duplicate_key(record)
+                if key in existing_keys or key in seen_keys:
                     skipped += 1
+                    continue
+                seen_keys.add(key)
+                import_records.append(record)
+        for record in import_records:
+            cursor = connection.execute(
+                insert_sql,
+                [record[column] for column in MANAGEMENT_IMPORT_COLUMNS],
+            )
+            if cursor.rowcount:
+                inserted += 1
+            else:
+                skipped += 1
         connection.commit()
     finally:
         connection.close()
-        workbook.close()
     return inserted, skipped
 
-def import_cs_cases_from_workbook(path: Path) -> tuple[int, int]:
-    init_db()
+
+def parse_cs_case_import_records(path: Path) -> list[dict[str, object]]:
     workbook = load_workbook(path, data_only=True, read_only=True)
-    inserted = 0
-    skipped = 0
     timestamp = now_text()
     source_file = path.name
-
-    insert_sql = """
-        INSERT OR IGNORE INTO cs_cases (
-            created_at, updated_at, status, vendor_name, vendor_email,
-            original_info, original_invoice, product_name, orderer_name, orderer_phone, receiver_name,
-            receiver_phone, receiver_address, cs_type, cs_content, return_invoice,
-            reship_invoice, mail_subject, mail_body, mail_sent_at,
-            source_file, source_sheet, source_row, occurred_at, completed_at,
-            order_date, ship_date, sales_vendor, purchase_vendor, courier, quantity
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    """
-
-    connection = connect_db()
+    records: list[dict[str, object]] = []
     try:
         for worksheet in workbook.worksheets:
             rows = worksheet.iter_rows(max_col=80, values_only=True)
@@ -16359,49 +16676,142 @@ def import_cs_cases_from_workbook(path: Path) -> tuple[int, int]:
                 if not any([vendor_name, original_invoice, product_name, receiver_name, receiver_phone, cs_content]):
                     continue
 
-                values = [
-                    timestamp,
-                    timestamp,
-                    normalize_progress_status(raw_status, row_value(row, completed_idx), row_value(row, date_idx)),
-                    vendor_name,
-                    "",
-                    original_info,
-                    extract_invoice_number(original_invoice) or original_invoice,
-                    product_name,
-                    orderer_name,
-                    orderer_phone,
-                    receiver_name,
-                    receiver_phone,
-                    row_value(row, address_idx),
-                    cs_type,
-                    cs_content,
-                    row_value(row, return_idx),
-                    row_value(row, reship_idx),
-                    "",
-                    "",
-                    "",
-                    source_file,
-                    worksheet.title,
-                    excel_row_number,
-                    row_value(row, date_idx),
-                    row_value(row, completed_idx),
-                    row_value(row, order_idx),
-                    row_value(row, ship_idx),
-                    sales_vendor,
-                    purchase_vendor,
-                    row_value(row, courier_idx),
-                    row_value(row, quantity_idx),
-                ]
-                cursor = connection.execute(insert_sql, values)
-                if cursor.rowcount:
-                    inserted += 1
-                else:
+                records.append({
+                    "created_at": timestamp,
+                    "updated_at": timestamp,
+                    "status": normalize_progress_status(raw_status, row_value(row, completed_idx), row_value(row, date_idx)),
+                    "vendor_name": vendor_name,
+                    "vendor_email": "",
+                    "original_info": original_info,
+                    "original_invoice": extract_invoice_number(original_invoice) or original_invoice,
+                    "product_name": product_name,
+                    "orderer_name": orderer_name,
+                    "orderer_phone": orderer_phone,
+                    "receiver_name": receiver_name,
+                    "receiver_phone": receiver_phone,
+                    "receiver_address": row_value(row, address_idx),
+                    "cs_type": cs_type,
+                    "cs_content": cs_content,
+                    "return_invoice": row_value(row, return_idx),
+                    "reship_invoice": row_value(row, reship_idx),
+                    "mail_subject": "",
+                    "mail_body": "",
+                    "mail_sent_at": "",
+                    "source_file": source_file,
+                    "source_sheet": worksheet.title,
+                    "source_row": excel_row_number,
+                    "occurred_at": row_value(row, date_idx),
+                    "completed_at": row_value(row, completed_idx),
+                    "order_date": row_value(row, order_idx),
+                    "ship_date": row_value(row, ship_idx),
+                    "sales_vendor": sales_vendor,
+                    "purchase_vendor": purchase_vendor,
+                    "courier": row_value(row, courier_idx),
+                    "quantity": row_value(row, quantity_idx),
+                })
+    finally:
+        workbook.close()
+
+    return records
+
+
+CS_IMPORT_COLUMNS = [
+    "created_at",
+    "updated_at",
+    "status",
+    "vendor_name",
+    "vendor_email",
+    "original_info",
+    "original_invoice",
+    "product_name",
+    "orderer_name",
+    "orderer_phone",
+    "receiver_name",
+    "receiver_phone",
+    "receiver_address",
+    "cs_type",
+    "cs_content",
+    "return_invoice",
+    "reship_invoice",
+    "mail_subject",
+    "mail_body",
+    "mail_sent_at",
+    "source_file",
+    "source_sheet",
+    "source_row",
+    "occurred_at",
+    "completed_at",
+    "order_date",
+    "ship_date",
+    "sales_vendor",
+    "purchase_vendor",
+    "courier",
+    "quantity",
+]
+
+
+def existing_cs_duplicate_keys(connection: sqlite3.Connection) -> set[str]:
+    rows = connection.execute(
+        """
+        SELECT occurred_at, original_invoice, receiver_name, receiver_phone,
+               product_name, cs_type, cs_content
+          FROM cs_cases
+        """
+    ).fetchall()
+    return {cs_duplicate_key(dict(row)) for row in rows}
+
+
+def preview_cs_cases_import(path: Path) -> dict[str, object]:
+    init_db()
+    records = parse_cs_case_import_records(path)
+    connection = connect_db()
+    try:
+        existing_keys = existing_cs_duplicate_keys(connection)
+    finally:
+        connection.close()
+    return import_preview_payload(
+        records,
+        existing_keys,
+        cs_duplicate_key,
+        ["occurred_at", "receiver_name", "product_name", "original_invoice", "cs_type", "cs_content"],
+    )
+
+
+def import_cs_cases_from_workbook(path: Path, mode: str = "daily") -> tuple[int, int]:
+    init_db()
+    records = parse_cs_case_import_records(path)
+    placeholders = ", ".join("?" for _ in CS_IMPORT_COLUMNS)
+    insert_sql = f"""
+        INSERT OR IGNORE INTO cs_cases ({', '.join(CS_IMPORT_COLUMNS)})
+        VALUES ({placeholders})
+    """
+    connection = connect_db()
+    inserted = 0
+    skipped = 0
+    try:
+        if mode == "replace":
+            connection.execute("DELETE FROM cs_cases")
+            import_records = records
+        else:
+            existing_keys = existing_cs_duplicate_keys(connection)
+            seen_keys: set[str] = set()
+            import_records = []
+            for record in records:
+                key = cs_duplicate_key(record)
+                if key in existing_keys or key in seen_keys:
                     skipped += 1
+                    continue
+                seen_keys.add(key)
+                import_records.append(record)
+        for record in import_records:
+            cursor = connection.execute(insert_sql, [record[column] for column in CS_IMPORT_COLUMNS])
+            if cursor.rowcount:
+                inserted += 1
+            else:
+                skipped += 1
         connection.commit()
     finally:
         connection.close()
-        workbook.close()
-
     return inserted, skipped
 
 
@@ -17986,25 +18396,53 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                 })
                 return
 
-            if self.path == "/api/cs-cases-import":
-                if not self.require_admin(user, "CS처리대장 업로드"):
+            if self.path == "/api/cs-cases-import-preview":
+                if not self.require_permission(user, "excel_upload", "엑셀 업로드"):
                     return
                 upload_path = save_uploaded_file(fields, "file")
-                inserted, skipped = import_cs_cases_from_workbook(upload_path)
+                self.send_json(preview_cs_cases_import(upload_path))
+                return
+
+            if self.path == "/api/cs-cases-import":
+                mode = fields.get("mode", "daily")
+                mode = mode if isinstance(mode, str) and mode == "replace" else "daily"
+                if mode == "replace":
+                    if not self.require_admin(user, "CS처리대장 전체 데이터 교체 업로드"):
+                        return
+                elif not self.require_permission(user, "excel_upload", "엑셀 업로드"):
+                    return
+                upload_path = save_uploaded_file(fields, "file")
+                inserted, skipped = import_cs_cases_from_workbook(upload_path, mode=mode)
+                mode_label = "전체 교체" if mode == "replace" else "일일 추가"
                 self.send_json({
-                    "message": f"CS 처리대장 {inserted}건 업로드 완료, 중복 {skipped}건 제외했습니다.",
+                    "message": f"CS 처리대장 {mode_label} {inserted}건 완료, 중복 {skipped}건 제외했습니다.",
+                    "mode": mode,
                     "inserted": inserted,
                     "skipped": skipped,
                 })
                 return
 
-            if self.path == "/api/management-import":
-                if not self.require_admin(user, "통합관리대장 업로드"):
+            if self.path == "/api/management-import-preview":
+                if not self.require_permission(user, "excel_upload", "엑셀 업로드"):
                     return
                 upload_path = save_uploaded_file(fields, "file")
-                inserted, skipped = import_management_workbook(upload_path)
+                self.send_json(preview_management_import(upload_path))
+                return
+
+            if self.path == "/api/management-import":
+                mode = fields.get("mode", "daily")
+                mode = mode if isinstance(mode, str) and mode == "replace" else "daily"
+                if mode == "replace":
+                    if not self.require_admin(user, "통합관리대장 전체 데이터 교체 업로드"):
+                        return
+                elif not self.require_permission(user, "excel_upload", "엑셀 업로드"):
+                    return
+                upload_path = save_uploaded_file(fields, "file")
+                inserted, skipped = import_management_workbook(upload_path, mode=mode)
+                mode_label = "전체 교체" if mode == "replace" else "일일 추가"
                 self.send_json({
-                    "message": f"통합관리대장 {inserted}건 업로드 완료, 중복 {skipped}건 제외했습니다.",
+                    "message": f"통합관리대장 {mode_label} {inserted}건 완료, 중복 {skipped}건 제외했습니다.",
+                    "mode": mode,
                     "inserted": inserted,
                     "skipped": skipped,
                 })

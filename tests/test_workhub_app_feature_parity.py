@@ -161,6 +161,20 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
             self.assertIn('id="safeNumberPackageReject"', html_source)
             self.assertNotIn("window.confirm(safeNumberConfirmMessage", html_source)
 
+    def test_ledger_imports_are_split_into_daily_and_replace_modes(self) -> None:
+        html_source = (SCRIPTS / "workhub_delivery_app.py").read_text(encoding="utf-8")
+
+        self.assertIn("일일 추가 업로드", html_source)
+        self.assertIn("전체 데이터 교체 업로드", html_source)
+        self.assertIn("/api/management-import-preview", html_source)
+        self.assertIn("/api/cs-cases-import-preview", html_source)
+        self.assertIn("function requestImportWarningApproval", html_source)
+        self.assertIn('id="importWarningDialog"', html_source)
+        self.assertIn('mode", mode', html_source)
+        self.assertIn('mode === "replace"', html_source)
+        self.assertIn("preview_management_import", html_source)
+        self.assertIn("preview_cs_cases_import", html_source)
+
     def test_order_workspace_has_right_side_execution_cards(self) -> None:
         html_source = (SCRIPTS / "workhub_delivery_app.py").read_text(encoding="utf-8")
 
