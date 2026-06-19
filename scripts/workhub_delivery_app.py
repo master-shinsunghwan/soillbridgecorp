@@ -109,6 +109,7 @@ PASSWORD_MIN_LENGTH = 10
 PASSWORD_MAX_LENGTH = 128
 BACKUP_RETENTION_DAYS = 90
 AUTO_BACKUP_HOUR = 3
+MAX_MAIL_ATTACHMENT_BYTES = 20 * 1024 * 1024
 _BACKUP_SCHEDULER_STARTED = False
 _SYSTEM_UPDATE_LOCK = threading.Lock()
 DEFAULT_USERS = (
@@ -4390,6 +4391,7 @@ HTML = r"""<!doctype html>
         </button>
         <div class="nav-submenu">
           <button class="nav-subitem" id="ledgerImportOpen" type="button" data-ledger-import-mode="daily">CS처리대장 일일 추가 업로드</button>
+          <button class="nav-subitem" type="button" data-mail-popup="cs">CS처리 요청</button>
         </div>
       </div>
       <div class="nav-group" id="crmNavGroup">
@@ -5273,6 +5275,11 @@ HTML = r"""<!doctype html>
             <textarea id="csContentInput" name="cs_content" placeholder="예) 파손 / 오배송 / 누락 / 반품 접수 요청"></textarea>
           </div>
           <div class="text-field">
+            <label class="field-label" for="csAttachmentInput">첨부파일(이미지/영상)</label>
+            <input id="csAttachmentInput" name="cs_attachments" type="file" accept="image/*,video/*" multiple />
+            <div class="hint-line" id="csAttachmentSummary">첨부파일 없음</div>
+          </div>
+          <div class="text-field">
             <label class="field-label" for="csSubjectInput">메일 제목</label>
             <input id="csSubjectInput" name="subject" type="text" />
           </div>
@@ -5619,6 +5626,7 @@ HTML = r"""<!doctype html>
       setHidden(document.querySelector("label[for='vendorContactsFileInput']"), !can("excel_upload"));
       setHidden(saveVendorContactButton, !can("mail_send"));
       setHidden(document.querySelector("#distributionMailNavGroup"), !can("mail_send"));
+      document.querySelectorAll("[data-mail-popup]").forEach((button) => setHidden(button, !can("mail_send")));
       document.querySelectorAll('[data-open="cs"]').forEach((button) => setHidden(button, !can("mail_send")));
       setHidden(sharedFileUploadPanel, currentUser.role !== "admin");
       setHidden(importShipmentInputOpen, !can("import_shipment_manage"));
@@ -5688,6 +5696,8 @@ HTML = r"""<!doctype html>
     const csAddressInput = document.querySelector("#csAddressInput");
     const csTypeInput = document.querySelector("#csTypeInput");
     const csContentInput = document.querySelector("#csContentInput");
+    const csAttachmentInput = document.querySelector("#csAttachmentInput");
+    const csAttachmentSummary = document.querySelector("#csAttachmentSummary");
     const csSubjectInput = document.querySelector("#csSubjectInput");
     const csBodyInput = document.querySelector("#csBodyInput");
     const saveCsCaseButton = document.querySelector("#saveCsCase");
@@ -7563,6 +7573,26 @@ HTML = r"""<!doctype html>
         subject: csSubjectInput.value.trim(),
         body: csBodyInput.value.trim(),
       };
+    }
+
+    function updateCsAttachmentSummary() {
+      if (!csAttachmentInput || !csAttachmentSummary) return;
+      const files = Array.from(csAttachmentInput.files || []);
+      if (!files.length) {
+        csAttachmentSummary.textContent = "첨부파일 없음";
+        return;
+      }
+      const totalSize = files.reduce((sum, file) => sum + file.size, 0);
+      const sizeMb = Math.ceil((totalSize / 1024 / 1024) * 10) / 10;
+      csAttachmentSummary.textContent = `${files.length}개 첨부 선택 / 약 ${sizeMb}MB`;
+    }
+
+    function appendCsMailPayload(formData, payload) {
+      formData.append("payload", JSON.stringify(payload));
+      Array.from(csAttachmentInput?.files || []).forEach((file, index) => {
+        formData.append(`cs_attachment_${index + 1}`, file, file.name);
+      });
+      return formData;
     }
 
     function collectStockNoticePayload() {
@@ -9729,6 +9759,8 @@ HTML = r"""<!doctype html>
       vendorTypeSelect.value = "purchase";
       recipientEmailInput.value = "";
       vendorNameInput.value = "";
+      if (csAttachmentInput) csAttachmentInput.value = "";
+      updateCsAttachmentSummary();
       csOriginInput.value = "";
       csProductInput.value = "";
       csReceiverInput.value = "";
@@ -11899,6 +11931,7 @@ HTML = r"""<!doctype html>
     document.querySelectorAll("[data-mail-popup]").forEach((button) => {
       button.addEventListener("click", () => openMailMessagePopup(button.dataset.mailPopup));
     });
+    csAttachmentInput?.addEventListener("change", updateCsAttachmentSummary);
     document.querySelector("#adminNavToggle")?.addEventListener("click", () => {
       document.querySelector("#adminNavGroup")?.classList.toggle("open");
     });
@@ -12289,15 +12322,17 @@ HTML = r"""<!doctype html>
           if (!payload.recipient_email || !payload.subject || !payload.body) {
             throw new Error("받는 업체 메일, 제목, 요청 내용을 입력해주세요.");
           }
+          const csMailFormData = appendCsMailPayload(new FormData(), payload);
           const response = await fetch("/api/cs-mail", {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(payload),
+            body: csMailFormData,
           });
           const data = await response.json();
           if (!response.ok) throw new Error(data.error || "메일 전송에 실패했습니다.");
           notice.textContent = data.message || "메일 전송이 완료되었습니다.";
           activeCsCaseId = "";
+          if (csAttachmentInput) csAttachmentInput.value = "";
+          updateCsAttachmentSummary();
           await loadCsCases();
         } else if (currentMode === "mail-stock") {
           refreshStockNoticeBody();
@@ -13042,6 +13077,27 @@ def parse_multipart(headers, rfile) -> dict[str, tuple[str, bytes] | str]:
             fields[field_name] = data.decode("utf-8", errors="ignore")
 
     return fields
+
+
+def collect_mail_attachments(fields: dict[str, tuple[str, bytes] | str]) -> list[dict[str, object]]:
+    attachments: list[dict[str, object]] = []
+    total_size = 0
+    for field_name, value in fields.items():
+        if not field_name.startswith("cs_attachment_") or not isinstance(value, tuple):
+            continue
+        filename, data = value
+        if not filename or not data:
+            continue
+        total_size += len(data)
+        if total_size > MAX_MAIL_ATTACHMENT_BYTES:
+            raise ValueError("첨부파일 총 용량은 20MB 이하로 업로드해주세요.")
+        content_type = mimetypes.guess_type(filename)[0] or "application/octet-stream"
+        attachments.append({
+            "filename": filename,
+            "data": data,
+            "content_type": content_type,
+        })
+    return attachments
 
 
 def save_uploaded_file(fields: dict[str, tuple[str, bytes] | str], field_name: str = "file") -> Path:
@@ -18087,7 +18143,7 @@ def mark_cs_case_mail_sent(case_id: int, payload: dict) -> None:
         connection.close()
 
 
-def send_cs_mail(payload: dict) -> None:
+def send_cs_mail(payload: dict, attachments: list[dict[str, object]] | None = None) -> None:
     saved = load_mail_settings(include_password=True)
     naver_email = normalize_naver_email(payload.get("naver_email")) or str(saved.get("naver_email", ""))
     naver_password = str(payload.get("naver_password") or saved.get("naver_password", ""))
@@ -18116,6 +18172,7 @@ def send_cs_mail(payload: dict) -> None:
         body,
         smtp_port=int(saved.get("smtp_port") or NAVER_SMTP_PORT),
         smtp_security=str(saved.get("smtp_security") or "ssl"),
+        attachments=attachments,
     )
     return
 
@@ -18134,8 +18191,8 @@ def send_cs_mail(payload: dict) -> None:
         raise ValueError("네이버 메일 로그인에 실패했습니다. 아이디/비밀번호와 네이버 메일 SMTP 사용 설정을 확인해주세요.") from exc
 
 
-def send_general_mail(payload: dict) -> None:
-    send_cs_mail(payload)
+def send_general_mail(payload: dict, attachments: list[dict[str, object]] | None = None) -> None:
+    send_cs_mail(payload, attachments=attachments)
 
 
 def send_naver_mail(
@@ -18146,12 +18203,23 @@ def send_naver_mail(
     body: str,
     smtp_port: int = NAVER_SMTP_PORT,
     smtp_security: str = "ssl",
+    attachments: list[dict[str, object]] | None = None,
 ) -> None:
     message = EmailMessage()
     message["Subject"] = subject
     message["From"] = formataddr(("(주)소일브릿지", naver_email))
     message["To"] = recipient
     message.set_content(body)
+    for attachment in attachments or []:
+        filename = str(attachment.get("filename") or "attachment")
+        data = attachment.get("data") or b""
+        if not isinstance(data, (bytes, bytearray)):
+            continue
+        content_type = str(attachment.get("content_type") or "application/octet-stream")
+        maintype, _, subtype = content_type.partition("/")
+        if not maintype or not subtype:
+            maintype, subtype = "application", "octet-stream"
+        message.add_attachment(bytes(data), maintype=maintype, subtype=subtype, filename=filename)
 
     smtp_security = smtp_security if smtp_security in {"ssl", "tls"} else "ssl"
     context = ssl.create_default_context()
@@ -18948,9 +19016,16 @@ class WorkhubHandler(BaseHTTPRequestHandler):
             if self.path == "/api/cs-mail":
                 if not self.require_permission(user, "mail_send", "메일 발송"):
                     return
-                length = int(self.headers.get("Content-Length", "0"))
-                payload = json.loads(self.rfile.read(length).decode("utf-8"))
-                send_cs_mail(payload)
+                attachments: list[dict[str, object]] = []
+                if self.headers.get("Content-Type", "").lower().startswith("multipart/form-data"):
+                    fields = parse_multipart(self.headers, self.rfile)
+                    raw_payload = fields.get("payload", "{}")
+                    payload = json.loads(str(raw_payload or "{}"))
+                    attachments = collect_mail_attachments(fields)
+                else:
+                    length = int(self.headers.get("Content-Length", "0"))
+                    payload = json.loads(self.rfile.read(length).decode("utf-8"))
+                send_cs_mail(payload, attachments=attachments)
                 case_id = int(payload.get("case_id") or 0)
                 if case_id:
                     mark_cs_case_mail_sent(case_id, payload)

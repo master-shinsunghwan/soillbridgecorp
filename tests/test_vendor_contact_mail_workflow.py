@@ -224,6 +224,53 @@ class VendorContactMailWorkflowTests(unittest.TestCase):
             self.assertIn("(주)소일브릿지", sent_messages[0]["From"])
             self.assertEqual(sent_messages[0]["To"], "recipient@example.com")
 
+    def test_naver_mail_message_includes_cs_attachments(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            app = load_app(Path(directory))
+
+            sent_messages = []
+
+            class FakeSmtp:
+                def __init__(self, *args, **kwargs):
+                    pass
+
+                def __enter__(self):
+                    return self
+
+                def __exit__(self, exc_type, exc, tb):
+                    return False
+
+                def login(self, email, password):
+                    self.login_args = (email, password)
+
+                def send_message(self, message):
+                    sent_messages.append(message)
+
+            with patch.object(app.smtplib, "SMTP_SSL", FakeSmtp):
+                app.send_naver_mail(
+                    "soilbridge@naver.com",
+                    "application-password",
+                    "recipient@example.com",
+                    "CS 요청",
+                    "첨부 확인 부탁드립니다.",
+                    attachments=[
+                        {
+                            "filename": "damage.jpg",
+                            "data": b"fake-image",
+                            "content_type": "image/jpeg",
+                        }
+                    ],
+                )
+
+            self.assertEqual(len(sent_messages), 1)
+            attachments = [
+                part
+                for part in sent_messages[0].iter_attachments()
+                if part.get_filename() == "damage.jpg"
+            ]
+            self.assertEqual(len(attachments), 1)
+            self.assertEqual(attachments[0].get_content_type(), "image/jpeg")
+
 
 if __name__ == "__main__":
     unittest.main()

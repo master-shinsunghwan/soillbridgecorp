@@ -158,6 +158,23 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         self.assertIn('#managementNavToggle', html_source)
         self.assertIn('#ledgerNavToggle', html_source)
 
+    def test_cs_request_from_ledger_menu_supports_mail_attachments(self) -> None:
+        html_source = (ROOT / "scripts" / "workhub_delivery_app.py").read_text(encoding="utf-8")
+
+        ledger_group_start = html_source.index('id="ledgerNavGroup"')
+        crm_group_start = html_source.index('id="crmNavGroup"')
+        ledger_group = html_source[ledger_group_start:crm_group_start]
+
+        self.assertIn('data-mail-popup="cs"', ledger_group)
+        self.assertIn("CS처리 요청", ledger_group)
+        self.assertIn('id="csAttachmentInput"', html_source)
+        self.assertIn('id="csAttachmentSummary"', html_source)
+        self.assertIn('accept="image/*,video/*"', html_source)
+        self.assertIn("appendCsMailPayload", html_source)
+        self.assertIn("collect_mail_attachments", html_source)
+        self.assertIn("attachments=attachments", html_source)
+        self.assertIn('document.querySelectorAll("[data-mail-popup]")', html_source)
+
     def test_leave_workflow_has_multi_step_approval_cancel_and_accrual_ui(self) -> None:
         for app_file in (
             ROOT / "scripts" / "workhub_delivery_app.py",
