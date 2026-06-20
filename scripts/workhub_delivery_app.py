@@ -1239,11 +1239,18 @@ HTML = r"""<!doctype html>
       gap: 10px;
     }
     .sales-panel {
+      --panel-color: #64748b;
       overflow: hidden;
       border: 1px solid #d8e0ec;
       border-radius: 8px;
       background: white;
+      box-shadow: 0 6px 16px rgba(15, 23, 42, .035);
+      border-top: 3px solid var(--panel-color);
     }
+    .sales-panel.daily { --panel-color: #2563eb; }
+    .sales-panel.seller { --panel-color: #f97316; }
+    .sales-panel.product { --panel-color: #7c3aed; }
+    .sales-panel.supplier { --panel-color: #0d9488; }
     .sales-panel-head {
       min-height: 40px;
       display: flex;
@@ -1256,10 +1263,36 @@ HTML = r"""<!doctype html>
       font-size: 13px;
       font-weight: 950;
     }
-    .sales-panel-head span {
-      color: #64748b;
+    .sales-panel-title {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+    }
+    .sales-panel-icon {
+      width: 25px;
+      height: 25px;
+      border-radius: 8px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      background: color-mix(in srgb, var(--panel-color) 14%, white);
+      color: var(--panel-color);
+      font-size: 12px;
+      font-weight: 950;
+      flex: 0 0 auto;
+    }
+    .sales-panel-badge {
+      height: 22px;
+      padding: 0 8px;
+      border-radius: 999px;
+      display: inline-flex;
+      align-items: center;
+      background: color-mix(in srgb, var(--panel-color) 12%, white);
+      color: var(--panel-color);
       font-size: 11px;
-      font-weight: 850;
+      font-weight: 950;
+      white-space: nowrap;
     }
     .sales-table {
       width: 100%;
@@ -1269,7 +1302,7 @@ HTML = r"""<!doctype html>
     .sales-table th {
       height: 32px;
       padding: 0 8px;
-      background: #f1f5f9;
+      background: color-mix(in srgb, var(--panel-color) 7%, #f8fafc);
       color: #475569;
       border-bottom: 1px solid #e2e8f0;
       text-align: right;
@@ -13274,29 +13307,41 @@ ADMIN_WORKSPACE_HTML = r"""
               <div class="sales-dashboard" id="salesReportDashboard">
                 <div class="sales-kpi-grid" id="salesReportKpiGrid"></div>
                 <div class="sales-dashboard-grid">
-                  <div class="sales-panel">
-                    <div class="sales-panel-head">일자별 매출 흐름</div>
+                  <div class="sales-panel daily">
+                    <div class="sales-panel-head">
+                      <div class="sales-panel-title"><span class="sales-panel-icon">일</span>일자별 매출 흐름</div>
+                      <span class="sales-panel-badge">일별</span>
+                    </div>
                     <table class="sales-table">
                       <thead><tr><th>일자</th><th>수량</th><th>손익매출</th><th>판매합계</th><th>손익마진</th></tr></thead>
                       <tbody id="salesReportDailyBody"></tbody>
                     </table>
                   </div>
-                  <div class="sales-panel">
-                    <div class="sales-panel-head">매출처별 TOP</div>
+                  <div class="sales-panel seller">
+                    <div class="sales-panel-head">
+                      <div class="sales-panel-title"><span class="sales-panel-icon">매</span>매출처별 TOP</div>
+                      <span class="sales-panel-badge">판매사</span>
+                    </div>
                     <table class="sales-table">
                       <thead><tr><th>판매사</th><th>수량</th><th>손익매출</th><th>마진</th></tr></thead>
                       <tbody id="salesReportSellerBody"></tbody>
                     </table>
                   </div>
-                  <div class="sales-panel">
-                    <div class="sales-panel-head">상품별 TOP</div>
+                  <div class="sales-panel product">
+                    <div class="sales-panel-head">
+                      <div class="sales-panel-title"><span class="sales-panel-icon">상</span>상품별 TOP</div>
+                      <span class="sales-panel-badge">상품</span>
+                    </div>
                     <table class="sales-table">
                       <thead><tr><th>상품명</th><th>수량</th><th>손익매출</th><th>마진</th></tr></thead>
                       <tbody id="salesReportProductBody"></tbody>
                     </table>
                   </div>
-                  <div class="sales-panel">
-                    <div class="sales-panel-head">업체별 총 매입금액</div>
+                  <div class="sales-panel supplier">
+                    <div class="sales-panel-head">
+                      <div class="sales-panel-title"><span class="sales-panel-icon">입</span>업체별 총 매입금액</div>
+                      <span class="sales-panel-badge">매입처</span>
+                    </div>
                     <table class="sales-table">
                       <thead><tr><th>업체</th><th>총 매입금액</th><th>수량</th></tr></thead>
                       <tbody id="salesReportReviewBody"></tbody>
