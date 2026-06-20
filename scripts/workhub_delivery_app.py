@@ -7788,7 +7788,7 @@ HTML = r"""<!doctype html>
           </tr>
         `).join("");
       } else {
-        renderSalesEmpty(salesReportDailyBody, 5, "날짜별 매출 통계 파일을 업로드해주세요.");
+        renderSalesEmpty(salesReportDailyBody, 5, "일자별 매출 데이터를 업로드해주세요.");
       }
 
       const sellerRows = data.seller_top || [];
@@ -7802,7 +7802,7 @@ HTML = r"""<!doctype html>
           </tr>
         `).join("");
       } else {
-        renderSalesEmpty(salesReportSellerBody, 4, "매출처별 파일을 업로드해주세요.");
+        renderSalesEmpty(salesReportSellerBody, 4, "매출처별 데이터를 업로드해주세요.");
       }
 
       const productRows = data.product_top || [];
@@ -7816,7 +7816,7 @@ HTML = r"""<!doctype html>
           </tr>
         `).join("");
       } else {
-        renderSalesEmpty(salesReportProductBody, 4, "상품별 Statistics_Good 파일을 업로드해주세요.");
+        renderSalesEmpty(salesReportProductBody, 4, "상품별 데이터를 업로드해주세요.");
       }
 
       const purchaseRows = data.supplier_purchase_totals || [];
@@ -7829,7 +7829,7 @@ HTML = r"""<!doctype html>
           </tr>
         `).join("");
       } else {
-        renderSalesEmpty(salesReportReviewBody, 3, "공급사별 매입금액 파일을 업로드해주세요.");
+        renderSalesEmpty(salesReportReviewBody, 3, "업체별 매입금액 데이터를 업로드해주세요.");
       }
     }
 
@@ -13211,28 +13211,28 @@ ADMIN_WORKSPACE_HTML = r"""
                 <div class="sales-kpi-grid" id="salesReportKpiGrid"></div>
                 <div class="sales-dashboard-grid">
                   <div class="sales-panel">
-                    <div class="sales-panel-head">일자별 매출 흐름 <span>매출 통계.xlsx</span></div>
+                    <div class="sales-panel-head">일자별 매출 흐름</div>
                     <table class="sales-table">
                       <thead><tr><th>일자</th><th>수량</th><th>손익매출</th><th>판매합계</th><th>손익마진</th></tr></thead>
                       <tbody id="salesReportDailyBody"></tbody>
                     </table>
                   </div>
                   <div class="sales-panel">
-                    <div class="sales-panel-head">매출처별 TOP <span>매출처별.xlsx</span></div>
+                    <div class="sales-panel-head">매출처별 TOP</div>
                     <table class="sales-table">
                       <thead><tr><th>판매사</th><th>수량</th><th>손익매출</th><th>마진</th></tr></thead>
                       <tbody id="salesReportSellerBody"></tbody>
                     </table>
                   </div>
                   <div class="sales-panel">
-                    <div class="sales-panel-head">상품별 TOP <span>Statistics_Good</span></div>
+                    <div class="sales-panel-head">상품별 TOP</div>
                     <table class="sales-table">
                       <thead><tr><th>상품명</th><th>수량</th><th>손익매출</th><th>마진</th></tr></thead>
                       <tbody id="salesReportProductBody"></tbody>
                     </table>
                   </div>
                   <div class="sales-panel">
-                    <div class="sales-panel-head">업체별 총 매입금액 <span>공급사별</span></div>
+                    <div class="sales-panel-head">업체별 총 매입금액</div>
                     <table class="sales-table">
                       <thead><tr><th>업체</th><th>총 매입금액</th><th>수량</th></tr></thead>
                       <tbody id="salesReportReviewBody"></tbody>
