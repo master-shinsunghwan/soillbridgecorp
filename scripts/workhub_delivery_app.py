@@ -4549,7 +4549,6 @@ HTML = r"""<!doctype html>
           <i class="nav-chevron" data-lucide="chevron-right"></i>
         </button>
         <div class="nav-submenu">
-          <button class="nav-subitem" type="button" data-mail-popup="cs">CS 요청</button>
           <button class="nav-subitem" type="button" data-mail-popup="stock">입고 및 품절 공지</button>
         </div>
       </div>
