@@ -1142,30 +1142,87 @@ HTML = r"""<!doctype html>
       gap: 8px;
     }
     .sales-kpi {
+      position: relative;
       min-height: 88px;
-      padding: 10px;
+      padding: 10px 10px 10px 14px;
       border: 1px solid #d8e0ec;
       border-radius: 8px;
       background: white;
+      overflow: hidden;
+      box-shadow: 0 6px 16px rgba(15, 23, 42, .04);
     }
+    .sales-kpi::before {
+      content: "";
+      position: absolute;
+      left: 0;
+      top: 0;
+      bottom: 0;
+      width: 4px;
+      background: var(--kpi-color, #94a3b8);
+    }
+    .sales-kpi.blue { --kpi-color: #2563eb; }
+    .sales-kpi.slate { --kpi-color: #64748b; }
+    .sales-kpi.green { --kpi-color: #059669; }
+    .sales-kpi.red { --kpi-color: #dc2626; }
+    .sales-kpi.violet { --kpi-color: #7c3aed; }
+    .sales-kpi.orange { --kpi-color: #f97316; }
+    .sales-kpi.teal { --kpi-color: #0d9488; }
     .sales-kpi.primary {
-      border: 2px solid #2563eb;
+      border-color: rgba(37, 99, 235, .55);
+      box-shadow: 0 8px 20px rgba(37, 99, 235, .10);
     }
-    .sales-kpi.warning {
-      border-color: #fed7aa;
-      background: #fffaf0;
-    }
-    .sales-kpi.danger {
+    .sales-kpi.danger,
+    .sales-kpi.red {
       border-color: #fecaca;
       background: #fff7f7;
+    }
+    .sales-kpi-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+    .sales-kpi-title {
+      min-width: 0;
+      display: flex;
+      align-items: center;
+      gap: 7px;
+    }
+    .sales-kpi-icon {
+      width: 26px;
+      height: 26px;
+      border-radius: 8px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      flex: 0 0 auto;
+      background: color-mix(in srgb, var(--kpi-color, #94a3b8) 14%, white);
+      color: var(--kpi-color, #475569);
+      font-size: 12px;
+      font-weight: 950;
+    }
+    .sales-kpi-badge {
+      height: 22px;
+      padding: 0 8px;
+      border-radius: 999px;
+      background: color-mix(in srgb, var(--kpi-color, #94a3b8) 12%, white);
+      color: var(--kpi-color, #475569);
+      display: inline-flex;
+      align-items: center;
+      flex: 0 0 auto;
+      font-size: 11px;
+      font-weight: 950;
     }
     .sales-kpi-label {
       font-size: 12px;
       color: #64748b;
       font-weight: 950;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
     .sales-kpi-value {
-      margin-top: 6px;
+      margin-top: 8px;
       font-size: 20px;
       font-weight: 950;
       color: #0f172a;
@@ -7760,18 +7817,26 @@ HTML = r"""<!doctype html>
       const month = data.month || {};
       const sellerTotal = data.seller_total || {};
       const supplierPurchaseTotal = data.supplier_purchase_total || {};
-      salesReportKpiGrid.innerHTML = [
-        ["오늘 손익 매출", formatSalesNumber(today.profit_sales_amount), `수량 ${formatSalesNumber(today.quantity)}`, "primary"],
-        ["어제 손익 매출", formatSalesNumber(yesterday.profit_sales_amount), `수량 ${formatSalesNumber(yesterday.quantity)}`, ""],
-        ["전일 대비", formatSalesPercent(comparison.profit_sales_amount_delta_rate), formatSalesNumber(comparison.profit_sales_amount_delta), Number(comparison.profit_sales_amount_delta || 0) < 0 ? "danger" : ""],
-        ["월 누적 매출", formatSalesNumber(month.profit_sales_amount), data.period || "", ""],
-        ["매출처별 합계", formatSalesNumber(sellerTotal.profit_sales_amount), `판매사 수량 ${formatSalesNumber(sellerTotal.quantity)}`, ""],
-        ["매입처별 총합계 금액", formatSalesNumber(supplierPurchaseTotal.purchase_total), `공급사 수량 ${formatSalesNumber(supplierPurchaseTotal.quantity)}`, ""],
-      ].map(([label, value, note, variant]) => `
-        <div class="sales-kpi ${variant}">
-          <div class="sales-kpi-label">${escapeHtml(label)}</div>
-          <div class="sales-kpi-value ${label === "전일 대비" ? salesAmountClass(comparison.profit_sales_amount_delta) : ""}">${escapeHtml(value)}</div>
-          <div class="sales-kpi-note">${escapeHtml(note)}</div>
+      const comparisonDelta = Number(comparison.profit_sales_amount_delta || 0);
+      const kpiCards = [
+        { label: "오늘 손익 매출", value: formatSalesNumber(today.profit_sales_amount), note: `수량 ${formatSalesNumber(today.quantity)}`, variant: "primary blue", icon: "₩", badge: "오늘" },
+        { label: "어제 손익 매출", value: formatSalesNumber(yesterday.profit_sales_amount), note: `수량 ${formatSalesNumber(yesterday.quantity)}`, variant: "slate", icon: "D-1", badge: "전일" },
+        { label: "전일 대비", value: formatSalesPercent(comparison.profit_sales_amount_delta_rate), note: formatSalesNumber(comparison.profit_sales_amount_delta), variant: comparisonDelta < 0 ? "red" : "green", icon: comparisonDelta < 0 ? "↓" : "↑", badge: "증감", valueClass: salesAmountClass(comparison.profit_sales_amount_delta) },
+        { label: "월 누적 매출", value: formatSalesNumber(month.profit_sales_amount), note: data.period || "", variant: "violet", icon: "월", badge: "누적" },
+        { label: "매출처별 합계", value: formatSalesNumber(sellerTotal.profit_sales_amount), note: `판매사 수량 ${formatSalesNumber(sellerTotal.quantity)}`, variant: "orange", icon: "매", badge: "매출처" },
+        { label: "매입처별 총합계 금액", value: formatSalesNumber(supplierPurchaseTotal.purchase_total), note: `공급사 수량 ${formatSalesNumber(supplierPurchaseTotal.quantity)}`, variant: "teal", icon: "입", badge: "매입처" },
+      ];
+      salesReportKpiGrid.innerHTML = kpiCards.map((card) => `
+        <div class="sales-kpi ${escapeHtml(card.variant)}">
+          <div class="sales-kpi-top">
+            <div class="sales-kpi-title">
+              <span class="sales-kpi-icon">${escapeHtml(card.icon)}</span>
+              <div class="sales-kpi-label">${escapeHtml(card.label)}</div>
+            </div>
+            <span class="sales-kpi-badge">${escapeHtml(card.badge)}</span>
+          </div>
+          <div class="sales-kpi-value ${escapeHtml(card.valueClass || "")}">${escapeHtml(card.value)}</div>
+          <div class="sales-kpi-note">${escapeHtml(card.note)}</div>
         </div>
       `).join("");
 
