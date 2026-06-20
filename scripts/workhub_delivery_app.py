@@ -7842,6 +7842,11 @@ HTML = r"""<!doctype html>
       tbody.innerHTML = `<tr><td class="empty" colspan="${colspan}">${escapeHtml(message)}</td></tr>`;
     }
 
+    function formatSalesPeriodLabel(period) {
+      const match = String(period || "").match(/^(20\d{2})-(\d{1,2})$/);
+      return match ? `${match[1]}년 ${Number(match[2])}월` : String(period || "");
+    }
+
     function renderSalesReportDashboard(data) {
       if (!salesReportKpiGrid) return;
       const today = data.today || {};
@@ -7851,11 +7856,14 @@ HTML = r"""<!doctype html>
       const sellerTotal = data.seller_total || {};
       const supplierPurchaseTotal = data.supplier_purchase_total || {};
       const comparisonDelta = Number(comparison.profit_sales_amount_delta || 0);
+      const selectedDateLabel = shortKoreanDate(today.report_date || data.selected_date || "");
+      const previousDateLabel = shortKoreanDate(yesterday.report_date || "");
+      const periodLabel = formatSalesPeriodLabel(data.period || "");
       const kpiCards = [
-        { label: "오늘 손익 매출", value: formatSalesNumber(today.profit_sales_amount), note: `수량 ${formatSalesNumber(today.quantity)}`, variant: "primary blue", icon: "₩", badge: "오늘" },
-        { label: "어제 손익 매출", value: formatSalesNumber(yesterday.profit_sales_amount), note: `수량 ${formatSalesNumber(yesterday.quantity)}`, variant: "slate", icon: "D-1", badge: "전일" },
-        { label: "전일 대비", value: formatSalesPercent(comparison.profit_sales_amount_delta_rate), note: formatSalesNumber(comparison.profit_sales_amount_delta), variant: comparisonDelta < 0 ? "red" : "green", icon: comparisonDelta < 0 ? "↓" : "↑", badge: "증감", valueClass: salesAmountClass(comparison.profit_sales_amount_delta) },
-        { label: "월 누적 매출", value: formatSalesNumber(month.profit_sales_amount), note: data.period || "", variant: "violet", icon: "월", badge: "누적" },
+        { label: `${selectedDateLabel || "기준일"} 손익 매출`, value: formatSalesNumber(today.profit_sales_amount), note: `수량 ${formatSalesNumber(today.quantity)}`, variant: "primary blue", icon: "₩", badge: "기준일" },
+        { label: `${previousDateLabel || "전일"} 손익 매출`, value: formatSalesNumber(yesterday.profit_sales_amount), note: `수량 ${formatSalesNumber(yesterday.quantity)}`, variant: "slate", icon: "D-1", badge: "전일" },
+        { label: previousDateLabel ? `${previousDateLabel} 대비` : "전일 대비", value: formatSalesPercent(comparison.profit_sales_amount_delta_rate), note: formatSalesNumber(comparison.profit_sales_amount_delta), variant: comparisonDelta < 0 ? "red" : "green", icon: comparisonDelta < 0 ? "↓" : "↑", badge: "증감", valueClass: salesAmountClass(comparison.profit_sales_amount_delta) },
+        { label: `${periodLabel || "월"} 누적 매출`, value: formatSalesNumber(month.profit_sales_amount), note: periodLabel || "", variant: "violet", icon: "월", badge: "누적" },
         { label: "매출처별 합계", value: formatSalesNumber(sellerTotal.profit_sales_amount), note: `판매사 수량 ${formatSalesNumber(sellerTotal.quantity)}`, variant: "orange", icon: "매", badge: "매출처" },
         { label: "매입처별 총합계 금액", value: formatSalesNumber(supplierPurchaseTotal.purchase_total), note: `공급사 수량 ${formatSalesNumber(supplierPurchaseTotal.quantity)}`, variant: "teal", icon: "입", badge: "매입처" },
       ];
