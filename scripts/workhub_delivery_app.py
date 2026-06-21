@@ -1309,9 +1309,17 @@ HTML = r"""<!doctype html>
       border-collapse: collapse;
       font-size: 12px;
     }
+    .sales-table-scroll {
+      max-height: 360px;
+      overflow-y: auto;
+      scrollbar-gutter: stable;
+    }
     .sales-table th {
       height: 32px;
       padding: 0 8px;
+      position: sticky;
+      top: 0;
+      z-index: 1;
       background: color-mix(in srgb, var(--panel-color) 7%, #f8fafc);
       color: #475569;
       border-bottom: 1px solid #e2e8f0;
@@ -7937,7 +7945,7 @@ HTML = r"""<!doctype html>
 
       const purchaseRows = data.supplier_purchase_totals || [];
       if (purchaseRows.length) {
-        salesReportReviewBody.innerHTML = purchaseRows.slice(0, 10).map((row) => `
+        salesReportReviewBody.innerHTML = purchaseRows.map((row) => `
           <tr>
             <td>${escapeHtml(row.name || "")}</td>
             <td>${formatSalesNumber(row.purchase_total)}</td>
@@ -13328,43 +13336,51 @@ ADMIN_WORKSPACE_HTML = r"""
                 <div class="sales-dashboard-grid">
                   <div class="sales-panel daily">
                     <div class="sales-panel-head">
-                      <div class="sales-panel-title"><span class="sales-panel-icon">일</span>일자별 매출 흐름</div>
-                      <span class="sales-panel-badge">일별</span>
+                      <div class="sales-panel-title"><span class="sales-panel-icon">일</span>일자별 매출</div>
+                      <span class="sales-panel-badge">월 전체</span>
                     </div>
-                    <table class="sales-table">
-                      <thead><tr><th>일자</th><th>수량</th><th>손익매출</th><th>판매합계</th><th>손익마진</th></tr></thead>
-                      <tbody id="salesReportDailyBody"></tbody>
-                    </table>
+                    <div class="sales-table-scroll">
+                      <table class="sales-table">
+                        <thead><tr><th>일자</th><th>수량</th><th>손익매출</th><th>판매합계</th><th>손익마진</th></tr></thead>
+                        <tbody id="salesReportDailyBody"></tbody>
+                      </table>
+                    </div>
                   </div>
                   <div class="sales-panel seller">
                     <div class="sales-panel-head">
-                      <div class="sales-panel-title"><span class="sales-panel-icon">매</span>매출처별 TOP</div>
-                      <span class="sales-panel-badge">판매사</span>
+                      <div class="sales-panel-title"><span class="sales-panel-icon">매</span>매출처별 현황</div>
+                      <span class="sales-panel-badge">월 전체</span>
                     </div>
-                    <table class="sales-table">
-                      <thead><tr><th>판매사</th><th>수량</th><th>손익매출</th><th>마진</th></tr></thead>
-                      <tbody id="salesReportSellerBody"></tbody>
-                    </table>
+                    <div class="sales-table-scroll">
+                      <table class="sales-table">
+                        <thead><tr><th>판매사</th><th>수량</th><th>손익매출</th><th>마진</th></tr></thead>
+                        <tbody id="salesReportSellerBody"></tbody>
+                      </table>
+                    </div>
                   </div>
                   <div class="sales-panel product">
                     <div class="sales-panel-head">
-                      <div class="sales-panel-title"><span class="sales-panel-icon">상</span>상품별 TOP</div>
-                      <span class="sales-panel-badge">상품</span>
+                      <div class="sales-panel-title"><span class="sales-panel-icon">상</span>상품별 매출 현황</div>
+                      <span class="sales-panel-badge">월 전체</span>
                     </div>
-                    <table class="sales-table">
-                      <thead><tr><th>상품명</th><th>수량</th><th>손익매출</th><th>마진</th></tr></thead>
-                      <tbody id="salesReportProductBody"></tbody>
-                    </table>
+                    <div class="sales-table-scroll">
+                      <table class="sales-table">
+                        <thead><tr><th>상품명</th><th>수량</th><th>손익매출</th><th>마진</th></tr></thead>
+                        <tbody id="salesReportProductBody"></tbody>
+                      </table>
+                    </div>
                   </div>
                   <div class="sales-panel supplier">
                     <div class="sales-panel-head">
-                      <div class="sales-panel-title"><span class="sales-panel-icon">입</span>업체별 총 매입금액</div>
-                      <span class="sales-panel-badge">매입처</span>
+                      <div class="sales-panel-title"><span class="sales-panel-icon">입</span>매입처별 현황</div>
+                      <span class="sales-panel-badge">월 전체</span>
                     </div>
-                    <table class="sales-table">
-                      <thead><tr><th>업체</th><th>총 매입금액</th><th>수량</th></tr></thead>
-                      <tbody id="salesReportReviewBody"></tbody>
-                    </table>
+                    <div class="sales-table-scroll">
+                      <table class="sales-table">
+                        <thead><tr><th>매입처</th><th>총 매입금액</th><th>수량</th></tr></thead>
+                        <tbody id="salesReportReviewBody"></tbody>
+                      </table>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -14580,7 +14596,6 @@ def sales_report_dashboard_payload(period: str = "", report_date: str = "") -> d
               FROM sales_report_daily_rows
              WHERE period = ?
              ORDER BY report_date DESC
-             LIMIT 10
             """,
             (selected_period,),
         ).fetchall()
@@ -14590,21 +14605,26 @@ def sales_report_dashboard_payload(period: str = "", report_date: str = "") -> d
                    profit_margin, margin_rate, cs_amount, cs_margin
               FROM sales_report_seller_rows
              WHERE period = ?
-             ORDER BY profit_sales_amount DESC
-             LIMIT 10
+             ORDER BY profit_sales_amount DESC, quantity DESC, seller_name COLLATE NOCASE
             """,
             (selected_period,),
         ).fetchall()
         product_rows = connection.execute(
             """
-            SELECT product_name AS name, quantity, sales_amount, profit_sales_amount,
-                   profit_margin, margin_rate, cs_amount, cs_margin
+            SELECT product_name AS name,
+                   COALESCE(SUM(quantity), 0) AS quantity,
+                   COALESCE(SUM(sales_amount), 0) AS sales_amount,
+                   COALESCE(SUM(profit_sales_amount), 0) AS profit_sales_amount,
+                   COALESCE(SUM(profit_margin), 0) AS profit_margin,
+                   0 AS margin_rate,
+                   COALESCE(SUM(cs_amount), 0) AS cs_amount,
+                   COALESCE(SUM(cs_margin), 0) AS cs_margin
               FROM sales_report_product_rows
-             WHERE (? = '' OR report_date = ? OR period = ?)
-             ORDER BY profit_sales_amount DESC
-             LIMIT 10
+             WHERE period = ?
+             GROUP BY product_name
+             ORDER BY profit_sales_amount DESC, quantity DESC, product_name COLLATE NOCASE
             """,
-            (selected_date, selected_date, selected_period),
+            (selected_period,),
         ).fetchall()
         supplier_purchase_rows = connection.execute(
             """
@@ -14614,8 +14634,7 @@ def sales_report_dashboard_payload(period: str = "", report_date: str = "") -> d
               FROM sales_report_supplier_rows
              WHERE period = ?
              GROUP BY supplier_name
-             ORDER BY purchase_total DESC
-             LIMIT 10
+             ORDER BY purchase_total DESC, quantity DESC, supplier_name COLLATE NOCASE
             """,
             (selected_period,),
         ).fetchall()
