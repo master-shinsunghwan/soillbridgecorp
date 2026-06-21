@@ -411,24 +411,24 @@ HTML = r"""<!doctype html>
     }
     .import-table {
       width: 100%;
-      min-width: 980px;
+      min-width: 1320px;
       border-collapse: collapse;
-      font-size: 12px;
+      font-size: 11px;
     }
     .import-table th {
-      height: 34px;
-      padding: 0 8px;
-      border: 1px solid #cbd5e1;
-      background: #eef6ff;
-      color: #1f2937;
+      height: 32px;
+      padding: 0 6px;
+      border: 1px solid #111827;
+      background: #ffff00;
+      color: #000;
       text-align: center;
       font-weight: 950;
       white-space: nowrap;
     }
     .import-table td {
-      height: 34px;
-      padding: 5px 8px;
-      border: 1px solid #e2e8f0;
+      height: 32px;
+      padding: 4px 6px;
+      border: 1px solid #111827;
       text-align: center;
       font-weight: 700;
       white-space: nowrap;
@@ -440,19 +440,19 @@ HTML = r"""<!doctype html>
       color: #667085;
     }
     .dashboard-import-card .import-table {
-      min-width: 0;
+      min-width: 1180px;
       table-layout: fixed;
-      font-size: 11px;
+      font-size: 10.5px;
     }
     .dashboard-import-card .import-table th {
-      height: 28px;
-      padding: 0 5px;
-      font-size: 11px;
+      height: 30px;
+      padding: 0 4px;
+      font-size: 10.5px;
     }
     .dashboard-import-card .import-table td {
       height: auto;
       min-height: 30px;
-      padding: 4px 5px;
+      padding: 4px;
       white-space: normal;
       word-break: keep-all;
       overflow-wrap: anywhere;
@@ -460,21 +460,29 @@ HTML = r"""<!doctype html>
       vertical-align: middle;
     }
     .dashboard-import-card .import-table th:nth-child(1),
-    .dashboard-import-card .import-table td:nth-child(1) {
-      width: 96px;
-    }
+    .dashboard-import-card .import-table td:nth-child(1),
+    .dashboard-import-card .import-table th:nth-child(2),
+    .dashboard-import-card .import-table td:nth-child(2),
     .dashboard-import-card .import-table th:nth-child(3),
-    .dashboard-import-card .import-table td:nth-child(3) {
-      width: 78px;
-    }
+    .dashboard-import-card .import-table td:nth-child(3) { width: 72px; }
     .dashboard-import-card .import-table th:nth-child(4),
-    .dashboard-import-card .import-table td:nth-child(4) {
-      width: 112px;
-    }
+    .dashboard-import-card .import-table td:nth-child(4),
     .dashboard-import-card .import-table th:nth-child(5),
-    .dashboard-import-card .import-table td:nth-child(5) {
-      width: 116px;
-    }
+    .dashboard-import-card .import-table td:nth-child(5) { width: 78px; }
+    .dashboard-import-card .import-table th:nth-child(6),
+    .dashboard-import-card .import-table td:nth-child(6) { width: 138px; }
+    .dashboard-import-card .import-table th:nth-child(7),
+    .dashboard-import-card .import-table td:nth-child(7) { width: 150px; }
+    .dashboard-import-card .import-table th:nth-child(8),
+    .dashboard-import-card .import-table td:nth-child(8) { width: 142px; }
+    .dashboard-import-card .import-table th:nth-child(9),
+    .dashboard-import-card .import-table td:nth-child(9) { width: 116px; }
+    .dashboard-import-card .import-table th:nth-child(10),
+    .dashboard-import-card .import-table td:nth-child(10) { width: 62px; }
+    .dashboard-import-card .import-table th:nth-child(11),
+    .dashboard-import-card .import-table td:nth-child(11) { width: 72px; }
+    .dashboard-import-card .import-table th:nth-child(12),
+    .dashboard-import-card .import-table td:nth-child(12) { width: 80px; }
     .dashboard-import-card .import-table td {
       white-space: nowrap;
       overflow: hidden;
@@ -3006,7 +3014,7 @@ HTML = r"""<!doctype html>
     }
     .dashboard-import-card .import-table {
       width: 100%;
-      min-width: 0;
+      min-width: 1180px;
     }
     .company-grid {
       display: grid;
@@ -5216,15 +5224,22 @@ HTML = r"""<!doctype html>
             <table class="import-table">
               <thead>
                 <tr>
+                  <th>입고예정일</th>
+                  <th>출항일</th>
                   <th>입항일</th>
-                  <th>품명</th>
-                  <th>수량</th>
-                  <th>진행상태</th>
-                  <th>입고/반입 일정</th>
+                  <th>선적항</th>
+                  <th>도착항</th>
+                  <th>SHPR</th>
+                  <th>ITEM</th>
+                  <th>선명</th>
+                  <th>HBL NO.</th>
+                  <th>SIZE</th>
+                  <th>진행상황</th>
+                  <th>프리타임</th>
                 </tr>
               </thead>
               <tbody id="dashboardImportScheduleBody">
-                <tr><td colspan="5"><div class="import-empty">수입제품 입고 일정을 불러오는 중입니다.</div></td></tr>
+                <tr><td colspan="12"><div class="import-empty">수입제품 입고 일정을 불러오는 중입니다.</div></td></tr>
               </tbody>
             </table>
           </div>
@@ -5582,21 +5597,22 @@ HTML = r"""<!doctype html>
             <table class="import-table">
               <thead>
                 <tr>
+                  <th>입고예정일</th>
                   <th>출항일</th>
                   <th>입항일</th>
                   <th>선적항</th>
                   <th>도착항</th>
-                  <th>제품명</th>
-                  <th>수량</th>
+                  <th>SHPR</th>
+                  <th>ITEM</th>
+                  <th>선명</th>
                   <th>HBL NO.</th>
                   <th>SIZE</th>
                   <th>진행상황</th>
                   <th>프리타임</th>
-                  <th>입고예정일</th>
                 </tr>
               </thead>
               <tbody id="importShipmentBody">
-                <tr><td colspan="11"><div class="import-empty">등록된 수입제품 출고 진행 건이 없습니다.</div></td></tr>
+                <tr><td colspan="12"><div class="import-empty">등록된 수입제품 출고 진행 건이 없습니다.</div></td></tr>
               </tbody>
             </table>
           </div>
@@ -5892,24 +5908,26 @@ HTML = r"""<!doctype html>
       </div>
       <div class="notice-template">
         <input id="importShipmentId" type="hidden" />
+        <input id="importQuantity" type="hidden" />
         <div class="notice-template-grid">
+          <input id="importWarehouseDueDate" type="text" placeholder="입고예정일" />
           <input id="importDepartureDate" type="text" placeholder="출항일 예) 6/10" />
           <input id="importArrivalDate" type="text" placeholder="입항일 예) 6/13" />
+        </div>
+        <div class="notice-template-grid">
           <input id="importLoadingPort" type="text" placeholder="선적항" />
-        </div>
-        <div class="notice-template-grid">
           <input id="importArrivalPort" type="text" placeholder="도착항" />
-          <input id="importItem" type="text" placeholder="제품명" />
-          <input id="importQuantity" type="text" placeholder="수량" />
+          <input id="importShipper" type="text" placeholder="SHPR" />
         </div>
         <div class="notice-template-grid">
+          <input id="importItem" type="text" placeholder="ITEM" />
+          <input id="importVesselName" type="text" placeholder="선명" />
           <input id="importHblNo" type="text" placeholder="HBL NO." />
+        </div>
+        <div class="notice-template-grid">
           <input id="importSize" type="text" placeholder="SIZE" />
           <input id="importProgressStatus" type="text" placeholder="진행상황" />
-        </div>
-        <div class="notice-template-grid">
           <input id="importFreeTime" type="text" placeholder="프리타임 예) 7일" />
-          <input id="importWarehouseDueDate" type="text" placeholder="입고예정일" />
         </div>
         <div class="notice-template-actions">
           <button class="workspace-button" type="button" id="importShipmentReset">초기화</button>
@@ -6665,8 +6683,10 @@ HTML = r"""<!doctype html>
     const importArrivalDate = document.querySelector("#importArrivalDate");
     const importLoadingPort = document.querySelector("#importLoadingPort");
     const importArrivalPort = document.querySelector("#importArrivalPort");
+    const importShipper = document.querySelector("#importShipper");
     const importItem = document.querySelector("#importItem");
     const importQuantity = document.querySelector("#importQuantity");
+    const importVesselName = document.querySelector("#importVesselName");
     const importHblNo = document.querySelector("#importHblNo");
     const importSize = document.querySelector("#importSize");
     const importProgressStatus = document.querySelector("#importProgressStatus");
@@ -7749,8 +7769,10 @@ HTML = r"""<!doctype html>
       importArrivalDate.value = record?.arrival_date || "";
       importLoadingPort.value = record?.loading_port || "";
       importArrivalPort.value = record?.arrival_port || "";
+      importShipper.value = record?.shipper || "";
       importItem.value = record?.item || "";
       importQuantity.value = record?.quantity || "";
+      importVesselName.value = record?.vessel_name || "";
       importHblNo.value = record?.hbl_no || "";
       importSize.value = record?.size || "";
       importProgressStatus.value = record?.progress_status || "";
@@ -7765,10 +7787,10 @@ HTML = r"""<!doctype html>
         arrival_date: importArrivalDate.value.trim(),
         loading_port: importLoadingPort.value.trim(),
         arrival_port: importArrivalPort.value.trim(),
-        shipper: "",
+        shipper: importShipper.value.trim(),
         item: importItem.value.trim(),
         quantity: importQuantity.value.trim(),
-        vessel_name: "",
+        vessel_name: importVesselName.value.trim(),
         hbl_no: importHblNo.value.trim(),
         size: importSize.value.trim(),
         progress_status: importProgressStatus.value.trim(),
@@ -7801,16 +7823,23 @@ HTML = r"""<!doctype html>
       const activeRecords = importShipments.filter((record) => !record.completed_at);
       dashboardImportScheduleSummary.textContent = `진행 ${activeRecords.length}건`;
       if (!activeRecords.length) {
-        dashboardImportScheduleBody.innerHTML = `<tr><td colspan="5"><div class="import-empty">등록된 수입제품 입고 일정이 없습니다.</div></td></tr>`;
+        dashboardImportScheduleBody.innerHTML = `<tr><td colspan="12"><div class="import-empty">등록된 수입제품 입고 일정이 없습니다.</div></td></tr>`;
         return;
       }
       dashboardImportScheduleBody.innerHTML = activeRecords.slice(0, 6).map((record) => `
         <tr>
-          <td>${escapeHtml(shortKoreanDate(record.arrival_date) || "-")}</td>
-          <td class="left" title="${escapeHtml(record.item || "-")}">${escapeHtml(compactImportItemName(record.item))}</td>
-          <td>${escapeHtml(record.quantity || "-")}</td>
-          <td>${escapeHtml(record.progress_status || "진행중")}</td>
           <td>${escapeHtml(shortKoreanDate(record.warehouse_due_date) || "-")}</td>
+          <td>${escapeHtml(shortKoreanDate(record.departure_date) || "-")}</td>
+          <td>${escapeHtml(shortKoreanDate(record.arrival_date) || "-")}</td>
+          <td>${escapeHtml(record.loading_port || "-")}</td>
+          <td>${escapeHtml(record.arrival_port || "-")}</td>
+          <td title="${escapeHtml(record.shipper || "-")}">${escapeHtml(compactImportItemName(record.shipper, 16))}</td>
+          <td class="left" title="${escapeHtml(record.item || "-")}">${escapeHtml(compactImportItemName(record.item, 18))}</td>
+          <td title="${escapeHtml(record.vessel_name || "-")}">${escapeHtml(compactImportItemName(record.vessel_name, 16))}</td>
+          <td title="${escapeHtml(record.hbl_no || "-")}">${escapeHtml(compactImportItemName(record.hbl_no, 14))}</td>
+          <td>${escapeHtml(record.size || "-")}</td>
+          <td>${escapeHtml(record.progress_status || "진행중")}</td>
+          <td>${escapeHtml(record.free_time || "-")}</td>
         </tr>
       `).join("");
     }
@@ -7821,34 +7850,37 @@ HTML = r"""<!doctype html>
       importShipmentSummary.textContent = `진행 ${activeCount}건 / 완료 ${doneCount}건`;
       renderDashboardImportSchedule();
       if (!importShipments.length) {
-        importShipmentBody.innerHTML = `<tr><td colspan="11"><div class="import-empty">등록된 수입제품 출고 진행 건이 없습니다.</div></td></tr>`;
+        importShipmentBody.innerHTML = `<tr><td colspan="12"><div class="import-empty">등록된 수입제품 출고 진행 건이 없습니다.</div></td></tr>`;
         return;
       }
       importShipmentBody.innerHTML = "";
       importShipments.forEach((record) => {
         const row = document.createElement("tr");
         if (record.completed_at) row.classList.add("completed");
-        const progressCell = can("import_shipment_manage")
+        const canManageImportShipment = can("import_shipment_manage");
+        const canCompleteImportShipment = currentUser.role === "admin";
+        const progressCell = canManageImportShipment
           ? `<td>
               <span>${escapeHtml(record.completed_at ? "완료" : record.progress_status)}</span>
               <span class="import-row-actions">
                 <button type="button" data-import-edit="${record.id}">수정</button>
-                ${record.completed_at ? "" : `<button type="button" data-import-complete="${record.id}">완료</button>`}
+                ${record.completed_at || !canCompleteImportShipment ? "" : `<button type="button" data-import-complete="${record.id}">입고 완료</button>`}
               </span>
             </td>`
           : `<td>${escapeHtml(record.completed_at ? "완료" : record.progress_status)}</td>`;
         row.innerHTML = `
+          <td>${escapeHtml(shortKoreanDate(record.warehouse_due_date))}</td>
           <td>${escapeHtml(shortKoreanDate(record.departure_date))}</td>
           <td>${escapeHtml(shortKoreanDate(record.arrival_date))}</td>
           <td>${escapeHtml(record.loading_port)}</td>
           <td>${escapeHtml(record.arrival_port)}</td>
-          <td class="left">${escapeHtml(record.item)}</td>
-          <td>${escapeHtml(record.quantity)}</td>
+          <td>${escapeHtml(record.shipper)}</td>
+          <td class="left" title="${escapeHtml(record.item)}">${escapeHtml(compactImportItemName(record.item, 26))}</td>
+          <td>${escapeHtml(record.vessel_name)}</td>
           <td>${escapeHtml(record.hbl_no)}</td>
           <td>${escapeHtml(record.size)}</td>
           ${progressCell}
           <td>${escapeHtml(record.free_time)}</td>
-          <td>${escapeHtml(shortKoreanDate(record.warehouse_due_date))}</td>
         `;
         importShipmentBody.appendChild(row);
       });
@@ -21944,12 +21976,12 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                 return
 
             if self.path == "/api/import-shipment-complete":
-                if not self.require_permission(user, "import_shipment_manage", "수입제품 진행 관리"):
+                if not self.require_admin(user, "수입제품 입고 완료"):
                     return
                 length = int(self.headers.get("Content-Length", "0"))
                 payload = json.loads(self.rfile.read(length).decode("utf-8"))
                 complete_import_shipment(int(payload.get("id") or 0))
-                self.send_json({"message": "수입제품 출고 진행 건을 완료 처리했습니다."})
+                self.send_json({"message": "수입제품 입고 완료 처리했습니다."})
                 return
 
             if self.path == "/api/management-export":
