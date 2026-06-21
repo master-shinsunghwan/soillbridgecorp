@@ -3192,7 +3192,7 @@ HTML = r"""<!doctype html>
     }
     .dashboard-sales-insights {
       display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
+      grid-template-columns: repeat(2, minmax(0, 1fr));
       gap: 7px;
       margin-top: 10px;
     }
@@ -3203,12 +3203,37 @@ HTML = r"""<!doctype html>
       border-radius: 8px;
       background: #ffffff;
     }
+    .dashboard-sales-insight-top {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-bottom: 5px;
+      min-width: 0;
+    }
+    .dashboard-sales-insight-icon {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 18px;
+      height: 18px;
+      flex: 0 0 auto;
+      border-radius: 6px;
+      background: #f1f5f9;
+      color: #475569;
+    }
+    .dashboard-sales-insight-icon svg {
+      width: 11px;
+      height: 11px;
+      stroke-width: 2.5;
+    }
     .dashboard-sales-insight span {
       display: block;
-      margin-bottom: 5px;
+      min-width: 0;
       color: #667085;
       font-size: 10px;
       font-weight: 850;
+      overflow: hidden;
+      text-overflow: ellipsis;
       white-space: nowrap;
     }
     .dashboard-sales-insight strong {
@@ -5071,6 +5096,10 @@ HTML = r"""<!doctype html>
                       <div class="dashboard-sales-metric-top"><span class="dashboard-sales-icon"><i data-lucide="circle-dollar-sign"></i></span><span class="dashboard-sales-metric-label" id="dashboardTodaySalesLabel">오늘 손익매출</span></div>
                       <strong id="dashboardTodaySales">-</strong>
                     </div>
+                    <div class="dashboard-sales-metric green">
+                      <div class="dashboard-sales-metric-top"><span class="dashboard-sales-icon"><i data-lucide="package"></i></span><span class="dashboard-sales-metric-label" id="dashboardTodayQuantityLabel">오늘 판매수량</span></div>
+                      <strong id="dashboardTodayQuantity">-</strong>
+                    </div>
                     <div class="dashboard-sales-metric violet">
                       <div class="dashboard-sales-metric-top"><span class="dashboard-sales-icon"><i data-lucide="bar-chart-3"></i></span><span class="dashboard-sales-metric-label" id="dashboardMonthSalesLabel">이번 달 누적매출</span></div>
                       <strong id="dashboardMonthSales">-</strong>
@@ -5079,15 +5108,12 @@ HTML = r"""<!doctype html>
                       <div class="dashboard-sales-metric-top"><span class="dashboard-sales-icon"><i data-lucide="package"></i></span><span class="dashboard-sales-metric-label" id="dashboardSalesQuantityLabel">이번 달 판매수량</span></div>
                       <strong id="dashboardSalesQuantity">-</strong>
                     </div>
-                    <div class="dashboard-sales-metric orange">
-                      <div class="dashboard-sales-metric-top"><span class="dashboard-sales-icon"><i data-lucide="refresh-cw"></i></span><span class="dashboard-sales-metric-label" id="dashboardSalesCompareLabel">전영업일 대비</span></div>
-                      <strong id="dashboardSalesCompare">-</strong>
-                    </div>
                   </div>
                   <div class="dashboard-sales-insights" aria-label="매출 보조 지표">
-                    <div class="dashboard-sales-insight"><span>월 손익마진</span><strong id="dashboardSalesMargin">-</strong></div>
-                    <div class="dashboard-sales-insight"><span>매출처 합계</span><strong id="dashboardSellerTotal">-</strong></div>
-                    <div class="dashboard-sales-insight"><span>매입처 총액</span><strong id="dashboardSupplierPurchase">-</strong></div>
+                    <div class="dashboard-sales-insight"><div class="dashboard-sales-insight-top"><span class="dashboard-sales-insight-icon"><i data-lucide="refresh-cw"></i></span><span id="dashboardSalesCompareLabel">전영업일 대비</span></div><strong id="dashboardSalesCompare">-</strong></div>
+                    <div class="dashboard-sales-insight"><div class="dashboard-sales-insight-top"><span class="dashboard-sales-insight-icon"><i data-lucide="circle-dollar-sign"></i></span><span>매출처 합계</span></div><strong id="dashboardSellerTotal">-</strong></div>
+                    <div class="dashboard-sales-insight"><div class="dashboard-sales-insight-top"><span class="dashboard-sales-insight-icon"><i data-lucide="truck"></i></span><span>매입처 총액</span></div><strong id="dashboardSupplierPurchase">-</strong></div>
+                    <div class="dashboard-sales-insight"><div class="dashboard-sales-insight-top"><span class="dashboard-sales-insight-icon"><i data-lucide="bar-chart-3"></i></span><span>월 손익마진</span></div><strong id="dashboardSalesMargin">-</strong></div>
                   </div>
                   <div class="dashboard-sales-placeholder" id="dashboardSalesMessage">매출현황 및 관리 데이터 연결 대기 중</div>
                 </div>
@@ -6250,6 +6276,8 @@ HTML = r"""<!doctype html>
     const dashboardSalesStatus = document.querySelector("#dashboardSalesStatus");
     const dashboardTodaySalesLabel = document.querySelector("#dashboardTodaySalesLabel");
     const dashboardTodaySales = document.querySelector("#dashboardTodaySales");
+    const dashboardTodayQuantityLabel = document.querySelector("#dashboardTodayQuantityLabel");
+    const dashboardTodayQuantity = document.querySelector("#dashboardTodayQuantity");
     const dashboardMonthSalesLabel = document.querySelector("#dashboardMonthSalesLabel");
     const dashboardMonthSales = document.querySelector("#dashboardMonthSales");
     const dashboardSalesQuantityLabel = document.querySelector("#dashboardSalesQuantityLabel");
@@ -8707,6 +8735,7 @@ HTML = r"""<!doctype html>
     function renderDashboardSalesUnavailable(message) {
       setDashboardSalesStatus("연동 대기");
       setDashboardSalesMetric(dashboardTodaySalesLabel, dashboardTodaySales, "오늘 손익매출", "-");
+      setDashboardSalesMetric(dashboardTodayQuantityLabel, dashboardTodayQuantity, "오늘 판매수량", "-");
       setDashboardSalesMetric(dashboardMonthSalesLabel, dashboardMonthSales, "이번 달 누적매출", "-");
       setDashboardSalesMetric(dashboardSalesQuantityLabel, dashboardSalesQuantity, "이번 달 판매수량", "-");
       setDashboardSalesMetric(dashboardSalesCompareLabel, dashboardSalesCompare, "전영업일 대비", "-");
@@ -8736,6 +8765,13 @@ HTML = r"""<!doctype html>
         dashboardTodaySales,
         `${selectedDateLabel || "오늘"} 손익매출`,
         hasTodaySalesData ? formatSalesNumber(today.profit_sales_amount) : "미업로드",
+        hasTodaySalesData ? "" : "notice",
+      );
+      setDashboardSalesMetric(
+        dashboardTodayQuantityLabel,
+        dashboardTodayQuantity,
+        `${selectedDateLabel || "오늘"} 판매수량`,
+        hasTodaySalesData ? `${formatSalesNumber(today.quantity)}개` : "미업로드",
         hasTodaySalesData ? "" : "notice",
       );
       setDashboardSalesMetric(
