@@ -3202,6 +3202,9 @@ HTML = r"""<!doctype html>
       gap: 7px;
       margin-top: 10px;
     }
+    .dashboard-sales-compare-grid + .dashboard-sales-grid {
+      margin-top: 8px;
+    }
     .dashboard-sales-compare {
       min-width: 0;
       padding: 9px 10px;
@@ -5137,14 +5140,6 @@ HTML = r"""<!doctype html>
                       <div class="dashboard-sales-metric-top"><span class="dashboard-sales-icon"><i data-lucide="package"></i></span><span class="dashboard-sales-metric-label" id="dashboardTodayQuantityLabel">오늘 판매수량</span></div>
                       <strong id="dashboardTodayQuantity">-</strong>
                     </div>
-                    <div class="dashboard-sales-metric violet">
-                      <div class="dashboard-sales-metric-top"><span class="dashboard-sales-icon"><i data-lucide="bar-chart-3"></i></span><span class="dashboard-sales-metric-label" id="dashboardMonthSalesLabel">이번 달 누적매출</span></div>
-                      <strong id="dashboardMonthSales">-</strong>
-                    </div>
-                    <div class="dashboard-sales-metric green">
-                      <div class="dashboard-sales-metric-top"><span class="dashboard-sales-icon"><i data-lucide="package"></i></span><span class="dashboard-sales-metric-label" id="dashboardSalesQuantityLabel">이번 달 판매수량</span></div>
-                      <strong id="dashboardSalesQuantity">-</strong>
-                    </div>
                   </div>
                   <div class="dashboard-sales-compare-grid" aria-label="전영업일 대비">
                     <div class="dashboard-sales-compare">
@@ -5154,6 +5149,16 @@ HTML = r"""<!doctype html>
                     <div class="dashboard-sales-compare">
                       <div class="dashboard-sales-compare-top"><span class="dashboard-sales-compare-icon"><i data-lucide="package"></i></span><span id="dashboardSalesQuantityCompareLabel">판매수량 비교</span></div>
                       <div class="dashboard-sales-compare-value"><strong id="dashboardSalesQuantityCompare">-</strong><span class="dashboard-sales-rate" id="dashboardSalesQuantityRate">-</span></div>
+                    </div>
+                  </div>
+                  <div class="dashboard-sales-grid">
+                    <div class="dashboard-sales-metric violet">
+                      <div class="dashboard-sales-metric-top"><span class="dashboard-sales-icon"><i data-lucide="bar-chart-3"></i></span><span class="dashboard-sales-metric-label" id="dashboardMonthSalesLabel">이번 달 누적매출</span></div>
+                      <strong id="dashboardMonthSales">-</strong>
+                    </div>
+                    <div class="dashboard-sales-metric green">
+                      <div class="dashboard-sales-metric-top"><span class="dashboard-sales-icon"><i data-lucide="package"></i></span><span class="dashboard-sales-metric-label" id="dashboardSalesQuantityLabel">이번 달 판매수량</span></div>
+                      <strong id="dashboardSalesQuantity">-</strong>
                     </div>
                   </div>
                   <div class="dashboard-sales-insights" aria-label="매출 보조 지표">
