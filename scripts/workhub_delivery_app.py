@@ -937,6 +937,7 @@ HTML = r"""<!doctype html>
       gap: 8px;
     }
     .notice-template input,
+    .notice-template select,
     .notice-template textarea {
       border: 1px solid #cbd5e1;
       border-radius: 7px;
@@ -945,7 +946,11 @@ HTML = r"""<!doctype html>
       font-size: 13px;
       background: white;
     }
-    .notice-template input { height: 34px; }
+    .notice-template input,
+    .notice-template select {
+      height: 34px;
+      min-width: 0;
+    }
     .notice-template textarea {
       min-height: 78px;
       padding-top: 9px;
@@ -6062,6 +6067,7 @@ HTML = r"""<!doctype html>
         </div>
         <textarea id="cargoMemo" placeholder="메모 예) 차량번호 / 담당자 / 주의사항"></textarea>
         <div class="notice-template-actions">
+          <button class="workspace-button" type="button" id="cargoVehicleReceiptLink">인수증 출력 연결</button>
           <button class="workspace-button" type="button" id="cargoShipmentReset">초기화</button>
           <button class="workspace-button" type="button" id="cargoShipmentSave">저장</button>
         </div>
@@ -6836,6 +6842,7 @@ HTML = r"""<!doctype html>
     const cargoShipmentClose = document.querySelector("#cargoShipmentClose");
     const cargoShipmentSave = document.querySelector("#cargoShipmentSave");
     const cargoShipmentReset = document.querySelector("#cargoShipmentReset");
+    const cargoVehicleReceiptLink = document.querySelector("#cargoVehicleReceiptLink");
     const cargoShipmentId = document.querySelector("#cargoShipmentId");
     const cargoShipDate = document.querySelector("#cargoShipDate");
     const cargoCustomer = document.querySelector("#cargoCustomer");
@@ -8102,6 +8109,24 @@ HTML = r"""<!doctype html>
       closeCargoShipmentPopup();
       await loadCargoShipments();
       if (companyActiveTab === "calendar") await loadCompanyCalendar().catch(() => {});
+    }
+
+    function linkCargoToVehicleReceipt() {
+      const payload = cargoShipmentPayload();
+      closeCargoShipmentPopup();
+      openModal("vehicle");
+      supplierInput.value = payload.customer || "";
+      receiptDateInput.value = fullDateForSave(payload.ship_date, todayString()) || todayString();
+      deliveryPlaceInput.value = payload.destination || "";
+      requestNoteInput.value = payload.memo || "";
+      managerInput.value = "";
+      resetProductRows();
+      const firstRow = productTable.querySelector(".product-row");
+      if (firstRow) {
+        firstRow.querySelector(".product-name").value = payload.item || "";
+        firstRow.querySelector(".product-quantity").value = payload.quantity || "";
+      }
+      notice.textContent = "화물 출고건 내용을 차량인수증에 연결했습니다.";
     }
 
     function resetImportShipmentForm(record = null) {
@@ -13692,6 +13717,7 @@ HTML = r"""<!doctype html>
     cargoShipmentInputOpen?.addEventListener("click", () => openCargoShipmentPopup());
     cargoShipmentClose?.addEventListener("click", closeCargoShipmentPopup);
     cargoShipmentReset?.addEventListener("click", () => resetCargoShipmentForm());
+    cargoVehicleReceiptLink?.addEventListener("click", linkCargoToVehicleReceipt);
     cargoShipmentSave?.addEventListener("click", () => {
       saveCargoShipment().catch((error) => {
         notice.textContent = error.message;
