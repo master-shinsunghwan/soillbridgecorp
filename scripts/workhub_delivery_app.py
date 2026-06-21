@@ -3070,7 +3070,7 @@ HTML = r"""<!doctype html>
       margin-top: 10px;
     }
     .dashboard-calendar-panel .company-calendar-shell {
-      grid-template-columns: minmax(0, 2.2fr) minmax(320px, .8fr);
+      grid-template-columns: minmax(0, 1.8fr) minmax(340px, 1fr);
       align-items: stretch;
     }
     .dashboard-calendar-card .company-calendar-grid {
@@ -3099,6 +3099,15 @@ HTML = r"""<!doctype html>
       display: grid;
       align-content: start;
       min-height: 0;
+    }
+    .company-portal.notice-calendar-mode .company-calendar-side {
+      display: none;
+    }
+    .company-portal.calendar-detail-mode #dashboardSalesPanel {
+      display: none;
+    }
+    .company-portal.calendar-detail-mode .company-calendar-side {
+      display: grid;
     }
     .dashboard-sales-grid {
       display: grid;
@@ -3384,18 +3393,29 @@ HTML = r"""<!doctype html>
       font-size: 11px;
       font-weight: 850;
     }
-    .calendar-legend-dot {
-      width: 9px;
-      height: 9px;
-      border-radius: 999px;
-      display: inline-block;
-      margin-right: 5px;
-      vertical-align: -1px;
+    .company-calendar-legend span {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
     }
-    .calendar-legend-dot.project { background: #155bc8; }
-    .calendar-legend-dot.task { background: #0b8f55; }
-    .calendar-legend-dot.leave { background: #c2410c; }
-    .calendar-legend-dot.pending { background: #9333ea; }
+    .calendar-legend-dot {
+      width: 18px;
+      height: 18px;
+      border-radius: 999px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      margin-right: 0;
+    }
+    .calendar-legend-dot svg {
+      width: 11px;
+      height: 11px;
+      stroke-width: 2.7;
+    }
+    .calendar-legend-dot.project { background: #eff6ff; color: #155bc8; }
+    .calendar-legend-dot.task { background: #f0fdf4; color: #0b8f55; }
+    .calendar-legend-dot.leave { background: #fff7ed; color: #c2410c; }
+    .calendar-legend-dot.pending { background: #f5f3ff; color: #9333ea; }
     .company-calendar-weekdays,
     .company-calendar-grid {
       display: grid;
@@ -5098,7 +5118,7 @@ HTML = r"""<!doctype html>
         </div>
       </header>
 
-      <section class="content company-portal" id="dashboardContent">
+      <section class="content company-portal notice-calendar-mode" id="dashboardContent">
         <div class="company-tabs">
           <button class="company-tab active" type="button" data-company-tab="notice">공지사항</button>
           <button class="company-tab" type="button" data-company-tab="calendar">캘린더</button>
@@ -5145,53 +5165,9 @@ HTML = r"""<!doctype html>
             </table>
           </div>
           </section>
-
-          <aside class="dashboard-sales-panel" id="dashboardSalesPanel">
-            <article class="company-card">
-              <div class="company-card-head"><span>매출 현황</span><span class="dashboard-sales-status" id="dashboardSalesStatus">연동 대기</span></div>
-              <div class="company-card-body">
-                <div class="dashboard-sales-grid">
-                  <div class="dashboard-sales-metric blue">
-                    <div class="dashboard-sales-metric-top"><span class="dashboard-sales-icon"><i data-lucide="circle-dollar-sign"></i></span><span class="dashboard-sales-metric-label" id="dashboardTodaySalesLabel">오늘 손익매출</span></div>
-                    <strong id="dashboardTodaySales">-</strong>
-                  </div>
-                  <div class="dashboard-sales-metric green">
-                    <div class="dashboard-sales-metric-top"><span class="dashboard-sales-icon"><i data-lucide="package"></i></span><span class="dashboard-sales-metric-label" id="dashboardTodayQuantityLabel">오늘 판매수량</span></div>
-                    <strong id="dashboardTodayQuantity">-</strong>
-                  </div>
-                </div>
-                <div class="dashboard-sales-compare-grid" aria-label="전영업일 대비">
-                  <div class="dashboard-sales-compare">
-                    <div class="dashboard-sales-compare-top"><span class="dashboard-sales-compare-icon"><i data-lucide="refresh-cw"></i></span><span id="dashboardSalesAmountCompareLabel">매출금액 비교</span></div>
-                    <div class="dashboard-sales-compare-value"><strong id="dashboardSalesAmountCompare">-</strong><span class="dashboard-sales-rate" id="dashboardSalesAmountRate">-</span></div>
-                  </div>
-                  <div class="dashboard-sales-compare">
-                    <div class="dashboard-sales-compare-top"><span class="dashboard-sales-compare-icon"><i data-lucide="package"></i></span><span id="dashboardSalesQuantityCompareLabel">판매수량 비교</span></div>
-                    <div class="dashboard-sales-compare-value"><strong id="dashboardSalesQuantityCompare">-</strong><span class="dashboard-sales-rate" id="dashboardSalesQuantityRate">-</span></div>
-                  </div>
-                </div>
-                <div class="dashboard-sales-grid">
-                  <div class="dashboard-sales-metric violet">
-                    <div class="dashboard-sales-metric-top"><span class="dashboard-sales-icon"><i data-lucide="bar-chart-3"></i></span><span class="dashboard-sales-metric-label" id="dashboardMonthSalesLabel">이번 달 누적매출</span></div>
-                    <strong id="dashboardMonthSales">-</strong>
-                  </div>
-                  <div class="dashboard-sales-metric green">
-                    <div class="dashboard-sales-metric-top"><span class="dashboard-sales-icon"><i data-lucide="package"></i></span><span class="dashboard-sales-metric-label" id="dashboardSalesQuantityLabel">이번 달 판매수량</span></div>
-                    <strong id="dashboardSalesQuantity">-</strong>
-                  </div>
-                </div>
-                <div class="dashboard-sales-insights" aria-label="매출 보조 지표">
-                  <div class="dashboard-sales-insight"><div class="dashboard-sales-insight-top"><span class="dashboard-sales-insight-icon"><i data-lucide="circle-dollar-sign"></i></span><span>매출처 합계</span></div><strong id="dashboardSellerTotal">-</strong></div>
-                  <div class="dashboard-sales-insight"><div class="dashboard-sales-insight-top"><span class="dashboard-sales-insight-icon"><i data-lucide="truck"></i></span><span>매입처 총액</span></div><strong id="dashboardSupplierPurchase">-</strong></div>
-                  <div class="dashboard-sales-insight"><div class="dashboard-sales-insight-top"><span class="dashboard-sales-insight-icon"><i data-lucide="bar-chart-3"></i></span><span>월 손익마진</span></div><strong id="dashboardSalesMargin">-</strong></div>
-                </div>
-                <div class="dashboard-sales-placeholder" id="dashboardSalesMessage">매출현황 및 관리 데이터 연결 대기 중</div>
-              </div>
-            </article>
-          </aside>
         </section>
 
-        <section class="company-panel dashboard-calendar-panel" data-company-panel="calendar">
+        <section class="company-panel active dashboard-calendar-panel" data-company-panel="calendar">
           <div class="company-calendar-shell">
             <article class="company-card dashboard-calendar-card">
               <div class="company-calendar-toolbar">
@@ -5209,10 +5185,10 @@ HTML = r"""<!doctype html>
                 </div>
               </div>
               <div class="company-calendar-legend" aria-label="캘린더 항목 구분">
-                <span><i class="calendar-legend-dot project"></i>프로젝트</span>
-                <span><i class="calendar-legend-dot task"></i>업무 마감</span>
-                <span><i class="calendar-legend-dot leave"></i>연차</span>
-                <span><i class="calendar-legend-dot pending"></i>승인대기</span>
+                <span><span class="calendar-legend-dot project"><i data-lucide="file-text"></i></span>프로젝트</span>
+                <span><span class="calendar-legend-dot task"><i data-lucide="clipboard-check"></i></span>업무 마감</span>
+                <span><span class="calendar-legend-dot leave"><i data-lucide="calendar-days"></i></span>연차</span>
+                <span><span class="calendar-legend-dot pending"><i data-lucide="bell"></i></span>승인대기</span>
               </div>
               <div class="company-calendar-weekdays" aria-hidden="true">
                 <div>월</div><div>화</div><div>수</div><div>목</div><div>금</div><div>토</div><div>일</div>
@@ -5221,6 +5197,49 @@ HTML = r"""<!doctype html>
                 <div class="calendar-empty">캘린더를 불러오는 중입니다.</div>
               </div>
             </article>
+            <aside class="dashboard-sales-panel" id="dashboardSalesPanel">
+              <article class="company-card">
+                <div class="company-card-head"><span>매출 현황</span><span class="dashboard-sales-status" id="dashboardSalesStatus">연동 대기</span></div>
+                <div class="company-card-body">
+                  <div class="dashboard-sales-grid">
+                    <div class="dashboard-sales-metric blue">
+                      <div class="dashboard-sales-metric-top"><span class="dashboard-sales-icon"><i data-lucide="circle-dollar-sign"></i></span><span class="dashboard-sales-metric-label" id="dashboardTodaySalesLabel">오늘 손익매출</span></div>
+                      <strong id="dashboardTodaySales">-</strong>
+                    </div>
+                    <div class="dashboard-sales-metric green">
+                      <div class="dashboard-sales-metric-top"><span class="dashboard-sales-icon"><i data-lucide="package"></i></span><span class="dashboard-sales-metric-label" id="dashboardTodayQuantityLabel">오늘 판매수량</span></div>
+                      <strong id="dashboardTodayQuantity">-</strong>
+                    </div>
+                  </div>
+                  <div class="dashboard-sales-compare-grid" aria-label="전영업일 대비">
+                    <div class="dashboard-sales-compare">
+                      <div class="dashboard-sales-compare-top"><span class="dashboard-sales-compare-icon"><i data-lucide="refresh-cw"></i></span><span id="dashboardSalesAmountCompareLabel">매출금액 비교</span></div>
+                      <div class="dashboard-sales-compare-value"><strong id="dashboardSalesAmountCompare">-</strong><span class="dashboard-sales-rate" id="dashboardSalesAmountRate">-</span></div>
+                    </div>
+                    <div class="dashboard-sales-compare">
+                      <div class="dashboard-sales-compare-top"><span class="dashboard-sales-compare-icon"><i data-lucide="package"></i></span><span id="dashboardSalesQuantityCompareLabel">판매수량 비교</span></div>
+                      <div class="dashboard-sales-compare-value"><strong id="dashboardSalesQuantityCompare">-</strong><span class="dashboard-sales-rate" id="dashboardSalesQuantityRate">-</span></div>
+                    </div>
+                  </div>
+                  <div class="dashboard-sales-grid">
+                    <div class="dashboard-sales-metric violet">
+                      <div class="dashboard-sales-metric-top"><span class="dashboard-sales-icon"><i data-lucide="bar-chart-3"></i></span><span class="dashboard-sales-metric-label" id="dashboardMonthSalesLabel">이번 달 누적매출</span></div>
+                      <strong id="dashboardMonthSales">-</strong>
+                    </div>
+                    <div class="dashboard-sales-metric green">
+                      <div class="dashboard-sales-metric-top"><span class="dashboard-sales-icon"><i data-lucide="package"></i></span><span class="dashboard-sales-metric-label" id="dashboardSalesQuantityLabel">이번 달 판매수량</span></div>
+                      <strong id="dashboardSalesQuantity">-</strong>
+                    </div>
+                  </div>
+                  <div class="dashboard-sales-insights" aria-label="매출 보조 지표">
+                    <div class="dashboard-sales-insight"><div class="dashboard-sales-insight-top"><span class="dashboard-sales-insight-icon"><i data-lucide="circle-dollar-sign"></i></span><span>매출처 합계</span></div><strong id="dashboardSellerTotal">-</strong></div>
+                    <div class="dashboard-sales-insight"><div class="dashboard-sales-insight-top"><span class="dashboard-sales-insight-icon"><i data-lucide="truck"></i></span><span>매입처 총액</span></div><strong id="dashboardSupplierPurchase">-</strong></div>
+                    <div class="dashboard-sales-insight"><div class="dashboard-sales-insight-top"><span class="dashboard-sales-insight-icon"><i data-lucide="bar-chart-3"></i></span><span>월 손익마진</span></div><strong id="dashboardSalesMargin">-</strong></div>
+                  </div>
+                  <div class="dashboard-sales-placeholder" id="dashboardSalesMessage">매출현황 및 관리 데이터 연결 대기 중</div>
+                </div>
+              </article>
+            </aside>
             <aside class="company-calendar-side">
               <article class="company-card">
                 <div class="company-card-head"><span>선택 날짜 일정</span><span class="dashboard-sales-status" id="companyCalendarSelectedCount">0건</span></div>
@@ -8708,9 +8727,12 @@ HTML = r"""<!doctype html>
     function setCompanyTab(tabName) {
       companyActiveTab = tabName || "notice";
       companyPanels.forEach((panel) => {
-        const isActivePanel = panel.dataset.companyPanel === companyActiveTab;
+        const isActivePanel = panel.dataset.companyPanel === companyActiveTab
+          || (companyActiveTab === "notice" && panel.dataset.companyPanel === "calendar");
         panel.classList.toggle("active", isActivePanel);
       });
+      dashboardContent?.classList.toggle("notice-calendar-mode", companyActiveTab === "notice");
+      dashboardContent?.classList.toggle("calendar-detail-mode", companyActiveTab === "calendar");
       syncCompanyNavState();
       if (companyActiveTab === "staff") {
         loadCompanyStaffDashboard().catch(() => {});
