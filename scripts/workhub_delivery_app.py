@@ -277,7 +277,7 @@ HTML = r"""<!doctype html>
       margin: 0;
       flex: 0 0 auto;
     }
-    .brand-icon svg { width: 21px; height: 21px; }
+    .brand-icon svg { width: 16px; height: 16px; }
     .brand {
       display: flex;
       align-items: center;
@@ -671,7 +671,7 @@ HTML = r"""<!doctype html>
       background: rgba(72, 118, 255, .28);
       box-shadow: inset 0 0 0 1px rgba(255,255,255,.08);
     }
-    .nav-item svg { width: 18px; height: 18px; flex: 0 0 auto; color: var(--sidebar-text-muted); }
+    .nav-item svg { width: 13px; height: 13px; flex: 0 0 auto; color: var(--sidebar-text-muted); }
     .nav-item .nav-label {
       display: flex;
       align-items: center;
@@ -694,8 +694,8 @@ HTML = r"""<!doctype html>
     }
     .nav-item .nav-chevron {
       margin-left: auto;
-      width: 16px;
-      height: 16px;
+      width: 10px;
+      height: 10px;
       transition: transform .16s ease;
     }
     .nav-group.open .nav-chevron { transform: rotate(90deg); }
@@ -752,13 +752,13 @@ HTML = r"""<!doctype html>
       overflow: hidden;
     }
     .topbar {
-      height: 74px;
-      flex: 0 0 74px;
+      height: 62px;
+      flex: 0 0 62px;
       display: grid;
-      grid-template-columns: 1fr minmax(260px, 430px) auto;
+      grid-template-columns: minmax(180px, 1fr) minmax(260px, 390px) auto;
       align-items: center;
-      gap: 18px;
-      padding: 0 22px;
+      gap: 12px;
+      padding: 0 18px;
       background: rgba(245, 247, 251, .88);
       border-bottom: 1px solid rgba(226, 232, 240, .9);
       backdrop-filter: blur(10px);
@@ -773,68 +773,386 @@ HTML = r"""<!doctype html>
       font-size: 13px; font-weight: 850; color: #344054;
     }
     .top-search {
-      height: 42px;
+      height: 36px;
       border: 1px solid var(--line);
-      border-radius: 8px;
+      border-radius: 9px;
       background: white;
       display: flex;
       align-items: center;
-      gap: 9px;
-      padding: 0 14px;
-      color: #98a2b3;
-      font-size: 13px;
+      gap: 7px;
+      padding: 0 8px 0 11px;
+      color: #64748b;
+      font-size: 12px;
       font-weight: 700;
+      box-shadow: 0 1px 2px rgba(15, 23, 42, .04);
+    }
+    .top-search input {
+      min-width: 0;
+      flex: 1;
+      border: 0;
+      outline: 0;
+      background: transparent;
+      color: #0f172a;
+      font: inherit;
+      font-weight: 750;
+    }
+    .top-search input::placeholder { color: #94a3b8; }
+    .top-search:focus-within {
+      border-color: #9db7f7;
+      box-shadow: 0 0 0 3px rgba(37, 99, 235, .11);
+    }
+    .top-search-submit {
+      width: 28px;
+      height: 28px;
+      border: 0;
+      border-radius: 7px;
+      background: #eef4ff;
+      color: #155bc8;
+      display: grid;
+      place-items: center;
+      cursor: pointer;
     }
     .top-tools {
       display: flex;
       align-items: center;
-      gap: 10px;
+      gap: 8px;
     }
     .icon-button {
-      width: 38px;
-      height: 38px;
+      width: 36px;
+      height: 36px;
       border: 1px solid var(--line);
-      border-radius: 8px;
+      border-radius: 9px;
       background: white;
       display: grid;
       place-items: center;
       color: #344054;
-      cursor: default;
+      cursor: pointer;
+      box-shadow: 0 1px 2px rgba(15, 23, 42, .04);
+      transition: border-color .16s ease, background .16s ease, color .16s ease, transform .16s ease;
+    }
+    .topbar .icon-button,
+    .topbar .icon-button.btn,
+    .topbar .icon-button.btn-square {
+      width: 36px !important;
+      min-width: 36px !important;
+      max-width: 36px !important;
+      height: 36px !important;
+      min-height: 36px !important;
+      padding: 0 !important;
+    }
+    .topbar .logout-button.btn {
+      height: 36px !important;
+      min-height: 36px !important;
+      padding: 0 10px !important;
+    }
+    .icon-button:hover,
+    .logout-button:hover {
+      border-color: #b8c7e6;
+      background: #f8fbff;
+      color: #155bc8;
+      transform: translateY(-1px);
+    }
+    .icon-button.busy svg {
+      animation: topbar-spin .75s linear infinite;
+    }
+    @keyframes topbar-spin {
+      to { transform: rotate(360deg); }
     }
     .icon-button svg,
-    .top-search svg { width: 17px; height: 17px; }
+    .top-search svg,
+    .top-search-submit svg,
+    .logout-button svg,
+    .workspace-button svg,
+    .crm-mini-button svg,
+    .btn svg { width: 11px; height: 11px; }
     .user-chip {
-      height: 40px;
+      height: 36px;
       display: flex;
       align-items: center;
-      gap: 9px;
-      padding: 0 11px;
+      gap: 7px;
+      padding: 0 10px;
       border: 1px solid var(--line);
-      border-radius: 8px;
+      border-radius: 9px;
       background: white;
-      font-size: 13px;
+      font-size: 12px;
       font-weight: 850;
       white-space: nowrap;
+      color: #1f2937;
+      box-shadow: 0 1px 2px rgba(15, 23, 42, .04);
     }
     .logout-button {
-      height: 40px;
+      height: 36px;
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      padding: 0 12px;
+      gap: 6px;
+      padding: 0 10px;
       border: 1px solid var(--line);
-      border-radius: 8px;
+      border-radius: 9px;
       background: white;
       color: #475467;
-      font-size: 13px;
+      font-size: 12px;
       font-weight: 850;
       text-decoration: none;
+      box-shadow: 0 1px 2px rgba(15, 23, 42, .04);
     }
     .avatar {
-      width: 27px;
-      height: 27px;
+      width: 22px;
+      height: 22px;
       border-radius: 50%;
       background: linear-gradient(145deg, #155bc8, #08a66c);
+    }
+    .logout-button svg { width: 12px; height: 12px; }
+    .focus-widget-section {
+      display: grid;
+      gap: 8px;
+      padding: 12px;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      background: #f8fafc;
+    }
+    .focus-widget-section + .focus-widget-section { margin-top: 10px; }
+    .focus-widget-section h4 {
+      margin: 0;
+      color: #0f172a;
+      font-size: 14px;
+      font-weight: 900;
+    }
+    .focus-widget-section p,
+    .focus-widget-section ul {
+      margin: 0;
+      color: #475569;
+      font-size: 12px;
+      font-weight: 700;
+      line-height: 1.45;
+    }
+    .focus-widget-section ul {
+      padding-left: 18px;
+    }
+    .app-confirm-backdrop {
+      position: fixed;
+      inset: 0;
+      z-index: 120;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      background: rgba(15, 23, 42, .38);
+      backdrop-filter: blur(3px);
+    }
+    .app-confirm-backdrop.open {
+      display: flex;
+    }
+    .app-confirm {
+      width: min(460px, calc(100vw - 32px));
+      border: 1px solid rgba(203, 213, 225, .95);
+      border-radius: 14px;
+      background: #fff;
+      box-shadow: 0 24px 70px rgba(15, 23, 42, .28);
+      overflow: hidden;
+      animation: app-confirm-pop .16s ease-out;
+    }
+    @keyframes app-confirm-pop {
+      from { opacity: 0; transform: translateY(8px) scale(.98); }
+      to { opacity: 1; transform: translateY(0) scale(1); }
+    }
+    .app-confirm-head {
+      display: flex;
+      gap: 12px;
+      align-items: flex-start;
+      padding: 18px 18px 12px;
+      border-bottom: 1px solid #eef2f7;
+      background: linear-gradient(180deg, #f8fbff 0%, #fff 100%);
+    }
+    .app-confirm-icon {
+      width: 38px;
+      height: 38px;
+      flex: 0 0 38px;
+      border-radius: 11px;
+      display: grid;
+      place-items: center;
+      background: #eaf2ff;
+      color: #155bc8;
+    }
+    .app-confirm-icon svg {
+      width: 20px;
+      height: 20px;
+    }
+    .app-confirm-kicker {
+      color: #155bc8;
+      font-size: 12px;
+      font-weight: 900;
+      line-height: 1.2;
+    }
+    .app-confirm-title {
+      margin-top: 3px;
+      color: #0f172a;
+      font-size: 18px;
+      font-weight: 950;
+      line-height: 1.28;
+    }
+    .app-confirm-body {
+      display: grid;
+      gap: 10px;
+      padding: 16px 18px 4px;
+      color: #344054;
+      font-size: 13px;
+      font-weight: 750;
+      line-height: 1.55;
+      white-space: pre-line;
+    }
+    .app-confirm-highlight {
+      display: inline-flex;
+      width: fit-content;
+      max-width: 100%;
+      padding: 5px 9px;
+      border-radius: 8px;
+      background: #eef6ff;
+      color: #155bc8;
+      font-size: 12px;
+      font-weight: 950;
+      word-break: keep-all;
+    }
+    .app-confirm-actions {
+      display: flex;
+      justify-content: center;
+      gap: 8px;
+      padding: 16px 18px 18px;
+    }
+    .app-confirm-actions button {
+      min-width: 82px;
+      height: 34px;
+      border: 1px solid #cfd8e5;
+      border-radius: 9px;
+      background: #fff;
+      color: #344054;
+      font-family: inherit;
+      font-size: 12px;
+      font-weight: 900;
+      cursor: pointer;
+    }
+    .app-confirm-actions button.primary {
+      border-color: #155bc8;
+      background: #155bc8;
+      color: #fff;
+      box-shadow: 0 8px 18px rgba(21, 91, 200, .22);
+    }
+    .app-confirm-actions button:hover {
+      transform: translateY(-1px);
+    }
+    .search-result-backdrop {
+      position: fixed;
+      inset: 0;
+      z-index: 118;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      background: rgba(15, 23, 42, .32);
+      backdrop-filter: blur(3px);
+    }
+    .search-result-backdrop.open {
+      display: flex;
+    }
+    .search-result-dialog {
+      width: min(720px, calc(100vw - 32px));
+      max-height: min(680px, calc(100vh - 42px));
+      display: flex;
+      flex-direction: column;
+      border: 1px solid rgba(203, 213, 225, .95);
+      border-radius: 14px;
+      background: #fff;
+      box-shadow: 0 24px 70px rgba(15, 23, 42, .26);
+      overflow: hidden;
+      animation: app-confirm-pop .16s ease-out;
+    }
+    .search-result-head {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 14px;
+      padding: 16px 18px 12px;
+      border-bottom: 1px solid #eef2f7;
+      background: linear-gradient(180deg, #f8fbff 0%, #fff 100%);
+    }
+    .search-result-head strong {
+      display: block;
+      color: #0f172a;
+      font-size: 17px;
+      font-weight: 950;
+      line-height: 1.25;
+    }
+    .search-result-head p {
+      margin: 4px 0 0;
+      color: #64748b;
+      font-size: 12px;
+      font-weight: 750;
+      line-height: 1.4;
+    }
+    .search-result-close {
+      width: 30px;
+      height: 30px;
+      border: 1px solid #d7dce5;
+      border-radius: 8px;
+      background: #fff;
+      color: #344054;
+      display: grid;
+      place-items: center;
+      cursor: pointer;
+    }
+    .search-result-close svg {
+      width: 12px;
+      height: 12px;
+    }
+    .search-result-list {
+      display: grid;
+      gap: 8px;
+      padding: 14px 18px 18px;
+      overflow: auto;
+    }
+    .search-result-item {
+      width: 100%;
+      border: 1px solid #dbe3ef;
+      border-radius: 10px;
+      background: #fff;
+      padding: 10px 12px;
+      text-align: left;
+      font-family: inherit;
+      cursor: pointer;
+      transition: border-color .14s ease, background .14s ease, transform .14s ease;
+    }
+    .search-result-item:hover {
+      border-color: #9db7f7;
+      background: #f8fbff;
+      transform: translateY(-1px);
+    }
+    .search-result-main {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: #0f172a;
+      font-size: 13px;
+      font-weight: 950;
+      line-height: 1.3;
+    }
+    .search-result-badge {
+      flex: 0 0 auto;
+      padding: 3px 7px;
+      border-radius: 999px;
+      background: #eef6ff;
+      color: #155bc8;
+      font-size: 11px;
+      font-weight: 950;
+    }
+    .search-result-sub {
+      margin-top: 5px;
+      color: #64748b;
+      font-size: 12px;
+      font-weight: 750;
+      line-height: 1.45;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
 
     .content {
@@ -976,6 +1294,88 @@ HTML = r"""<!doctype html>
       color: #111827;
       font-size: 14px;
       margin-bottom: 3px;
+    }
+    .notice-history {
+      display: grid;
+      gap: 8px;
+      padding-top: 4px;
+    }
+    .notice-history-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      color: #334155;
+      font-size: 12px;
+      font-weight: 900;
+    }
+    .notice-history-count {
+      min-width: 24px;
+      height: 22px;
+      padding: 0 8px;
+      border-radius: 999px;
+      display: inline-grid;
+      place-items: center;
+      background: #eef4ff;
+      color: #155bc8;
+      font-size: 11px;
+      font-weight: 950;
+    }
+    .notice-history-list {
+      display: grid;
+      gap: 7px;
+      max-height: 230px;
+      overflow-y: auto;
+      padding-right: 2px;
+    }
+    .notice-history-item {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 10px;
+      align-items: center;
+      padding: 10px 11px;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      background: #fff;
+    }
+    .notice-history-title {
+      color: #0f172a;
+      font-size: 13px;
+      font-weight: 900;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .notice-history-meta,
+    .notice-history-body {
+      margin-top: 3px;
+      color: #64748b;
+      font-size: 11px;
+      font-weight: 700;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .notice-history-delete {
+      height: 30px;
+      min-width: 48px;
+      border: 1px solid #fecaca;
+      border-radius: 7px;
+      background: #fff5f5;
+      color: #dc2626;
+      font-family: inherit;
+      font-size: 11px;
+      font-weight: 900;
+      cursor: pointer;
+    }
+    .notice-history-empty {
+      padding: 12px;
+      border: 1px dashed #cbd5e1;
+      border-radius: 8px;
+      color: #64748b;
+      font-size: 12px;
+      font-weight: 750;
+      text-align: center;
+      background: #f8fafc;
     }
     .message-placeholder {
       display: none;
@@ -2089,7 +2489,8 @@ HTML = r"""<!doctype html>
     }
     .vehicle-fields { display: none; }
     .cs-fields,
-    .stock-notice-fields { display: none; }
+    .stock-notice-fields,
+    .vendor-contact-manage-fields { display: none; }
     .ledger-fields { display: none; }
     .management-fields { display: none; }
     .ledger-cs-popup-head { display: none; }
@@ -2519,6 +2920,19 @@ HTML = r"""<!doctype html>
     }
     .download-menu button:last-child { border-bottom: 0; }
     .download-menu button:hover { background: #eef6ff; }
+    .import-mode-actions {
+      justify-content: center;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .import-mode-actions .btn {
+      min-width: 126px;
+    }
+    .import-mode-actions .danger {
+      border-color: #dc2626;
+      background: #dc2626;
+      color: #fff;
+    }
     .ledger-wrap {
       border: 1px solid #d7dce5;
       border-radius: 8px;
@@ -2553,9 +2967,30 @@ HTML = r"""<!doctype html>
     }
     .ledger-table {
       width: 100%;
-      min-width: 2600px;
+      min-width: 2520px;
+      table-layout: fixed;
       border-collapse: collapse;
       font-size: 12px;
+    }
+    .ledger-table col.select-col { width: 28px; }
+    .ledger-table col.date-col { width: 82px; }
+    .ledger-table col.vendor-col { width: 118px; }
+    .ledger-table col.status-col { width: 160px; }
+    .ledger-table col.short-col { width: 78px; }
+    .ledger-table col.type-col { width: 132px; }
+    .ledger-table col.content-col { width: 260px; }
+    .ledger-table col.invoice-col { width: 124px; }
+    .ledger-table col.original-invoice-col { width: 138px; }
+    .ledger-table col.name-col { width: 68px; }
+    .ledger-table col.phone-col { width: 104px; }
+    .ledger-table col.product-col { width: 230px; }
+    .ledger-table col.quantity-col { width: 62px; }
+    .ledger-table col.address-col { width: 260px; }
+    .ledger-table col.courier-col { width: 90px; }
+    .ledger-table col.memo-col { width: 190px; }
+    .ledger-table col.action-col { width: 86px; }
+    .management-wrap .ledger-table col[data-management-col] {
+      width: var(--management-col-width, auto);
     }
     .ledger-table th {
       position: sticky;
@@ -2571,12 +3006,16 @@ HTML = r"""<!doctype html>
       vertical-align: bottom;
       line-height: 1.18;
     }
+    .ledger-table th .ledger-th-title {
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
     .ledger-table th.select-head {
-      width: 34px;
-      min-width: 34px;
-      max-width: 34px;
-      padding-left: 3px;
-      padding-right: 3px;
+      width: 28px;
+      min-width: 28px;
+      max-width: 28px;
+      padding-left: 2px;
+      padding-right: 2px;
     }
     .ledger-table th.has-filter {
       padding-right: 21px;
@@ -2590,8 +3029,8 @@ HTML = r"""<!doctype html>
       right: 4px;
       top: 50%;
       transform: translateY(-50%);
-      width: 16px;
-      height: 16px;
+      width: 10px;
+      height: 10px;
       border: 1px solid rgba(17, 24, 39, .32);
       border-radius: 3px;
       background: rgba(255,255,255,.88);
@@ -2687,18 +3126,23 @@ HTML = r"""<!doctype html>
     .ledger-table td {
       border-bottom: 1px solid #e6eaf0;
       padding: 4px 6px;
+      height: 28px;
+      box-sizing: border-box;
       vertical-align: middle;
       text-align: center;
       color: #1f2937;
       font-size: 11px;
       line-height: 1.22;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
     .ledger-table td:first-child {
-      width: 34px;
-      min-width: 34px;
-      max-width: 34px;
-      padding-left: 3px;
-      padding-right: 3px;
+      width: 28px;
+      min-width: 28px;
+      max-width: 28px;
+      padding-left: 2px;
+      padding-right: 2px;
     }
     .ledger-table td.invoice-cell {
       font-weight: 800;
@@ -2735,7 +3179,7 @@ HTML = r"""<!doctype html>
       max-width: 260px;
     }
     .ledger-table td.editable-cell.left {
-      max-width: 360px;
+      max-width: 260px;
     }
     .ledger-table td.editable-cell:hover {
       background: #eef6ff;
@@ -2757,6 +3201,24 @@ HTML = r"""<!doctype html>
       min-width: 0;
       overflow: hidden;
       text-overflow: ellipsis;
+    }
+    .ledger-table td.quantity-blue,
+    .ledger-table td.quantity-blue .ledger-cell-value {
+      color: #155bc8;
+      font-weight: 950;
+    }
+    .ledger-table td.quantity-red,
+    .ledger-table td.quantity-red .ledger-cell-value {
+      color: #dc2626;
+      font-weight: 950;
+    }
+    .ledger-table tr.search-target-highlight td {
+      animation: search-target-flash 1.8s ease-out;
+      box-shadow: inset 0 0 0 1px rgba(37, 99, 235, .55);
+    }
+    @keyframes search-target-flash {
+      0%, 55% { background: #dbeafe; }
+      100% { background: inherit; }
     }
     .ledger-row-return-check {
       height: 22px;
@@ -2813,8 +3275,8 @@ HTML = r"""<!doctype html>
       cursor: pointer;
     }
     .ledger-check {
-      width: 16px;
-      height: 16px;
+      width: 13px;
+      height: 13px;
       accent-color: #155bc8;
       cursor: pointer;
     }
@@ -3530,6 +3992,12 @@ HTML = r"""<!doctype html>
       gap: 7px;
       margin-top: 10px;
     }
+    .dashboard-sales-previous-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 7px;
+      margin-top: 8px;
+    }
     .dashboard-sales-compare-grid + .dashboard-sales-grid {
       margin-top: 8px;
     }
@@ -3547,7 +4015,20 @@ HTML = r"""<!doctype html>
       border-radius: 8px;
       background: #ffffff;
     }
+    .dashboard-sales-previous {
+      min-width: 0;
+      padding: 8px 9px;
+      border: 1px solid #dbe4f0;
+      border-radius: 8px;
+      background: #f8fafc;
+    }
+    .dashboard-sales-compare.waiting {
+      padding: 7px 8px;
+      background: #fbfcff;
+      border-style: dashed;
+    }
     .dashboard-sales-compare-top,
+    .dashboard-sales-previous-top,
     .dashboard-sales-insight-top {
       display: flex;
       align-items: center;
@@ -3556,6 +4037,7 @@ HTML = r"""<!doctype html>
       min-width: 0;
     }
     .dashboard-sales-compare-icon,
+    .dashboard-sales-previous-icon,
     .dashboard-sales-insight-icon {
       display: inline-flex;
       align-items: center;
@@ -3568,12 +4050,14 @@ HTML = r"""<!doctype html>
       color: #475569;
     }
     .dashboard-sales-compare-icon svg,
+    .dashboard-sales-previous-icon svg,
     .dashboard-sales-insight-icon svg {
       width: 11px;
       height: 11px;
       stroke-width: 2.5;
     }
     .dashboard-sales-compare span,
+    .dashboard-sales-previous span,
     .dashboard-sales-insight span {
       display: block;
       min-width: 0;
@@ -3585,6 +4069,7 @@ HTML = r"""<!doctype html>
       white-space: nowrap;
     }
     .dashboard-sales-compare strong,
+    .dashboard-sales-previous strong,
     .dashboard-sales-insight strong {
       display: block;
       color: #111827;
@@ -3594,6 +4079,16 @@ HTML = r"""<!doctype html>
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
+    }
+    .dashboard-sales-previous strong {
+      font-size: 14px;
+    }
+    .dashboard-sales-compare.waiting strong {
+      font-size: 12px;
+      color: #64748b;
+    }
+    .dashboard-sales-compare.waiting .dashboard-sales-rate {
+      font-size: 10px;
     }
     .dashboard-sales-compare-value {
       display: flex;
@@ -3664,8 +4159,8 @@ HTML = r"""<!doctype html>
       padding: 0;
     }
     .company-calendar-actions .crm-mini-button svg {
-      width: 15px;
-      height: 15px;
+      width: 12px;
+      height: 12px;
       stroke-width: 2.5;
     }
     .company-calendar-summary {
@@ -5397,7 +5892,7 @@ HTML = r"""<!doctype html>
           <i class="nav-chevron" data-lucide="chevron-right"></i>
         </button>
         <div class="nav-submenu">
-          <button class="nav-subitem" id="managementImportOpen" type="button" data-management-import-mode="daily">통합관리대장 일일 추가 업로드</button>
+          <button class="nav-subitem" id="managementImportOpen" type="button" data-management-import-mode="daily">통합관리대장 업로드</button>
         </div>
       </div>
       <div class="nav-group" id="ledgerNavGroup">
@@ -5406,7 +5901,7 @@ HTML = r"""<!doctype html>
           <i class="nav-chevron" data-lucide="chevron-right"></i>
         </button>
         <div class="nav-submenu">
-          <button class="nav-subitem" id="ledgerImportOpen" type="button" data-ledger-import-mode="daily">CS처리대장 일일 추가 업로드</button>
+          <button class="nav-subitem" id="ledgerImportOpen" type="button" data-ledger-import-mode="daily">CS처리대장 업로드</button>
           <button class="nav-subitem" type="button" data-mail-popup="cs">CS처리 요청</button>
         </div>
       </div>
@@ -5425,10 +5920,12 @@ HTML = r"""<!doctype html>
       </div>
       <div class="nav-group" id="distributionMailNavGroup">
         <button class="nav-item" id="distributionMailNavToggle" type="button">
-          <span class="nav-label"><i data-lucide="mail"></i> <span>유통사 업무관련 메일 발송</span></span>
+          <span class="nav-label"><i data-lucide="mail"></i> <span>거래처 업무관련</span></span>
           <i class="nav-chevron" data-lucide="chevron-right"></i>
         </button>
         <div class="nav-submenu">
+          <button class="nav-subitem" type="button" data-mail-popup="purchaseContacts">매입처 관리</button>
+          <button class="nav-subitem" type="button" data-mail-popup="salesContacts">매출처 관리</button>
           <button class="nav-subitem" type="button" data-mail-popup="stock">입고 및 품절 공지</button>
         </div>
       </div>
@@ -5445,12 +5942,16 @@ HTML = r"""<!doctype html>
           <div class="title">회사 포털 <i data-lucide="chevron-down"></i></div>
           <p class="subtitle">공지사항, 사규, 직원 현황을 한 곳에서 확인합니다.</p>
         </div>
-        <div class="top-search"><i data-lucide="file-text"></i> 파일명, 수령인, 송장번호, CS내용 검색</div>
+        <form class="top-search" id="topbarSearchForm" role="search">
+          <i data-lucide="search"></i>
+          <input id="topbarSearchInput" name="topbar_search" type="search" placeholder="수령인, 송장번호, CS내용 검색" autocomplete="off" />
+          <button class="top-search-submit" type="submit" title="검색" aria-label="검색"><i data-lucide="arrow-right"></i></button>
+        </form>
         <div class="top-tools">
-          <button class="icon-button" type="button"><i data-lucide="bell"></i></button>
-          <button class="icon-button" type="button"><i data-lucide="refresh-cw"></i></button>
+          <button class="icon-button" id="topbarAlertButton" type="button" title="알림" aria-label="알림"><i data-lucide="bell"></i></button>
+          <button class="icon-button" id="topbarRefreshButton" type="button" title="현재 화면 새로고침" aria-label="현재 화면 새로고침"><i data-lucide="refresh-cw"></i></button>
           <div class="user-chip"><span class="avatar"></span><span>__USER_DISPLAY__</span></div>
-          <a class="logout-button" href="/logout">로그아웃</a>
+          <a class="logout-button" href="/logout" title="로그아웃"><i data-lucide="log-out"></i><span>로그아웃</span></a>
         </div>
       </header>
 
@@ -5488,9 +5989,8 @@ HTML = r"""<!doctype html>
                   <th>출항일</th>
                   <th>입항일</th>
                   <th>선적항</th>
-                  <th>도착항</th>
-                  <th>화주</th>
                   <th>제품명</th>
+                  <th>제품수량</th>
                   <th>선명</th>
                   <th>HBL NO.</th>
                   <th>SIZE</th>
@@ -5499,7 +5999,7 @@ HTML = r"""<!doctype html>
                 </tr>
               </thead>
               <tbody id="dashboardImportScheduleBody">
-                <tr><td colspan="12"><div class="import-empty">수입제품 입고 일정을 불러오는 중입니다.</div></td></tr>
+                <tr><td colspan="10"><div class="import-empty">수입제품 입고 일정을 불러오는 중입니다.</div></td></tr>
               </tbody>
             </table>
           </div>
@@ -5553,12 +6053,22 @@ HTML = r"""<!doctype html>
                       <strong id="dashboardTodayQuantity">-</strong>
                     </div>
                   </div>
+                  <div class="dashboard-sales-previous-grid" aria-label="직전 영업일 데이터">
+                    <div class="dashboard-sales-previous">
+                      <div class="dashboard-sales-previous-top"><span class="dashboard-sales-previous-icon"><i data-lucide="calendar-days"></i></span><span id="dashboardPreviousSalesLabel">직전 영업일 매출</span></div>
+                      <strong id="dashboardPreviousSales">-</strong>
+                    </div>
+                    <div class="dashboard-sales-previous">
+                      <div class="dashboard-sales-previous-top"><span class="dashboard-sales-previous-icon"><i data-lucide="package"></i></span><span id="dashboardPreviousQuantityLabel">직전 영업일 수량</span></div>
+                      <strong id="dashboardPreviousQuantity">-</strong>
+                    </div>
+                  </div>
                   <div class="dashboard-sales-compare-grid" aria-label="전영업일 대비">
-                    <div class="dashboard-sales-compare">
+                    <div class="dashboard-sales-compare" id="dashboardSalesAmountCompareCard">
                       <div class="dashboard-sales-compare-top"><span class="dashboard-sales-compare-icon"><i data-lucide="refresh-cw"></i></span><span id="dashboardSalesAmountCompareLabel">매출금액 비교</span></div>
                       <div class="dashboard-sales-compare-value"><strong id="dashboardSalesAmountCompare">-</strong><span class="dashboard-sales-rate" id="dashboardSalesAmountRate">-</span></div>
                     </div>
-                    <div class="dashboard-sales-compare">
+                    <div class="dashboard-sales-compare" id="dashboardSalesQuantityCompareCard">
                       <div class="dashboard-sales-compare-top"><span class="dashboard-sales-compare-icon"><i data-lucide="package"></i></span><span id="dashboardSalesQuantityCompareLabel">판매수량 비교</span></div>
                       <div class="dashboard-sales-compare-value"><strong id="dashboardSalesQuantityCompare">-</strong><span class="dashboard-sales-rate" id="dashboardSalesQuantityRate">-</span></div>
                     </div>
@@ -5864,9 +6374,8 @@ HTML = r"""<!doctype html>
                   <th>출항일</th>
                   <th>입항일</th>
                   <th>선적항</th>
-                  <th>도착항</th>
-                  <th>화주</th>
                   <th>제품명</th>
+                  <th>제품수량</th>
                   <th>선명</th>
                   <th>HBL NO.</th>
                   <th>SIZE</th>
@@ -5875,7 +6384,7 @@ HTML = r"""<!doctype html>
                 </tr>
               </thead>
               <tbody id="importShipmentBody">
-                <tr><td colspan="12"><div class="import-empty">등록된 수입제품 입고 진행 건이 없습니다.</div></td></tr>
+                <tr><td colspan="10"><div class="import-empty">등록된 수입제품 입고 진행 건이 없습니다.</div></td></tr>
               </tbody>
             </table>
           </div>
@@ -6145,6 +6654,13 @@ HTML = r"""<!doctype html>
           <strong>저장된 공지사항이 없습니다.</strong>
           공지사항을 입력하고 저장하면 이곳에서 미리 볼 수 있습니다.
         </div>
+        <div class="notice-history">
+          <div class="notice-history-head">
+            <span>기존 공지사항</span>
+            <span class="notice-history-count" id="noticeHistoryCount">0</span>
+          </div>
+          <div class="notice-history-list" id="noticeHistoryList"></div>
+        </div>
       </div>
     </div>
   </div>
@@ -6175,6 +6691,39 @@ HTML = r"""<!doctype html>
         </div>
       </div>
     </div>
+  </div>
+
+  <div class="app-confirm-backdrop" id="appConfirmDialog" aria-hidden="true">
+    <section class="app-confirm" role="dialog" aria-modal="true" aria-labelledby="appConfirmTitle">
+      <div class="app-confirm-head">
+        <div class="app-confirm-icon"><i data-lucide="clipboard-check"></i></div>
+        <div>
+          <div class="app-confirm-kicker" id="appConfirmKicker">상태 변경 확인</div>
+          <div class="app-confirm-title" id="appConfirmTitle">처리상태를 변경할까요?</div>
+        </div>
+      </div>
+      <div class="app-confirm-body">
+        <div id="appConfirmMessage"></div>
+        <div class="app-confirm-highlight" id="appConfirmHighlight"></div>
+      </div>
+      <div class="app-confirm-actions">
+        <button type="button" id="appConfirmCancel">유지</button>
+        <button class="primary" type="button" id="appConfirmOk">변경</button>
+      </div>
+    </section>
+  </div>
+
+  <div class="search-result-backdrop" id="searchResultDialog" aria-hidden="true">
+    <section class="search-result-dialog" role="dialog" aria-modal="true" aria-labelledby="searchResultTitle">
+      <div class="search-result-head">
+        <div>
+          <strong id="searchResultTitle">검색 결과 선택</strong>
+          <p id="searchResultDescription">여러 건이 검색되었습니다. 확인할 데이터를 선택해주세요.</p>
+        </div>
+        <button class="search-result-close" id="searchResultClose" type="button" aria-label="닫기"><i data-lucide="x"></i></button>
+      </div>
+      <div class="search-result-list" id="searchResultList"></div>
+    </section>
   </div>
 
   <div class="focus-widget-backdrop" id="focusWidget" aria-hidden="true">
@@ -6232,7 +6781,8 @@ HTML = r"""<!doctype html>
       </div>
       <div class="notice-template">
         <input id="importShipmentId" type="hidden" />
-        <input id="importQuantity" type="hidden" />
+        <input id="importArrivalPort" type="hidden" />
+        <input id="importShipper" type="hidden" />
         <div class="notice-template-grid">
           <input id="importWarehouseDueDate" type="text" placeholder="입고예정일" />
           <input id="importDepartureDate" type="text" placeholder="출항일 예) 6/10" />
@@ -6240,16 +6790,15 @@ HTML = r"""<!doctype html>
         </div>
         <div class="notice-template-grid">
           <input id="importLoadingPort" type="text" placeholder="선적항" />
-          <input id="importArrivalPort" type="text" placeholder="도착항" />
-          <input id="importShipper" type="text" placeholder="화주" />
+          <input id="importItem" type="text" placeholder="제품명" />
+          <input id="importQuantity" type="text" placeholder="제품수량" />
         </div>
         <div class="notice-template-grid">
-          <input id="importItem" type="text" placeholder="제품명" />
           <input id="importVesselName" type="text" placeholder="선명" />
           <input id="importHblNo" type="text" placeholder="HBL NO." />
+          <input id="importSize" type="text" placeholder="SIZE" />
         </div>
         <div class="notice-template-grid">
-          <input id="importSize" type="text" placeholder="SIZE" />
           <input id="importProgressStatus" type="text" placeholder="진행상황" />
           <input id="importFreeTime" type="text" placeholder="프리타임 예) 7일" />
         </div>
@@ -6339,27 +6888,27 @@ HTML = r"""<!doctype html>
             <button class="ledger-cs-popup-close" id="ledgerCsPopupClose" type="button">닫기</button>
           </div>
           <div class="text-field">
-            <label class="field-label" for="vendorContactSelect">업체 선택</label>
+            <label class="field-label" for="vendorContactSelect">거래처 선택</label>
             <select id="vendorContactSelect">
               <option value="">업체를 선택해주세요</option>
             </select>
           </div>
           <div class="text-field">
-            <label class="field-label" for="vendorTypeSelect">업체 구분</label>
+            <label class="field-label" for="vendorTypeSelect">거래처 구분</label>
             <select id="vendorTypeSelect">
               <option value="purchase">매입처</option>
               <option value="sales">매출처</option>
             </select>
           </div>
           <div class="text-field">
-            <label class="field-label" for="recipientEmailInput">받는 업체 메일</label>
+            <label class="field-label" for="recipientEmailInput">받는 거래처 메일</label>
             <input id="recipientEmailInput" name="recipient_email" type="email" placeholder="예) vendor@example.com" />
           </div>
           <div class="text-field">
-            <label class="field-label" for="vendorNameInput">업체명</label>
+            <label class="field-label" for="vendorNameInput">거래처명</label>
             <input id="vendorNameInput" name="vendor_name" type="text" placeholder="예) 키친쿡" />
           </div>
-          <button class="add-row" id="saveVendorContact" type="button">업체 메일 저장/업데이트</button>
+          <button class="add-row" id="saveVendorContact" type="button">거래처 메일 저장/업데이트</button>
           <div class="text-field">
             <label class="field-label" for="csOriginInput">원출고일 및 원송장번호</label>
             <input id="csOriginInput" name="cs_origin" type="text" placeholder="예) 2026-06-13 / 1234567890" />
@@ -6411,9 +6960,34 @@ HTML = r"""<!doctype html>
           <div class="cs-toolbar">
             <button class="cs-save-button" id="saveCsCase" type="button">CS건 DB 저장</button>
           </div>
-          <div class="cs-case-list">
+        <div class="cs-case-list">
             <div class="cs-case-head">최근 저장 CS</div>
             <div id="csCaseList"></div>
+          </div>
+        </div>
+        <div class="vendor-contact-manage-fields" id="vendorContactManageFields">
+          <div class="text-field">
+            <label class="field-label" for="vendorManageTypeLabel">관리 구분</label>
+            <input id="vendorManageTypeLabel" type="text" value="매입처" readonly />
+          </div>
+          <div class="text-field">
+            <label class="field-label" for="vendorManageNameInput">거래처명</label>
+            <input id="vendorManageNameInput" type="text" placeholder="예) 키친쿡" />
+          </div>
+          <div class="text-field">
+            <label class="field-label" for="vendorManageEmailInput">메일주소</label>
+            <input id="vendorManageEmailInput" type="email" placeholder="예) vendor@example.com" />
+          </div>
+          <button class="add-row" id="vendorManageSave" type="button">거래처 메일 저장/업데이트</button>
+          <label class="dropzone" for="vendorManageFileInput">
+            <span class="drop-main" id="vendorManageDropMain">거래처명/메일주소 엑셀을 업로드해주세요.</span>
+            <span>구분 열이 없으면 현재 관리 구분으로 저장됩니다.</span>
+            <input id="vendorManageFileInput" type="file" accept=".xlsx,.xlsm" />
+          </label>
+          <div class="hint-line">권장 열 이름: 업체명 또는 거래처명 / 메일주소 또는 이메일 / 구분(선택)</div>
+          <div class="cs-case-list">
+            <div class="cs-case-head" id="vendorManageListTitle">저장된 매입처</div>
+            <div id="vendorManageList"></div>
           </div>
         </div>
         <div class="stock-notice-fields" id="stockNoticeFields">
@@ -6485,7 +7059,7 @@ HTML = r"""<!doctype html>
             <select id="ledgerPageSize">
               <option value="100">100개씩 보기</option>
               <option value="500">500개씩 보기</option>
-              <option value="1000">1,000개씩 보기</option>
+              <option value="1000" selected>1,000개씩 보기</option>
               <option value="2000">2,000개씩 보기</option>
               <option value="5000">5,000개씩 보기</option>
             </select>
@@ -6496,8 +7070,7 @@ HTML = r"""<!doctype html>
                 <button type="button" data-ledger-download="selected">선택 다운로드</button>
               </div>
             </div>
-            <button class="btn blue" type="button" data-ledger-import-mode="daily">일일 추가 업로드</button>
-            <button class="btn danger" type="button" data-ledger-import-mode="replace">전체 데이터 교체 업로드</button>
+            <button class="btn blue" type="button" data-ledger-import-mode="daily">CS처리대장 업로드</button>
             <button class="btn primary" id="ledgerAddCs" type="button">CS 추가</button>
           </div>
           <div class="cell-edit-bar" id="ledgerCellEditBar">
@@ -6510,9 +7083,32 @@ HTML = r"""<!doctype html>
           <input class="hidden-file-input" id="ledgerImportInput" name="ledger_import" type="file" accept=".xlsx,.xlsm" />
           <div class="ledger-wrap">
             <table class="ledger-table">
+              <colgroup>
+                <col class="select-col" />
+                <col class="date-col" />
+                <col class="vendor-col" />
+                <col class="vendor-col" />
+                <col class="status-col" />
+                <col class="date-col" />
+                <col class="type-col" />
+                <col class="content-col" />
+                <col class="invoice-col" />
+                <col class="invoice-col" />
+                <col class="date-col" />
+                <col class="date-col" />
+                <col class="name-col" />
+                <col class="phone-col" />
+                <col class="name-col" />
+                <col class="phone-col" />
+                <col class="product-col" />
+                <col class="quantity-col" />
+                <col class="address-col" />
+                <col class="courier-col" />
+                <col class="original-invoice-col" />
+              </colgroup>
               <thead>
                 <tr>
-                  <th class="select-head">선택</th>
+                  <th class="select-head"><input class="ledger-check" id="ledgerSelectAll" type="checkbox" title="전체 선택" /></th>
                   <th class="has-filter"><span class="ledger-th-title">날짜</span><button class="ledger-filter-trigger" type="button" data-ledger-filter-button="occurred_at" data-label="날짜">▼</button></th>
                   <th class="has-filter"><span class="ledger-th-title">매출거래처</span><button class="ledger-filter-trigger" type="button" data-ledger-filter-button="sales_vendor" data-label="매출거래처">▼</button></th>
                   <th class="has-filter"><span class="ledger-th-title">매입거래처</span><button class="ledger-filter-trigger" type="button" data-ledger-filter-button="purchase_vendor" data-label="매입거래처">▼</button></th>
@@ -6551,8 +7147,8 @@ HTML = r"""<!doctype html>
             <button class="btn blue" id="managementRefresh" type="button">조회</button>
             <select id="managementPageSize">
               <option value="100">100개씩 보기</option>
-              <option value="500" selected>500개씩 보기</option>
-              <option value="1000">1,000개씩 보기</option>
+              <option value="500">500개씩 보기</option>
+              <option value="1000" selected>1,000개씩 보기</option>
               <option value="2000">2,000개씩 보기</option>
               <option value="5000">5,000개씩 보기</option>
             </select>
@@ -6565,8 +7161,7 @@ HTML = r"""<!doctype html>
                 <button type="button" data-management-download="selected">선택 다운로드</button>
               </div>
             </div>
-            <button class="btn blue" type="button" data-management-import-mode="daily">일일 추가 업로드</button>
-            <button class="btn danger" type="button" data-management-import-mode="replace">전체 데이터 교체 업로드</button>
+            <button class="btn blue" type="button" data-management-import-mode="daily">통합관리대장 업로드</button>
           </div>
           <div class="cell-edit-bar" id="managementCellEditBar">
             <div class="cell-edit-label" id="managementCellEditLabel">셀 선택</div>
@@ -6577,6 +7172,26 @@ HTML = r"""<!doctype html>
           <input class="hidden-file-input" id="managementImportInput" name="management_import" type="file" accept=".xlsx,.xlsm" />
           <div class="ledger-wrap management-wrap">
             <table class="ledger-table">
+              <colgroup>
+                <col class="select-col" data-management-col="select" />
+                <col class="date-col" data-management-col="order_date" />
+                <col class="date-col" data-management-col="ship_date" />
+                <col class="vendor-col" data-management-col="purchase_vendor" />
+                <col class="vendor-col" data-management-col="sales_vendor" />
+                <col class="short-col" data-management-col="transaction_type" />
+                <col class="short-col" data-management-col="ledger_checked" />
+                <col class="name-col" data-management-col="orderer_name" />
+                <col class="phone-col" data-management-col="sender_phone" />
+                <col class="name-col" data-management-col="receiver_name" />
+                <col class="phone-col" data-management-col="receiver_phone" />
+                <col class="product-col" data-management-col="product_name" />
+                <col class="quantity-col" data-management-col="quantity" />
+                <col class="address-col" data-management-col="receiver_address" />
+                <col class="courier-col" data-management-col="courier" />
+                <col class="original-invoice-col" data-management-col="invoice_number" />
+                <col class="memo-col" data-management-col="memo" />
+                <col class="action-col" data-management-col="cs_action" />
+              </colgroup>
               <thead>
                 <tr>
                   <th class="select-head"><input class="ledger-check" id="managementSelectAll" type="checkbox" title="전체 선택" /></th>
@@ -6655,9 +7270,22 @@ HTML = r"""<!doctype html>
     </div>
   </div>
 
+  <div class="safe-number-dialog-backdrop" id="importModeDialog" aria-hidden="true">
+    <div class="safe-number-dialog" role="dialog" aria-modal="true" aria-labelledby="importModeTitle">
+      <h2 class="safe-number-dialog-title" id="importModeTitle">업로드 방식 선택</h2>
+      <p class="safe-number-dialog-description" id="importModeDescription"></p>
+      <pre class="safe-number-dialog-preview" id="importModePreview"></pre>
+      <div class="safe-number-dialog-actions import-mode-actions">
+        <button class="btn" id="importModeCancel" type="button">취소</button>
+        <button class="btn primary" id="importModeDaily" type="button">중복 제외 신규만 업로드</button>
+        <button class="btn danger" id="importModeReplace" type="button">전체 데이터 교체</button>
+      </div>
+    </div>
+  </div>
+
   <div class="safe-number-dialog-backdrop" id="importCorrectionDialog" aria-hidden="true">
     <div class="safe-number-dialog import-correction-dialog" role="dialog" aria-modal="true" aria-labelledby="importCorrectionTitle">
-      <h2 class="safe-number-dialog-title" id="importCorrectionTitle">업로드 전 형식 수정</h2>
+      <h2 class="safe-number-dialog-title" id="importCorrectionTitle">업로드 데이터 수정</h2>
       <p class="safe-number-dialog-description" id="importCorrectionDescription"></p>
       <div class="import-correction-list" id="importCorrectionList"></div>
       <div class="safe-number-dialog-actions">
@@ -6668,8 +7296,8 @@ HTML = r"""<!doctype html>
   </div>
 
   <script type="module">
-    import { createIcons, BriefcaseBusiness, Home, MessageCircle, Info, ChevronDown, ChevronLeft, ChevronRight, PlusSquare, RefreshCw, Ellipsis, Headphones, Package, ClipboardCheck, CircleDollarSign, FileText, FileSpreadsheet, ClipboardList, BarChart3, CopyCheck, Bell, Download, Truck, Mail, Upload, Database, CalendarDays, X, Settings } from "/lucide/dist/esm/lucide.js";
-    createIcons({ icons: { BriefcaseBusiness, Home, MessageCircle, Info, ChevronDown, ChevronLeft, ChevronRight, PlusSquare, RefreshCw, Ellipsis, Headphones, Package, ClipboardCheck, CircleDollarSign, FileText, FileSpreadsheet, ClipboardList, BarChart3, CopyCheck, Bell, Download, Truck, Mail, Upload, Database, CalendarDays, X, Settings, "package": Package, "file-text": FileText, "file-spreadsheet": FileSpreadsheet, "truck": Truck } });
+    import { createIcons, BriefcaseBusiness, Home, MessageCircle, Info, ChevronDown, ChevronLeft, ChevronRight, PlusSquare, RefreshCw, Ellipsis, Headphones, Package, ClipboardCheck, CircleDollarSign, FileText, FileSpreadsheet, ClipboardList, BarChart3, CopyCheck, Bell, Download, Truck, Mail, Upload, Database, CalendarDays, X, Settings, Search, ArrowRight, LogOut, Warehouse } from "/lucide/dist/esm/lucide.js";
+    createIcons({ icons: { BriefcaseBusiness, Home, MessageCircle, Info, ChevronDown, ChevronLeft, ChevronRight, PlusSquare, RefreshCw, Ellipsis, Headphones, Package, ClipboardCheck, CircleDollarSign, FileText, FileSpreadsheet, ClipboardList, BarChart3, CopyCheck, Bell, Download, Truck, Mail, Upload, Database, CalendarDays, X, Settings, Search, ArrowRight, LogOut, Warehouse, "package": Package, "file-text": FileText, "file-spreadsheet": FileSpreadsheet, "truck": Truck, "search": Search, "arrow-right": ArrowRight, "log-out": LogOut, "warehouse": Warehouse } });
     function applyDaisyUiClasses() {
       document.querySelectorAll(".workspace-button, .crm-mini-button, .action-button, .logout-button, .top-button").forEach((element) => {
         element.classList.add("btn", "btn-sm");
@@ -6709,6 +7337,10 @@ HTML = r"""<!doctype html>
     const currentUser = __CURRENT_USER__;
     const currentUserPermissions = new Set(__USER_PERMISSIONS__);
     const permissionLabels = __PERMISSION_LABELS__;
+    const topbarSearchForm = document.querySelector("#topbarSearchForm");
+    const topbarSearchInput = document.querySelector("#topbarSearchInput");
+    const topbarAlertButton = document.querySelector("#topbarAlertButton");
+    const topbarRefreshButton = document.querySelector("#topbarRefreshButton");
     const sidebar = document.querySelector(".sidebar");
     const sidebarSearchInput = document.querySelector("#sidebarSearchInput");
     let sidebarSearchUserTyped = false;
@@ -6812,6 +7444,18 @@ HTML = r"""<!doctype html>
     const returnCheckClose = document.querySelector("#returnCheckClose");
     const returnCheckCancel = document.querySelector("#returnCheckCancel");
     const returnCheckSave = document.querySelector("#returnCheckSave");
+    const appConfirmDialog = document.querySelector("#appConfirmDialog");
+    const appConfirmKicker = document.querySelector("#appConfirmKicker");
+    const appConfirmTitle = document.querySelector("#appConfirmTitle");
+    const appConfirmMessage = document.querySelector("#appConfirmMessage");
+    const appConfirmHighlight = document.querySelector("#appConfirmHighlight");
+    const appConfirmCancel = document.querySelector("#appConfirmCancel");
+    const appConfirmOk = document.querySelector("#appConfirmOk");
+    const searchResultDialog = document.querySelector("#searchResultDialog");
+    const searchResultTitle = document.querySelector("#searchResultTitle");
+    const searchResultDescription = document.querySelector("#searchResultDescription");
+    const searchResultList = document.querySelector("#searchResultList");
+    const searchResultClose = document.querySelector("#searchResultClose");
     const productTable = document.querySelector("#productTable");
     const receiptTypeSelect = document.querySelector("#receiptTypeSelect");
     const supplierInput = document.querySelector("#supplierInput");
@@ -6833,13 +7477,19 @@ HTML = r"""<!doctype html>
     const dashboardTodaySales = document.querySelector("#dashboardTodaySales");
     const dashboardTodayQuantityLabel = document.querySelector("#dashboardTodayQuantityLabel");
     const dashboardTodayQuantity = document.querySelector("#dashboardTodayQuantity");
+    const dashboardPreviousSalesLabel = document.querySelector("#dashboardPreviousSalesLabel");
+    const dashboardPreviousSales = document.querySelector("#dashboardPreviousSales");
+    const dashboardPreviousQuantityLabel = document.querySelector("#dashboardPreviousQuantityLabel");
+    const dashboardPreviousQuantity = document.querySelector("#dashboardPreviousQuantity");
     const dashboardMonthSalesLabel = document.querySelector("#dashboardMonthSalesLabel");
     const dashboardMonthSales = document.querySelector("#dashboardMonthSales");
     const dashboardSalesQuantityLabel = document.querySelector("#dashboardSalesQuantityLabel");
     const dashboardSalesQuantity = document.querySelector("#dashboardSalesQuantity");
+    const dashboardSalesAmountCompareCard = document.querySelector("#dashboardSalesAmountCompareCard");
     const dashboardSalesAmountCompareLabel = document.querySelector("#dashboardSalesAmountCompareLabel");
     const dashboardSalesAmountCompare = document.querySelector("#dashboardSalesAmountCompare");
     const dashboardSalesAmountRate = document.querySelector("#dashboardSalesAmountRate");
+    const dashboardSalesQuantityCompareCard = document.querySelector("#dashboardSalesQuantityCompareCard");
     const dashboardSalesQuantityCompareLabel = document.querySelector("#dashboardSalesQuantityCompareLabel");
     const dashboardSalesQuantityCompare = document.querySelector("#dashboardSalesQuantityCompare");
     const dashboardSalesQuantityRate = document.querySelector("#dashboardSalesQuantityRate");
@@ -6885,6 +7535,15 @@ HTML = r"""<!doctype html>
     const stockVendorTypeSelect = document.querySelector("#stockVendorTypeSelect");
     const stockRecipientEmailInput = document.querySelector("#stockRecipientEmailInput");
     const stockVendorNameInput = document.querySelector("#stockVendorNameInput");
+    const vendorContactManageFields = document.querySelector("#vendorContactManageFields");
+    const vendorManageTypeLabel = document.querySelector("#vendorManageTypeLabel");
+    const vendorManageNameInput = document.querySelector("#vendorManageNameInput");
+    const vendorManageEmailInput = document.querySelector("#vendorManageEmailInput");
+    const vendorManageSave = document.querySelector("#vendorManageSave");
+    const vendorManageFileInput = document.querySelector("#vendorManageFileInput");
+    const vendorManageDropMain = document.querySelector("#vendorManageDropMain");
+    const vendorManageListTitle = document.querySelector("#vendorManageListTitle");
+    const vendorManageList = document.querySelector("#vendorManageList");
     const stockNoticeDateInput = document.querySelector("#stockNoticeDateInput");
     const stockInboundProductInput = document.querySelector("#stockInboundProductInput");
     const stockInboundScheduleInput = document.querySelector("#stockInboundScheduleInput");
@@ -6922,6 +7581,7 @@ HTML = r"""<!doctype html>
     const managementImportOpen = document.querySelector("#managementImportOpen");
     const managementBody = document.querySelector("#managementBody");
     const managementMonthTabs = document.querySelector("#managementMonthTabs");
+    const ledgerSelectAll = document.querySelector("#ledgerSelectAll");
     const managementSelectAll = document.querySelector("#managementSelectAll");
     const managementSaveAll = document.querySelector("#managementSaveAll");
     const ledgerSaveAll = document.querySelector("#ledgerSaveAll");
@@ -6949,6 +7609,13 @@ HTML = r"""<!doctype html>
     const importWarningPreview = document.querySelector("#importWarningPreview");
     const importWarningCancel = document.querySelector("#importWarningCancel");
     const importWarningProceed = document.querySelector("#importWarningProceed");
+    const importModeDialog = document.querySelector("#importModeDialog");
+    const importModeTitle = document.querySelector("#importModeTitle");
+    const importModeDescription = document.querySelector("#importModeDescription");
+    const importModePreview = document.querySelector("#importModePreview");
+    const importModeCancel = document.querySelector("#importModeCancel");
+    const importModeDaily = document.querySelector("#importModeDaily");
+    const importModeReplace = document.querySelector("#importModeReplace");
     const importCorrectionDialog = document.querySelector("#importCorrectionDialog");
     const importCorrectionTitle = document.querySelector("#importCorrectionTitle");
     const importCorrectionDescription = document.querySelector("#importCorrectionDescription");
@@ -6995,6 +7662,8 @@ HTML = r"""<!doctype html>
     const noticeSaveButton = document.querySelector("#noticeSaveButton");
     const noticeClearButton = document.querySelector("#noticeClearButton");
     const noticePreview = document.querySelector("#noticePreview");
+    const noticeHistoryList = document.querySelector("#noticeHistoryList");
+    const noticeHistoryCount = document.querySelector("#noticeHistoryCount");
     const sidebarNoticePreview = document.querySelector("#sidebarNoticePreview");
     const noticePopup = document.querySelector("#noticePopup");
     const noticePopupClose = document.querySelector("#noticePopupClose");
@@ -7246,6 +7915,8 @@ HTML = r"""<!doctype html>
     let managementRecords = [];
     let ledgerImportMode = "daily";
     let managementImportMode = "daily";
+    let ledgerUploadInProgress = false;
+    let managementUploadInProgress = false;
     let managementPeriods = [];
     let importShipments = [];
     let userAccounts = [];
@@ -7293,6 +7964,7 @@ HTML = r"""<!doctype html>
     const managementFilters = {};
     let isBulkSaving = false;
     let isNavigationSaving = false;
+    let activeVendorManageType = "purchase";
 
     if (managementWorkspaceMount && managementFields) managementWorkspaceMount.appendChild(managementFields);
     if (ledgerWorkspaceMount && ledgerFields) ledgerWorkspaceMount.appendChild(ledgerFields);
@@ -8034,17 +8706,61 @@ HTML = r"""<!doctype html>
       }
     }
 
-    function loadNoticeTemplate() {
+    function legacyNoticeRecord() {
       let saved = {};
       try {
         saved = JSON.parse(localStorage.getItem("workhub_notice_template") || "{}");
       } catch {
         saved = {};
       }
-      noticeDateInput.value = saved.date || todayString();
-      noticeTitleInput.value = saved.title || "";
-      noticeOwnerInput.value = saved.owner || "";
-      noticeBodyInput.value = saved.body || "";
+      if (!saved || (!saved.title && !saved.body)) return null;
+      return {
+        id: saved.id || `legacy-${Date.now()}`,
+        date: saved.date || todayString(),
+        title: saved.title || "",
+        owner: saved.owner || "",
+        body: saved.body || "",
+        created_at: saved.created_at || new Date().toISOString(),
+      };
+    }
+
+    function noticeRecords() {
+      let rows = [];
+      try {
+        rows = JSON.parse(localStorage.getItem("workhub_notice_templates") || "[]");
+      } catch {
+        rows = [];
+      }
+      if (!Array.isArray(rows)) rows = [];
+      const legacy = legacyNoticeRecord();
+      if (legacy && !rows.some((row) => row.id === legacy.id || (row.title === legacy.title && row.body === legacy.body && row.date === legacy.date))) {
+        rows.unshift(legacy);
+        localStorage.setItem("workhub_notice_templates", JSON.stringify(rows));
+        localStorage.removeItem("workhub_notice_template");
+      }
+      return rows
+        .filter((row) => row && (row.title || row.body))
+        .sort((a, b) => String(b.created_at || b.date || "").localeCompare(String(a.created_at || a.date || "")));
+    }
+
+    function saveNoticeRecords(rows) {
+      localStorage.setItem("workhub_notice_templates", JSON.stringify(rows));
+      localStorage.removeItem("workhub_notice_template");
+    }
+
+    function latestNoticeRecord() {
+      return noticeRecords()[0] || null;
+    }
+
+    function resetNoticeInputs() {
+      noticeDateInput.value = todayString();
+      noticeTitleInput.value = "";
+      noticeOwnerInput.value = "";
+      noticeBodyInput.value = "";
+    }
+
+    function loadNoticeTemplate() {
+      resetNoticeInputs();
       renderNoticePreview();
     }
 
@@ -8122,10 +8838,45 @@ HTML = r"""<!doctype html>
       `;
     }
 
+    function renderNoticeHistory() {
+      if (!noticeHistoryList || !noticeHistoryCount) return;
+      const rows = noticeRecords();
+      noticeHistoryCount.textContent = String(rows.length);
+      if (!rows.length) {
+        noticeHistoryList.innerHTML = `<div class="notice-history-empty">등록된 기존 공지사항이 없습니다.</div>`;
+        return;
+      }
+      const canDelete = can("notice_manage");
+      noticeHistoryList.innerHTML = rows.map((row) => {
+        const meta = [shortKoreanDate(row.date), row.owner ? `담당 ${row.owner}` : ""].filter(Boolean).join(" / ");
+        return `
+          <div class="notice-history-item" data-notice-id="${escapeHtml(row.id)}">
+            <div>
+              <div class="notice-history-title">${escapeHtml(row.title || "제목 없음")}</div>
+              <div class="notice-history-meta">${escapeHtml(meta || "-")}</div>
+              <div class="notice-history-body">${escapeHtml(row.body || "내용 없음")}</div>
+            </div>
+            ${canDelete ? `<button class="notice-history-delete" type="button" data-notice-delete="${escapeHtml(row.id)}">삭제</button>` : ""}
+          </div>
+        `;
+      }).join("");
+    }
+
     function renderNoticePreview() {
-      const payload = noticePayload();
-      if (!payload.title && !payload.body) {
-        noticePreview.innerHTML = `<strong>저장된 공지사항이 없습니다.</strong>공지사항을 입력하고 저장하면 이곳에서 미리 볼 수 있습니다.`;
+      const draft = noticePayload();
+      const latest = latestNoticeRecord();
+      renderNoticeHistory();
+      if (!draft.title && !draft.body) {
+        noticePreview.innerHTML = `<strong>공지 입력 대기</strong>새 공지사항을 입력한 뒤 저장해주세요. 입력창은 항상 새 공지를 위해 비워둡니다.`;
+      } else {
+        const draftMeta = [shortKoreanDate(draft.date), draft.owner ? `담당 ${escapeHtml(draft.owner)}` : ""].filter(Boolean).join(" / ");
+        noticePreview.innerHTML = `
+          <strong>${escapeHtml(draft.title || "제목 없음")}</strong>
+          <div>${escapeHtml(draftMeta)}</div>
+          <div>${escapeHtml(draft.body).replaceAll("\n", "<br>")}</div>
+        `;
+      }
+      if (!latest) {
         sidebarNoticePreview.innerHTML = `
           <div class="notice-board-kicker">금일 공지사항</div>
           <div class="notice-board-title">등록된 공지 없음</div>
@@ -8134,17 +8885,12 @@ HTML = r"""<!doctype html>
         `;
         return;
       }
-      const meta = [shortKoreanDate(payload.date), payload.owner ? `담당 ${escapeHtml(payload.owner)}` : ""].filter(Boolean).join(" / ");
-      noticePreview.innerHTML = `
-        <strong>${escapeHtml(payload.title || "제목 없음")}</strong>
-        <div>${escapeHtml(meta)}</div>
-        <div>${escapeHtml(payload.body).replaceAll("\n", "<br>")}</div>
-      `;
+      const meta = [shortKoreanDate(latest.date), latest.owner ? `담당 ${escapeHtml(latest.owner)}` : ""].filter(Boolean).join(" / ");
       sidebarNoticePreview.innerHTML = `
         <div class="notice-board-kicker">금일 공지사항</div>
-        <div class="notice-board-title">${escapeHtml(payload.title || "제목 없음")}</div>
+        <div class="notice-board-title">${escapeHtml(latest.title || "제목 없음")}</div>
         <div class="notice-board-meta">${escapeHtml(meta)}</div>
-        <div class="notice-board-body">${escapeHtml(payload.body || "내용 없음")}</div>
+        <div class="notice-board-body">${escapeHtml(latest.body || "내용 없음")}</div>
         ${noticeAutoHtml()}
       `;
     }
@@ -8169,11 +8915,22 @@ HTML = r"""<!doctype html>
         return;
       }
       const payload = noticePayload();
-      localStorage.setItem("workhub_notice_template", JSON.stringify(payload));
+      if (!payload.title && !payload.body) {
+        notice.textContent = "공지 제목 또는 내용을 입력해주세요.";
+        noticeTitleInput?.focus();
+        return;
+      }
+      const rows = noticeRecords();
+      rows.unshift({
+        ...payload,
+        id: `notice-${Date.now()}`,
+        created_at: new Date().toISOString(),
+      });
+      saveNoticeRecords(rows);
+      resetNoticeInputs();
       renderNoticePreview();
       if (companyStaffNoticeTitle) companyStaffNoticeTitle.textContent = payload.title || "등록 전";
-      notice.textContent = "공지사항을 저장했습니다.";
-      closeNoticePopup();
+      notice.textContent = "공지사항을 저장했습니다. 입력칸은 새 공지를 위해 비워두었습니다.";
     }
 
     function clearNoticeTemplate() {
@@ -8181,14 +8938,21 @@ HTML = r"""<!doctype html>
         notice.textContent = "공지사항 관리 권한이 없습니다.";
         return;
       }
-      localStorage.removeItem("workhub_notice_template");
-      noticeTitleInput.value = "";
-      noticeOwnerInput.value = "";
-      noticeBodyInput.value = "";
-      noticeDateInput.value = todayString();
+      resetNoticeInputs();
       renderNoticePreview();
-      if (companyStaffNoticeTitle) companyStaffNoticeTitle.textContent = "등록 전";
       notice.textContent = "공지사항 입력 내용을 초기화했습니다.";
+    }
+
+    function deleteNoticeRecord(noticeId) {
+      if (!can("notice_manage")) {
+        notice.textContent = "공지사항 관리 권한이 없습니다.";
+        return;
+      }
+      const rows = noticeRecords().filter((row) => String(row.id) !== String(noticeId));
+      saveNoticeRecords(rows);
+      renderNoticePreview();
+      if (companyStaffNoticeTitle) companyStaffNoticeTitle.textContent = rows[0]?.title || "등록 전";
+      notice.textContent = "공지사항을 삭제했습니다.";
     }
 
     function resetCargoShipmentForm(record = null) {
@@ -8369,7 +9133,7 @@ HTML = r"""<!doctype html>
       const activeRecords = sortImportShipmentsByWarehouseDate(importShipments.filter((record) => !record.completed_at));
       dashboardImportScheduleSummary.textContent = `진행 ${activeRecords.length}건`;
       if (!activeRecords.length) {
-        dashboardImportScheduleBody.innerHTML = `<tr><td colspan="12"><div class="import-empty">등록된 수입제품 입고 일정이 없습니다.</div></td></tr>`;
+        dashboardImportScheduleBody.innerHTML = `<tr><td colspan="10"><div class="import-empty">등록된 수입제품 입고 일정이 없습니다.</div></td></tr>`;
         return;
       }
       dashboardImportScheduleBody.innerHTML = activeRecords.slice(0, 6).map((record) => `
@@ -8378,9 +9142,8 @@ HTML = r"""<!doctype html>
           <td>${escapeHtml(shortKoreanDate(record.departure_date) || "-")}</td>
           <td>${escapeHtml(shortKoreanDate(record.arrival_date) || "-")}</td>
           <td>${escapeHtml(record.loading_port || "-")}</td>
-          <td>${escapeHtml(record.arrival_port || "-")}</td>
-          <td title="${escapeHtml(record.shipper || "-")}">${escapeHtml(compactImportItemName(record.shipper, 16))}</td>
           <td class="left" title="${escapeHtml(record.item || "-")}">${escapeHtml(compactImportItemName(record.item, 18))}</td>
+          <td class="${escapeHtml(quantityLevelClass(record.quantity))}">${escapeHtml(record.quantity || "-")}</td>
           <td title="${escapeHtml(record.vessel_name || "-")}">${escapeHtml(compactImportItemName(record.vessel_name, 16))}</td>
           <td title="${escapeHtml(record.hbl_no || "-")}">${escapeHtml(compactImportItemName(record.hbl_no, 14))}</td>
           <td>${escapeHtml(record.size || "-")}</td>
@@ -8396,7 +9159,7 @@ HTML = r"""<!doctype html>
       importShipmentSummary.textContent = `진행 ${activeCount}건 / 완료 ${doneCount}건`;
       renderDashboardImportSchedule();
       if (!importShipments.length) {
-        importShipmentBody.innerHTML = `<tr><td colspan="12"><div class="import-empty">등록된 수입제품 입고 진행 건이 없습니다.</div></td></tr>`;
+        importShipmentBody.innerHTML = `<tr><td colspan="10"><div class="import-empty">등록된 수입제품 입고 진행 건이 없습니다.</div></td></tr>`;
         return;
       }
       importShipmentBody.innerHTML = "";
@@ -8420,9 +9183,8 @@ HTML = r"""<!doctype html>
           <td>${escapeHtml(shortKoreanDate(record.departure_date))}</td>
           <td>${escapeHtml(shortKoreanDate(record.arrival_date))}</td>
           <td>${escapeHtml(record.loading_port)}</td>
-          <td>${escapeHtml(record.arrival_port)}</td>
-          <td>${escapeHtml(record.shipper)}</td>
           <td class="left" title="${escapeHtml(record.item)}">${escapeHtml(compactImportItemName(record.item, 26))}</td>
+          <td class="${escapeHtml(quantityLevelClass(record.quantity))}">${escapeHtml(record.quantity)}</td>
           <td>${escapeHtml(record.vessel_name)}</td>
           <td>${escapeHtml(record.hbl_no)}</td>
           <td>${escapeHtml(record.size)}</td>
@@ -8796,6 +9558,33 @@ HTML = r"""<!doctype html>
         vendorContactSelect.appendChild(option);
       });
       renderStockVendorContacts();
+      renderVendorManageContacts();
+    }
+
+    function vendorManageTypeLabelText(type = activeVendorManageType) {
+      return type === "sales" ? "매출처" : "매입처";
+    }
+
+    function renderVendorManageContacts() {
+      if (!vendorManageList) return;
+      const label = vendorManageTypeLabelText();
+      if (vendorManageTypeLabel) vendorManageTypeLabel.value = label;
+      if (vendorManageListTitle) vendorManageListTitle.textContent = `저장된 ${label}`;
+      if (vendorManageDropMain) vendorManageDropMain.textContent = `${label} 거래처명/메일주소 엑셀을 업로드해주세요.`;
+      const items = vendorContacts.filter((contact) => (contact.vendor_type || "purchase") === activeVendorManageType);
+      vendorManageList.innerHTML = items.length
+        ? items.map((contact) => `
+          <button class="vendor-picker-option" type="button" data-vendor-manage-name="${escapeHtml(contact.vendor_name)}">
+            ${escapeHtml(contact.vendor_name)} / ${escapeHtml(contact.email)}
+          </button>
+        `).join("")
+        : `<div class="vendor-picker-empty">저장된 ${label} 메일 리스트가 없습니다.</div>`;
+    }
+
+    function fillVendorManageForm(contact) {
+      if (!contact) return;
+      if (vendorManageNameInput) vendorManageNameInput.value = contact.vendor_name || "";
+      if (vendorManageEmailInput) vendorManageEmailInput.value = contact.email || "";
     }
 
     function renderStockVendorContacts() {
@@ -8871,6 +9660,22 @@ HTML = r"""<!doctype html>
       csSubjectInput.value = currentMode === "mail-stock" ? "입고 및 품절 공지" : defaultCsSubject(selected.vendor_name);
     }
 
+    function syncVendorEmailFromName({ overwrite = false } = {}) {
+      const vendorName = vendorNameInput?.value.trim() || "";
+      const vendorType = vendorTypeSelect?.value || "purchase";
+      if (!vendorName) return;
+      const targetKey = normalizeSearchKeyword(vendorName);
+      const selected = vendorContacts.find((contact) => (
+        (contact.vendor_type || "purchase") === vendorType
+        && normalizeSearchKeyword(contact.vendor_name) === targetKey
+      ));
+      if (!selected) return;
+      if (overwrite || !recipientEmailInput.value.trim()) {
+        recipientEmailInput.value = selected.email;
+      }
+      if (vendorContactSelect) vendorContactSelect.value = `${vendorType}::${selected.vendor_name}`;
+    }
+
     function setSelectedStockVendor(selected) {
       if (!selected) {
         stockVendorTypeSelect.value = "purchase";
@@ -8918,7 +9723,7 @@ HTML = r"""<!doctype html>
       const email = recipientEmailInput.value.trim();
       const vendorType = vendorTypeSelect.value || "purchase";
       if (!vendorName || !email) {
-        notice.textContent = "업체명과 받는 업체 메일을 입력해주세요.";
+        notice.textContent = "거래처명과 받는 거래처 메일을 입력해주세요.";
         return;
       }
       try {
@@ -8929,11 +9734,11 @@ HTML = r"""<!doctype html>
           body: JSON.stringify({ vendor_type: vendorType, vendor_name: vendorName, email }),
         });
         const data = await response.json();
-        if (!response.ok) throw new Error(data.error || "업체 메일 저장에 실패했습니다.");
+        if (!response.ok) throw new Error(data.error || "거래처 메일 저장에 실패했습니다.");
         vendorContacts = data.contacts || [];
         renderVendorContacts();
         vendorContactSelect.value = `${vendorType}::${vendorName}`;
-        notice.textContent = "업체 메일 주소를 저장했습니다.";
+        notice.textContent = "거래처 메일 주소를 저장했습니다.";
       } catch (error) {
         notice.textContent = error.message;
       } finally {
@@ -8948,17 +9753,17 @@ HTML = r"""<!doctype html>
       if (vendorContactsDropMain) vendorContactsDropMain.textContent = file.name;
       const formData = new FormData();
       formData.append("file", file);
-      notice.textContent = "업체 메일 주소록을 저장 중입니다.";
+      notice.textContent = "거래처 메일 주소록을 저장 중입니다.";
       try {
         const response = await fetch("/api/vendor-contacts-import", {
           method: "POST",
           body: formData,
         });
         const data = await response.json();
-        if (!response.ok) throw new Error(data.error || "업체 메일 주소록 저장에 실패했습니다.");
+        if (!response.ok) throw new Error(data.error || "거래처 메일 주소록 저장에 실패했습니다.");
         vendorContacts = data.contacts || [];
         renderVendorContacts();
-        notice.textContent = data.message || "업체 메일 주소록을 저장했습니다.";
+        notice.textContent = data.message || "거래처 메일 주소록을 저장했습니다.";
       } catch (error) {
         notice.textContent = error.message;
       } finally {
@@ -8998,6 +9803,59 @@ HTML = r"""<!doctype html>
     function formatSalesPercent(value) {
       const number = Number(value || 0);
       return `${number.toLocaleString("ko-KR", { maximumFractionDigits: 1 })}%`;
+    }
+
+    async function saveVendorManageContact() {
+      const vendorName = vendorManageNameInput?.value.trim() || "";
+      const email = vendorManageEmailInput?.value.trim() || "";
+      if (!vendorName || !email) {
+        notice.textContent = "거래처명과 메일주소를 입력해주세요.";
+        return;
+      }
+      try {
+        if (vendorManageSave) vendorManageSave.disabled = true;
+        const response = await fetch("/api/vendor-contact", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ vendor_type: activeVendorManageType, vendor_name: vendorName, email }),
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "거래처 메일 저장에 실패했습니다.");
+        vendorContacts = data.contacts || [];
+        renderVendorContacts();
+        if (vendorContactSelect) vendorContactSelect.value = `${activeVendorManageType}::${vendorName}`;
+        notice.textContent = `${vendorManageTypeLabelText()} 메일 주소를 저장했습니다.`;
+      } catch (error) {
+        notice.textContent = error.message;
+      } finally {
+        if (vendorManageSave) vendorManageSave.disabled = false;
+      }
+    }
+
+    async function uploadVendorManageWorkbook() {
+      if (!vendorManageFileInput) return;
+      const file = vendorManageFileInput.files[0];
+      if (!file) return;
+      if (vendorManageDropMain) vendorManageDropMain.textContent = file.name;
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("vendor_type", activeVendorManageType);
+      notice.textContent = `${vendorManageTypeLabelText()} 메일 주소록을 저장 중입니다.`;
+      try {
+        const response = await fetch("/api/vendor-contacts-import", {
+          method: "POST",
+          body: formData,
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "거래처 메일 주소록 저장에 실패했습니다.");
+        vendorContacts = data.contacts || [];
+        renderVendorContacts();
+        notice.textContent = data.message || `${vendorManageTypeLabelText()} 메일 주소록을 저장했습니다.`;
+      } catch (error) {
+        notice.textContent = error.message;
+      } finally {
+        vendorManageFileInput.value = "";
+      }
     }
 
     function formatSignedSalesNumber(value, suffix = "") {
@@ -9553,6 +10411,11 @@ HTML = r"""<!doctype html>
       }
     }
 
+    function setDashboardCompareWaiting(amountWaiting, quantityWaiting) {
+      dashboardSalesAmountCompareCard?.classList.toggle("waiting", Boolean(amountWaiting));
+      dashboardSalesQuantityCompareCard?.classList.toggle("waiting", Boolean(quantityWaiting));
+    }
+
     function setDashboardSalesStatus(text, state = "") {
       if (!dashboardSalesStatus) return;
       dashboardSalesStatus.textContent = text;
@@ -9563,10 +10426,13 @@ HTML = r"""<!doctype html>
       setDashboardSalesStatus("연동 대기");
       setDashboardSalesMetric(dashboardTodaySalesLabel, dashboardTodaySales, "오늘 손익매출", "-");
       setDashboardSalesMetric(dashboardTodayQuantityLabel, dashboardTodayQuantity, "오늘 판매수량", "-");
+      setDashboardSalesMetric(dashboardPreviousSalesLabel, dashboardPreviousSales, "직전 영업일 매출", "-");
+      setDashboardSalesMetric(dashboardPreviousQuantityLabel, dashboardPreviousQuantity, "직전 영업일 수량", "-");
       setDashboardSalesMetric(dashboardMonthSalesLabel, dashboardMonthSales, "이번 달 누적매출", "-");
       setDashboardSalesMetric(dashboardSalesQuantityLabel, dashboardSalesQuantity, "이번 달 판매수량", "-");
       setDashboardSalesCompare(dashboardSalesAmountCompareLabel, dashboardSalesAmountCompare, dashboardSalesAmountRate, "매출금액 비교", "-", "-");
       setDashboardSalesCompare(dashboardSalesQuantityCompareLabel, dashboardSalesQuantityCompare, dashboardSalesQuantityRate, "판매수량 비교", "-", "-");
+      setDashboardCompareWaiting(true, true);
       setDashboardSalesMetric(null, dashboardSalesMargin, "", "-");
       setDashboardSalesMetric(null, dashboardSellerTotal, "", "-");
       setDashboardSalesMetric(null, dashboardSupplierPurchase, "", "-");
@@ -9604,6 +10470,20 @@ HTML = r"""<!doctype html>
         hasTodaySalesData ? "" : "notice",
       );
       setDashboardSalesMetric(
+        dashboardPreviousSalesLabel,
+        dashboardPreviousSales,
+        previousDateLabel ? `${previousDateLabel} 직전 영업일 매출` : "직전 영업일 매출",
+        yesterday.report_date ? formatSalesNumber(yesterday.profit_sales_amount) : "데이터 없음",
+        yesterday.report_date ? "" : "notice",
+      );
+      setDashboardSalesMetric(
+        dashboardPreviousQuantityLabel,
+        dashboardPreviousQuantity,
+        previousDateLabel ? `${previousDateLabel} 직전 영업일 수량` : "직전 영업일 수량",
+        yesterday.report_date ? `${formatSalesNumber(yesterday.quantity)}개` : "데이터 없음",
+        yesterday.report_date ? "" : "notice",
+      );
+      setDashboardSalesMetric(
         dashboardMonthSalesLabel,
         dashboardMonthSales,
         "이번 달 누적매출",
@@ -9633,6 +10513,7 @@ HTML = r"""<!doctype html>
         hasComparison ? formatSignedSalesPercent(comparison.quantity_delta_rate) : "-",
         hasComparison ? salesAmountClass(quantityDelta) : "notice",
       );
+      setDashboardCompareWaiting(!hasComparison, !hasComparison);
       setDashboardSalesMetric(null, dashboardSalesMargin, "", formatSalesNumber(marginAmount), salesAmountClass(marginAmount));
       setDashboardSalesMetric(null, dashboardSellerTotal, "", formatSalesNumber(sellerTotal.profit_sales_amount));
       setDashboardSalesMetric(null, dashboardSupplierPurchase, "", formatSalesNumber(supplierPurchaseTotal.purchase_total));
@@ -9779,13 +10660,8 @@ HTML = r"""<!doctype html>
     }
 
     async function loadCompanyStaffDashboard() {
-      let saved = {};
-      try {
-        saved = JSON.parse(localStorage.getItem("workhub_notice_template") || "{}");
-      } catch {
-        saved = {};
-      }
-      if (companyStaffNoticeTitle) companyStaffNoticeTitle.textContent = saved.title || "등록 전";
+      const saved = latestNoticeRecord();
+      if (companyStaffNoticeTitle) companyStaffNoticeTitle.textContent = saved?.title || "등록 전";
       if (!can("crm_view")) {
         renderCompanyStaffTasks([]);
         if (companyOrgBody) companyOrgBody.innerHTML = `<div class="company-org-empty">CRM 조회 권한이 없어 조직도 업무 현황을 볼 수 없습니다.</div>`;
@@ -10839,7 +11715,7 @@ HTML = r"""<!doctype html>
     }
 
     function openNoticeWidget() {
-      const payload = noticePayload();
+      const payload = latestNoticeRecord() || { date: todayString(), title: "", owner: "", body: "" };
       focusWidgetTaskId = "";
       focusWidgetEmployeeId = "";
       const meta = [shortKoreanDate(payload.date), payload.owner ? `담당 ${payload.owner}` : ""].filter(Boolean).join(" / ");
@@ -11232,6 +12108,25 @@ HTML = r"""<!doctype html>
       return parts ? `${Number(parts.month)}월 ${Number(parts.day)}일` : String(value || "");
     }
 
+    function quantityNumber(value) {
+      const match = String(value || "").replaceAll(",", "").match(/\d+(?:\.\d+)?/);
+      return match ? Number(match[0]) : 0;
+    }
+
+    function quantityLevelClass(value) {
+      const amount = quantityNumber(value);
+      if (amount >= 10) return "quantity-red";
+      if (amount >= 2) return "quantity-blue";
+      return "";
+    }
+
+    function applyQuantityClass(cell, value) {
+      if (!cell) return;
+      cell.classList.remove("quantity-blue", "quantity-red");
+      const className = quantityLevelClass(value);
+      if (className) cell.classList.add(className);
+    }
+
     function importDateSortKey(value) {
       const parts = parseDateParts(value);
       if (!parts) return "9999-99-99";
@@ -11311,6 +12206,7 @@ HTML = r"""<!doctype html>
       const valueNode = cell.querySelector(".ledger-cell-value");
       if (valueNode) valueNode.textContent = displayValue;
       else cell.textContent = displayValue;
+      if ((cell.dataset.field || cell.dataset.managementField) === "quantity") applyQuantityClass(cell, nextValue);
     }
 
     function syncReturnCheckButtonVisibility(row) {
@@ -11389,7 +12285,7 @@ HTML = r"""<!doctype html>
       return true;
     }
 
-    function suggestLedgerStatusAfterInvoice(row, field, previousValue, nextValue) {
+    async function suggestLedgerStatusAfterInvoice(row, field, previousValue, nextValue) {
       if (!row || !String(nextValue || "").trim() || String(previousValue || "").trim() === String(nextValue || "").trim()) return false;
       const currentStatus = fieldValue(row.querySelector('[data-field="status"]'));
       if (isFullyCompletedStatus(currentStatus)) return false;
@@ -11408,7 +12304,15 @@ HTML = r"""<!doctype html>
       }
       if (!suggested || suggested === currentStatus) return false;
       const label = field === "return_invoice" ? "회수 송장" : "재발송 송장";
-      if (window.confirm(`${label}이 입력되었습니다.\n처리상태를 "${suggested}"로 변경하시겠습니까?\n\n확인: 상태 변경 / 취소: 사용자 입력상태 유지`)) {
+      const approved = await requestAppConfirm({
+        kicker: "CS 처리상태",
+        title: `${label}이 입력되었습니다.`,
+        message: "입력된 송장 기준으로 처리상태를 자동 변경할 수 있습니다.",
+        highlight: `${currentStatus || "현재 상태 없음"} → ${suggested}`,
+        okText: "상태 변경",
+        cancelText: "현재 상태 유지",
+      });
+      if (approved) {
         setLedgerRowStatus(row, suggested);
         return true;
       }
@@ -11452,6 +12356,129 @@ HTML = r"""<!doctype html>
         if (!value) return true;
         return String(managementFieldValue(record, field)).toLowerCase().includes(value);
       });
+    }
+
+    function normalizeSearchKeyword(value) {
+      return String(value || "").replace(/[\s-]/g, "").toLowerCase();
+    }
+
+    function searchTextIncludes(value, query) {
+      const normalizedQuery = normalizeSearchKeyword(query);
+      if (!normalizedQuery) return true;
+      return normalizeSearchKeyword(value).includes(normalizedQuery);
+    }
+
+    function recordSearchMatches(record, fields, query) {
+      return fields.some((field) => searchTextIncludes(record[field], query));
+    }
+
+    function searchResultMain(scope, row) {
+      if (scope === "management") {
+        return [
+          shortKoreanDate(row.order_date || row.ship_date),
+          row.receiver_name || row.orderer_name || "이름 없음",
+          row.product_name || "상품명 없음",
+        ].filter(Boolean).join(" · ");
+      }
+      return [
+        shortKoreanDate(row.occurred_at || row.order_date || row.created_at),
+        row.receiver_name || row.orderer_name || row.sales_vendor || "이름 없음",
+        row.product_name || "상품명 없음",
+      ].filter(Boolean).join(" · ");
+    }
+
+    function searchResultSub(scope, row) {
+      if (scope === "management") {
+        return [
+          row.receiver_phone || row.sender_phone || "",
+          row.receiver_address || "",
+          row.invoice_number ? `송장 ${row.invoice_number}` : "",
+        ].filter(Boolean).join(" / ");
+      }
+      return [
+        row.receiver_phone || row.orderer_phone || "",
+        row.receiver_address || "",
+        row.original_invoice || row.return_invoice || row.reship_invoice ? `송장 ${row.original_invoice || row.return_invoice || row.reship_invoice}` : "",
+        row.cs_content || "",
+      ].filter(Boolean).join(" / ");
+    }
+
+    let activeSearchResultResolver = null;
+    let activeSearchResultCleanup = null;
+
+    function closeSearchResultDialog(result = null) {
+      const cleanup = activeSearchResultCleanup;
+      activeSearchResultCleanup = null;
+      if (cleanup) cleanup();
+      searchResultDialog?.classList.remove("open");
+      searchResultDialog?.setAttribute("aria-hidden", "true");
+      if (searchResultList) searchResultList.innerHTML = "";
+      const resolver = activeSearchResultResolver;
+      activeSearchResultResolver = null;
+      if (resolver) resolver(result);
+    }
+
+    function showSearchResultDialog({ scope, rows, query }) {
+      if (!searchResultDialog || !searchResultList) return Promise.resolve(null);
+      const label = scope === "management" ? "통합관리대장" : "CS 처리대장";
+      searchResultTitle.textContent = `${label} 검색 결과 선택`;
+      searchResultDescription.textContent = `"${query}" 검색 결과 ${rows.length}건입니다. 이동할 데이터를 선택해주세요.`;
+      searchResultList.innerHTML = rows.slice(0, 80).map((row, index) => {
+        const id = scope === "management" ? row.id : row.id;
+        const badge = scope === "management" ? (row.invoice_number || `#${id}`) : (row.original_invoice || row.return_invoice || row.reship_invoice || `#${id}`);
+        return `
+          <button class="search-result-item" type="button" data-search-result-index="${index}">
+            <div class="search-result-main"><span class="search-result-badge">${escapeHtml(badge)}</span>${escapeHtml(searchResultMain(scope, row))}</div>
+            <div class="search-result-sub">${escapeHtml(searchResultSub(scope, row))}</div>
+          </button>
+        `;
+      }).join("");
+      searchResultDialog.classList.add("open");
+      searchResultDialog.setAttribute("aria-hidden", "false");
+      setTimeout(() => searchResultList.querySelector("button")?.focus(), 0);
+      return new Promise((resolve) => {
+        const finish = (row = null) => {
+          closeSearchResultDialog(row);
+        };
+        const handleClick = (event) => {
+          const button = event.target.closest("[data-search-result-index]");
+          if (!button) return;
+          finish(rows[Number(button.dataset.searchResultIndex)]);
+        };
+        const handleClose = () => finish(null);
+        const handleBackdrop = (event) => {
+          if (event.target === searchResultDialog) finish(null);
+        };
+        searchResultList.addEventListener("click", handleClick);
+        searchResultClose?.addEventListener("click", handleClose);
+        searchResultDialog.addEventListener("click", handleBackdrop);
+        activeSearchResultCleanup = () => {
+          searchResultList.removeEventListener("click", handleClick);
+          searchResultClose?.removeEventListener("click", handleClose);
+          searchResultDialog.removeEventListener("click", handleBackdrop);
+        };
+        activeSearchResultResolver = resolve;
+      });
+    }
+
+    function highlightTableRow(row) {
+      if (!row) return;
+      row.scrollIntoView({ block: "center", inline: "nearest", behavior: "smooth" });
+      row.classList.remove("search-target-highlight");
+      void row.offsetWidth;
+      row.classList.add("search-target-highlight");
+      setTimeout(() => row.classList.remove("search-target-highlight"), 1900);
+    }
+
+    async function maybeOpenSearchPicker(scope, query, rows) {
+      const normalizedQuery = normalizeSearchKeyword(query);
+      if (!normalizedQuery || !rows.length) return;
+      const selected = rows.length === 1 ? rows[0] : await showSearchResultDialog({ scope, rows, query });
+      if (!selected) return;
+      const selector = scope === "management"
+        ? `tr[data-record-id="${CSS.escape(String(selected.id))}"]`
+        : `tr[data-case-id="${CSS.escape(String(selected.id))}"]`;
+      highlightTableRow(document.querySelector(selector));
     }
 
     function applyManagementFilters() {
@@ -11704,11 +12731,14 @@ HTML = r"""<!doctype html>
       activeCellEditors[scope] = { cell, control };
       setTimeout(() => {
         control?.focus();
-        if (control.select) control.select();
+        if (typeof control.setSelectionRange === "function") {
+          const endPosition = String(control.value || "").length;
+          control.setSelectionRange(endPosition, endPosition);
+        }
       }, 0);
     }
 
-    function applyCellEditor(scope) {
+    async function applyCellEditor(scope) {
       const selected = activeCellEditors[scope];
       if (!selected?.cell || !selected.control) return;
       const { cell, control } = selected;
@@ -11719,11 +12749,13 @@ HTML = r"""<!doctype html>
       markRowDirty(row, true);
       const checkbox = row?.querySelector("[data-row-check]");
       if (checkbox) checkbox.checked = true;
+      if (scope === "ledger") syncLedgerSelectAll();
       if (scope === "ledger") updateLedgerRowCompletion(row);
       let autoStatusApplied = false;
-      if (scope === "ledger" && ["return_invoice", "reship_invoice"].includes(cell.dataset.field || "")) {
-        autoStatusApplied = suggestLedgerStatusAfterInvoice(row, cell.dataset.field, previousValue, value);
-      } else if (scope === "ledger") {
+      const editedField = cell.dataset.field || "";
+      if (scope === "ledger" && ["return_invoice", "reship_invoice"].includes(editedField)) {
+        autoStatusApplied = await suggestLedgerStatusAfterInvoice(row, editedField, previousValue, value);
+      } else if (scope === "ledger" && editedField !== "status") {
         autoStatusApplied = applyLedgerOverallCompletion(row);
       }
       if (activeLedgerFilterField || activeManagementFilterField) refreshActiveFilterOptions();
@@ -11824,9 +12856,20 @@ HTML = r"""<!doctype html>
       if (currentMode === "ledger") csFields.style.display = "none";
     }
 
+    function syncLedgerSelectAll() {
+      if (!ledgerSelectAll) return;
+      const checks = Array.from(ledgerBody.querySelectorAll("tr[data-case-id] [data-row-check]"));
+      ledgerSelectAll.checked = checks.length > 0 && checks.every((checkbox) => checkbox.checked);
+      ledgerSelectAll.indeterminate = checks.some((checkbox) => checkbox.checked) && !ledgerSelectAll.checked;
+    }
+
     function renderLedger(cases) {
       closeCellEditor("ledger");
       ledgerBody.innerHTML = "";
+      if (ledgerSelectAll) {
+        ledgerSelectAll.checked = false;
+        ledgerSelectAll.indeterminate = false;
+      }
       if (!cases || cases.length === 0) {
         const row = document.createElement("tr");
         row.innerHTML = `<td colspan="21">조회된 CS건이 없습니다.</td>`;
@@ -11866,7 +12909,7 @@ HTML = r"""<!doctype html>
           <td>${escapeHtml(csCase.receiver_name)}</td>
           <td>${escapeHtml(csCase.receiver_phone)}</td>
           <td class="left">${escapeHtml(csCase.product_name)}</td>
-          <td>${escapeHtml(csCase.quantity)}</td>
+          <td class="${escapeHtml(quantityLevelClass(csCase.quantity))}">${escapeHtml(csCase.quantity)}</td>
           <td class="left">${escapeHtml(csCase.receiver_address)}</td>
           <td>${escapeHtml(csCase.courier)}</td>
           <td>${escapeHtml(csCase.original_invoice || csCase.original_info)}</td>
@@ -11887,9 +12930,9 @@ HTML = r"""<!doctype html>
       }
     }
 
-    async function loadLedgerCases() {
+    async function loadLedgerCases({ showPicker = false } = {}) {
       const query = ledgerSearchInput.value.trim();
-      const params = new URLSearchParams({ limit: ledgerPageSize.value || "100" });
+      const params = new URLSearchParams({ limit: ledgerPageSize.value || "1000" });
       if (query) params.set("q", query);
       if (ledgerYearFilter?.value) params.set("year", ledgerYearFilter.value);
       if (ledgerMonthFilter?.value) params.set("month", ledgerMonthFilter.value);
@@ -11900,6 +12943,27 @@ HTML = r"""<!doctype html>
         const data = await response.json();
         ledgerCases = data.cases || [];
         applyLedgerFilters();
+        if (showPicker && query) {
+          const searchableRows = ledgerCases
+            .filter(matchesLedgerFilters)
+            .filter((row) => recordSearchMatches(row, [
+              "sales_vendor",
+              "purchase_vendor",
+              "vendor_name",
+              "orderer_name",
+              "orderer_phone",
+              "receiver_name",
+              "receiver_phone",
+              "receiver_address",
+              "product_name",
+              "original_invoice",
+              "original_info",
+              "return_invoice",
+              "reship_invoice",
+              "cs_content",
+            ], query));
+          await maybeOpenSearchPicker("ledger", query, searchableRows);
+        }
         showCsFollowupAlertsIfNeeded();
       } catch {
         ledgerCases = [];
@@ -11936,7 +13000,7 @@ HTML = r"""<!doctype html>
     }
 
     function importModeLabel(mode) {
-      return mode === "replace" ? "전체 데이터 교체 업로드" : "일일 추가 업로드";
+      return mode === "replace" ? "전체 데이터 교체" : "중복 제외 신규만 업로드";
     }
 
     function importPreviewText(preview) {
@@ -11945,6 +13009,7 @@ HTML = r"""<!doctype html>
         `추가 예정: ${preview.insertable || 0}건`,
         `이미 DB에 있는 중복: ${preview.duplicate_existing || 0}건`,
         `파일 안 중복: ${preview.duplicate_in_file || 0}건`,
+        `확인/수정 필요: ${preview.invalid_count || 0}건`,
       ];
       const duplicates = Array.isArray(preview.duplicates) ? preview.duplicates : [];
       if (duplicates.length) {
@@ -11987,13 +13052,43 @@ HTML = r"""<!doctype html>
       });
     }
 
-    function mergeImportCorrections(existing, next) {
-      const map = new Map();
-      [...(existing || []), ...(next || [])].forEach((item) => {
-        const key = `${item.source_sheet || ""}::${item.source_row || ""}`;
-        if (!key.endsWith("::")) map.set(key, { ...(map.get(key) || {}), ...item });
+    function requestImportModeSelection({ ledgerName, preview }) {
+      if (!importModeDialog || !importModeTitle || !importModeDescription || !importModePreview || !importModeCancel || !importModeDaily || !importModeReplace) {
+        return Promise.resolve("");
+      }
+      importModeTitle.textContent = `${ledgerName} 업로드 방식 선택`;
+      importModeDescription.textContent = "최종 업로드 전에 처리 방식을 선택해주세요. 전체 교체는 기존 데이터를 삭제하고 파일 내용으로 다시 저장합니다.";
+      importModePreview.textContent = [
+        `선택 파일 기준`,
+        importPreviewText(preview),
+        "",
+        "중복 제외 신규만 업로드: 기존 데이터와 중복되는 건은 제외하고 신규 건만 추가",
+        "전체 데이터 교체: 현재 저장된 전체 데이터를 삭제하고 선택 파일로 교체",
+      ].join("\n");
+      importModeDialog.classList.add("open");
+      importModeDialog.setAttribute("aria-hidden", "false");
+      return new Promise((resolve) => {
+        const finish = (mode) => {
+          importModeDialog.classList.remove("open");
+          importModeDialog.setAttribute("aria-hidden", "true");
+          importModeCancel.removeEventListener("click", cancel);
+          importModeDaily.removeEventListener("click", daily);
+          importModeReplace.removeEventListener("click", replace);
+          importModeDialog.removeEventListener("click", backdropCancel);
+          resolve(mode);
+        };
+        const cancel = () => finish("");
+        const daily = () => finish("daily");
+        const replace = () => finish("replace");
+        const backdropCancel = (event) => {
+          if (event.target === importModeDialog) finish("");
+        };
+        importModeCancel.addEventListener("click", cancel);
+        importModeDaily.addEventListener("click", daily);
+        importModeReplace.addEventListener("click", replace);
+        importModeDialog.addEventListener("click", backdropCancel);
+        importModeDaily.focus();
       });
-      return Array.from(map.values());
     }
 
     async function previewLedgerImport(file, mode, corrections = []) {
@@ -12014,6 +13109,7 @@ HTML = r"""<!doctype html>
       const formData = new FormData();
       formData.append("file", file);
       formData.append("mode", mode);
+      if (file?.lastModified) formData.append("file_last_modified", String(file.lastModified));
       if (corrections.length) formData.append("corrections", JSON.stringify(corrections));
       const response = await fetch("/api/management-import-preview", {
         method: "POST",
@@ -12034,6 +13130,7 @@ HTML = r"""<!doctype html>
           inputType: issue.input_type || "text",
           message: issue.message || "",
           options: Array.isArray(issue.options) ? issue.options : [],
+          suggestedValue: issue.suggested_value || "",
         });
       });
       return Array.from(fields.values());
@@ -12044,7 +13141,7 @@ HTML = r"""<!doctype html>
       importCorrectionList.innerHTML = rows.map((row, rowIndex) => {
         const fields = correctionFieldsForRow(row);
         const fieldHtml = fields.map((field) => {
-          const value = row.record?.[field.field] || "";
+          const value = field.suggestedValue || row.record?.[field.field] || "";
           const inputType = field.inputType === "number" ? "number" : "text";
           const controlHtml = field.inputType === "select"
             ? `<select
@@ -12087,8 +13184,8 @@ HTML = r"""<!doctype html>
       if (!importCorrectionDialog || !importCorrectionTitle || !importCorrectionDescription || !importCorrectionList || !importCorrectionCancel || !importCorrectionApply) {
         return Promise.resolve(null);
       }
-      importCorrectionTitle.textContent = `${ledgerName} 업로드 전 형식 수정`;
-      importCorrectionDescription.textContent = `기존 양식과 맞지 않는 행 ${rows.length}건이 있습니다. 텍스트/숫자 값을 수정한 뒤 적용해주세요.`;
+      importCorrectionTitle.textContent = `${ledgerName} 업로드 데이터 수정`;
+      importCorrectionDescription.textContent = `업로드는 완료되었습니다. 기존 양식과 맞지 않는 행 ${rows.length}건만 수정한 뒤 저장해주세요.`;
       renderImportCorrectionRows(rows);
       importCorrectionDialog.classList.add("open");
       importCorrectionDialog.setAttribute("aria-hidden", "false");
@@ -12105,6 +13202,8 @@ HTML = r"""<!doctype html>
         const apply = () => {
           const corrections = rows.map((row, rowIndex) => {
             const correction = {
+              id: row.id || row.record?.id || "",
+              source_file: row.source_file || row.record?.source_file || "",
               source_sheet: row.source_sheet || row.record?.source_sheet || "",
               source_row: row.source_row || row.record?.source_row || row.row || "",
             };
@@ -12126,16 +13225,35 @@ HTML = r"""<!doctype html>
       });
     }
 
-    async function resolveImportCorrections({ ledgerName, file, mode, preview, previewFn }) {
-      let currentPreview = preview;
-      let corrections = [];
-      while (currentPreview?.has_invalid_rows) {
-        const nextCorrections = await requestImportCorrectionApproval({ ledgerName, preview: currentPreview });
-        if (nextCorrections === null) return null;
-        corrections = mergeImportCorrections(corrections, nextCorrections);
-        currentPreview = await previewFn(file, mode, corrections);
+    async function applyPostImportCorrections({ ledgerName, endpoint, invalidRows }) {
+      let rows = Array.isArray(invalidRows) ? invalidRows : [];
+      let updated = 0;
+      let canceled = false;
+      while (rows.length) {
+        const corrections = await requestImportCorrectionApproval({
+          ledgerName,
+          preview: { invalid_rows: rows },
+        });
+        if (corrections === null) {
+          notice.textContent = `${ledgerName} 업로드는 완료됐지만 데이터 수정은 취소했습니다.`;
+          canceled = true;
+          break;
+        }
+        notice.textContent = `${ledgerName} 업로드 데이터 수정 저장 중입니다.`;
+        const response = await fetch(endpoint, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ corrections }),
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || `${ledgerName} 업로드 데이터 수정에 실패했습니다.`);
+        updated += Number(data.updated || 0);
+        rows = Array.isArray(data.invalid_rows) ? data.invalid_rows : [];
+        if (rows.length) {
+          notice.textContent = `${ledgerName} 수정 후에도 확인이 필요한 행 ${rows.length}건이 남아 있습니다.`;
+        }
       }
-      return { corrections, preview: currentPreview };
+      return { updated, canceled, remaining: rows.length };
     }
 
     async function confirmImportIfNeeded({ ledgerName, mode, preview }) {
@@ -12147,10 +13265,10 @@ HTML = r"""<!doctype html>
           proceedLabel: "전체 교체 진행",
         });
       }
-      if (preview?.has_duplicates) {
+      if (Number(preview?.duplicate_existing || 0) > 0) {
         return requestImportWarningApproval({
           title: `${ledgerName} 중복 업로드 경고`,
-          description: "이미 올라간 것으로 보이는 데이터가 있습니다. 진행하면 중복 건은 제외하고 새 데이터만 추가합니다.",
+          description: "이미 DB에 올라간 것으로 보이는 데이터가 있습니다. 진행하면 기존 중복 건과 파일 내부 중복 건은 제외하고 새 데이터만 추가합니다.",
           previewText: importPreviewText(preview),
           proceedLabel: "새 데이터만 추가",
         });
@@ -12159,33 +13277,21 @@ HTML = r"""<!doctype html>
     }
 
     async function uploadLedgerWorkbook() {
+      if (ledgerUploadInProgress) return;
       const file = ledgerImportInput.files[0];
       if (!file) return;
-      const mode = ledgerImportMode || "daily";
-      notice.textContent = `CS 처리대장 ${importModeLabel(mode)} 검토 중입니다.`;
+      ledgerUploadInProgress = true;
       try {
-        const preview = await previewLedgerImport(file, mode);
-        const correctionResult = await resolveImportCorrections({
-          ledgerName: "CS 처리대장",
-          file,
-          mode,
-          preview,
-          previewFn: previewLedgerImport,
-        });
-        if (correctionResult === null) {
-          notice.textContent = "CS 처리대장 업로드를 취소했습니다.";
-          return;
-        }
-        const corrections = correctionResult.corrections;
-        const approved = await confirmImportIfNeeded({ ledgerName: "CS 처리대장", mode, preview: correctionResult.preview });
-        if (!approved) {
+        notice.textContent = "CS 처리대장 업로드 파일 검토 중입니다.";
+        const preview = await previewLedgerImport(file, "daily");
+        const mode = await requestImportModeSelection({ ledgerName: "CS 처리대장", preview });
+        if (!mode) {
           notice.textContent = "CS 처리대장 업로드를 취소했습니다.";
           return;
         }
         const formData = new FormData();
         formData.append("file", file);
         formData.append("mode", mode);
-        if (corrections.length) formData.append("corrections", JSON.stringify(corrections));
         notice.textContent = `CS 처리대장 ${importModeLabel(mode)} 진행 중입니다.`;
         const response = await fetch("/api/cs-cases-import", {
           method: "POST",
@@ -12193,7 +13299,16 @@ HTML = r"""<!doctype html>
         });
         const data = await response.json();
         if (!response.ok) throw new Error(data.error || "CS 처리대장 업로드에 실패했습니다.");
-        notice.textContent = data.message || "CS 처리대장 데이터를 업로드했습니다.";
+        const correctionResult = await applyPostImportCorrections({
+          ledgerName: "CS 처리대장",
+          endpoint: "/api/cs-cases-import-corrections",
+          invalidRows: data.invalid_rows || [],
+        });
+        notice.textContent = correctionResult.canceled
+          ? `${data.message || "CS 처리대장 데이터를 업로드했습니다."} 수정이 필요한 행 ${correctionResult.remaining}건이 남아 있습니다.`
+          : correctionResult.updated
+          ? `${data.message || "CS 처리대장 데이터를 업로드했습니다."} 수정 ${correctionResult.updated}건을 저장했습니다.`
+          : data.message || "CS 처리대장 데이터를 업로드했습니다.";
         if (currentMode !== "ledger") {
           showWorkspace("ledger");
         } else {
@@ -12204,13 +13319,53 @@ HTML = r"""<!doctype html>
       } finally {
         ledgerImportInput.value = "";
         ledgerImportMode = "daily";
+        ledgerUploadInProgress = false;
       }
+    }
+
+    function visibleTextLength(value) {
+      return String(value || "").replace(/\s+/g, " ").trim().length;
+    }
+
+    function updateManagementColumnWidths(records) {
+      const configs = {
+        select: { min: 28, max: 28, header: "" },
+        order_date: { min: 74, max: 94, header: "주문일자" },
+        ship_date: { min: 74, max: 94, header: "출고일" },
+        purchase_vendor: { min: 108, max: 190, header: "매입거래처" },
+        sales_vendor: { min: 108, max: 190, header: "매출거래처" },
+        transaction_type: { min: 74, max: 116, header: "거래구분" },
+        ledger_checked: { min: 88, max: 128, header: "장부입력확인" },
+        orderer_name: { min: 56, max: 86, header: "주문자" },
+        sender_phone: { min: 88, max: 112, header: "발신자연락처" },
+        receiver_name: { min: 56, max: 86, header: "수령자" },
+        receiver_phone: { min: 88, max: 112, header: "수령자연락처" },
+        product_name: { min: 170, max: 250, header: "제품명" },
+        quantity: { min: 54, max: 72, header: "수량" },
+        receiver_address: { min: 190, max: 280, header: "상세주소" },
+        courier: { min: 70, max: 112, header: "택배사" },
+        invoice_number: { min: 104, max: 170, header: "운송장번호" },
+        memo: { min: 120, max: 210, header: "특이사항" },
+        cs_action: { min: 74, max: 86, header: "CS접수" },
+      };
+      const sample = (records || []).slice(0, 500);
+      document.querySelectorAll('.management-wrap col[data-management-col]').forEach((col) => {
+        const field = col.dataset.managementCol;
+        const config = configs[field] || { min: 90, max: 180, header: field };
+        const maxLength = Math.max(
+          visibleTextLength(config.header),
+          ...sample.map((record) => visibleTextLength(record[field]))
+        );
+        const width = Math.max(config.min, Math.min(config.max, Math.round(38 + maxLength * 8.2)));
+        col.style.setProperty("--management-col-width", `${width}px`);
+      });
     }
 
     function renderManagement(records) {
       closeCellEditor("management");
       managementBody.innerHTML = "";
       if (managementSelectAll) managementSelectAll.checked = false;
+      updateManagementColumnWidths(records || []);
       if (!records || records.length === 0) {
         const row = document.createElement("tr");
         row.innerHTML = `<td colspan="18">조회된 통합관리대장 데이터가 없습니다.</td>`;
@@ -12269,7 +13424,7 @@ HTML = r"""<!doctype html>
           ${editableCell({ scope: "management", field: "receiver_name", label: "수령자", value: record.receiver_name })}
           ${editableCell({ scope: "management", field: "receiver_phone", label: "수령자연락처", value: record.receiver_phone })}
           ${editableCell({ scope: "management", field: "product_name", label: "제품명", value: record.product_name, align: "left", input: "textarea" })}
-          ${editableCell({ scope: "management", field: "quantity", label: "수량", value: record.quantity })}
+          ${editableCell({ scope: "management", field: "quantity", label: "수량", value: record.quantity, align: quantityLevelClass(record.quantity) })}
           ${editableCell({ scope: "management", field: "receiver_address", label: "상세주소", value: record.receiver_address, align: "left", input: "textarea" })}
           ${editableCell({ scope: "management", field: "courier", label: "택배사", value: record.courier })}
           ${editableCell({ scope: "management", field: "invoice_number", label: "운송장번호", value: record.invoice_number })}
@@ -12281,9 +13436,9 @@ HTML = r"""<!doctype html>
       });
     }
 
-    async function loadManagementRecords() {
+    async function loadManagementRecords({ showPicker = false } = {}) {
       const query = managementSearchInput.value.trim();
-      const params = new URLSearchParams({ limit: managementPageSize.value || "500" });
+      const params = new URLSearchParams({ limit: managementPageSize.value || "1000" });
       const period = selectedManagementPeriod();
       if (query) params.set("q", query);
       if (period.year) params.set("year", period.year);
@@ -12295,6 +13450,24 @@ HTML = r"""<!doctype html>
         const data = await response.json();
         managementRecords = data.records || [];
         applyManagementFilters();
+        if (showPicker && query) {
+          const searchableRows = managementRecords
+            .filter(matchesManagementFilters)
+            .filter((row) => recordSearchMatches(row, [
+              "purchase_vendor",
+              "sales_vendor",
+              "orderer_name",
+              "sender_phone",
+              "receiver_name",
+              "receiver_phone",
+              "receiver_address",
+              "product_name",
+              "courier",
+              "invoice_number",
+              "memo",
+            ], query));
+          await maybeOpenSearchPicker("management", query, searchableRows);
+        }
       } catch {
         managementRecords = [];
         applyManagementFilters();
@@ -12322,33 +13495,22 @@ HTML = r"""<!doctype html>
     }
 
     async function uploadManagementWorkbook() {
+      if (managementUploadInProgress) return;
       const file = managementImportInput.files[0];
       if (!file) return;
-      const mode = managementImportMode || "daily";
-      notice.textContent = `통합관리대장 ${importModeLabel(mode)} 검토 중입니다.`;
+      managementUploadInProgress = true;
       try {
-        const preview = await previewManagementImport(file, mode);
-        const correctionResult = await resolveImportCorrections({
-          ledgerName: "통합관리대장",
-          file,
-          mode,
-          preview,
-          previewFn: previewManagementImport,
-        });
-        if (correctionResult === null) {
-          notice.textContent = "통합관리대장 업로드를 취소했습니다.";
-          return;
-        }
-        const corrections = correctionResult.corrections;
-        const approved = await confirmImportIfNeeded({ ledgerName: "통합관리대장", mode, preview: correctionResult.preview });
-        if (!approved) {
+        notice.textContent = "통합관리대장 업로드 파일 검토 중입니다.";
+        const preview = await previewManagementImport(file, "daily");
+        const mode = await requestImportModeSelection({ ledgerName: "통합관리대장", preview });
+        if (!mode) {
           notice.textContent = "통합관리대장 업로드를 취소했습니다.";
           return;
         }
         const formData = new FormData();
         formData.append("file", file);
         formData.append("mode", mode);
-        if (corrections.length) formData.append("corrections", JSON.stringify(corrections));
+        if (file?.lastModified) formData.append("file_last_modified", String(file.lastModified));
         notice.textContent = `통합관리대장 ${importModeLabel(mode)} 진행 중입니다.`;
         const response = await fetch("/api/management-import", {
           method: "POST",
@@ -12356,7 +13518,16 @@ HTML = r"""<!doctype html>
         });
         const data = await response.json();
         if (!response.ok) throw new Error(data.error || "통합관리대장 업로드에 실패했습니다.");
-        notice.textContent = data.message || "통합관리대장 데이터를 업로드했습니다.";
+        const correctionResult = await applyPostImportCorrections({
+          ledgerName: "통합관리대장",
+          endpoint: "/api/management-import-corrections",
+          invalidRows: data.invalid_rows || [],
+        });
+        notice.textContent = correctionResult.canceled
+          ? `${data.message || "통합관리대장 데이터를 업로드했습니다."} 수정이 필요한 행 ${correctionResult.remaining}건이 남아 있습니다.`
+          : correctionResult.updated
+          ? `${data.message || "통합관리대장 데이터를 업로드했습니다."} 수정 ${correctionResult.updated}건을 저장했습니다.`
+          : data.message || "통합관리대장 데이터를 업로드했습니다.";
         if (currentMode !== "management") {
           showWorkspace("management");
         } else {
@@ -12367,6 +13538,7 @@ HTML = r"""<!doctype html>
       } finally {
         managementImportInput.value = "";
         managementImportMode = "daily";
+        managementUploadInProgress = false;
       }
     }
 
@@ -12554,6 +13726,41 @@ HTML = r"""<!doctype html>
       returnCheckPopup?.classList.remove("open");
     }
 
+    let activeAppConfirmResolver = null;
+
+    function closeAppConfirmDialog(result = false) {
+      appConfirmDialog?.classList.remove("open");
+      appConfirmDialog?.setAttribute("aria-hidden", "true");
+      const resolver = activeAppConfirmResolver;
+      activeAppConfirmResolver = null;
+      if (resolver) resolver(Boolean(result));
+    }
+
+    function requestAppConfirm({
+      kicker = "상태 변경 확인",
+      title = "처리상태를 변경할까요?",
+      message = "",
+      highlight = "",
+      okText = "변경",
+      cancelText = "유지",
+    } = {}) {
+      if (!appConfirmDialog) return Promise.resolve(window.confirm(`${title}\n\n${message}`));
+      if (activeAppConfirmResolver) closeAppConfirmDialog(false);
+      appConfirmKicker.textContent = kicker;
+      appConfirmTitle.textContent = title;
+      appConfirmMessage.textContent = message;
+      appConfirmHighlight.textContent = highlight;
+      appConfirmHighlight.hidden = !highlight;
+      appConfirmOk.textContent = okText;
+      appConfirmCancel.textContent = cancelText;
+      appConfirmDialog.classList.add("open");
+      appConfirmDialog.setAttribute("aria-hidden", "false");
+      setTimeout(() => appConfirmOk?.focus(), 0);
+      return new Promise((resolve) => {
+        activeAppConfirmResolver = resolve;
+      });
+    }
+
     function applyReturnCheckPopup() {
       const caseId = returnCheckCaseId.value || "";
       const row = ledgerRowByCaseId(caseId);
@@ -12657,17 +13864,25 @@ HTML = r"""<!doctype html>
       if ((sourceMode !== "management" && sourceMode !== "ledger") || nextMode === sourceMode) return true;
       if (!hasPendingWorkspaceChanges(sourceMode)) return true;
       const sourceLabel = sourceMode === "management" ? "통합관리대장" : "CS 처리대장";
-      const approved = window.confirm(`${sourceLabel}에 저장되지 않은 변경 내용이 있습니다.\n변경된 내용을 저장하시겠습니까?\n\n확인: 저장 후 이동\n취소: 현재 화면 유지`);
-      if (!approved) {
-        notice.textContent = "이동을 취소했습니다. 변경 내용을 저장하거나 취소 후 다시 이동해주세요.";
-        return false;
-      }
-      if (activeEditorHasChange(sourceMode)) applyCellEditor(sourceMode);
       isNavigationSaving = true;
-      notice.textContent = "변경 내용을 저장한 뒤 이동합니다.";
-      saveCurrentWorkspaceRows({ mode: sourceMode, silent: false, selectedOnly: false })
-        .then(() => {
-          isNavigationSaving = false;
+      requestAppConfirm({
+        kicker: "저장 확인",
+        title: `${sourceLabel} 변경 내용을 저장할까요?`,
+        message: "저장하지 않은 셀 수정 내용이 있습니다. 저장 후 이동하면 변경 내용 누락을 막을 수 있습니다.",
+        highlight: `${sourceLabel} 저장 후 이동`,
+        okText: "저장 후 이동",
+        cancelText: "현재 화면 유지",
+      })
+        .then(async (approved) => {
+          if (!approved) {
+            notice.textContent = "이동을 취소했습니다. 변경 내용을 저장하거나 취소 후 다시 이동해주세요.";
+            return;
+          }
+          if (activeEditorHasChange(sourceMode)) {
+            await applyCellEditor(sourceMode);
+          }
+          notice.textContent = "변경 내용을 저장한 뒤 이동합니다.";
+          await saveCurrentWorkspaceRows({ mode: sourceMode, silent: false, selectedOnly: false });
           if (hasPendingWorkspaceChanges(sourceMode)) {
             notice.textContent = "저장하지 못한 변경 내용이 있어 이동하지 않았습니다.";
             return;
@@ -12675,8 +13890,10 @@ HTML = r"""<!doctype html>
           resumeAction();
         })
         .catch((error) => {
-          isNavigationSaving = false;
           notice.textContent = error.message || "변경 내용 저장에 실패했습니다.";
+        })
+        .finally(() => {
+          isNavigationSaving = false;
         });
       return false;
     }
@@ -13129,10 +14346,20 @@ HTML = r"""<!doctype html>
     const mailPopupTitles = {
       cs: "CS 요청",
       stock: "입고 및 품절 공지",
+      purchaseContacts: "매입처 관리",
+      salesContacts: "매출처 관리",
     };
 
     function openMailMessagePopup(type) {
-      const title = mailPopupTitles[type] || "유통사 업무관련 메일 발송";
+      if (type === "purchaseContacts" || type === "salesContacts") {
+        activeVendorManageType = type === "salesContacts" ? "sales" : "purchase";
+        openModal("vendor-contacts");
+        modalTitle.textContent = mailPopupTitles[type];
+        renderVendorManageContacts();
+        loadVendorContacts();
+        return;
+      }
+      const title = mailPopupTitles[type] || "거래처 업무관련";
       openModal(type === "stock" ? "mail-stock" : "cs");
       modalTitle.textContent = title;
     }
@@ -13164,6 +14391,9 @@ HTML = r"""<!doctype html>
       vendorTypeSelect.value = "purchase";
       recipientEmailInput.value = "";
       vendorNameInput.value = "";
+      if (vendorContactManageFields) vendorContactManageFields.style.display = "none";
+      if (vendorManageNameInput) vendorManageNameInput.value = "";
+      if (vendorManageEmailInput) vendorManageEmailInput.value = "";
       csOriginInput.value = "";
       csProductInput.value = "";
       csReceiverInput.value = "";
@@ -13255,7 +14485,7 @@ HTML = r"""<!doctype html>
         fileInput.required = false;
         templateInput.required = false;
       } else if (mode === "cs") {
-        modalTitle.textContent = "업체 CS 요청";
+        modalTitle.textContent = "거래처 CS 요청";
         submitButton.textContent = "메일 전송";
         submitButton.className = "btn primary";
         deliveryOptions.style.display = "none";
@@ -13270,6 +14500,23 @@ HTML = r"""<!doctype html>
         templateInput.required = false;
         loadVendorContacts();
         loadCsCases();
+      } else if (mode === "vendor-contacts") {
+        modalTitle.textContent = `${vendorManageTypeLabelText()} 관리`;
+        submitButton.textContent = "닫기";
+        submitButton.className = "btn";
+        deliveryOptions.style.display = "none";
+        templateUpload.style.display = "none";
+        vehicleFields.style.display = "none";
+        csFields.style.display = "none";
+        if (stockNoticeFields) stockNoticeFields.style.display = "none";
+        if (vendorContactManageFields) vendorContactManageFields.style.display = "block";
+        ledgerFields.style.display = "none";
+        managementFields.style.display = "none";
+        messagePlaceholder.style.display = "none";
+        fileInput.required = false;
+        templateInput.required = false;
+        renderVendorManageContacts();
+        loadVendorContacts();
       } else if (mode === "mail-stock") {
         modalTitle.textContent = "입고 및 품절 공지";
         submitButton.textContent = "공지 메일 발송";
@@ -13336,7 +14583,7 @@ HTML = r"""<!doctype html>
         managementSearchInput.value = "";
         managementYearFilter.value = "";
         managementMonthFilter.value = "";
-        managementPageSize.value = "500";
+        managementPageSize.value = "1000";
         managementImportInput.value = "";
         Object.keys(managementFilters).forEach((key) => delete managementFilters[key]);
         closeLedgerFilter();
@@ -13344,8 +14591,14 @@ HTML = r"""<!doctype html>
       }
 
       const fileDrop = document.querySelector("label[for='fileInput']");
-      fileDrop.style.display = mode === "vehicle" || mode === "cs" || mode === "ledger" || mode === "management" || mode.startsWith("mail-") ? "none" : "grid";
-      fileLabel.style.display = mode === "vehicle" || mode === "cs" || mode === "ledger" || mode === "management" || mode.startsWith("mail-") ? "none" : "block";
+      fileDrop.style.display = mode === "vehicle" || mode === "cs" || mode === "vendor-contacts" || mode === "ledger" || mode === "management" || mode.startsWith("mail-") ? "none" : "grid";
+      fileLabel.style.display = mode === "vehicle" || mode === "cs" || mode === "vendor-contacts" || mode === "ledger" || mode === "management" || mode.startsWith("mail-") ? "none" : "block";
+    }
+
+    function requestCloseModal() {
+      if (!confirmSaveBeforeLeaving("modal-close", requestCloseModal)) return false;
+      closeModal();
+      return true;
     }
 
     function closeModal() {
@@ -13427,6 +14680,7 @@ HTML = r"""<!doctype html>
       if (mode === "fileLibrary" && !fileLibraryWorkspace) mode = "dashboard";
       if (mode === "crm" && !can("crm_view")) mode = "dashboard";
       currentMode = mode;
+      updateTopbarSearchPlaceholder(mode);
       const showImport = mode === "import";
       const showManagement = mode === "management";
       const showLedger = mode === "ledger";
@@ -13457,7 +14711,7 @@ HTML = r"""<!doctype html>
         managementSearchInput.value = "";
         managementYearFilter.value = "";
         managementMonthFilter.value = "";
-        managementPageSize.value = "500";
+        managementPageSize.value = "1000";
         managementImportInput.value = "";
         closeLedgerFilter();
         loadManagementWorkspaceData();
@@ -13519,6 +14773,112 @@ HTML = r"""<!doctype html>
       url.searchParams.set("view", mode);
       url.searchParams.set("standalone", "1");
       window.open(url.toString(), "_blank", "width=1480,height=920");
+    }
+
+    function updateTopbarSearchPlaceholder(mode = currentMode) {
+      if (!topbarSearchInput) return;
+      if (mode === "management") topbarSearchInput.placeholder = "통합관리대장 검색";
+      else if (mode === "ledger") topbarSearchInput.placeholder = "수령인, 송장번호, CS내용 검색";
+      else if (mode === "crm") topbarSearchInput.placeholder = "업무명, 직원, 번호 검색";
+      else topbarSearchInput.placeholder = "검색어 입력 시 CS 처리대장 조회";
+    }
+
+    async function submitTopbarSearch(event) {
+      event?.preventDefault();
+      const query = (topbarSearchInput?.value || "").trim();
+      if (!query) {
+        notice.textContent = "검색어를 입력해주세요.";
+        topbarSearchInput?.focus();
+        return;
+      }
+      if (currentMode === "management") {
+        managementSearchInput.value = query;
+        await loadManagementRecords();
+        return;
+      }
+      if (currentMode === "ledger") {
+        ledgerSearchInput.value = query;
+        await loadLedgerCases();
+        return;
+      }
+      if (currentMode === "crm") {
+        setCrmTab("tasks");
+        crmTaskSearch.value = query;
+        markCrmTaskFiltersDirty();
+        await loadCrmTasks();
+        return;
+      }
+      if (showWorkspace("ledger") === false) return;
+      ledgerSearchInput.value = query;
+      await loadLedgerCases();
+      notice.textContent = `"${query}" 검색 결과를 CS 처리대장에서 조회했습니다.`;
+    }
+
+    async function refreshCurrentWorkspace() {
+      topbarRefreshButton?.classList.add("busy");
+      try {
+        if (currentMode === "management") await loadManagementWorkspaceData();
+        else if (currentMode === "ledger") await loadLedgerCases();
+        else if (currentMode === "crm") await loadCrmAll();
+        else if (currentMode === "import") await loadImportShipments();
+        else if (currentMode === "fileLibrary") await loadSharedFiles();
+        else if (currentMode === "leave") await loadLeaveData();
+        else if (currentMode === "userAdmin") await loadUserAccounts();
+        else if (currentMode === "salesReport") {
+          await loadSalesReportUploads();
+          await loadSalesReportDashboard();
+        } else if (currentMode === "backup") await loadBackups();
+        else if (currentMode === "systemUpdate") await loadSystemUpdateStatus();
+        else if (companyActiveTab === "calendar") await loadCompanyCalendar();
+        else if (companyActiveTab === "staff") await loadCompanyStaffDashboard();
+        else await loadDashboardEntryData();
+        notice.textContent = "현재 화면을 새로고침했습니다.";
+      } catch (error) {
+        notice.textContent = error.message || "새로고침하지 못했습니다.";
+      } finally {
+        topbarRefreshButton?.classList.remove("busy");
+      }
+    }
+
+    async function openTopbarAlertPanel() {
+      const sections = [];
+      const leaveItems = leaveNotificationList
+        ? Array.from(leaveNotificationList.children).map((item) => item.textContent.trim()).filter(Boolean)
+        : [];
+      if (leaveItems.length) {
+        sections.push(`
+          <div class="focus-widget-section">
+            <h4>연차 알림</h4>
+            <ul>${leaveItems.slice(0, 5).map((text) => `<li>${escapeHtml(text)}</li>`).join("")}</ul>
+          </div>
+        `);
+      }
+      if (can("ledger_edit")) {
+        try {
+          const response = await fetch("/api/cs-followup-alerts");
+          const data = await response.json();
+          if (response.ok && Array.isArray(data.alerts) && data.alerts.length) {
+            sections.push(`
+              <div class="focus-widget-section">
+                <h4>미처리 CS 확인</h4>
+                <p>전날 송장이 입력됐지만 전체 처리완료가 아닌 CS건이 ${escapeHtml(data.alerts.length)}건 있습니다.</p>
+                <button class="crm-mini-button primary" type="button" data-topbar-open="ledger">CS 처리대장 보기</button>
+              </div>
+            `);
+          }
+        } catch {
+          sections.push(`<div class="focus-widget-section"><h4>CS 알림</h4><p>CS 알림을 불러오지 못했습니다.</p></div>`);
+        }
+      }
+      if (!sections.length) {
+        sections.push(`<div class="focus-widget-section"><h4>알림 없음</h4><p>현재 확인할 새 알림이 없습니다.</p></div>`);
+      }
+      openFocusWidget({
+        kicker: "업무 알림",
+        title: "확인할 알림",
+        subtitle: todayString(),
+        body: sections.join(""),
+      });
     }
 
     function applySidebarSearch() {
@@ -13621,6 +14981,8 @@ HTML = r"""<!doctype html>
     };
     function showOrderWorkspace(mode) {
       if (ORDER_WORKFLOWS[mode]) currentOrderMode = mode;
+      currentMode = "order";
+      updateTopbarSearchPlaceholder("order");
       closeLedgerFilter();
       dashboardContent.style.display = "none";
       if (orderWorkspace) orderWorkspace.classList.toggle("active", true);
@@ -13659,27 +15021,45 @@ HTML = r"""<!doctype html>
       openOrderModal(mode);
     }, true);
 
+    function navGroupForPrimaryToggle(button, mode) {
+      const groupByMode = {
+        dashboard: "#companyNavGroup",
+        import: "#importNavGroup",
+        management: "#managementNavGroup",
+        ledger: "#ledgerNavGroup",
+        crm: "#crmNavGroup",
+      };
+      if (!button.classList.contains("nav-item")) return null;
+      const selector = groupByMode[mode];
+      return selector ? document.querySelector(selector) : null;
+    }
+
+    function collapseCurrentPrimaryNav(button, mode) {
+      const group = navGroupForPrimaryToggle(button, mode);
+      if (!group || currentMode !== mode || !group.classList.contains("open")) return false;
+      group.classList.remove("open");
+      return true;
+    }
+
     document.querySelectorAll("[data-open]").forEach((button) => {
       button.addEventListener("click", () => {
         scheduleSidebarSearchAutofillGuard();
         const mode = button.dataset.open;
         if (mode === "crm") {
           const crmGroup = document.querySelector("#crmNavGroup");
-          const wasCrmGroupOpen = Boolean(crmGroup?.classList.contains("open"));
+          if (button.id === "crmNavToggle" && collapseCurrentPrimaryNav(button, "crm")) return;
           if (showWorkspace("crm") === false) return;
           if (button.dataset.crmNavTab) setCrmTab(button.dataset.crmNavTab);
-          if (button.id === "crmNavToggle") {
-            crmGroup?.classList.toggle("open", !wasCrmGroupOpen);
-          } else {
-            crmGroup?.classList.add("open");
-          }
+          crmGroup?.classList.add("open");
           return;
         }
         if (mode === "order") {
+          if (!confirmSaveBeforeLeaving("order", () => showOrderWorkspace(currentOrderMode))) return;
           showOrderWorkspace();
           return;
         }
         if (mode === "management" || mode === "ledger" || mode === "crm" || mode === "import" || mode === "fileLibrary" || mode === "userAdmin" || mode === "salesReport" || mode === "leave" || mode === "backup" || mode === "systemUpdate") {
+          if (collapseCurrentPrimaryNav(button, mode)) return;
           if (showWorkspace(mode) === false) return;
           if (mode === "salesReport" && button.closest("#salesReportNavGroup")) {
             openSalesReportUploadPicker();
@@ -13692,6 +15072,7 @@ HTML = r"""<!doctype html>
     document.querySelectorAll("[data-view]").forEach((button) => {
       button.addEventListener("click", () => {
         const companyGroup = document.querySelector("#companyNavGroup");
+        if (button.id === "companyNavToggle" && collapseCurrentPrimaryNav(button, "dashboard")) return;
         if (showWorkspace(button.dataset.view) === false) return;
         if (button.dataset.companyTab) setCompanyTab(button.dataset.companyTab);
         if (button.id === "companyNavToggle") {
@@ -14052,6 +15433,19 @@ HTML = r"""<!doctype html>
       }
     });
     crmTaskSearch?.addEventListener("input", markCrmTaskFiltersDirty);
+    topbarSearchForm?.addEventListener("submit", (event) => {
+      submitTopbarSearch(event).catch((error) => {
+        notice.textContent = error.message || "검색하지 못했습니다.";
+      });
+    });
+    topbarRefreshButton?.addEventListener("click", () => {
+      refreshCurrentWorkspace();
+    });
+    topbarAlertButton?.addEventListener("click", () => {
+      openTopbarAlertPanel().catch((error) => {
+        notice.textContent = error.message || "알림을 불러오지 못했습니다.";
+      });
+    });
     [
       crmTaskStatusFilter,
       crmTaskAssigneeFilter,
@@ -14122,6 +15516,12 @@ HTML = r"""<!doctype html>
       if (event.target === focusWidget) closeFocusWidget();
     });
     focusWidgetBody?.addEventListener("click", (event) => {
+      const topbarOpenButton = event.target.closest("[data-topbar-open]");
+      if (topbarOpenButton) {
+        closeFocusWidget();
+        showWorkspace(topbarOpenButton.dataset.topbarOpen || "dashboard");
+        return;
+      }
       const openTaskButton = event.target.closest("[data-focus-open-task]");
       if (openTaskButton) {
         openCrmTaskWidget(openTaskButton.dataset.focusOpenTask).catch((error) => setCrmMessage(error.message, true));
@@ -14186,12 +15586,6 @@ HTML = r"""<!doctype html>
     document.querySelector("#orderNavToggle").addEventListener("click", () => {
       document.querySelector("#orderNavGroup").classList.toggle("open");
     });
-    document.querySelector("#managementNavToggle")?.addEventListener("click", () => {
-      document.querySelector("#managementNavGroup")?.classList.add("open");
-    });
-    document.querySelector("#ledgerNavToggle")?.addEventListener("click", () => {
-      document.querySelector("#ledgerNavGroup")?.classList.add("open");
-    });
     document.querySelector("#distributionMailNavToggle")?.addEventListener("click", () => {
       document.querySelector("#distributionMailNavGroup")?.classList.toggle("open");
     });
@@ -14203,7 +15597,11 @@ HTML = r"""<!doctype html>
       document.querySelector("#adminNavGroup")?.classList.toggle("open");
     });
     document.querySelector("#salesReportNavToggle")?.addEventListener("click", () => {
-      document.querySelector("#salesReportNavGroup")?.classList.add("open");
+      const salesReportGroup = document.querySelector("#salesReportNavGroup");
+      if (currentMode === "salesReport" && salesReportGroup?.classList.contains("open")) {
+        salesReportGroup.classList.remove("open");
+        return;
+      }
       showWorkspace("salesReport");
     });
     salesReportTabButtons.forEach((button) => {
@@ -14304,10 +15702,10 @@ HTML = r"""<!doctype html>
         if (record) openImportShipmentPopup(record);
       }
     });
-    document.querySelector("#closeModal").addEventListener("click", closeModal);
-    document.querySelector("#cancel").addEventListener("click", closeModal);
+    document.querySelector("#closeModal").addEventListener("click", requestCloseModal);
+    document.querySelector("#cancel").addEventListener("click", requestCloseModal);
     modal.addEventListener("click", (event) => {
-      if (event.target === modal) closeModal();
+      if (event.target === modal) requestCloseModal();
     });
     fileInput.addEventListener("change", () => {
       dropMain.textContent = fileInput.files[0] ? fileInput.files[0].name : "파일을 선택하거나 여기에 올려주세요.";
@@ -14360,6 +15758,12 @@ HTML = r"""<!doctype html>
       "업체구분/업체명/메일주소 엑셀을 선택해주세요."
     );
     setupDropzone(
+      document.querySelector("label[for='vendorManageFileInput']"),
+      vendorManageFileInput,
+      vendorManageDropMain,
+      "거래처명/메일주소 엑셀을 업로드해주세요."
+    );
+    setupDropzone(
       document.querySelector("label[for='sharedFileInput']"),
       sharedFileInput,
       sharedFileDropMain,
@@ -14368,15 +15772,33 @@ HTML = r"""<!doctype html>
     document.querySelector("#addProductRow").addEventListener("click", () => addProductRow());
     noticeSaveButton.addEventListener("click", saveNoticeTemplate);
     noticeClearButton.addEventListener("click", clearNoticeTemplate);
+    noticeHistoryList?.addEventListener("click", (event) => {
+      const deleteButton = event.target.closest("[data-notice-delete]");
+      if (!deleteButton) return;
+      deleteNoticeRecord(deleteButton.dataset.noticeDelete);
+    });
     [noticeDateInput, noticeTitleInput, noticeOwnerInput, noticeBodyInput]
       .forEach((input) => input.addEventListener("input", renderNoticePreview));
     receiptTypeSelect.addEventListener("change", resetProductRows);
     vendorContactSelect.addEventListener("change", applySelectedVendor);
     saveVendorContactButton.addEventListener("click", saveCurrentVendorContact);
     if (vendorContactsFileInput) vendorContactsFileInput.addEventListener("change", uploadVendorContactsWorkbook);
+    if (vendorManageSave) vendorManageSave.addEventListener("click", saveVendorManageContact);
+    if (vendorManageFileInput) vendorManageFileInput.addEventListener("change", uploadVendorManageWorkbook);
+    if (vendorManageList) {
+      vendorManageList.addEventListener("click", (event) => {
+        const button = event.target.closest("[data-vendor-manage-name]");
+        if (!button) return;
+        const selected = vendorContacts.find((contact) => (
+          (contact.vendor_type || "purchase") === activeVendorManageType
+          && contact.vendor_name === button.dataset.vendorManageName
+        ));
+        fillVendorManageForm(selected);
+      });
+    }
     if (salesReportFileInput) salesReportFileInput.addEventListener("change", uploadSalesReportWorkbook);
     saveCsCaseButton.addEventListener("click", saveCurrentCsCase);
-    ledgerRefresh.addEventListener("click", loadLedgerCases);
+    ledgerRefresh.addEventListener("click", () => loadLedgerCases({ showPicker: true }));
     ledgerStatusFilter.addEventListener("change", applyLedgerFilters);
     ledgerFilterButtons.forEach((button) => {
       button.addEventListener("click", (event) => {
@@ -14415,7 +15837,7 @@ HTML = r"""<!doctype html>
     ledgerAddCs.addEventListener("click", openLedgerCsPopup);
     ledgerCsPopupClose.addEventListener("click", closeLedgerCsPopup);
     ledgerImportInput.addEventListener("change", uploadLedgerWorkbook);
-    managementRefresh.addEventListener("click", loadManagementRecords);
+    managementRefresh.addEventListener("click", () => loadManagementRecords({ showPicker: true }));
     managementImportInput.addEventListener("change", uploadManagementWorkbook);
     managementSaveAll.addEventListener("click", () => saveCurrentWorkspaceRows({ mode: "management", selectedOnly: true }));
     ledgerSaveAll.addEventListener("click", () => saveCurrentWorkspaceRows({ mode: "ledger", selectedOnly: true }));
@@ -14510,6 +15932,14 @@ HTML = r"""<!doctype html>
         });
       });
     }
+    if (ledgerSelectAll) {
+      ledgerSelectAll.addEventListener("change", () => {
+        ledgerBody.querySelectorAll("tr[data-case-id] [data-row-check]").forEach((checkbox) => {
+          checkbox.checked = ledgerSelectAll.checked;
+        });
+        ledgerSelectAll.indeterminate = false;
+      });
+    }
     function closeDownloadMenus() {
       ledgerDownloadMenu?.classList.remove("open");
       managementDownloadMenu?.classList.remove("open");
@@ -14553,6 +15983,10 @@ HTML = r"""<!doctype html>
       if (csButton) receiveManagementCs(csButton);
     });
     ledgerBody.addEventListener("click", (event) => {
+      if (event.target.closest("[data-row-check]")) {
+        syncLedgerSelectAll();
+        return;
+      }
       const returnCheckButton = event.target.closest("[data-return-check-row]");
       if (returnCheckButton) {
         event.preventDefault();
@@ -14566,7 +16000,11 @@ HTML = r"""<!doctype html>
       }
     });
     [ledgerCellApply, managementCellApply].forEach((button) => {
-      button?.addEventListener("click", () => applyCellEditor(button === ledgerCellApply ? "ledger" : "management"));
+      button?.addEventListener("click", () => {
+        applyCellEditor(button === ledgerCellApply ? "ledger" : "management").catch((error) => {
+          notice.textContent = error.message || "선택 셀 값을 반영하지 못했습니다.";
+        });
+      });
     });
     ledgerReturnCheckButton?.addEventListener("click", openReturnCheckPopup);
     returnCheckClose?.addEventListener("click", closeReturnCheckPopup);
@@ -14574,6 +16012,19 @@ HTML = r"""<!doctype html>
     returnCheckSave?.addEventListener("click", applyReturnCheckPopup);
     returnCheckPopup?.addEventListener("click", (event) => {
       if (event.target === returnCheckPopup) closeReturnCheckPopup();
+    });
+    appConfirmOk?.addEventListener("click", () => closeAppConfirmDialog(true));
+    appConfirmCancel?.addEventListener("click", () => closeAppConfirmDialog(false));
+    appConfirmDialog?.addEventListener("click", (event) => {
+      if (event.target === appConfirmDialog) closeAppConfirmDialog(false);
+    });
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape" && appConfirmDialog?.classList.contains("open")) {
+        closeAppConfirmDialog(false);
+      }
+      if (event.key === "Escape" && searchResultDialog?.classList.contains("open")) {
+        closeSearchResultDialog();
+      }
     });
     [ledgerCellCancel, managementCellCancel].forEach((button) => {
       button?.addEventListener("click", () => closeCellEditor(button === ledgerCellCancel ? "ledger" : "management"));
@@ -14583,24 +16034,28 @@ HTML = r"""<!doctype html>
         if (event.key !== "Enter") return;
         if (event.target.tagName === "TEXTAREA" && !event.ctrlKey) return;
         event.preventDefault();
-        applyCellEditor(mount === ledgerCellEditMount ? "ledger" : "management");
+        applyCellEditor(mount === ledgerCellEditMount ? "ledger" : "management").catch((error) => {
+          notice.textContent = error.message || "선택 셀 값을 반영하지 못했습니다.";
+        });
       });
     });
     ledgerSearchInput.addEventListener("keydown", (event) => {
       if (event.key === "Enter") {
         event.preventDefault();
-        loadLedgerCases();
+        loadLedgerCases({ showPicker: true });
       }
     });
     managementSearchInput.addEventListener("keydown", (event) => {
       if (event.key === "Enter") {
         event.preventDefault();
-        loadManagementRecords();
+        loadManagementRecords({ showPicker: true });
       }
     });
     vendorNameInput.addEventListener("input", () => {
       csSubjectInput.value = currentMode === "mail-stock" ? "입고 및 품절 공지" : defaultCsSubject(vendorNameInput.value.trim());
+      syncVendorEmailFromName();
     });
+    vendorTypeSelect.addEventListener("change", () => syncVendorEmailFromName({ overwrite: true }));
     [csOriginInput, csProductInput, csReceiverInput, csPhoneInput, csAddressInput, csContentInput]
       .forEach((input) => input.addEventListener("input", refreshCsBody));
     stockVendorPickerButton?.addEventListener("click", toggleStockVendorTree);
@@ -14637,7 +16092,7 @@ HTML = r"""<!doctype html>
       notice.textContent = "처리 중입니다.";
       submitButton.disabled = true;
       try {
-        if (currentMode === "ledger" || currentMode === "management") {
+        if (currentMode === "ledger" || currentMode === "management" || currentMode === "vendor-contacts") {
           closeModal();
         } else if (currentMode === "cs") {
           refreshCsBody();
@@ -14966,8 +16421,8 @@ ADMIN_TOOLS_NAV_HTML = r"""
           <i class="nav-chevron" data-lucide="chevron-right"></i>
         </button>
         <div class="nav-submenu">
-          <button class="nav-subitem" type="button" data-management-import-mode="replace">통합관리대장 전체 데이터 교체 업로드</button>
-          <button class="nav-subitem" type="button" data-ledger-import-mode="replace">CS처리대장 전체 데이터 교체 업로드</button>
+          <button class="nav-subitem" type="button" data-management-import-mode="daily">통합관리대장 업로드</button>
+          <button class="nav-subitem" type="button" data-ledger-import-mode="daily">CS처리대장 업로드</button>
           <button class="nav-subitem" type="button" data-open="systemUpdate">업데이트 관리</button>
           <button class="nav-subitem" type="button" data-open="backup">백업 관리</button>
           <button class="nav-subitem" type="button" data-open="userAdmin">권한설정</button>
@@ -15471,6 +16926,25 @@ def safe_filename(filename: str) -> str:
 
 def original_uploaded_filename(filename: str) -> str:
     return re.sub(r"^\d{10,}_", "", filename)
+
+
+def uploaded_file_modified_date(fields: dict[str, tuple[str, bytes] | str], path: Path) -> str:
+    raw = fields.get("file_last_modified", "")
+    text = str(raw or "").strip() if not isinstance(raw, tuple) else ""
+    if text:
+        try:
+            timestamp = float(text)
+            if timestamp > 10_000_000_000:
+                timestamp = timestamp / 1000
+            return datetime.fromtimestamp(timestamp).date().isoformat()
+        except (TypeError, ValueError, OSError):
+            parsed = parse_import_date_value(text)
+            if parsed:
+                return parsed
+    try:
+        return datetime.fromtimestamp(path.stat().st_mtime).date().isoformat()
+    except OSError:
+        return date.today().isoformat()
 
 
 def parse_multipart(headers, rfile) -> dict[str, tuple[str, bytes] | str]:
@@ -16401,6 +17875,78 @@ def previous_business_day(base_date: date) -> date:
     return target
 
 
+def previous_sales_data_date(connection: sqlite3.Connection, base_date: date) -> str:
+    base_text = base_date.isoformat()
+    row = connection.execute(
+        """
+        SELECT MAX(report_date) AS report_date
+          FROM (
+                SELECT report_date
+                  FROM sales_report_daily_rows
+                 WHERE report_date != '' AND report_date < ?
+                UNION ALL
+                SELECT report_date
+                  FROM sales_report_seller_rows
+                 WHERE report_date != '' AND report_date < ?
+                UNION ALL
+                SELECT report_date
+                  FROM sales_report_supplier_rows
+                 WHERE report_date != '' AND report_date < ?
+                UNION ALL
+                SELECT report_date
+                  FROM sales_report_product_rows
+                 WHERE report_date != '' AND report_date < ?
+               )
+        """,
+        (base_text, base_text, base_text, base_text),
+    ).fetchone()
+    report_date = str(row["report_date"] or "") if row else ""
+    return report_date or previous_business_day(base_date).isoformat()
+
+
+def sales_report_day_summary_from_sources(connection: sqlite3.Connection, target_date: str) -> dict[str, object]:
+    if not target_date:
+        return {}
+    daily = connection.execute(
+        "SELECT * FROM sales_report_daily_rows WHERE report_date = ?",
+        (target_date,),
+    ).fetchone()
+    if daily:
+        return _sales_report_daily_public(daily)
+    for table_name in ("sales_report_seller_rows", "sales_report_product_rows", "sales_report_supplier_rows"):
+        row = connection.execute(
+            f"""
+            SELECT ? AS report_date,
+                   '' AS label,
+                   COALESCE(SUM(quantity), 0) AS quantity,
+                   COALESCE(SUM(sales_amount), 0) AS sales_amount,
+                   COALESCE(SUM(sales_total), 0) AS sales_total,
+                   COALESCE(SUM(profit_sales_amount), 0) AS profit_sales_amount,
+                   COALESCE(SUM(profit_supply_amount), 0) AS profit_supply_amount,
+                   COALESCE(SUM(profit_margin), 0) AS profit_margin
+              FROM {table_name}
+             WHERE report_date = ?
+            """,
+            (target_date, target_date),
+        ).fetchone()
+        if row and any(int(row[key] or 0) for key in ("quantity", "sales_amount", "sales_total", "profit_sales_amount", "profit_supply_amount", "profit_margin")):
+            profit_sales_amount = int(row["profit_sales_amount"] or 0)
+            profit_margin = int(row["profit_margin"] or 0)
+            margin_rate = round((profit_margin / profit_sales_amount) * 100, 1) if profit_sales_amount else 0
+            return {
+                "report_date": str(row["report_date"] or ""),
+                "label": "",
+                "quantity": int(row["quantity"] or 0),
+                "sales_amount": int(row["sales_amount"] or 0),
+                "sales_total": int(row["sales_total"] or 0),
+                "profit_sales_amount": profit_sales_amount,
+                "profit_supply_amount": int(row["profit_supply_amount"] or 0),
+                "profit_margin": profit_margin,
+                "margin_rate": margin_rate,
+            }
+    return {}
+
+
 def previous_sales_period(period: str) -> str:
     match = re.match(r"^(20\d{2})-(\d{1,2})$", str(period or ""))
     if not match:
@@ -16441,7 +17987,7 @@ def sales_report_dashboard_payload(period: str = "", report_date: str = "") -> d
     try:
         today_date = date.today()
         selected_date = report_date or today_date.isoformat()
-        previous_date = previous_business_day(date.fromisoformat(selected_date)).isoformat()
+        previous_date = previous_sales_data_date(connection, date.fromisoformat(selected_date))
         selected_period = period or selected_date[:7]
         if not selected_period:
             row = connection.execute(
@@ -16478,10 +18024,7 @@ def sales_report_dashboard_payload(period: str = "", report_date: str = "") -> d
             "SELECT * FROM sales_report_daily_rows WHERE report_date = ?",
             (selected_date,),
         ).fetchone()
-        yesterday = connection.execute(
-            "SELECT * FROM sales_report_daily_rows WHERE report_date = ?",
-            (previous_date,),
-        ).fetchone()
+        yesterday_public = sales_report_day_summary_from_sources(connection, previous_date)
         month = connection.execute(
             """
             SELECT COALESCE(SUM(quantity), 0) AS quantity,
@@ -16779,7 +18322,6 @@ def sales_report_dashboard_payload(period: str = "", report_date: str = "") -> d
         connection.close()
 
     today_public = _sales_report_daily_public(today)
-    yesterday_public = _sales_report_daily_public(yesterday)
     today_amount = int(today_public.get("profit_sales_amount", 0) or 0)
     yesterday_amount = int(yesterday_public.get("profit_sales_amount", 0) or 0)
     delta = today_amount - yesterday_amount
@@ -18354,7 +19896,7 @@ def company_calendar_payload(user: dict[str, str], month_text: str) -> dict:
             ).fetchall()
         import_rows = connection.execute(
             """
-            SELECT id, warehouse_due_date, arrival_date, shipper, item, progress_status, completed_at
+            SELECT id, warehouse_due_date, arrival_date, shipper, item, quantity, progress_status, completed_at
               FROM import_shipments
              WHERE completed_at IS NULL OR completed_at = ''
             """
@@ -18430,7 +19972,7 @@ def company_calendar_payload(user: dict[str, str], month_text: str) -> dict:
             "type": "import",
             "date": event_date,
             "title": f"컨테이너 입고 {row['item'] or '수입제품'}",
-            "subtitle": f"{row['shipper'] or '화주 미정'} · {row['progress_status'] or '진행중'}",
+            "subtitle": " · ".join(str(value) for value in [row["quantity"], row["progress_status"] or "진행중"] if value),
             "shipment_id": row["id"],
             "status": row["progress_status"] or "진행중",
         })
@@ -20190,7 +21732,9 @@ def list_cs_cases(query: str = "", status: str = "", limit: int = 20, year: str 
                    ship_date, sales_vendor, purchase_vendor, courier, quantity
               FROM cs_cases
               {where}
-             ORDER BY id DESC
+             ORDER BY CASE WHEN date(occurred_at) IS NULL THEN 1 ELSE 0 END,
+                      date(occurred_at) DESC,
+                      id DESC
              LIMIT ?
             """,
             params,
@@ -20245,7 +21789,7 @@ def update_cs_case(case_id: int, payload: dict) -> None:
             return_invoice_updated_at = now
         if reship_invoice and reship_invoice != (previous["reship_invoice"] or ""):
             reship_invoice_updated_at = now
-        if should_mark_cs_case_complete(cs_type, cs_content, return_invoice, reship_invoice):
+        if "status" not in payload and should_mark_cs_case_complete(cs_type, cs_content, return_invoice, reship_invoice):
             status = "전체 처리완료"
         completion_date = date.today().isoformat() if "전체 처리완료" in status and not (previous["completed_at"] or "").strip() else None
         cursor = connection.execute(
@@ -21225,22 +22769,89 @@ def is_numeric_identifier(value: object, minimum_digits: int = 5) -> bool:
     return digit_count(text) >= minimum_digits and not re.search(r"[가-힣a-zA-Z]", text)
 
 
-def import_issue(field: str, label: str, message: str, input_type: str = "text") -> dict[str, str]:
+def is_no_original_invoice_marker(value: object) -> bool:
+    text = normalize_compact(clean_cell(value))
+    if not text:
+        return False
+    markers = {
+        "기존송장없음",
+        "원송장없음",
+        "송장없음",
+        "운송장없음",
+        "기존운송장없음",
+        "없음",
+        "무송장",
+        "미출고",
+        "출고전",
+        "출고취소",
+    }
+    return text in markers or "기존송장없음" in text
+
+
+SPECIAL_INVOICE_OPTIONS = ["방문수령", "화물입고", "컨테이너 입고", "퀵배송", "직배송", "기존송장없음"]
+
+
+def classify_special_invoice_method(value: object) -> str:
+    text = clean_cell(value)
+    compact = normalize_compact(text)
+    if not compact or is_numeric_identifier(text, 5):
+        return ""
+    if is_no_original_invoice_marker(text):
+        return "기존송장없음"
+    if "컨테이너" in compact or ("수입" in compact and "입고" in compact):
+        return "컨테이너 입고"
+    if "화물" in compact or "경동" in compact or "대신" in compact:
+        return "화물입고"
+    if "퀵" in compact or "quick" in compact.lower():
+        return "퀵배송"
+    if "직배송" in compact or "직납" in compact or "직접배송" in compact:
+        return "직배송"
+    if "방문" in compact or "내방" in compact or "직접수령" in compact or "픽업" in compact:
+        return "방문수령"
+    return ""
+
+
+def management_invoice_issue(record: dict[str, object]) -> dict[str, object] | None:
+    value = clean_cell(record.get("invoice_number"))
+    if not value or is_numeric_identifier(value, 5):
+        return None
+    suggested = classify_special_invoice_method(value)
+    if suggested:
+        if value == suggested:
+            return None
+        return import_select_issue(
+            "invoice_number",
+            "운송장번호",
+            f"'{value}'은 특수 입고/배송 방식으로 보입니다. 표준 문구로 변경할지 확인해주세요.",
+            SPECIAL_INVOICE_OPTIONS,
+            suggested,
+        )
+    return import_issue(
+        "invoice_number",
+        "운송장번호",
+        "운송장번호는 숫자 송장 또는 방문수령/화물입고/컨테이너 입고 같은 표준 문구로 입력해주세요.",
+        "text",
+    )
+
+
+def import_issue(field: str, label: str, message: str, input_type: str = "text", suggested_value: str = "") -> dict[str, object]:
     return {
         "field": field,
         "label": label,
         "message": message,
         "input_type": input_type,
+        "suggested_value": suggested_value,
     }
 
 
-def import_select_issue(field: str, label: str, message: str, options: list[str]) -> dict[str, object]:
+def import_select_issue(field: str, label: str, message: str, options: list[str], suggested_value: str = "") -> dict[str, object]:
     return {
         "field": field,
         "label": label,
         "message": message,
         "input_type": "select",
         "options": options,
+        "suggested_value": suggested_value,
     }
 
 
@@ -21264,9 +22875,20 @@ def optional_numeric_issue(record: dict[str, object], field: str, label: str, mi
 
 
 def required_numeric_issue(record: dict[str, object], field: str, label: str, minimum_digits: int = 5) -> dict[str, str] | None:
+    if field == "original_invoice" and is_no_original_invoice_marker(record.get(field)):
+        return None
     if is_numeric_identifier(record.get(field), minimum_digits):
         return None
     return import_issue(field, label, f"{label}을 숫자 형식으로 입력해주세요.", "text")
+
+
+def short_korean_date_for_message(value: object) -> str:
+    text = clean_cell(value)
+    try:
+        parsed = date.fromisoformat(text)
+        return f"{parsed.month}월 {parsed.day}일"
+    except ValueError:
+        return text or "오늘"
 
 
 def optional_date_issue(record: dict[str, object], field: str, label: str) -> dict[str, str] | None:
@@ -21275,6 +22897,24 @@ def optional_date_issue(record: dict[str, object], field: str, label: str) -> di
         return None
     if parse_import_date_value(value):
         return None
+    return import_issue(field, label, f"{label}은 2026-06-21, 6/21, 6월 21일 형식으로 입력해주세요.", "text")
+
+
+def management_date_issue(record: dict[str, object], field: str, label: str) -> dict[str, object] | None:
+    value = clean_cell(record.get(field))
+    if not value:
+        return None
+    if parse_import_date_value(value, infer_import_year(record)):
+        return None
+    suggested = clean_cell(record.get("source_file_modified_at"))
+    if suggested:
+        return import_issue(
+            field,
+            label,
+            f"'{value}'은 날짜로 읽기 어렵습니다. 엑셀 파일 수정일 {short_korean_date_for_message(suggested)} 기준으로 변경할지 확인해주세요.",
+            "text",
+            suggested,
+        )
     return import_issue(field, label, f"{label}은 2026-06-21, 6/21, 6월 21일 형식으로 입력해주세요.", "text")
 
 
@@ -21289,7 +22929,50 @@ def is_valid_cs_status_text(value: object) -> bool:
     return any(keyword in text for keyword in ["회수지시", "회수완료", "재발송완료"])
 
 
-def parse_import_date_value(value: object) -> str:
+def explicit_import_year(value: object) -> int | None:
+    text = clean_cell(value)
+    if not text:
+        return None
+    match = re.search(r"(?P<year>\d{4})[-./년\s]+(?P<month>\d{1,2})[-./월\s]+(?P<day>\d{1,2})", text)
+    if not match:
+        return None
+    try:
+        return int(match.group("year"))
+    except (TypeError, ValueError):
+        return None
+
+
+def year_month_from_text(value: object) -> tuple[int | None, int | None]:
+    text = clean_cell(value)
+    if not text:
+        return None, None
+    match = re.search(r"(?P<year>\d{4})\s*년\s*(?P<month>\d{1,2})?\s*월?", text)
+    if match:
+        try:
+            year = int(match.group("year"))
+        except (TypeError, ValueError):
+            year = None
+        try:
+            month = int(match.group("month")) if match.group("month") else None
+        except (TypeError, ValueError):
+            month = None
+        return year, month
+    return None, None
+
+
+def infer_import_year(record: dict[str, object]) -> int | None:
+    for key in ("source_sheet", "source_file"):
+        year, _month = year_month_from_text(record.get(key))
+        if year:
+            return year
+    for key in ("occurred_at", "completed_at", "order_date", "ship_date", "mail_sent_at"):
+        year = explicit_import_year(record.get(key))
+        if year:
+            return year
+    return None
+
+
+def parse_import_date_value(value: object, default_year: int | None = None) -> str:
     text = clean_cell(value)
     if not text:
         return ""
@@ -21302,7 +22985,7 @@ def parse_import_date_value(value: object) -> str:
         match = re.search(pattern, text)
         if not match:
             continue
-        year = int(match.groupdict().get("year") or date.today().year)
+        year = int(match.groupdict().get("year") or default_year or date.today().year)
         month = int(match.group("month"))
         day = int(match.group("day"))
         try:
@@ -21329,17 +23012,19 @@ def management_import_issues(record: dict[str, object]) -> list[dict[str, str]]:
         ("order_date", "주문일자"),
         ("ship_date", "출고일"),
     ):
-        issue = optional_date_issue(record, field, label)
+        issue = management_date_issue(record, field, label)
         if issue:
             issues.append(issue)
     for field, label, digits in (
         ("receiver_phone", "수령자연락처", 7),
         ("sender_phone", "발신자연락처", 7),
-        ("invoice_number", "운송장번호", 5),
     ):
         issue = optional_numeric_issue(record, field, label, digits)
         if issue:
             issues.append(issue)
+    issue = management_invoice_issue(record)
+    if issue:
+        issues.append(issue)
     return issues
 
 
@@ -21414,16 +23099,21 @@ def apply_import_corrections(records: list[dict[str, object]], corrections: list
 
 def normalize_management_import_records(records: list[dict[str, object]]) -> None:
     for record in records:
+        default_year = infer_import_year(record)
         for field in ("order_date", "ship_date"):
-            normalized = parse_import_date_value(record.get(field))
+            normalized = parse_import_date_value(record.get(field), default_year)
             if normalized:
                 record[field] = normalized
+        if not clean_cell(record.get("ship_date")) and parse_import_date_value(record.get("order_date"), default_year):
+            record["ship_date"] = clean_cell(record.get("order_date"))
+        record["ledger_checked"] = "입력 완료"
 
 
 def normalize_cs_import_records(records: list[dict[str, object]]) -> None:
     for record in records:
+        default_year = infer_import_year(record)
         for field in ("occurred_at", "completed_at", "order_date", "ship_date", "mail_sent_at"):
-            normalized = parse_import_date_value(record.get(field))
+            normalized = parse_import_date_value(record.get(field), default_year)
             if normalized:
                 record[field] = normalized
         record["cs_type"] = normalize_cs_type_value(
@@ -21445,6 +23135,8 @@ def invalid_import_rows(records: list[dict[str, object]], issue_func, summary_fi
         if not issues:
             continue
         invalid_rows.append({
+            "id": record.get("id", ""),
+            "source_file": record.get("source_file", ""),
             "source_sheet": record.get("source_sheet", ""),
             "source_row": record.get("source_row", ""),
             "row": record.get("source_row", ""),
@@ -21461,13 +23153,12 @@ def valid_import_records(records: list[dict[str, object]], issue_func) -> list[d
 
 def import_preview_payload(records: list[dict[str, object]], existing_keys: set[str], key_func, summary_fields: list[str], issue_func=None) -> dict[str, object]:
     invalid_rows = invalid_import_rows(records, issue_func, summary_fields) if issue_func else []
-    records_for_duplicate_check = valid_import_records(records, issue_func) if issue_func else records
     seen: set[str] = set()
     duplicates: list[dict[str, object]] = []
     duplicate_existing = 0
     duplicate_in_file = 0
     insertable = 0
-    for record in records_for_duplicate_check:
+    for record in records:
         key = key_func(record)
         if key in existing_keys:
             duplicate_existing += 1
@@ -21504,10 +23195,11 @@ def import_preview_payload(records: list[dict[str, object]], existing_keys: set[
     }
 
 
-def parse_management_import_records(path: Path) -> list[dict[str, object]]:
+def parse_management_import_records(path: Path, file_modified_date: str = "") -> list[dict[str, object]]:
     workbook = load_workbook(path, data_only=True, read_only=True)
     timestamp = now_text()
     source_file = original_uploaded_filename(path.name)
+    source_file_modified_at = file_modified_date or datetime.fromtimestamp(path.stat().st_mtime).date().isoformat()
     records: list[dict[str, object]] = []
     try:
         for worksheet in workbook.worksheets:
@@ -21520,6 +23212,7 @@ def parse_management_import_records(path: Path) -> list[dict[str, object]]:
                 record = {
                     "created_at": timestamp,
                     "source_file": source_file,
+                    "source_file_modified_at": source_file_modified_at,
                     "source_sheet": worksheet.title,
                     "source_row": excel_row_number,
                     "purchase_vendor": row_value(row, indexes["purchase_vendor"]),
@@ -21564,9 +23257,9 @@ def existing_management_duplicate_keys(connection: sqlite3.Connection) -> set[st
     return {management_duplicate_key(dict(row)) for row in rows}
 
 
-def preview_management_import(path: Path, corrections: list[dict[str, object]] | None = None) -> dict[str, object]:
+def preview_management_import(path: Path, corrections: list[dict[str, object]] | None = None, file_modified_date: str = "") -> dict[str, object]:
     init_db()
-    records = parse_management_import_records(path)
+    records = parse_management_import_records(path, file_modified_date=file_modified_date)
     apply_import_corrections(records, corrections, MANAGEMENT_IMPORT_EDITABLE_FIELDS)
     normalize_management_import_records(records)
     connection = connect_db()
@@ -21583,9 +23276,17 @@ def preview_management_import(path: Path, corrections: list[dict[str, object]] |
     )
 
 
-def import_management_workbook(path: Path, mode: str = "daily", corrections: list[dict[str, object]] | None = None) -> tuple[int, int]:
+def management_import_invalid_rows(records: list[dict[str, object]]) -> list[dict[str, object]]:
+    return invalid_import_rows(
+        records,
+        management_import_issues,
+        ["receiver_name", "receiver_phone", "product_name", "quantity", "invoice_number", "order_number"],
+    )
+
+
+def import_management_workbook(path: Path, mode: str = "daily", corrections: list[dict[str, object]] | None = None, file_modified_date: str = "") -> dict[str, object]:
     init_db()
-    records = parse_management_import_records(path)
+    records = parse_management_import_records(path, file_modified_date=file_modified_date)
     apply_import_corrections(records, corrections, MANAGEMENT_IMPORT_EDITABLE_FIELDS)
     normalize_management_import_records(records)
     placeholders = ", ".join("?" for _ in MANAGEMENT_IMPORT_COLUMNS)
@@ -21593,19 +23294,16 @@ def import_management_workbook(path: Path, mode: str = "daily", corrections: lis
     connection = connect_db()
     inserted = 0
     skipped = 0
+    inserted_records: list[dict[str, object]] = []
     try:
-        invalid_rows = invalid_import_rows(records, management_import_issues, ["receiver_name", "receiver_phone", "product_name", "quantity", "invoice_number", "order_number"])
-        if invalid_rows:
-            raise ValueError(f"통합관리대장 업로드 형식 오류 {len(invalid_rows)}건을 먼저 수정해주세요.")
-        valid_records = records
         if mode == "replace":
             connection.execute("DELETE FROM management_records")
-            import_records = valid_records
+            import_records = records
         else:
             existing_keys = existing_management_duplicate_keys(connection)
             seen_keys: set[str] = set()
             import_records = []
-            for record in valid_records:
+            for record in records:
                 key = management_duplicate_key(record)
                 if key in existing_keys or key in seen_keys:
                     skipped += 1
@@ -21619,12 +23317,22 @@ def import_management_workbook(path: Path, mode: str = "daily", corrections: lis
             )
             if cursor.rowcount:
                 inserted += 1
+                stored = dict(record)
+                stored["id"] = cursor.lastrowid
+                inserted_records.append(stored)
             else:
                 skipped += 1
         connection.commit()
     finally:
         connection.close()
-    return inserted, skipped
+    invalid_rows = management_import_invalid_rows(inserted_records)
+    return {
+        "inserted": inserted,
+        "skipped": skipped,
+        "invalid_rows": invalid_rows,
+        "invalid_count": len(invalid_rows),
+        "has_invalid_rows": bool(invalid_rows),
+    }
 
 
 def parse_cs_case_import_records(path: Path) -> list[dict[str, object]]:
@@ -21795,7 +23503,15 @@ def preview_cs_cases_import(path: Path, corrections: list[dict[str, object]] | N
     )
 
 
-def import_cs_cases_from_workbook(path: Path, mode: str = "daily", corrections: list[dict[str, object]] | None = None) -> tuple[int, int]:
+def cs_import_invalid_rows(records: list[dict[str, object]]) -> list[dict[str, object]]:
+    return invalid_import_rows(
+        records,
+        cs_import_issues,
+        ["occurred_at", "receiver_name", "product_name", "original_invoice", "cs_type", "cs_content"],
+    )
+
+
+def import_cs_cases_from_workbook(path: Path, mode: str = "daily", corrections: list[dict[str, object]] | None = None) -> dict[str, object]:
     init_db()
     records = parse_cs_case_import_records(path)
     apply_import_corrections(records, corrections, CS_IMPORT_EDITABLE_FIELDS)
@@ -21808,19 +23524,16 @@ def import_cs_cases_from_workbook(path: Path, mode: str = "daily", corrections: 
     connection = connect_db()
     inserted = 0
     skipped = 0
+    inserted_records: list[dict[str, object]] = []
     try:
-        invalid_rows = invalid_import_rows(records, cs_import_issues, ["occurred_at", "receiver_name", "product_name", "original_invoice", "cs_type", "cs_content"])
-        if invalid_rows:
-            raise ValueError(f"CS 처리대장 업로드 형식 오류 {len(invalid_rows)}건을 먼저 수정해주세요.")
-        valid_records = records
         if mode == "replace":
             connection.execute("DELETE FROM cs_cases")
-            import_records = valid_records
+            import_records = records
         else:
             existing_keys = existing_cs_duplicate_keys(connection)
             seen_keys: set[str] = set()
             import_records = []
-            for record in valid_records:
+            for record in records:
                 key = cs_duplicate_key(record)
                 if key in existing_keys or key in seen_keys:
                     skipped += 1
@@ -21831,12 +23544,169 @@ def import_cs_cases_from_workbook(path: Path, mode: str = "daily", corrections: 
             cursor = connection.execute(insert_sql, [record[column] for column in CS_IMPORT_COLUMNS])
             if cursor.rowcount:
                 inserted += 1
+                stored = dict(record)
+                stored["id"] = cursor.lastrowid
+                inserted_records.append(stored)
             else:
                 skipped += 1
         connection.commit()
     finally:
         connection.close()
-    return inserted, skipped
+    invalid_rows = cs_import_invalid_rows(inserted_records)
+    return {
+        "inserted": inserted,
+        "skipped": skipped,
+        "invalid_rows": invalid_rows,
+        "invalid_count": len(invalid_rows),
+        "has_invalid_rows": bool(invalid_rows),
+    }
+
+
+def import_correction_id(correction: dict[str, object]) -> int:
+    raw_id = clean_cell(correction.get("id"))
+    return int(raw_id) if raw_id.isdigit() else 0
+
+
+def fetch_management_import_rows(connection: sqlite3.Connection, record_ids: list[int]) -> list[dict[str, object]]:
+    if not record_ids:
+        return []
+    placeholders = ", ".join("?" for _ in record_ids)
+    order_case = " ".join(f"WHEN {record_id} THEN {index}" for index, record_id in enumerate(record_ids))
+    rows = connection.execute(
+        f"""
+        SELECT id, {', '.join(MANAGEMENT_IMPORT_COLUMNS)}
+          FROM management_records
+         WHERE id IN ({placeholders})
+         ORDER BY CASE id {order_case} END
+        """,
+        record_ids,
+    ).fetchall()
+    return [dict(row) for row in rows]
+
+
+def fetch_cs_import_rows(connection: sqlite3.Connection, case_ids: list[int]) -> list[dict[str, object]]:
+    if not case_ids:
+        return []
+    placeholders = ", ".join("?" for _ in case_ids)
+    order_case = " ".join(f"WHEN {case_id} THEN {index}" for index, case_id in enumerate(case_ids))
+    rows = connection.execute(
+        f"""
+        SELECT id, {', '.join(CS_IMPORT_COLUMNS)}
+          FROM cs_cases
+         WHERE id IN ({placeholders})
+         ORDER BY CASE id {order_case} END
+        """,
+        case_ids,
+    ).fetchall()
+    return [dict(row) for row in rows]
+
+
+def apply_management_import_corrections_to_db(corrections: list[dict[str, object]]) -> dict[str, object]:
+    init_db()
+    corrections_by_id = {
+        record_id: correction
+        for correction in corrections
+        if isinstance(correction, dict) and (record_id := import_correction_id(correction))
+    }
+    if not corrections_by_id:
+        return {"updated": 0, "invalid_rows": [], "invalid_count": 0, "has_invalid_rows": False}
+    record_ids = list(corrections_by_id.keys())
+    editable_columns = [column for column in MANAGEMENT_IMPORT_COLUMNS if column in MANAGEMENT_IMPORT_EDITABLE_FIELDS]
+    assignments = ", ".join(f"{column} = ?" for column in editable_columns)
+    connection = connect_db()
+    updated = 0
+    try:
+        rows = fetch_management_import_rows(connection, record_ids)
+        for row in rows:
+            correction = corrections_by_id.get(int(row["id"]))
+            if not correction:
+                continue
+            merged = dict(row)
+            for field in MANAGEMENT_IMPORT_EDITABLE_FIELDS:
+                if field in correction:
+                    merged[field] = clean_cell(correction.get(field))
+            normalize_management_import_records([merged])
+            cursor = connection.execute(
+                f"UPDATE management_records SET {assignments} WHERE id = ?",
+                [merged.get(column, "") for column in editable_columns] + [row["id"]],
+            )
+            updated += int(cursor.rowcount or 0)
+        connection.commit()
+        refreshed = fetch_management_import_rows(connection, record_ids)
+    finally:
+        connection.close()
+    invalid_rows = management_import_invalid_rows(refreshed)
+    return {
+        "updated": updated,
+        "invalid_rows": invalid_rows,
+        "invalid_count": len(invalid_rows),
+        "has_invalid_rows": bool(invalid_rows),
+    }
+
+
+def apply_cs_import_corrections_to_db(corrections: list[dict[str, object]]) -> dict[str, object]:
+    init_db()
+    corrections_by_id = {
+        case_id: correction
+        for correction in corrections
+        if isinstance(correction, dict) and (case_id := import_correction_id(correction))
+    }
+    if not corrections_by_id:
+        return {"updated": 0, "invalid_rows": [], "invalid_count": 0, "has_invalid_rows": False}
+    case_ids = list(corrections_by_id.keys())
+    editable_columns = [column for column in CS_IMPORT_COLUMNS if column in CS_IMPORT_EDITABLE_FIELDS]
+    assignments = ", ".join(f"{column} = ?" for column in editable_columns)
+    connection = connect_db()
+    updated = 0
+    now = now_text()
+    try:
+        rows = fetch_cs_import_rows(connection, case_ids)
+        for row in rows:
+            correction = corrections_by_id.get(int(row["id"]))
+            if not correction:
+                continue
+            merged = dict(row)
+            previous_return_invoice = clean_cell(row.get("return_invoice"))
+            previous_reship_invoice = clean_cell(row.get("reship_invoice"))
+            for field in CS_IMPORT_EDITABLE_FIELDS:
+                if field in correction:
+                    merged[field] = clean_cell(correction.get(field))
+            normalize_cs_import_records([merged])
+            if should_mark_cs_case_complete(
+                clean_cell(merged.get("cs_type")),
+                clean_cell(merged.get("cs_content")),
+                clean_cell(merged.get("return_invoice")),
+                clean_cell(merged.get("reship_invoice")),
+            ):
+                merged["status"] = "전체 처리완료"
+                if not clean_cell(merged.get("completed_at")):
+                    merged["completed_at"] = date.today().isoformat()
+            return_invoice_updated_at = now if clean_cell(merged.get("return_invoice")) and clean_cell(merged.get("return_invoice")) != previous_return_invoice else None
+            reship_invoice_updated_at = now if clean_cell(merged.get("reship_invoice")) and clean_cell(merged.get("reship_invoice")) != previous_reship_invoice else None
+            cursor = connection.execute(
+                f"""
+                UPDATE cs_cases
+                   SET {assignments},
+                       updated_at = ?,
+                       return_invoice_updated_at = COALESCE(?, return_invoice_updated_at),
+                       reship_invoice_updated_at = COALESCE(?, reship_invoice_updated_at)
+                 WHERE id = ?
+                """,
+                [merged.get(column, "") for column in editable_columns]
+                + [now, return_invoice_updated_at, reship_invoice_updated_at, row["id"]],
+            )
+            updated += int(cursor.rowcount or 0)
+        connection.commit()
+        refreshed = fetch_cs_import_rows(connection, case_ids)
+    finally:
+        connection.close()
+    invalid_rows = cs_import_invalid_rows(refreshed)
+    return {
+        "updated": updated,
+        "invalid_rows": invalid_rows,
+        "invalid_count": len(invalid_rows),
+        "has_invalid_rows": bool(invalid_rows),
+    }
 
 
 def parse_import_corrections(fields: dict[str, tuple[str, bytes] | str]) -> list[dict[str, object]] | None:
@@ -22159,7 +24029,7 @@ def header_text(value: object) -> str:
     return re.sub(r"\s+", "", str(value or "")).strip().lower()
 
 
-def import_vendor_contacts_from_workbook(path: Path) -> tuple[list[dict[str, str]], int]:
+def import_vendor_contacts_from_workbook(path: Path, default_vendor_type: str = "purchase") -> tuple[list[dict[str, str]], int]:
     workbook = load_workbook(path, data_only=True)
     worksheet = workbook[workbook.sheetnames[0]]
     rows = list(worksheet.iter_rows(values_only=True))
@@ -22168,10 +24038,23 @@ def import_vendor_contacts_from_workbook(path: Path) -> tuple[list[dict[str, str
 
     header = [header_text(value) for value in rows[0]]
     vendor_headers = {"업체명", "거래처명", "회사명", "업체", "거래처", "vendor", "vendorname", "vendor_name", "company", "companyname"}
-    email_headers = {"메일", "메일주소", "이메일", "email", "e-mail", "emailaddress"}
+    email_header_groups = [
+        {"cs이메일", "cs메일", "cs메일주소", "csemail", "cs_email"},
+        {"발주이메일", "발주메일", "발주메일주소", "송장회신이메일", "송장회신메일", "회신이메일", "회신메일"},
+        {"메일", "메일주소", "이메일", "email", "e-mail", "emailaddress"},
+        {"정산이메일", "정산메일", "정산메일주소"},
+    ]
     type_headers = {"구분", "업체구분", "거래처구분", "유형", "분류", "매입매출", "매입/매출", "type", "vendortype", "vendor_type", "category"}
     vendor_idx = next((idx for idx, value in enumerate(header) if value in vendor_headers), None)
-    email_idx = next((idx for idx, value in enumerate(header) if value in email_headers), None)
+    email_idx = next(
+        (
+            idx
+            for candidates in email_header_groups
+            for idx, value in enumerate(header)
+            if value in candidates
+        ),
+        None,
+    )
     type_idx = next((idx for idx, value in enumerate(header) if value in type_headers), None)
 
     data_rows = rows[1:] if vendor_idx is not None and email_idx is not None else rows
@@ -22184,7 +24067,7 @@ def import_vendor_contacts_from_workbook(path: Path) -> tuple[list[dict[str, str
     for row in data_rows:
         vendor_name = str(row[vendor_idx] or "").strip() if len(row) > vendor_idx else ""
         email = str(row[email_idx] or "").strip() if len(row) > email_idx else ""
-        vendor_type = normalize_vendor_type(row[type_idx]) if type_idx is not None and len(row) > type_idx else "purchase"
+        vendor_type = normalize_vendor_type(row[type_idx]) if type_idx is not None and len(row) > type_idx else normalize_vendor_type(default_vendor_type)
         if vendor_name and email and "@" in email:
             imported.append({"vendor_type": vendor_type, "vendor_name": vendor_name, "email": email})
 
@@ -23303,6 +25186,21 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                 self.send_json({"message": "CS 처리내용을 저장했습니다.", "case_id": case_id})
                 return
 
+            if self.path == "/api/cs-cases-import-corrections":
+                if not self.require_permission(user, "excel_upload", "엑셀 업로드"):
+                    return
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(length).decode("utf-8") or "{}")
+                corrections = payload.get("corrections", [])
+                if not isinstance(corrections, list):
+                    raise ValueError("수정 데이터 형식이 올바르지 않습니다.")
+                result = apply_cs_import_corrections_to_db([item for item in corrections if isinstance(item, dict)])
+                self.send_json({
+                    "message": f"CS 처리대장 보정 {result['updated']}건을 저장했습니다.",
+                    **result,
+                })
+                return
+
             if self.path == "/api/cs-cases-delete":
                 if not self.require_permission(user, "ledger_delete", "대장 삭제"):
                     return
@@ -23325,6 +25223,21 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                     raise ValueError("수정할 통합관리대장 행 ID가 없습니다.")
                 update_management_record(record_id, payload)
                 self.send_json({"message": "통합관리대장 행을 저장했습니다.", "record_id": record_id})
+                return
+
+            if self.path == "/api/management-import-corrections":
+                if not self.require_permission(user, "excel_upload", "엑셀 업로드"):
+                    return
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(length).decode("utf-8") or "{}")
+                corrections = payload.get("corrections", [])
+                if not isinstance(corrections, list):
+                    raise ValueError("수정 데이터 형식이 올바르지 않습니다.")
+                result = apply_management_import_corrections_to_db([item for item in corrections if isinstance(item, dict)])
+                self.send_json({
+                    "message": f"통합관리대장 보정 {result['updated']}건을 저장했습니다.",
+                    **result,
+                })
                 return
 
             if self.path == "/api/management-records-delete":
@@ -23431,7 +25344,7 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                     str(payload.get("email", "")),
                     str(payload.get("vendor_type", "purchase")),
                 )
-                self.send_json({"message": "업체 메일 주소를 저장했습니다.", "contacts": contacts})
+                self.send_json({"message": "거래처 메일 주소를 저장했습니다.", "contacts": contacts})
                 return
 
             if self.path == "/api/shared-file-delete":
@@ -23499,9 +25412,11 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                 if not self.require_permission(user, "excel_upload", "엑셀 업로드"):
                     return
                 upload_path = save_uploaded_file(fields, "file")
-                contacts, saved_count = import_vendor_contacts_from_workbook(upload_path)
+                default_vendor_type = fields.get("vendor_type", "purchase")
+                default_vendor_type = default_vendor_type if isinstance(default_vendor_type, str) else "purchase"
+                contacts, saved_count = import_vendor_contacts_from_workbook(upload_path, default_vendor_type=default_vendor_type)
                 self.send_json({
-                    "message": f"업체 메일 주소 {saved_count}건을 저장했습니다.",
+                    "message": f"거래처 메일 주소 {saved_count}건을 저장했습니다.",
                     "saved_count": saved_count,
                     "contacts": contacts,
                 })
@@ -23538,13 +25453,12 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                     return
                 upload_path = save_uploaded_file(fields, "file")
                 corrections = parse_import_corrections(fields)
-                inserted, skipped = import_cs_cases_from_workbook(upload_path, mode=mode, corrections=corrections)
+                result = import_cs_cases_from_workbook(upload_path, mode=mode, corrections=corrections)
                 mode_label = "전체 교체" if mode == "replace" else "일일 추가"
                 self.send_json({
-                    "message": f"CS 처리대장 {mode_label} {inserted}건 완료, 중복 {skipped}건 제외했습니다.",
+                    "message": f"CS 처리대장 {mode_label} {result['inserted']}건 완료, 중복 {result['skipped']}건 제외했습니다.",
                     "mode": mode,
-                    "inserted": inserted,
-                    "skipped": skipped,
+                    **result,
                 })
                 return
 
@@ -23553,7 +25467,8 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                     return
                 upload_path = save_uploaded_file(fields, "file")
                 corrections = parse_import_corrections(fields)
-                self.send_json(preview_management_import(upload_path, corrections=corrections))
+                file_modified_date = uploaded_file_modified_date(fields, upload_path)
+                self.send_json(preview_management_import(upload_path, corrections=corrections, file_modified_date=file_modified_date))
                 return
 
             if self.path == "/api/management-import":
@@ -23566,13 +25481,13 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                     return
                 upload_path = save_uploaded_file(fields, "file")
                 corrections = parse_import_corrections(fields)
-                inserted, skipped = import_management_workbook(upload_path, mode=mode, corrections=corrections)
+                file_modified_date = uploaded_file_modified_date(fields, upload_path)
+                result = import_management_workbook(upload_path, mode=mode, corrections=corrections, file_modified_date=file_modified_date)
                 mode_label = "전체 교체" if mode == "replace" else "일일 추가"
                 self.send_json({
-                    "message": f"통합관리대장 {mode_label} {inserted}건 완료, 중복 {skipped}건 제외했습니다.",
+                    "message": f"통합관리대장 {mode_label} {result['inserted']}건 완료, 중복 {result['skipped']}건 제외했습니다.",
                     "mode": mode,
-                    "inserted": inserted,
-                    "skipped": skipped,
+                    **result,
                 })
                 return
 
