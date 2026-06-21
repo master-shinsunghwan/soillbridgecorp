@@ -114,6 +114,9 @@ AUTO_BACKUP_HOUR = 3
 MAX_MAIL_ATTACHMENT_BYTES = 20 * 1024 * 1024
 _BACKUP_SCHEDULER_STARTED = False
 _SYSTEM_UPDATE_LOCK = threading.Lock()
+_SALES_REPORT_ALERT_SCHEDULER_STARTED = False
+SALES_REPORT_UPLOAD_ALERT_HOUR = 15
+SALES_REPORT_UPLOAD_ALERT_INTERVAL_MINUTES = 30
 DEFAULT_USERS = (
     ("admin", "관리자", "admin", "admin1234"),
     ("user", "사용자", "user", "user1234"),
@@ -1167,6 +1170,7 @@ HTML = r"""<!doctype html>
     .sales-kpi.violet { --kpi-color: #7c3aed; }
     .sales-kpi.orange { --kpi-color: #f97316; }
     .sales-kpi.teal { --kpi-color: #0d9488; }
+    .sales-kpi.muted { --kpi-color: #94a3b8; background: #f8fafc; }
     .sales-kpi.primary {
       border-color: rgba(37, 99, 235, .55);
       box-shadow: 0 8px 20px rgba(37, 99, 235, .10);
@@ -1226,6 +1230,12 @@ HTML = r"""<!doctype html>
       font-size: 20px;
       font-weight: 950;
       color: #0f172a;
+    }
+    .sales-kpi-value.notice {
+      font-size: 14px;
+      line-height: 1.35;
+      color: #475569;
+      white-space: normal;
     }
     .sales-kpi-note {
       margin-top: 4px;
@@ -7856,13 +7866,14 @@ HTML = r"""<!doctype html>
       const sellerTotal = data.seller_total || {};
       const supplierPurchaseTotal = data.supplier_purchase_total || {};
       const comparisonDelta = Number(comparison.profit_sales_amount_delta || 0);
-      const selectedDateLabel = shortKoreanDate(today.report_date || data.selected_date || "");
-      const previousDateLabel = shortKoreanDate(yesterday.report_date || "");
+      const hasTodaySalesData = Boolean(data.today_data_uploaded);
+      const selectedDateLabel = shortKoreanDate(data.selected_date || today.report_date || "");
+      const previousDateLabel = shortKoreanDate(data.previous_business_date || yesterday.report_date || "");
       const periodLabel = formatSalesPeriodLabel(data.period || "");
       const kpiCards = [
-        { label: `${selectedDateLabel || "기준일"} 손익 매출`, value: formatSalesNumber(today.profit_sales_amount), note: `수량 ${formatSalesNumber(today.quantity)}`, variant: "primary blue", icon: "₩", badge: "기준일" },
-        { label: `${previousDateLabel || "전일"} 손익 매출`, value: formatSalesNumber(yesterday.profit_sales_amount), note: `수량 ${formatSalesNumber(yesterday.quantity)}`, variant: "slate", icon: "D-1", badge: "전일" },
-        { label: previousDateLabel ? `${previousDateLabel} 대비` : "전일 대비", value: formatSalesPercent(comparison.profit_sales_amount_delta_rate), note: formatSalesNumber(comparison.profit_sales_amount_delta), variant: comparisonDelta < 0 ? "red" : "green", icon: comparisonDelta < 0 ? "↓" : "↑", badge: "증감", valueClass: salesAmountClass(comparison.profit_sales_amount_delta) },
+        { label: `${selectedDateLabel || "당일"} 손익 매출`, value: hasTodaySalesData ? formatSalesNumber(today.profit_sales_amount) : "미업로드", note: hasTodaySalesData ? `수량 ${formatSalesNumber(today.quantity)}` : "금일 매출금액이 업로드 되지 않음", variant: hasTodaySalesData ? "primary blue" : "muted", icon: "₩", badge: "당일", valueClass: hasTodaySalesData ? "" : "notice" },
+        { label: previousDateLabel ? `${previousDateLabel} 전영업일 매출` : "전영업일 매출", value: yesterday.report_date ? formatSalesNumber(yesterday.profit_sales_amount) : "데이터 없음", note: yesterday.report_date ? `수량 ${formatSalesNumber(yesterday.quantity)}` : "전영업일 매출 데이터가 없습니다.", variant: "slate", icon: "영", badge: "전영업일", valueClass: yesterday.report_date ? "" : "notice" },
+        { label: previousDateLabel ? `${previousDateLabel} 대비` : "전영업일 대비", value: hasTodaySalesData && yesterday.report_date ? formatSalesPercent(comparison.profit_sales_amount_delta_rate) : "비교 대기", note: hasTodaySalesData && yesterday.report_date ? formatSalesNumber(comparison.profit_sales_amount_delta) : "금일 데이터 업로드 후 비교 가능", variant: !hasTodaySalesData || !yesterday.report_date ? "muted" : (comparisonDelta < 0 ? "red" : "green"), icon: !hasTodaySalesData || !yesterday.report_date ? "-" : (comparisonDelta < 0 ? "↓" : "↑"), badge: "증감", valueClass: hasTodaySalesData && yesterday.report_date ? salesAmountClass(comparison.profit_sales_amount_delta) : "notice" },
         { label: `${periodLabel || "월"} 누적 매출`, value: formatSalesNumber(month.profit_sales_amount), note: periodLabel || "", variant: "violet", icon: "월", badge: "누적" },
         { label: "매출처별 합계", value: formatSalesNumber(sellerTotal.profit_sales_amount), note: `판매사 수량 ${formatSalesNumber(sellerTotal.quantity)}`, variant: "orange", icon: "매", badge: "매출처" },
         { label: "매입처별 총합계 금액", value: formatSalesNumber(supplierPurchaseTotal.purchase_total), note: `공급사 수량 ${formatSalesNumber(supplierPurchaseTotal.quantity)}`, variant: "teal", icon: "입", badge: "매입처" },
@@ -14476,14 +14487,20 @@ def _sales_report_purchase_public(row: sqlite3.Row) -> dict[str, object]:
     }
 
 
+def previous_business_day(base_date: date) -> date:
+    target = base_date - timedelta(days=1)
+    while target.weekday() >= 5:
+        target -= timedelta(days=1)
+    return target
+
+
 def sales_report_dashboard_payload(period: str = "", report_date: str = "") -> dict[str, object]:
     init_db()
     connection = connect_db()
     try:
-        selected_date = report_date or ""
-        if not selected_date:
-            row = connection.execute("SELECT MAX(report_date) AS report_date FROM sales_report_daily_rows").fetchone()
-            selected_date = str(row["report_date"] or "") if row else ""
+        today_date = date.today()
+        selected_date = report_date or today_date.isoformat()
+        previous_date = previous_business_day(date.fromisoformat(selected_date)).isoformat()
         selected_period = period or selected_date[:7]
         if not selected_period:
             row = connection.execute(
@@ -14519,13 +14536,10 @@ def sales_report_dashboard_payload(period: str = "", report_date: str = "") -> d
             "SELECT * FROM sales_report_daily_rows WHERE report_date = ?",
             (selected_date,),
         ).fetchone()
-        yesterday = None
-        if selected_date:
-            previous_date = (date.fromisoformat(selected_date) - timedelta(days=1)).isoformat()
-            yesterday = connection.execute(
-                "SELECT * FROM sales_report_daily_rows WHERE report_date = ?",
-                (previous_date,),
-            ).fetchone()
+        yesterday = connection.execute(
+            "SELECT * FROM sales_report_daily_rows WHERE report_date = ?",
+            (previous_date,),
+        ).fetchone()
         month = connection.execute(
             """
             SELECT COALESCE(SUM(quantity), 0) AS quantity,
@@ -14657,6 +14671,8 @@ def sales_report_dashboard_payload(period: str = "", report_date: str = "") -> d
     return {
         "period": selected_period,
         "selected_date": selected_date,
+        "previous_business_date": previous_date,
+        "today_data_uploaded": bool(today),
         "today": today_public,
         "yesterday": yesterday_public,
         "comparison": {
@@ -14686,6 +14702,131 @@ def sales_report_dashboard_payload(period: str = "", report_date: str = "") -> d
             for row in review_rows
         ],
     }
+
+
+def sales_report_daily_exists(connection: sqlite3.Connection, target_date: str) -> bool:
+    row = connection.execute(
+        "SELECT 1 FROM sales_report_daily_rows WHERE report_date = ? LIMIT 1",
+        (target_date,),
+    ).fetchone()
+    return bool(row)
+
+
+def sales_report_alert_recipients(connection: sqlite3.Connection) -> list[str]:
+    rows = connection.execute(
+        """
+        SELECT username, display_name, role
+          FROM users
+         WHERE active = 1
+           AND (
+                role = 'admin'
+                OR username = '신성환 실장'
+                OR display_name = '신성환 실장'
+                OR display_name LIKE '신성환%'
+           )
+         ORDER BY CASE role WHEN 'admin' THEN 0 ELSE 1 END,
+                  display_name COLLATE NOCASE,
+                  username COLLATE NOCASE
+        """
+    ).fetchall()
+    names: list[str] = []
+    seen: set[str] = set()
+    for row in rows:
+        name = str(row["display_name"] or row["username"] or "").strip()
+        if not name or name in seen:
+            continue
+        seen.add(name)
+        names.append(name)
+    return names
+
+
+def sales_report_alert_sender_id(connection: sqlite3.Connection) -> int | None:
+    row = connection.execute(
+        """
+        SELECT id
+          FROM users
+         WHERE active = 1
+           AND role = 'admin'
+         ORDER BY CASE
+                    WHEN display_name = '신성환 실장' THEN 0
+                    WHEN username = 'admin' THEN 1
+                    ELSE 2
+                  END,
+                  id
+         LIMIT 1
+        """
+    ).fetchone()
+    if not row:
+        return None
+    return int(row["id"])
+
+
+def maybe_send_sales_report_upload_alert(now: datetime | None = None) -> bool:
+    current = now or datetime.now()
+    if current.hour < SALES_REPORT_UPLOAD_ALERT_HOUR:
+        return False
+    target_date = current.date().isoformat()
+    connection = connect_db()
+    try:
+        if sales_report_daily_exists(connection, target_date):
+            return False
+        cutoff = (current - timedelta(minutes=SALES_REPORT_UPLOAD_ALERT_INTERVAL_MINUTES)).strftime("%Y-%m-%d %H:%M:%S")
+        marker = f"[매출현황 업로드 요청] {target_date}"
+        exists = connection.execute(
+            """
+            SELECT 1
+              FROM internal_messages
+             WHERE COALESCE(room_type, 'global') = 'global'
+               AND body LIKE ?
+               AND created_at >= ?
+             LIMIT 1
+            """,
+            (f"{marker}%", cutoff),
+        ).fetchone()
+        if exists:
+            return False
+        sender_id = sales_report_alert_sender_id(connection)
+        if sender_id is None:
+            return False
+        recipients = sales_report_alert_recipients(connection)
+        recipient_text = ", ".join(recipients) if recipients else "관리자"
+        message = (
+            f"{marker}\n"
+            f"대상: {recipient_text}\n"
+            f"{current.strftime('%H:%M')} 기준 금일 매출금액이 아직 업로드되지 않았습니다.\n"
+            "매출현황에 금일 매출 통계 파일을 업로드해주세요."
+        )
+        connection.execute(
+            """
+            INSERT INTO internal_messages
+                (user_id, recipient_user_id, room_type, body, created_at, task_id, command_result, command_error)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (sender_id, None, "global", message, current.strftime("%Y-%m-%d %H:%M:%S"), None, "", ""),
+        )
+        connection.commit()
+        return True
+    finally:
+        connection.close()
+
+
+def sales_report_alert_scheduler_loop() -> None:
+    while True:
+        try:
+            if maybe_send_sales_report_upload_alert():
+                print("매출현황 업로드 요청 알림 생성")
+        except Exception as exc:  # noqa: BLE001
+            print(f"매출현황 업로드 알림 실패: {exc}")
+        time.sleep(60)
+
+
+def start_sales_report_alert_scheduler() -> None:
+    global _SALES_REPORT_ALERT_SCHEDULER_STARTED
+    if _SALES_REPORT_ALERT_SCHEDULER_STARTED:
+        return
+    _SALES_REPORT_ALERT_SCHEDULER_STARTED = True
+    thread = threading.Thread(target=sales_report_alert_scheduler_loop, name="workhub-sales-report-alert", daemon=True)
+    thread.start()
 
 
 def save_sales_report_file(source_path: str | Path, original_name: str, uploaded_by: str = "") -> dict[str, str | int]:
@@ -19918,6 +20059,7 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                 return
             parsed = urlsplit(self.path)
             params = parse_qs(parsed.query)
+            maybe_send_sales_report_upload_alert()
             self.send_json(sales_report_dashboard_payload(
                 period=params.get("period", [""])[0],
                 report_date=params.get("date", [""])[0],
@@ -20962,6 +21104,7 @@ def run(host: str = "127.0.0.1", port: int = 8765) -> None:
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     init_db()
     start_backup_scheduler()
+    start_sales_report_alert_scheduler()
     server = ThreadingHTTPServer((host, port), WorkhubHandler)
     print(f"(주)소일브릿지 발주 업무자동화 앱 실행 중: http://{host}:{port}")
     server.serve_forever()
