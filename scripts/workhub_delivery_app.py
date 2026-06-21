@@ -1250,7 +1250,7 @@ HTML = r"""<!doctype html>
     }
     .sales-table-tabs {
       display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
+      grid-template-columns: repeat(3, minmax(0, 1fr));
       gap: 8px;
       margin: 10px 0;
     }
@@ -1283,6 +1283,7 @@ HTML = r"""<!doctype html>
     }
     .sales-table-tab[data-sales-tab="salesProduct"] { --tab-color: #2563eb; }
     .sales-table-tab[data-sales-tab="partner"] { --tab-color: #f97316; }
+    .sales-table-tab[data-sales-tab="monthlyCompare"] { --tab-color: #7c3aed; }
     .sales-table-tab-count {
       min-width: 34px;
       height: 24px;
@@ -1322,6 +1323,10 @@ HTML = r"""<!doctype html>
     .sales-panel.seller { --panel-color: #f97316; }
     .sales-panel.product { --panel-color: #7c3aed; }
     .sales-panel.supplier { --panel-color: #0d9488; }
+    .sales-panel.violet {
+      --panel-color: #7c3aed;
+      grid-column: 1 / -1;
+    }
     .sales-panel-head {
       min-height: 40px;
       display: flex;
@@ -6051,11 +6056,13 @@ HTML = r"""<!doctype html>
     const salesReportSellerBody = document.querySelector("#salesReportSellerBody");
     const salesReportProductBody = document.querySelector("#salesReportProductBody");
     const salesReportReviewBody = document.querySelector("#salesReportReviewBody");
+    const salesReportMonthlyCompareBody = document.querySelector("#salesReportMonthlyCompareBody");
     const salesReportTabButtons = [...document.querySelectorAll("[data-sales-tab]")];
     const salesReportPanels = [...document.querySelectorAll("[data-sales-panel]")];
     const salesReportTabCounts = {
       salesProduct: document.querySelector("#salesReportSalesProductCount"),
       partner: document.querySelector("#salesReportPartnerCount"),
+      monthlyCompare: document.querySelector("#salesReportMonthlyCompareCount"),
     };
     const vendorTypeSelect = document.querySelector("#vendorTypeSelect");
     const recipientEmailInput = document.querySelector("#recipientEmailInput");
@@ -8095,8 +8102,24 @@ HTML = r"""<!doctype html>
       } else {
         renderSalesEmpty(salesReportReviewBody, 3, "업체별 매입금액 데이터를 업로드해주세요.");
       }
+      const monthlyCompareRows = data.monthly_comparison_rows || [];
+      if (monthlyCompareRows.length) {
+        salesReportMonthlyCompareBody.innerHTML = monthlyCompareRows.map((row) => `
+          <tr>
+            <td>${escapeHtml(row.label || "")}</td>
+            <td>${escapeHtml(row.metric || "")}</td>
+            <td>${formatSalesNumber(row.current)}</td>
+            <td>${formatSalesNumber(row.previous)}</td>
+            <td class="${salesAmountClass(row.delta)}">${formatSalesNumber(row.delta)}</td>
+            <td class="${salesAmountClass(row.delta)}">${formatSalesPercent(row.delta_rate)}</td>
+          </tr>
+        `).join("");
+      } else {
+        renderSalesEmpty(salesReportMonthlyCompareBody, 6, "전월 비교 데이터가 없습니다.");
+      }
       setSalesReportTabCount("salesProduct", dailyRows.length + productRows.length);
       setSalesReportTabCount("partner", sellerRows.length + purchaseRows.length);
+      setSalesReportTabCount("monthlyCompare", monthlyCompareRows.length);
       setSalesReportTab(activeSalesReportTab);
     }
 
@@ -8114,6 +8137,7 @@ HTML = r"""<!doctype html>
         renderSalesEmpty(salesReportSellerBody, 4, "매출현황을 불러오지 못했습니다.");
         renderSalesEmpty(salesReportProductBody, 4, "매출현황을 불러오지 못했습니다.");
         renderSalesEmpty(salesReportReviewBody, 3, "매출현황을 불러오지 못했습니다.");
+        renderSalesEmpty(salesReportMonthlyCompareBody, 6, "매출현황을 불러오지 못했습니다.");
       } finally {
         setSalesReportLoading(false);
       }
@@ -13494,6 +13518,9 @@ ADMIN_WORKSPACE_HTML = r"""
                   <button class="sales-table-tab" type="button" data-sales-tab="partner">
                     <span>거래처 매출 · 매입 분석</span><span class="sales-table-tab-count" id="salesReportPartnerCount">0</span>
                   </button>
+                  <button class="sales-table-tab" type="button" data-sales-tab="monthlyCompare">
+                    <span>전월 비교 분석</span><span class="sales-table-tab-count" id="salesReportMonthlyCompareCount">0</span>
+                  </button>
                 </div>
                 <div class="sales-dashboard-grid sales-tab-panels">
                   <div class="sales-panel daily active" data-sales-panel="daily" data-sales-group="salesProduct">
@@ -13541,6 +13568,18 @@ ADMIN_WORKSPACE_HTML = r"""
                       <table class="sales-table">
                         <thead><tr><th>매입처</th><th>총 매입금액</th><th>수량</th></tr></thead>
                         <tbody id="salesReportReviewBody"></tbody>
+                      </table>
+                    </div>
+                  </div>
+                  <div class="sales-panel violet" data-sales-panel="monthlyCompare" data-sales-group="monthlyCompare">
+                    <div class="sales-panel-head">
+                      <div class="sales-panel-title"><span class="sales-panel-icon">전</span>전월 비교 분석</div>
+                      <span class="sales-panel-badge">전월 대비</span>
+                    </div>
+                    <div class="sales-table-scroll">
+                      <table class="sales-table">
+                        <thead><tr><th>구분</th><th>기준</th><th>이번 달</th><th>전월</th><th>증감</th><th>증감률</th></tr></thead>
+                        <tbody id="salesReportMonthlyCompareBody"></tbody>
                       </table>
                     </div>
                   </div>
@@ -14672,6 +14711,28 @@ def previous_business_day(base_date: date) -> date:
     return target
 
 
+def previous_sales_period(period: str) -> str:
+    match = re.match(r"^(20\d{2})-(\d{1,2})$", str(period or ""))
+    if not match:
+        return ""
+    year = int(match.group(1))
+    month = int(match.group(2))
+    if month <= 1:
+        return f"{year - 1}-12"
+    return f"{year}-{month - 1:02d}"
+
+
+def sales_report_delta(current_value: int, previous_value: int) -> dict[str, object]:
+    delta = int(current_value or 0) - int(previous_value or 0)
+    rate = round((delta / int(previous_value)) * 100, 1) if previous_value else 0
+    return {
+        "current": int(current_value or 0),
+        "previous": int(previous_value or 0),
+        "delta": delta,
+        "delta_rate": rate,
+    }
+
+
 def sales_report_dashboard_payload(period: str = "", report_date: str = "") -> dict[str, object]:
     init_db()
     connection = connect_db()
@@ -14710,6 +14771,7 @@ def sales_report_dashboard_payload(period: str = "", report_date: str = "") -> d
                 (selected_period,),
             ).fetchone()
             selected_date = str(row["report_date"] or "") if row else ""
+        previous_period = previous_sales_period(selected_period)
         today = connection.execute(
             "SELECT * FROM sales_report_daily_rows WHERE report_date = ?",
             (selected_date,),
@@ -14731,6 +14793,17 @@ def sales_report_dashboard_payload(period: str = "", report_date: str = "") -> d
             """,
             (selected_period,),
         ).fetchone()
+        previous_month = connection.execute(
+            """
+            SELECT COALESCE(SUM(quantity), 0) AS quantity,
+                   COALESCE(SUM(sales_total), 0) AS sales_total,
+                   COALESCE(SUM(profit_sales_amount), 0) AS profit_sales_amount,
+                   COALESCE(SUM(profit_margin), 0) AS profit_margin
+              FROM sales_report_daily_rows
+             WHERE period = ?
+            """,
+            (previous_period,),
+        ).fetchone()
         seller_total = connection.execute(
             """
             SELECT COALESCE(SUM(quantity), 0) AS quantity,
@@ -14742,6 +14815,16 @@ def sales_report_dashboard_payload(period: str = "", report_date: str = "") -> d
             """,
             (selected_period,),
         ).fetchone()
+        previous_seller_total = connection.execute(
+            """
+            SELECT COALESCE(SUM(quantity), 0) AS quantity,
+                   COALESCE(SUM(profit_sales_amount), 0) AS profit_sales_amount,
+                   COALESCE(SUM(profit_margin), 0) AS profit_margin
+              FROM sales_report_seller_rows
+             WHERE period = ?
+            """,
+            (previous_period,),
+        ).fetchone()
         supplier_purchase_total = connection.execute(
             """
             SELECT COALESCE(SUM(quantity), 0) AS quantity,
@@ -14750,6 +14833,35 @@ def sales_report_dashboard_payload(period: str = "", report_date: str = "") -> d
              WHERE period = ?
             """,
             (selected_period,),
+        ).fetchone()
+        previous_supplier_purchase_total = connection.execute(
+            """
+            SELECT COALESCE(SUM(quantity), 0) AS quantity,
+                   COALESCE(SUM(supply_total), 0) AS purchase_total
+              FROM sales_report_supplier_rows
+             WHERE period = ?
+            """,
+            (previous_period,),
+        ).fetchone()
+        product_total = connection.execute(
+            """
+            SELECT COALESCE(SUM(quantity), 0) AS quantity,
+                   COALESCE(SUM(profit_sales_amount), 0) AS profit_sales_amount,
+                   COALESCE(SUM(profit_margin), 0) AS profit_margin
+              FROM sales_report_product_rows
+             WHERE period = ?
+            """,
+            (selected_period,),
+        ).fetchone()
+        previous_product_total = connection.execute(
+            """
+            SELECT COALESCE(SUM(quantity), 0) AS quantity,
+                   COALESCE(SUM(profit_sales_amount), 0) AS profit_sales_amount,
+                   COALESCE(SUM(profit_margin), 0) AS profit_margin
+              FROM sales_report_product_rows
+             WHERE period = ?
+            """,
+            (previous_period,),
         ).fetchone()
         daily_rows = connection.execute(
             """
@@ -14838,19 +14950,45 @@ def sales_report_dashboard_payload(period: str = "", report_date: str = "") -> d
         "profit_supply_amount": int(month["profit_supply_amount"] or 0),
         "profit_margin": int(month["profit_margin"] or 0),
     }
+    previous_month_total = {
+        "quantity": int(previous_month["quantity"] or 0),
+        "sales_total": int(previous_month["sales_total"] or 0),
+        "profit_sales_amount": int(previous_month["profit_sales_amount"] or 0),
+        "profit_margin": int(previous_month["profit_margin"] or 0),
+    }
     seller_total_public = {
         "quantity": int(seller_total["quantity"] or 0),
         "sales_amount": int(seller_total["sales_amount"] or 0),
         "profit_sales_amount": int(seller_total["profit_sales_amount"] or 0),
         "profit_margin": int(seller_total["profit_margin"] or 0),
     }
+    previous_seller_total_public = {
+        "quantity": int(previous_seller_total["quantity"] or 0),
+        "profit_sales_amount": int(previous_seller_total["profit_sales_amount"] or 0),
+        "profit_margin": int(previous_seller_total["profit_margin"] or 0),
+    }
     supplier_purchase_total_public = {
         "quantity": int(supplier_purchase_total["quantity"] or 0),
         "purchase_total": int(supplier_purchase_total["purchase_total"] or 0),
     }
+    previous_supplier_purchase_total_public = {
+        "quantity": int(previous_supplier_purchase_total["quantity"] or 0),
+        "purchase_total": int(previous_supplier_purchase_total["purchase_total"] or 0),
+    }
+    product_total_public = {
+        "quantity": int(product_total["quantity"] or 0),
+        "profit_sales_amount": int(product_total["profit_sales_amount"] or 0),
+        "profit_margin": int(product_total["profit_margin"] or 0),
+    }
+    previous_product_total_public = {
+        "quantity": int(previous_product_total["quantity"] or 0),
+        "profit_sales_amount": int(previous_product_total["profit_sales_amount"] or 0),
+        "profit_margin": int(previous_product_total["profit_margin"] or 0),
+    }
     difference = month_total["profit_sales_amount"] - seller_total_public["profit_sales_amount"]
     return {
         "period": selected_period,
+        "previous_period": previous_period,
         "selected_date": selected_date,
         "previous_business_date": previous_date,
         "today_data_uploaded": bool(today),
@@ -14861,8 +14999,35 @@ def sales_report_dashboard_payload(period: str = "", report_date: str = "") -> d
             "profit_sales_amount_delta_rate": delta_rate,
         },
         "month": month_total,
+        "previous_month": previous_month_total,
         "seller_total": seller_total_public,
+        "previous_seller_total": previous_seller_total_public,
+        "product_total": product_total_public,
+        "previous_product_total": previous_product_total_public,
         "supplier_purchase_total": supplier_purchase_total_public,
+        "previous_supplier_purchase_total": previous_supplier_purchase_total_public,
+        "monthly_comparison_rows": [
+            {
+                "label": "월 누적 매출",
+                "metric": "손익매출",
+                **sales_report_delta(month_total["profit_sales_amount"], previous_month_total["profit_sales_amount"]),
+            },
+            {
+                "label": "상품별 매출",
+                "metric": "손익매출",
+                **sales_report_delta(product_total_public["profit_sales_amount"], previous_product_total_public["profit_sales_amount"]),
+            },
+            {
+                "label": "매출처 합계",
+                "metric": "손익매출",
+                **sales_report_delta(seller_total_public["profit_sales_amount"], previous_seller_total_public["profit_sales_amount"]),
+            },
+            {
+                "label": "매입처 합계",
+                "metric": "총 매입금액",
+                **sales_report_delta(supplier_purchase_total_public["purchase_total"], previous_supplier_purchase_total_public["purchase_total"]),
+            },
+        ],
         "consistency": {
             "difference": difference,
             "ok": difference == 0,
