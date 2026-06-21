@@ -13489,10 +13489,10 @@ ADMIN_WORKSPACE_HTML = r"""
                 <div class="sales-kpi-grid" id="salesReportKpiGrid"></div>
                 <div class="sales-table-tabs" id="salesReportTabs" role="tablist">
                   <button class="sales-table-tab active" type="button" data-sales-tab="salesProduct">
-                    <span>일자별 매출 + 상품별 매출</span><span class="sales-table-tab-count" id="salesReportSalesProductCount">0</span>
+                    <span>매출 흐름 · 상품 분석</span><span class="sales-table-tab-count" id="salesReportSalesProductCount">0</span>
                   </button>
                   <button class="sales-table-tab" type="button" data-sales-tab="partner">
-                    <span>매출처 + 매입처</span><span class="sales-table-tab-count" id="salesReportPartnerCount">0</span>
+                    <span>거래처 매출 · 매입 분석</span><span class="sales-table-tab-count" id="salesReportPartnerCount">0</span>
                   </button>
                 </div>
                 <div class="sales-dashboard-grid sales-tab-panels">
