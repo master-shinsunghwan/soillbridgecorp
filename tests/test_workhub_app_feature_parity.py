@@ -523,6 +523,13 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         self.assertIn("매입처별 총합계 금액", html_source)
         self.assertNotIn('["파일 검증"', html_source)
 
+    def test_lucide_imports_do_not_request_missing_arrow_right_export(self) -> None:
+        html_source = (ROOT / "scripts" / "workhub_delivery_app.py").read_text(encoding="utf-8")
+
+        self.assertNotIn("Search, ArrowRight, LogOut", html_source)
+        self.assertNotIn('"arrow-right": ArrowRight', html_source)
+        self.assertIn('"arrow-right": ChevronRight', html_source)
+
     def test_tools_sidebar_is_shared_file_library_only(self) -> None:
         for app_file in (
             ROOT / "scripts" / "workhub_delivery_app.py",

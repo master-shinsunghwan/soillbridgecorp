@@ -176,6 +176,7 @@ export const Home = {};
 export const MessageCircle = {};
 export const Info = {};
 export const ChevronDown = {};
+export const ChevronLeft = {};
 export const ChevronRight = {};
 export const PlusSquare = {};
 export const RefreshCw = {};
@@ -198,6 +199,9 @@ export const Database = {};
 export const CalendarDays = {};
 export const X = {};
 export const Settings = {};
+export const Search = {};
+export const LogOut = {};
+export const Warehouse = {};
 """.strip()
 
 
@@ -7296,8 +7300,8 @@ HTML = r"""<!doctype html>
   </div>
 
   <script type="module">
-    import { createIcons, BriefcaseBusiness, Home, MessageCircle, Info, ChevronDown, ChevronLeft, ChevronRight, PlusSquare, RefreshCw, Ellipsis, Headphones, Package, ClipboardCheck, CircleDollarSign, FileText, FileSpreadsheet, ClipboardList, BarChart3, CopyCheck, Bell, Download, Truck, Mail, Upload, Database, CalendarDays, X, Settings, Search, ArrowRight, LogOut, Warehouse } from "/lucide/dist/esm/lucide.js";
-    createIcons({ icons: { BriefcaseBusiness, Home, MessageCircle, Info, ChevronDown, ChevronLeft, ChevronRight, PlusSquare, RefreshCw, Ellipsis, Headphones, Package, ClipboardCheck, CircleDollarSign, FileText, FileSpreadsheet, ClipboardList, BarChart3, CopyCheck, Bell, Download, Truck, Mail, Upload, Database, CalendarDays, X, Settings, Search, ArrowRight, LogOut, Warehouse, "package": Package, "file-text": FileText, "file-spreadsheet": FileSpreadsheet, "truck": Truck, "search": Search, "arrow-right": ArrowRight, "log-out": LogOut, "warehouse": Warehouse } });
+    import { createIcons, BriefcaseBusiness, Home, MessageCircle, Info, ChevronDown, ChevronLeft, ChevronRight, PlusSquare, RefreshCw, Ellipsis, Headphones, Package, ClipboardCheck, CircleDollarSign, FileText, FileSpreadsheet, ClipboardList, BarChart3, CopyCheck, Bell, Download, Truck, Mail, Upload, Database, CalendarDays, X, Settings, Search, LogOut, Warehouse } from "/lucide/dist/esm/lucide.js";
+    createIcons({ icons: { BriefcaseBusiness, Home, MessageCircle, Info, ChevronDown, ChevronLeft, ChevronRight, PlusSquare, RefreshCw, Ellipsis, Headphones, Package, ClipboardCheck, CircleDollarSign, FileText, FileSpreadsheet, ClipboardList, BarChart3, CopyCheck, Bell, Download, Truck, Mail, Upload, Database, CalendarDays, X, Settings, Search, LogOut, Warehouse, "package": Package, "file-text": FileText, "file-spreadsheet": FileSpreadsheet, "truck": Truck, "search": Search, "arrow-right": ChevronRight, "log-out": LogOut, "warehouse": Warehouse } });
     function applyDaisyUiClasses() {
       document.querySelectorAll(".workspace-button, .crm-mini-button, .action-button, .logout-button, .top-button").forEach((element) => {
         element.classList.add("btn", "btn-sm");
