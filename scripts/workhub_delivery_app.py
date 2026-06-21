@@ -1458,6 +1458,13 @@ HTML = r"""<!doctype html>
       background: #f3e8ff;
       color: #5b21b6;
     }
+    .sales-compare-detail-scroll {
+      max-height: 360px;
+      min-height: 180px;
+      overflow-y: scroll;
+      overflow-x: auto;
+      scrollbar-gutter: stable both-edges;
+    }
     .sales-dashboard.loading .sales-kpi,
     .sales-dashboard.loading .sales-panel {
       position: relative;
@@ -13670,7 +13677,7 @@ ADMIN_WORKSPACE_HTML = r"""
                             <button class="sales-compare-detail-tab" type="button" data-sales-compare-detail="supplier">매입처별 비교</button>
                           </div>
                         </div>
-                        <div class="sales-table-scroll">
+                        <div class="sales-table-scroll sales-compare-detail-scroll">
                           <table class="sales-table">
                             <thead><tr><th>구분</th><th>이번 달 수량</th><th>이번 달 금액</th><th>전월 수량</th><th>전월 금액</th><th>증감</th><th>증감률</th></tr></thead>
                             <tbody id="salesReportMonthlyCompareDetailBody"></tbody>
