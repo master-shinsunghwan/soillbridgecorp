@@ -11338,7 +11338,8 @@ HTML = r"""<!doctype html>
       setEditableCellValue(statusCell, status);
       if (statusCell) statusCell.dataset.options = JSON.stringify(ledgerStatusOptions(status));
       if (isFullyCompletedStatus(status) && row?.children?.[5] && !row.children[5].textContent.trim()) {
-        row.children[5].textContent = todayString();
+        row.children[5].dataset.fullDate = todayString();
+        row.children[5].textContent = shortKoreanDate(todayString());
       }
       updateLedgerRowCompletion(row);
       markRowDirty(row, true);
@@ -11567,7 +11568,7 @@ HTML = r"""<!doctype html>
       const className = `editable-cell ${align}`.trim();
       const dataAttr = scope === "management" ? "data-management-field" : "data-field";
       const optionData = options.length ? ` data-options="${escapeHtml(JSON.stringify(options))}"` : "";
-      return `<td class="${className}" ${dataAttr}="${escapeHtml(field)}" data-label="${escapeHtml(label)}" data-value="${escapeHtml(value)}" data-input="${escapeHtml(input)}"${date ? ` data-raw-date="${escapeHtml(value)}" data-date="1"` : ""}${optionData}>${escapeHtml(displayValue)}</td>`;
+      return `<td class="${className}" ${dataAttr}="${escapeHtml(field)}" data-label="${escapeHtml(label)}" data-value="${escapeHtml(value)}" data-input="${escapeHtml(input)}"${date ? ` data-raw-date="${escapeHtml(value)}" data-full-date="${escapeHtml(value)}" data-date="1"` : ""}${optionData}>${escapeHtml(displayValue)}</td>`;
     }
 
     function selectedEditorParts(scope) {
@@ -11843,7 +11844,7 @@ HTML = r"""<!doctype html>
         if (isCompletedCsCase(csCase)) row.classList.add("completed-cs");
         row.innerHTML = `
           <td><input class="ledger-check" type="checkbox" data-row-check /></td>
-          <td>${escapeHtml(csCase.occurred_at || csCase.created_at)}</td>
+          <td data-full-date="${escapeHtml(csCase.occurred_at || csCase.created_at)}">${escapeHtml(shortKoreanDate(csCase.occurred_at || csCase.created_at))}</td>
           <td>${escapeHtml(csCase.sales_vendor)}</td>
           <td>${escapeHtml(csCase.purchase_vendor || csCase.vendor_name)}</td>
           <td class="editable-cell" data-field="status" data-label="처리진행상태" data-value="${escapeHtml(statusValue)}" data-input="select" data-options="${escapeHtml(JSON.stringify(statusSelectOptions))}">
@@ -11852,7 +11853,7 @@ HTML = r"""<!doctype html>
               ${returnCheckButtonHtml}
             </span>
           </td>
-          <td>${escapeHtml(csCase.completed_at)}</td>
+          <td data-full-date="${escapeHtml(csCase.completed_at)}">${escapeHtml(shortKoreanDate(csCase.completed_at))}</td>
           ${editableCell({ scope: "ledger", field: "cs_type", label: "처리내용", value: csCase.cs_type, input: "select", options: csTypeSelectOptions })}
           ${editableCell({ scope: "ledger", field: "cs_content", label: "C/S 내용", value: csCase.cs_content, align: "left", input: "textarea" })}
           ${editableCell({ scope: "ledger", field: "reship_invoice", label: "재발송운송장번호", value: csCase.reship_invoice, align: "invoice-cell reship-cell" })}
@@ -12327,7 +12328,7 @@ HTML = r"""<!doctype html>
         const field = cell.dataset.managementField;
         const value = fieldValue(cell);
         payload[field] = field === "order_date" || field === "ship_date"
-          ? fullDateForSave(value, cell.dataset.rawDate || "")
+          ? fullDateForSave(value, cell.dataset.rawDate || cell.dataset.fullDate || "")
           : value;
       });
       return payload;
@@ -12684,11 +12685,11 @@ HTML = r"""<!doctype html>
 
     function collectLedgerExportRows() {
       return Array.from(ledgerBody.querySelectorAll("tr[data-case-id]")).map((row) => ({
-        occurred_at: textFromCell(row, 1),
+        occurred_at: fullDateFromCell(row, 1),
         sales_vendor: textFromCell(row, 2),
         purchase_vendor: textFromCell(row, 3),
         status: fieldValue(row.querySelector('[data-field="status"]')),
-        completed_at: textFromCell(row, 5),
+        completed_at: fullDateFromCell(row, 5),
         cs_type: fieldValue(row.querySelector('[data-field="cs_type"]')),
         cs_content: textFromCell(row, 7),
         reship_invoice: fieldValue(row.querySelector('[data-field="reship_invoice"]')),
