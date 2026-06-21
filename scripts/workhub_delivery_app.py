@@ -1327,6 +1327,9 @@ HTML = r"""<!doctype html>
       --panel-color: #7c3aed;
       grid-column: 1 / -1;
     }
+    .sales-panel.violet.active {
+      min-height: max(560px, calc(100vh - 260px));
+    }
     .sales-panel-head {
       min-height: 40px;
       display: flex;
@@ -1423,6 +1426,15 @@ HTML = r"""<!doctype html>
       gap: 10px;
       padding: 10px;
     }
+    .sales-panel.violet.active .sales-compare-layout {
+      min-height: calc(100vh - 305px);
+      grid-template-rows: auto minmax(0, 1fr);
+    }
+    .sales-panel.violet.active .sales-compare-layout > div:last-child {
+      min-height: 0;
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr);
+    }
     .sales-compare-title {
       font-size: 12px;
       font-weight: 950;
@@ -1459,8 +1471,9 @@ HTML = r"""<!doctype html>
       color: #5b21b6;
     }
     .sales-compare-detail-scroll {
-      max-height: 360px;
-      min-height: 180px;
+      height: max(360px, calc(100vh - 475px));
+      max-height: none;
+      min-height: 0;
       overflow-y: scroll;
       overflow-x: auto;
       scrollbar-gutter: stable both-edges;
