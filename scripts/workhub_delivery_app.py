@@ -16421,8 +16421,8 @@ ADMIN_TOOLS_NAV_HTML = r"""
           <i class="nav-chevron" data-lucide="chevron-right"></i>
         </button>
         <div class="nav-submenu">
-          <button class="nav-subitem" type="button" data-management-import-mode="daily">통합관리대장 업로드</button>
-          <button class="nav-subitem" type="button" data-ledger-import-mode="daily">CS처리대장 업로드</button>
+          <button class="nav-subitem" type="button" data-management-import-mode="replace">통합관리대장 전체 데이터 교체 업로드</button>
+          <button class="nav-subitem" type="button" data-ledger-import-mode="replace">CS처리대장 전체 데이터 교체 업로드</button>
           <button class="nav-subitem" type="button" data-open="systemUpdate">업데이트 관리</button>
           <button class="nav-subitem" type="button" data-open="backup">백업 관리</button>
           <button class="nav-subitem" type="button" data-open="userAdmin">권한설정</button>
@@ -17609,6 +17609,7 @@ def _parse_product_sales_report(headers: list[str], rows: list[list[object]], or
             "quantity": _sales_report_int(_sales_report_value(row, "판매-수량")),
             "sales_amount": _sales_report_int(_sales_report_value(row, "판매-금액")),
             "supply_amount": _sales_report_int(_sales_report_value(row, "판매-공급금액")),
+            "sales_total": _sales_report_int(_sales_report_value(row, "판매-판매합계")),
             "sales_margin": _sales_report_int(_sales_report_value(row, "판매-마진")),
             "cs_amount": _sales_report_int(_sales_report_value(row, "CS-금액")),
             "cs_supply_amount": _sales_report_int(_sales_report_value(row, "CS-공급금액")),
@@ -17798,11 +17799,11 @@ def save_sales_report_snapshot(file_id: int, parsed: dict[str, object]) -> None:
                     """
                     INSERT INTO sales_report_product_rows (
                         period, report_date, file_id, product_code, product_name, quantity, sales_amount,
-                        supply_amount, sales_margin, cs_amount, cs_supply_amount, cs_margin,
+                        supply_amount, sales_total, sales_margin, cs_amount, cs_supply_amount, cs_margin,
                         profit_quantity_sales, profit_quantity_supply, profit_sales_amount, profit_supply_amount,
                         profit_margin, margin_rate
                     )
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         period,
@@ -17813,6 +17814,7 @@ def save_sales_report_snapshot(file_id: int, parsed: dict[str, object]) -> None:
                         row.get("quantity", 0),
                         row.get("sales_amount", 0),
                         row.get("supply_amount", 0),
+                        row.get("sales_total", 0),
                         row.get("sales_margin", 0),
                         row.get("cs_amount", 0),
                         row.get("cs_supply_amount", 0),
@@ -17985,9 +17987,7 @@ def sales_report_dashboard_payload(period: str = "", report_date: str = "") -> d
     init_db()
     connection = connect_db()
     try:
-        today_date = date.today()
-        selected_date = report_date or today_date.isoformat()
-        previous_date = previous_sales_data_date(connection, date.fromisoformat(selected_date))
+        selected_date = report_date or ""
         selected_period = period or selected_date[:7]
         if not selected_period:
             row = connection.execute(
@@ -18009,16 +18009,24 @@ def sales_report_dashboard_payload(period: str = "", report_date: str = "") -> d
             selected_period = str(row["period"] or "") if row else ""
         if not selected_date and selected_period:
             row = connection.execute(
-                "SELECT MAX(report_date) AS report_date FROM sales_report_daily_rows WHERE period = ?",
-                (selected_period,),
+                """
+                SELECT MAX(report_date) AS report_date
+                  FROM (
+                        SELECT report_date FROM sales_report_daily_rows WHERE period = ? AND report_date != ''
+                        UNION ALL
+                        SELECT report_date FROM sales_report_seller_rows WHERE period = ? AND report_date != ''
+                        UNION ALL
+                        SELECT report_date FROM sales_report_supplier_rows WHERE period = ? AND report_date != ''
+                        UNION ALL
+                        SELECT report_date FROM sales_report_product_rows WHERE period = ? AND report_date != ''
+                       )
+                """,
+                (selected_period, selected_period, selected_period, selected_period),
             ).fetchone()
             selected_date = str(row["report_date"] or "") if row else ""
-        if not selected_date and selected_period:
-            row = connection.execute(
-                "SELECT MAX(report_date) AS report_date FROM sales_report_product_rows WHERE period = ? AND report_date != ''",
-                (selected_period,),
-            ).fetchone()
-            selected_date = str(row["report_date"] or "") if row else ""
+        if not selected_date:
+            selected_date = date.today().isoformat()
+        previous_date = previous_sales_data_date(connection, date.fromisoformat(selected_date))
         previous_period = previous_sales_period(selected_period)
         today = connection.execute(
             "SELECT * FROM sales_report_daily_rows WHERE report_date = ?",
@@ -19093,6 +19101,7 @@ def init_db() -> None:
                 quantity INTEGER NOT NULL DEFAULT 0,
                 sales_amount INTEGER NOT NULL DEFAULT 0,
                 supply_amount INTEGER NOT NULL DEFAULT 0,
+                sales_total INTEGER NOT NULL DEFAULT 0,
                 sales_margin INTEGER NOT NULL DEFAULT 0,
                 cs_amount INTEGER NOT NULL DEFAULT 0,
                 cs_supply_amount INTEGER NOT NULL DEFAULT 0,
@@ -19106,6 +19115,11 @@ def init_db() -> None:
             )
             """
         )
+        product_columns = {
+            row["name"] for row in connection.execute("PRAGMA table_info(sales_report_product_rows)").fetchall()
+        }
+        if "sales_total" not in product_columns:
+            connection.execute("ALTER TABLE sales_report_product_rows ADD COLUMN sales_total INTEGER NOT NULL DEFAULT 0")
         connection.execute("CREATE INDEX IF NOT EXISTS idx_sales_report_product_date ON sales_report_product_rows(report_date)")
         connection.execute("CREATE INDEX IF NOT EXISTS idx_sales_report_product_period ON sales_report_product_rows(period)")
         connection.execute(

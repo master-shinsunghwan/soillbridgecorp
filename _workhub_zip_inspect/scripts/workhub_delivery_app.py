@@ -4433,7 +4433,7 @@ HTML = r"""<!doctype html>
                     <div class="dashboard-sales-metric"><span>주문 건수</span><strong>-</strong></div>
                     <div class="dashboard-sales-metric"><span>평균 객단가</span><strong>-</strong></div>
                   </div>
-                  <div class="dashboard-sales-placeholder">발주모아 매출 데이터 연결 대기 중</div>
+                  <div class="dashboard-sales-placeholder">매출현황 및 관리 데이터 연결 대기 중</div>
                 </div>
               </article>
             </aside>

@@ -92,7 +92,7 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
             sales_panel_start = html_source.index('id="dashboardSalesPanel"')
             sales_panel_end = html_source.index('</aside>', sales_panel_start)
             sales_panel_html = html_source[sales_panel_start:sales_panel_end]
-            self.assertIn("발주모아 매출 데이터 연결 대기 중", sales_panel_html)
+            self.assertIn("매출현황 및 관리 데이터 연결 대기 중", sales_panel_html)
             self.assertNotIn("선택한 날짜", sales_panel_html)
             self.assertNotIn("이번 달 요약", sales_panel_html)
             self.assertIn(".dashboard-calendar-panel", html_source)
@@ -144,12 +144,12 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         self.assertIn('data-open="management"', management_group)
         self.assertIn('id="managementImportOpen"', management_group)
         self.assertIn('data-management-import-mode="daily"', management_group)
-        self.assertIn("통합관리대장 일일 추가 업로드", management_group)
+        self.assertIn("통합관리대장 업로드", management_group)
 
         self.assertIn('data-open="ledger"', ledger_group)
         self.assertIn('id="ledgerImportOpen"', ledger_group)
         self.assertIn('data-ledger-import-mode="daily"', ledger_group)
-        self.assertIn("CS처리대장 일일 추가 업로드", ledger_group)
+        self.assertIn("CS처리대장 업로드", ledger_group)
 
         self.assertIn('data-management-import-mode="replace"', admin_group)
         self.assertIn('data-ledger-import-mode="replace"', admin_group)
@@ -250,7 +250,8 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
     def test_ledger_imports_are_split_into_daily_and_replace_modes(self) -> None:
         html_source = (SCRIPTS / "workhub_delivery_app.py").read_text(encoding="utf-8")
 
-        self.assertIn("일일 추가 업로드", html_source)
+        self.assertIn("통합관리대장 업로드", html_source)
+        self.assertIn("CS처리대장 업로드", html_source)
         self.assertIn("전체 데이터 교체 업로드", html_source)
         self.assertIn("/api/management-import-preview", html_source)
         self.assertIn("/api/cs-cases-import-preview", html_source)
