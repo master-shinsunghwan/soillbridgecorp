@@ -1314,7 +1314,8 @@ HTML = r"""<!doctype html>
       display: grid;
       grid-template-columns: repeat(2, minmax(0, 1fr));
       gap: 10px;
-      min-height: 360px;
+      min-height: max(540px, calc(100vh - 335px));
+      align-items: stretch;
     }
     .sales-panel {
       --panel-color: #64748b;
@@ -1329,7 +1330,8 @@ HTML = r"""<!doctype html>
       display: none;
     }
     .sales-tab-panels .sales-panel.active {
-      display: block;
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr);
       animation: salesPanelIn .18s ease both;
     }
     .sales-panel.daily { --panel-color: #2563eb; }
@@ -1392,8 +1394,9 @@ HTML = r"""<!doctype html>
       font-size: 12px;
     }
     .sales-table-scroll {
-      max-height: min(540px, calc(100vh - 360px));
-      min-height: 220px;
+      height: max(420px, calc(100vh - 395px));
+      max-height: none;
+      min-height: 0;
       overflow-y: auto;
       scrollbar-gutter: stable;
     }
