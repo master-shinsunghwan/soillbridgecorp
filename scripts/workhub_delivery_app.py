@@ -2560,18 +2560,25 @@ HTML = r"""<!doctype html>
       position: sticky;
       top: 0;
       z-index: 1;
-      background: #8ecf45;
-      border-bottom: 1px solid #6baa2d;
-      color: #111827;
+      background: #d9efc3;
+      border-bottom: 1px solid #a8cb82;
+      color: #18350f;
       font-weight: 850;
-      padding: 5px 6px;
+      padding: 4px 5px;
       text-align: center;
       white-space: nowrap;
       vertical-align: bottom;
       line-height: 1.18;
     }
+    .ledger-table th.select-head {
+      width: 34px;
+      min-width: 34px;
+      max-width: 34px;
+      padding-left: 3px;
+      padding-right: 3px;
+    }
     .ledger-table th.has-filter {
-      padding-right: 26px;
+      padding-right: 21px;
     }
     .ledger-th-title {
       display: block;
@@ -2579,16 +2586,16 @@ HTML = r"""<!doctype html>
     }
     .ledger-filter-trigger {
       position: absolute;
-      right: 5px;
+      right: 4px;
       top: 50%;
       transform: translateY(-50%);
-      width: 19px;
-      height: 19px;
-      border: 1px solid rgba(17, 24, 39, .42);
+      width: 16px;
+      height: 16px;
+      border: 1px solid rgba(17, 24, 39, .32);
       border-radius: 3px;
       background: rgba(255,255,255,.88);
       color: #111827;
-      font-size: 11px;
+      font-size: 9px;
       line-height: 1;
       cursor: pointer;
       padding: 0;
@@ -2666,9 +2673,15 @@ HTML = r"""<!doctype html>
       background: #087a46;
       color: white;
     }
-    .ledger-table th.invoice-head {
-      background: #f3b21d;
-      border-bottom-color: #c98e10;
+    .ledger-table th.invoice-head.reship-head {
+      background: #fde7a4;
+      border-bottom-color: #e7b744;
+      color: #4a3100;
+    }
+    .ledger-table th.invoice-head.return-head {
+      background: #dbeafe;
+      border-bottom-color: #93c5fd;
+      color: #1e3a8a;
     }
     .ledger-table td {
       border-bottom: 1px solid #e6eaf0;
@@ -2679,8 +2692,32 @@ HTML = r"""<!doctype html>
       font-size: 11px;
       line-height: 1.22;
     }
+    .ledger-table td:first-child {
+      width: 34px;
+      min-width: 34px;
+      max-width: 34px;
+      padding-left: 3px;
+      padding-right: 3px;
+    }
+    .ledger-table td.invoice-cell {
+      font-weight: 800;
+    }
+    .ledger-table td.reship-cell {
+      background: #fff8e6;
+      color: #7a4a00;
+    }
+    .ledger-table td.return-cell {
+      background: #eff6ff;
+      color: #1d4ed8;
+    }
     .ledger-table tr.completed-cs td {
       background: #fff8d8;
+    }
+    .ledger-table tr.completed-cs td.reship-cell {
+      background: #fff1c9;
+    }
+    .ledger-table tr.completed-cs td.return-cell {
+      background: #e5f0ff;
     }
     .ledger-table tr.row-dirty td {
       box-shadow: inset 0 0 0 9999px rgba(37, 99, 235, .035);
@@ -5246,7 +5283,7 @@ HTML = r"""<!doctype html>
       vertical-align: middle;
     }
     .ledger-table th.has-filter {
-      padding-right: 22px;
+      padding-right: 19px;
     }
     .ledger-th-title {
       line-height: 1.08;
@@ -6474,7 +6511,7 @@ HTML = r"""<!doctype html>
             <table class="ledger-table">
               <thead>
                 <tr>
-                  <th>선택</th>
+                  <th class="select-head">선택</th>
                   <th class="has-filter"><span class="ledger-th-title">날짜</span><button class="ledger-filter-trigger" type="button" data-ledger-filter-button="occurred_at" data-label="날짜">▼</button></th>
                   <th class="has-filter"><span class="ledger-th-title">매출거래처</span><button class="ledger-filter-trigger" type="button" data-ledger-filter-button="sales_vendor" data-label="매출거래처">▼</button></th>
                   <th class="has-filter"><span class="ledger-th-title">매입거래처</span><button class="ledger-filter-trigger" type="button" data-ledger-filter-button="purchase_vendor" data-label="매입거래처">▼</button></th>
@@ -6482,8 +6519,8 @@ HTML = r"""<!doctype html>
                   <th class="has-filter"><span class="ledger-th-title">완료일</span><button class="ledger-filter-trigger" type="button" data-ledger-filter-button="completed_at" data-label="완료일">▼</button></th>
                   <th class="has-filter"><span class="ledger-th-title">처리내용</span><button class="ledger-filter-trigger" type="button" data-ledger-filter-button="cs_type" data-label="처리내용">▼</button></th>
                   <th class="has-filter"><span class="ledger-th-title">C/S 내용</span><button class="ledger-filter-trigger" type="button" data-ledger-filter-button="cs_content" data-label="C/S 내용">▼</button></th>
-                  <th class="invoice-head has-filter"><span class="ledger-th-title">재발송운송장번호</span><button class="ledger-filter-trigger" type="button" data-ledger-filter-button="reship_invoice" data-label="재발송운송장번호">▼</button></th>
-                  <th class="invoice-head has-filter"><span class="ledger-th-title">회수운송장번호</span><button class="ledger-filter-trigger" type="button" data-ledger-filter-button="return_invoice" data-label="회수운송장번호">▼</button></th>
+                  <th class="invoice-head reship-head has-filter"><span class="ledger-th-title">재발송운송장번호</span><button class="ledger-filter-trigger" type="button" data-ledger-filter-button="reship_invoice" data-label="재발송운송장번호">▼</button></th>
+                  <th class="invoice-head return-head has-filter"><span class="ledger-th-title">회수운송장번호</span><button class="ledger-filter-trigger" type="button" data-ledger-filter-button="return_invoice" data-label="회수운송장번호">▼</button></th>
                   <th class="has-filter"><span class="ledger-th-title">주문일자</span><button class="ledger-filter-trigger" type="button" data-ledger-filter-button="order_date" data-label="주문일자">▼</button></th>
                   <th class="has-filter"><span class="ledger-th-title">출고일</span><button class="ledger-filter-trigger" type="button" data-ledger-filter-button="ship_date" data-label="출고일">▼</button></th>
                   <th class="has-filter"><span class="ledger-th-title">주문자</span><button class="ledger-filter-trigger" type="button" data-ledger-filter-button="orderer_name" data-label="주문자">▼</button></th>
@@ -6541,7 +6578,7 @@ HTML = r"""<!doctype html>
             <table class="ledger-table">
               <thead>
                 <tr>
-                  <th><input class="ledger-check" id="managementSelectAll" type="checkbox" title="전체 선택" /></th>
+                  <th class="select-head"><input class="ledger-check" id="managementSelectAll" type="checkbox" title="전체 선택" /></th>
                   <th class="has-filter"><span class="ledger-th-title">주문일자</span><button class="ledger-filter-trigger" type="button" data-management-filter-button="order_date" data-label="주문일자">▼</button></th>
                   <th class="has-filter"><span class="ledger-th-title">출고일</span><button class="ledger-filter-trigger" type="button" data-management-filter-button="ship_date" data-label="출고일">▼</button></th>
                   <th class="has-filter"><span class="ledger-th-title">매입거래처</span><button class="ledger-filter-trigger" type="button" data-management-filter-button="purchase_vendor" data-label="매입거래처">▼</button></th>
@@ -11818,8 +11855,8 @@ HTML = r"""<!doctype html>
           <td>${escapeHtml(csCase.completed_at)}</td>
           ${editableCell({ scope: "ledger", field: "cs_type", label: "처리내용", value: csCase.cs_type, input: "select", options: csTypeSelectOptions })}
           ${editableCell({ scope: "ledger", field: "cs_content", label: "C/S 내용", value: csCase.cs_content, align: "left", input: "textarea" })}
-          ${editableCell({ scope: "ledger", field: "reship_invoice", label: "재발송운송장번호", value: csCase.reship_invoice })}
-          ${editableCell({ scope: "ledger", field: "return_invoice", label: "회수운송장번호", value: csCase.return_invoice })}
+          ${editableCell({ scope: "ledger", field: "reship_invoice", label: "재발송운송장번호", value: csCase.reship_invoice, align: "invoice-cell reship-cell" })}
+          ${editableCell({ scope: "ledger", field: "return_invoice", label: "회수운송장번호", value: csCase.return_invoice, align: "invoice-cell return-cell" })}
           <td data-full-date="${escapeHtml(csCase.order_date)}">${escapeHtml(shortKoreanDate(csCase.order_date))}</td>
           <td data-full-date="${escapeHtml(csCase.ship_date)}">${escapeHtml(shortKoreanDate(csCase.ship_date))}</td>
           <td>${escapeHtml(csCase.orderer_name)}</td>
