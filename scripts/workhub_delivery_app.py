@@ -1253,6 +1253,9 @@ HTML = r"""<!doctype html>
       color: #64748b;
       font-weight: 800;
     }
+    .sales-dashboard.monthly-compare-mode .sales-kpi-grid {
+      display: none;
+    }
     .sales-dashboard-grid {
       display: grid;
       grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
@@ -1338,7 +1341,7 @@ HTML = r"""<!doctype html>
       grid-column: 1 / -1;
     }
     .sales-panel.violet.active {
-      min-height: max(560px, calc(100vh - 260px));
+      min-height: max(640px, calc(100vh - 150px));
     }
     .sales-panel-head {
       min-height: 40px;
@@ -1437,7 +1440,7 @@ HTML = r"""<!doctype html>
       padding: 10px;
     }
     .sales-panel.violet.active .sales-compare-layout {
-      min-height: calc(100vh - 305px);
+      min-height: calc(100vh - 195px);
       grid-template-rows: auto minmax(0, 1fr);
     }
     .sales-panel.violet.active .sales-compare-layout > div:last-child {
@@ -1481,7 +1484,7 @@ HTML = r"""<!doctype html>
       color: #5b21b6;
     }
     .sales-compare-detail-scroll {
-      height: clamp(360px, calc(100vh - 420px), 720px);
+      height: clamp(460px, calc(100vh - 310px), 860px);
       max-height: none;
       min-height: 0;
       overflow-y: scroll;
@@ -8070,6 +8073,7 @@ HTML = r"""<!doctype html>
       salesReportPanels.forEach((panel) => {
         panel.classList.toggle("active", panel.dataset.salesGroup === activeSalesReportTab);
       });
+      salesReportDashboard?.classList.toggle("monthly-compare-mode", activeSalesReportTab === "monthlyCompare");
     }
 
     function setSalesReportTabCount(tabName, count) {
