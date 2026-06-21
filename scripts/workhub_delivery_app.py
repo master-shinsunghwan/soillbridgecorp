@@ -3122,6 +3122,35 @@ HTML = r"""<!doctype html>
       font-weight: 950;
       line-height: 1.25;
     }
+    .dashboard-sales-metric strong.sales-positive {
+      color: #047857;
+    }
+    .dashboard-sales-metric strong.sales-negative {
+      color: #b91c1c;
+    }
+    .dashboard-sales-metric strong.notice {
+      color: #64748b;
+      font-size: 16px;
+    }
+    .dashboard-sales-status {
+      display: inline-flex;
+      align-items: center;
+      min-height: 22px;
+      padding: 3px 8px;
+      border-radius: 999px;
+      background: #f1f5f9;
+      color: #475569;
+      font-size: 11px;
+      font-weight: 900;
+    }
+    .dashboard-sales-status.connected {
+      background: #ecfdf5;
+      color: #047857;
+    }
+    .dashboard-sales-status.warning {
+      background: #fff7ed;
+      color: #c2410c;
+    }
     .dashboard-sales-placeholder {
       margin-top: 12px;
       padding: 13px 14px;
@@ -4962,15 +4991,15 @@ HTML = r"""<!doctype html>
             </article>
             <aside class="dashboard-sales-panel" id="dashboardSalesPanel">
               <article class="company-card">
-                <div class="company-card-head"><span>매출 현황</span><span>연동 대기</span></div>
+                <div class="company-card-head"><span>매출 현황</span><span class="dashboard-sales-status" id="dashboardSalesStatus">연동 대기</span></div>
                 <div class="company-card-body">
                   <div class="dashboard-sales-grid">
-                    <div class="dashboard-sales-metric"><span>오늘 매출</span><strong>-</strong></div>
-                    <div class="dashboard-sales-metric"><span>이번 달 매출</span><strong>-</strong></div>
-                    <div class="dashboard-sales-metric"><span>주문 건수</span><strong>-</strong></div>
-                    <div class="dashboard-sales-metric"><span>평균 객단가</span><strong>-</strong></div>
+                    <div class="dashboard-sales-metric"><span id="dashboardTodaySalesLabel">오늘 손익매출</span><strong id="dashboardTodaySales">-</strong></div>
+                    <div class="dashboard-sales-metric"><span id="dashboardMonthSalesLabel">이번 달 누적매출</span><strong id="dashboardMonthSales">-</strong></div>
+                    <div class="dashboard-sales-metric"><span id="dashboardSalesQuantityLabel">이번 달 판매수량</span><strong id="dashboardSalesQuantity">-</strong></div>
+                    <div class="dashboard-sales-metric"><span id="dashboardSalesCompareLabel">전영업일 대비</span><strong id="dashboardSalesCompare">-</strong></div>
                   </div>
-                  <div class="dashboard-sales-placeholder">발주모아 매출 데이터 연결 대기 중</div>
+                  <div class="dashboard-sales-placeholder" id="dashboardSalesMessage">매출현황 및 관리 데이터 연결 대기 중</div>
                 </div>
               </article>
             </aside>
@@ -6128,6 +6157,16 @@ HTML = r"""<!doctype html>
     const salesReportRecentList = document.querySelector("#salesReportRecentList");
     const salesReportDashboard = document.querySelector("#salesReportDashboard");
     const salesReportKpiGrid = document.querySelector("#salesReportKpiGrid");
+    const dashboardSalesStatus = document.querySelector("#dashboardSalesStatus");
+    const dashboardTodaySalesLabel = document.querySelector("#dashboardTodaySalesLabel");
+    const dashboardTodaySales = document.querySelector("#dashboardTodaySales");
+    const dashboardMonthSalesLabel = document.querySelector("#dashboardMonthSalesLabel");
+    const dashboardMonthSales = document.querySelector("#dashboardMonthSales");
+    const dashboardSalesQuantityLabel = document.querySelector("#dashboardSalesQuantityLabel");
+    const dashboardSalesQuantity = document.querySelector("#dashboardSalesQuantity");
+    const dashboardSalesCompareLabel = document.querySelector("#dashboardSalesCompareLabel");
+    const dashboardSalesCompare = document.querySelector("#dashboardSalesCompare");
+    const dashboardSalesMessage = document.querySelector("#dashboardSalesMessage");
     const salesReportDailyBody = document.querySelector("#salesReportDailyBody");
     const salesReportSellerBody = document.querySelector("#salesReportSellerBody");
     const salesReportProductBody = document.querySelector("#salesReportProductBody");
@@ -8559,8 +8598,93 @@ HTML = r"""<!doctype html>
       renderCompanyCalendar(data);
     }
 
+    function setDashboardSalesMetric(labelElement, valueElement, label, value, className = "") {
+      if (labelElement) labelElement.textContent = label;
+      if (!valueElement) return;
+      valueElement.textContent = value;
+      valueElement.className = className;
+    }
+
+    function setDashboardSalesStatus(text, state = "") {
+      if (!dashboardSalesStatus) return;
+      dashboardSalesStatus.textContent = text;
+      dashboardSalesStatus.className = `dashboard-sales-status${state ? ` ${state}` : ""}`;
+    }
+
+    function renderDashboardSalesUnavailable(message) {
+      setDashboardSalesStatus("연동 대기");
+      setDashboardSalesMetric(dashboardTodaySalesLabel, dashboardTodaySales, "오늘 손익매출", "-");
+      setDashboardSalesMetric(dashboardMonthSalesLabel, dashboardMonthSales, "이번 달 누적매출", "-");
+      setDashboardSalesMetric(dashboardSalesQuantityLabel, dashboardSalesQuantity, "이번 달 판매수량", "-");
+      setDashboardSalesMetric(dashboardSalesCompareLabel, dashboardSalesCompare, "전영업일 대비", "-");
+      if (dashboardSalesMessage) dashboardSalesMessage.textContent = message || "매출현황 및 관리 데이터를 불러오는 중입니다.";
+    }
+
+    function renderDashboardSalesSummary(data) {
+      const today = data.today || {};
+      const yesterday = data.yesterday || {};
+      const month = data.month || {};
+      const comparison = data.comparison || {};
+      const hasTodaySalesData = Boolean(data.today_data_uploaded);
+      const selectedDateLabel = shortKoreanDate(data.selected_date || today.report_date || "");
+      const previousDateLabel = shortKoreanDate(data.previous_business_date || yesterday.report_date || "");
+      const periodLabel = formatSalesPeriodLabel(data.period || "");
+      const comparisonDelta = Number(comparison.profit_sales_amount_delta || 0);
+      const hasComparison = hasTodaySalesData && Boolean(yesterday.report_date);
+      setDashboardSalesStatus(hasTodaySalesData ? "연동 완료" : "금일 미업로드", hasTodaySalesData ? "connected" : "warning");
+      setDashboardSalesMetric(
+        dashboardTodaySalesLabel,
+        dashboardTodaySales,
+        `${selectedDateLabel || "오늘"} 손익매출`,
+        hasTodaySalesData ? formatSalesNumber(today.profit_sales_amount) : "미업로드",
+        hasTodaySalesData ? "" : "notice",
+      );
+      setDashboardSalesMetric(
+        dashboardMonthSalesLabel,
+        dashboardMonthSales,
+        "이번 달 누적매출",
+        formatSalesNumber(month.profit_sales_amount),
+      );
+      setDashboardSalesMetric(
+        dashboardSalesQuantityLabel,
+        dashboardSalesQuantity,
+        "이번 달 판매수량",
+        `${formatSalesNumber(month.quantity)}개`,
+      );
+      setDashboardSalesMetric(
+        dashboardSalesCompareLabel,
+        dashboardSalesCompare,
+        previousDateLabel ? `${previousDateLabel} 대비` : "전영업일 대비",
+        hasComparison ? formatSalesPercent(comparison.profit_sales_amount_delta_rate) : "비교 대기",
+        hasComparison ? salesAmountClass(comparisonDelta) : "notice",
+      );
+      if (dashboardSalesMessage) {
+        dashboardSalesMessage.textContent = hasComparison
+          ? `매출현황 및 관리 데이터 기준 · ${periodLabel} · 증감액 ${formatSalesNumber(comparisonDelta)}`
+          : "금일 매출 데이터 업로드 후 전영업일 대비가 표시됩니다.";
+      }
+    }
+
+    async function loadDashboardSalesSummary() {
+      if (!dashboardSalesStatus) return;
+      if (!can("sales_report_manage")) {
+        renderDashboardSalesUnavailable("매출현황 조회 권한이 없어 데이터를 표시할 수 없습니다.");
+        return;
+      }
+      renderDashboardSalesUnavailable("매출현황 및 관리 데이터를 불러오는 중입니다.");
+      try {
+        const response = await fetch("/api/sales-report-dashboard");
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.error || "매출현황을 불러오지 못했습니다.");
+        renderDashboardSalesSummary(data);
+      } catch (error) {
+        setDashboardSalesStatus("연동 오류", "warning");
+        if (dashboardSalesMessage) dashboardSalesMessage.textContent = error.message || "매출현황을 불러오지 못했습니다.";
+      }
+    }
+
     async function loadDashboardEntryData() {
-      const tasks = [loadImportShipments()];
+      const tasks = [loadImportShipments(), loadDashboardSalesSummary()];
       tasks.push(loadCompanyCalendar().catch(() => {
         if (companyCalendarGrid) companyCalendarGrid.innerHTML = `<div class="calendar-empty">캘린더를 불러오지 못했습니다.</div>`;
       }));
