@@ -2362,9 +2362,10 @@ HTML = r"""<!doctype html>
     .ledger-import-button input { display: none; }
     .cell-edit-bar {
       display: none;
-      grid-template-columns: minmax(140px, auto) minmax(220px, 1fr) auto auto auto;
+      grid-template-columns: minmax(140px, auto) minmax(180px, max-content) auto auto auto;
       gap: 7px;
       align-items: center;
+      justify-content: start;
       margin: -2px 0 10px;
       padding: 8px;
       border: 1px solid #cfd6e2;
@@ -2386,6 +2387,11 @@ HTML = r"""<!doctype html>
       font-size: 12px;
       font-weight: 900;
       white-space: nowrap;
+    }
+    .cell-edit-bar > div:nth-child(2) {
+      width: min(var(--cell-editor-width, 420px), calc(100vw - 520px));
+      min-width: 180px;
+      max-width: 100%;
     }
     .cell-edit-control {
       width: 100%;
@@ -2432,10 +2438,12 @@ HTML = r"""<!doctype html>
       .cell-edit-bar {
         grid-template-columns: 1fr auto auto auto;
         align-items: center;
+        justify-content: stretch;
       }
       .cell-edit-label,
       .cell-edit-bar > div:nth-child(2) {
         grid-column: 1 / -1;
+        width: 100%;
       }
       .cell-edit-label {
         white-space: normal;
@@ -11484,6 +11492,23 @@ HTML = r"""<!doctype html>
       textarea.style.height = `${nextHeight}px`;
     }
 
+    function preferredCellEditorWidth(control) {
+      const value = String(control?.value || "");
+      const optionTexts = control?.tagName === "SELECT"
+        ? Array.from(control.options || []).map((option) => option.textContent || option.value || "")
+        : [];
+      const candidates = [value, ...optionTexts, control?.placeholder || ""]
+        .flatMap((text) => String(text || "").split(/\r?\n/));
+      const longest = candidates.reduce((max, text) => Math.max(max, text.length), 0);
+      const baseWidth = control?.tagName === "TEXTAREA" ? 260 : 190;
+      return Math.min(Math.max(baseWidth, longest * 11 + 44), 760);
+    }
+
+    function syncCellEditorWidth(parts, control) {
+      if (!parts?.bar || !control) return;
+      parts.bar.style.setProperty("--cell-editor-width", `${preferredCellEditorWidth(control)}px`);
+    }
+
     function createCellEditorControl(cell) {
       const inputType = cell.dataset.input || "text";
       const currentValue = cell.dataset.value || cell.textContent.trim();
@@ -11504,7 +11529,11 @@ HTML = r"""<!doctype html>
         textarea.className = "cell-edit-control";
         textarea.value = currentValue;
         textarea.rows = 1;
-        textarea.addEventListener("input", () => resizeCellTextarea(textarea));
+        textarea.addEventListener("input", () => {
+          resizeCellTextarea(textarea);
+          const scope = textarea.closest("#ledgerCellEditMount") ? "ledger" : "management";
+          syncCellEditorWidth(selectedEditorParts(scope), textarea);
+        });
         setTimeout(() => resizeCellTextarea(textarea), 0);
         return textarea;
       }
@@ -11529,6 +11558,8 @@ HTML = r"""<!doctype html>
       const control = createCellEditorControl(cell);
       parts.mount.innerHTML = "";
       parts.mount.appendChild(control);
+      syncCellEditorWidth(parts, control);
+      control.addEventListener("input", () => syncCellEditorWidth(parts, control));
       parts.label.textContent = rowHint ? `${label} · ${rowHint}` : label;
       parts.bar.classList.add("open");
       if (scope === "ledger" && ledgerReturnCheckButton) {
