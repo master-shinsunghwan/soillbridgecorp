@@ -1248,58 +1248,103 @@ HTML = r"""<!doctype html>
       grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
       gap: 10px;
     }
-    .sales-table-tabs {
+    .sales-section-cards {
       display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 8px;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 10px;
       margin: 10px 0;
     }
-    .sales-table-tab {
-      min-height: 48px;
+    .sales-section-card {
+      --section-color: #2563eb;
+      min-height: 116px;
       border: 1px solid #d8e0ec;
       border-radius: 8px;
       background: #fff;
-      color: #475569;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
+      color: #0f172a;
+      display: grid;
       gap: 8px;
-      padding: 0 12px;
+      padding: 12px;
       cursor: pointer;
+      text-align: left;
       font-size: 12px;
       font-weight: 950;
       transition: border-color .16s ease, box-shadow .16s ease, transform .16s ease, background .16s ease;
     }
-    .sales-table-tab:hover {
+    .sales-section-card:hover {
       transform: translateY(-1px);
-      border-color: var(--tab-color, #2563eb);
+      border-color: var(--section-color);
       box-shadow: 0 8px 18px rgba(15, 23, 42, .08);
     }
-    .sales-table-tab.active {
-      border-color: var(--tab-color, #2563eb);
-      background: color-mix(in srgb, var(--tab-color, #2563eb) 8%, white);
-      color: #0f172a;
-      box-shadow: 0 8px 18px color-mix(in srgb, var(--tab-color, #2563eb) 14%, transparent);
+    .sales-section-card.active {
+      border-color: var(--section-color);
+      background: color-mix(in srgb, var(--section-color) 7%, white);
+      box-shadow: 0 10px 22px color-mix(in srgb, var(--section-color) 13%, transparent);
     }
-    .sales-table-tab[data-sales-tab="salesProduct"] { --tab-color: #2563eb; }
-    .sales-table-tab[data-sales-tab="partner"] { --tab-color: #f97316; }
-    .sales-table-tab-count {
-      min-width: 34px;
+    .sales-section-card[data-sales-section="daily"] { --section-color: #2563eb; }
+    .sales-section-card[data-sales-section="product"] { --section-color: #7c3aed; }
+    .sales-section-card[data-sales-section="seller"] { --section-color: #f97316; }
+    .sales-section-card[data-sales-section="supplier"] { --section-color: #0d9488; }
+    .sales-section-card-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+    .sales-section-card-title {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      min-width: 0;
+    }
+    .sales-section-dot {
+      width: 22px;
+      height: 22px;
+      border-radius: 7px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      background: color-mix(in srgb, var(--section-color) 13%, white);
+      color: var(--section-color);
+      font-size: 11px;
+      font-weight: 950;
+      flex: 0 0 auto;
+    }
+    .sales-section-count {
+      min-width: 32px;
       height: 24px;
       padding: 0 8px;
       border-radius: 999px;
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      background: color-mix(in srgb, var(--tab-color, #2563eb) 12%, white);
-      color: var(--tab-color, #2563eb);
+      background: color-mix(in srgb, var(--section-color) 12%, white);
+      color: var(--section-color);
       font-size: 11px;
       font-weight: 950;
     }
-    .sales-dashboard-grid.sales-tab-panels {
-      display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 10px;
+    .sales-section-value {
+      font-size: 18px;
+      font-weight: 950;
+      color: #0f172a;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .sales-section-summary {
+      color: #64748b;
+      font-size: 11px;
+      font-weight: 800;
+      line-height: 1.35;
+      min-height: 30px;
+      overflow: hidden;
+    }
+    .sales-section-action {
+      color: var(--section-color);
+      font-size: 11px;
+      font-weight: 950;
+    }
+    .sales-dashboard-grid.sales-detail-panels {
+      display: block;
       min-height: 360px;
     }
     .sales-panel {
@@ -1311,10 +1356,10 @@ HTML = r"""<!doctype html>
       box-shadow: 0 6px 16px rgba(15, 23, 42, .035);
       border-top: 3px solid var(--panel-color);
     }
-    .sales-tab-panels .sales-panel {
+    .sales-detail-panels .sales-panel {
       display: none;
     }
-    .sales-tab-panels .sales-panel.active {
+    .sales-detail-panels .sales-panel.active {
       display: block;
       animation: salesPanelIn .18s ease both;
     }
@@ -1438,10 +1483,10 @@ HTML = r"""<!doctype html>
     .sales-positive { color: #047857; }
     .sales-negative { color: #b91c1c; }
     @media (prefers-reduced-motion: reduce) {
-      .sales-table-tab,
+      .sales-section-card,
       .sales-table td,
       .sales-table tbody tr,
-      .sales-tab-panels .sales-panel.active {
+      .sales-detail-panels .sales-panel.active {
         transition: none;
         animation: none;
       }
@@ -1453,12 +1498,10 @@ HTML = r"""<!doctype html>
     @media (max-width: 1280px) {
       .sales-kpi-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
       .sales-dashboard-grid { grid-template-columns: 1fr; }
+      .sales-section-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     }
     @media (max-width: 900px) {
-      .sales-table-tabs,
-      .sales-dashboard-grid.sales-tab-panels {
-        grid-template-columns: 1fr;
-      }
+      .sales-section-cards { grid-template-columns: 1fr; }
     }
     .admin-section-title {
       font-size: 14px;
@@ -6051,11 +6094,25 @@ HTML = r"""<!doctype html>
     const salesReportSellerBody = document.querySelector("#salesReportSellerBody");
     const salesReportProductBody = document.querySelector("#salesReportProductBody");
     const salesReportReviewBody = document.querySelector("#salesReportReviewBody");
-    const salesReportTabButtons = [...document.querySelectorAll("[data-sales-tab]")];
+    const salesReportSectionButtons = [...document.querySelectorAll("[data-sales-section]")];
     const salesReportPanels = [...document.querySelectorAll("[data-sales-panel]")];
-    const salesReportTabCounts = {
-      salesProduct: document.querySelector("#salesReportSalesProductCount"),
-      partner: document.querySelector("#salesReportPartnerCount"),
+    const salesReportSectionCounts = {
+      daily: document.querySelector("#salesReportDailyCount"),
+      product: document.querySelector("#salesReportProductCount"),
+      seller: document.querySelector("#salesReportSellerCount"),
+      supplier: document.querySelector("#salesReportSupplierCount"),
+    };
+    const salesReportSectionValues = {
+      daily: document.querySelector("#salesReportDailyValue"),
+      product: document.querySelector("#salesReportProductValue"),
+      seller: document.querySelector("#salesReportSellerValue"),
+      supplier: document.querySelector("#salesReportSupplierValue"),
+    };
+    const salesReportSectionSummaries = {
+      daily: document.querySelector("#salesReportDailySummary"),
+      product: document.querySelector("#salesReportProductSummary"),
+      seller: document.querySelector("#salesReportSellerSummary"),
+      supplier: document.querySelector("#salesReportSupplierSummary"),
     };
     const vendorTypeSelect = document.querySelector("#vendorTypeSelect");
     const recipientEmailInput = document.querySelector("#recipientEmailInput");
@@ -7977,23 +8034,27 @@ HTML = r"""<!doctype html>
       tbody.innerHTML = `<tr><td class="empty" colspan="${colspan}">${escapeHtml(message)}</td></tr>`;
     }
 
-    let activeSalesReportTab = "salesProduct";
+    let activeSalesReportSection = "daily";
 
-    function setSalesReportTab(tabName) {
-      activeSalesReportTab = tabName || "salesProduct";
-      salesReportTabButtons.forEach((button) => {
-        const active = button.dataset.salesTab === activeSalesReportTab;
+    function setSalesReportSection(sectionName) {
+      activeSalesReportSection = sectionName || "daily";
+      salesReportSectionButtons.forEach((button) => {
+        const active = button.dataset.salesSection === activeSalesReportSection;
         button.classList.toggle("active", active);
         button.setAttribute("aria-selected", active ? "true" : "false");
       });
       salesReportPanels.forEach((panel) => {
-        panel.classList.toggle("active", panel.dataset.salesGroup === activeSalesReportTab);
+        panel.classList.toggle("active", panel.dataset.salesPanel === activeSalesReportSection);
       });
     }
 
-    function setSalesReportTabCount(tabName, count) {
-      const target = salesReportTabCounts[tabName];
+    function setSalesReportSectionMetric(sectionName, count, value, summary) {
+      const target = salesReportSectionCounts[sectionName];
       if (target) target.textContent = formatSalesNumber(count || 0);
+      const valueTarget = salesReportSectionValues[sectionName];
+      if (valueTarget) valueTarget.textContent = value || "0";
+      const summaryTarget = salesReportSectionSummaries[sectionName];
+      if (summaryTarget) summaryTarget.textContent = summary || "";
     }
 
     function setSalesReportLoading(isLoading) {
@@ -8095,9 +8156,35 @@ HTML = r"""<!doctype html>
       } else {
         renderSalesEmpty(salesReportReviewBody, 3, "업체별 매입금액 데이터를 업로드해주세요.");
       }
-      setSalesReportTabCount("salesProduct", dailyRows.length + productRows.length);
-      setSalesReportTabCount("partner", sellerRows.length + purchaseRows.length);
-      setSalesReportTab(activeSalesReportTab);
+      const bestDaily = dailyRows.reduce((best, row) => Number(row.profit_sales_amount || 0) > Number(best?.profit_sales_amount || 0) ? row : best, dailyRows[0] || null);
+      const topProduct = productRows[0] || null;
+      const topSeller = sellerRows[0] || null;
+      const topSupplier = purchaseRows[0] || null;
+      setSalesReportSectionMetric(
+        "daily",
+        dailyRows.length,
+        formatSalesNumber(month.profit_sales_amount),
+        bestDaily ? `최고 ${bestDaily.label || bestDaily.report_date || ""} · ${formatSalesNumber(bestDaily.profit_sales_amount)}` : "월 전체 일자별 흐름"
+      );
+      setSalesReportSectionMetric(
+        "product",
+        productRows.length,
+        topProduct ? formatSalesNumber(topProduct.profit_sales_amount) : "0",
+        topProduct ? `${topProduct.name || "상품"} · 수량 ${formatSalesNumber(topProduct.quantity)}` : "상품별 매출 현황"
+      );
+      setSalesReportSectionMetric(
+        "seller",
+        sellerRows.length,
+        topSeller ? formatSalesNumber(topSeller.profit_sales_amount) : "0",
+        topSeller ? `${topSeller.name || "매출처"} · 수량 ${formatSalesNumber(topSeller.quantity)}` : "매출처별 손익매출"
+      );
+      setSalesReportSectionMetric(
+        "supplier",
+        purchaseRows.length,
+        topSupplier ? formatSalesNumber(topSupplier.purchase_total) : "0",
+        topSupplier ? `${topSupplier.name || "매입처"} · 수량 ${formatSalesNumber(topSupplier.quantity)}` : "매입처별 총 매입금액"
+      );
+      setSalesReportSection(activeSalesReportSection);
     }
 
     async function loadSalesReportDashboard() {
@@ -12555,14 +12642,14 @@ HTML = r"""<!doctype html>
       document.querySelector("#salesReportNavGroup")?.classList.add("open");
       showWorkspace("salesReport");
     });
-    salesReportTabButtons.forEach((button) => {
+    salesReportSectionButtons.forEach((button) => {
       button.setAttribute("role", "tab");
-      button.addEventListener("click", () => setSalesReportTab(button.dataset.salesTab || "salesProduct"));
+      button.addEventListener("click", () => setSalesReportSection(button.dataset.salesSection || "daily"));
     });
     salesReportPanels.forEach((panel) => {
       panel.setAttribute("role", "tabpanel");
     });
-    setSalesReportTab(activeSalesReportTab);
+    setSalesReportSection(activeSalesReportSection);
     document.querySelector("#noticeInputOpen").addEventListener("click", openNoticePopup);
     importShipmentInputOpen.addEventListener("click", () => {
       showWorkspace("import");
@@ -13487,16 +13574,46 @@ ADMIN_WORKSPACE_HTML = r"""
               <input id="salesReportFileInput" name="sales_report" type="file" accept=".xlsx,.xlsm,.xls,.csv" hidden />
               <div class="sales-dashboard" id="salesReportDashboard">
                 <div class="sales-kpi-grid" id="salesReportKpiGrid"></div>
-                <div class="sales-table-tabs" id="salesReportTabs" role="tablist">
-                  <button class="sales-table-tab active" type="button" data-sales-tab="salesProduct">
-                    <span>일자별 매출 + 상품별 매출</span><span class="sales-table-tab-count" id="salesReportSalesProductCount">0</span>
+                <div class="sales-section-cards" id="salesReportSections" role="tablist">
+                  <button class="sales-section-card active" type="button" data-sales-section="daily">
+                    <div class="sales-section-card-top">
+                      <span class="sales-section-card-title"><span class="sales-section-dot">일</span>일자별 매출</span>
+                      <span class="sales-section-count" id="salesReportDailyCount">0</span>
+                    </div>
+                    <div class="sales-section-value" id="salesReportDailyValue">0</div>
+                    <div class="sales-section-summary" id="salesReportDailySummary">월 전체 일자별 흐름</div>
+                    <div class="sales-section-action">상세 보기</div>
                   </button>
-                  <button class="sales-table-tab" type="button" data-sales-tab="partner">
-                    <span>매출처 + 매입처</span><span class="sales-table-tab-count" id="salesReportPartnerCount">0</span>
+                  <button class="sales-section-card" type="button" data-sales-section="product">
+                    <div class="sales-section-card-top">
+                      <span class="sales-section-card-title"><span class="sales-section-dot">상</span>상품별 매출</span>
+                      <span class="sales-section-count" id="salesReportProductCount">0</span>
+                    </div>
+                    <div class="sales-section-value" id="salesReportProductValue">0</div>
+                    <div class="sales-section-summary" id="salesReportProductSummary">상품별 매출 현황</div>
+                    <div class="sales-section-action">상세 보기</div>
+                  </button>
+                  <button class="sales-section-card" type="button" data-sales-section="seller">
+                    <div class="sales-section-card-top">
+                      <span class="sales-section-card-title"><span class="sales-section-dot">매</span>매출처별 현황</span>
+                      <span class="sales-section-count" id="salesReportSellerCount">0</span>
+                    </div>
+                    <div class="sales-section-value" id="salesReportSellerValue">0</div>
+                    <div class="sales-section-summary" id="salesReportSellerSummary">매출처별 손익매출</div>
+                    <div class="sales-section-action">상세 보기</div>
+                  </button>
+                  <button class="sales-section-card" type="button" data-sales-section="supplier">
+                    <div class="sales-section-card-top">
+                      <span class="sales-section-card-title"><span class="sales-section-dot">입</span>매입처별 현황</span>
+                      <span class="sales-section-count" id="salesReportSupplierCount">0</span>
+                    </div>
+                    <div class="sales-section-value" id="salesReportSupplierValue">0</div>
+                    <div class="sales-section-summary" id="salesReportSupplierSummary">매입처별 총 매입금액</div>
+                    <div class="sales-section-action">상세 보기</div>
                   </button>
                 </div>
-                <div class="sales-dashboard-grid sales-tab-panels">
-                  <div class="sales-panel daily active" data-sales-panel="daily" data-sales-group="salesProduct">
+                <div class="sales-dashboard-grid sales-detail-panels">
+                  <div class="sales-panel daily active" data-sales-panel="daily">
                     <div class="sales-panel-head">
                       <div class="sales-panel-title"><span class="sales-panel-icon">일</span>일자별 매출</div>
                       <span class="sales-panel-badge">월 전체</span>
@@ -13508,7 +13625,7 @@ ADMIN_WORKSPACE_HTML = r"""
                       </table>
                     </div>
                   </div>
-                  <div class="sales-panel seller" data-sales-panel="seller" data-sales-group="partner">
+                  <div class="sales-panel seller" data-sales-panel="seller">
                     <div class="sales-panel-head">
                       <div class="sales-panel-title"><span class="sales-panel-icon">매</span>매출처별 현황</div>
                       <span class="sales-panel-badge">월 전체</span>
@@ -13520,7 +13637,7 @@ ADMIN_WORKSPACE_HTML = r"""
                       </table>
                     </div>
                   </div>
-                  <div class="sales-panel product active" data-sales-panel="product" data-sales-group="salesProduct">
+                  <div class="sales-panel product" data-sales-panel="product">
                     <div class="sales-panel-head">
                       <div class="sales-panel-title"><span class="sales-panel-icon">상</span>상품별 매출 현황</div>
                       <span class="sales-panel-badge">월 전체</span>
@@ -13532,7 +13649,7 @@ ADMIN_WORKSPACE_HTML = r"""
                       </table>
                     </div>
                   </div>
-                  <div class="sales-panel supplier" data-sales-panel="supplier" data-sales-group="partner">
+                  <div class="sales-panel supplier" data-sales-panel="supplier">
                     <div class="sales-panel-head">
                       <div class="sales-panel-title"><span class="sales-panel-icon">입</span>매입처별 현황</div>
                       <span class="sales-panel-badge">월 전체</span>
