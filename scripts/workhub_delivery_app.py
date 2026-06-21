@@ -1211,7 +1211,8 @@ HTML = r"""<!doctype html>
       font-size: 12px;
       font-weight: 900;
     }
-    .import-correction-field input {
+    .import-correction-field input,
+    .import-correction-field select {
       width: 100%;
       height: 36px;
       border: 1px solid #cbd5e1;
@@ -11986,10 +11987,20 @@ HTML = r"""<!doctype html>
       });
     }
 
-    async function previewLedgerImport(file, mode) {
+    function mergeImportCorrections(existing, next) {
+      const map = new Map();
+      [...(existing || []), ...(next || [])].forEach((item) => {
+        const key = `${item.source_sheet || ""}::${item.source_row || ""}`;
+        if (!key.endsWith("::")) map.set(key, { ...(map.get(key) || {}), ...item });
+      });
+      return Array.from(map.values());
+    }
+
+    async function previewLedgerImport(file, mode, corrections = []) {
       const formData = new FormData();
       formData.append("file", file);
       formData.append("mode", mode);
+      if (corrections.length) formData.append("corrections", JSON.stringify(corrections));
       const response = await fetch("/api/cs-cases-import-preview", {
         method: "POST",
         body: formData,
@@ -11999,10 +12010,11 @@ HTML = r"""<!doctype html>
       return data;
     }
 
-    async function previewManagementImport(file, mode) {
+    async function previewManagementImport(file, mode, corrections = []) {
       const formData = new FormData();
       formData.append("file", file);
       formData.append("mode", mode);
+      if (corrections.length) formData.append("corrections", JSON.stringify(corrections));
       const response = await fetch("/api/management-import-preview", {
         method: "POST",
         body: formData,
@@ -12021,6 +12033,7 @@ HTML = r"""<!doctype html>
           label: issue.label || issue.field,
           inputType: issue.input_type || "text",
           message: issue.message || "",
+          options: Array.isArray(issue.options) ? issue.options : [],
         });
       });
       return Array.from(fields.values());
@@ -12033,16 +12046,25 @@ HTML = r"""<!doctype html>
         const fieldHtml = fields.map((field) => {
           const value = row.record?.[field.field] || "";
           const inputType = field.inputType === "number" ? "number" : "text";
-          return `
-            <div class="import-correction-field">
-              <label for="importCorrection_${rowIndex}_${escapeHtml(field.field)}">${escapeHtml(field.label)}</label>
-              <input
+          const controlHtml = field.inputType === "select"
+            ? `<select
+                id="importCorrection_${rowIndex}_${escapeHtml(field.field)}"
+                data-correction-row="${rowIndex}"
+                data-correction-field="${escapeHtml(field.field)}"
+              >
+                ${field.options.map((option) => `<option value="${escapeHtml(option)}" ${option === value ? "selected" : ""}>${escapeHtml(option)}</option>`).join("")}
+              </select>`
+            : `<input
                 id="importCorrection_${rowIndex}_${escapeHtml(field.field)}"
                 type="${inputType}"
                 value="${escapeHtml(value)}"
                 data-correction-row="${rowIndex}"
                 data-correction-field="${escapeHtml(field.field)}"
-              />
+              />`;
+          return `
+            <div class="import-correction-field">
+              <label for="importCorrection_${rowIndex}_${escapeHtml(field.field)}">${escapeHtml(field.label)}</label>
+              ${controlHtml}
               <div class="import-correction-message">${escapeHtml(field.message)}</div>
             </div>
           `;
@@ -12104,6 +12126,18 @@ HTML = r"""<!doctype html>
       });
     }
 
+    async function resolveImportCorrections({ ledgerName, file, mode, preview, previewFn }) {
+      let currentPreview = preview;
+      let corrections = [];
+      while (currentPreview?.has_invalid_rows) {
+        const nextCorrections = await requestImportCorrectionApproval({ ledgerName, preview: currentPreview });
+        if (nextCorrections === null) return null;
+        corrections = mergeImportCorrections(corrections, nextCorrections);
+        currentPreview = await previewFn(file, mode, corrections);
+      }
+      return { corrections, preview: currentPreview };
+    }
+
     async function confirmImportIfNeeded({ ledgerName, mode, preview }) {
       if (mode === "replace") {
         return requestImportWarningApproval({
@@ -12131,12 +12165,19 @@ HTML = r"""<!doctype html>
       notice.textContent = `CS 처리대장 ${importModeLabel(mode)} 검토 중입니다.`;
       try {
         const preview = await previewLedgerImport(file, mode);
-        const corrections = await requestImportCorrectionApproval({ ledgerName: "CS 처리대장", preview });
-        if (corrections === null) {
+        const correctionResult = await resolveImportCorrections({
+          ledgerName: "CS 처리대장",
+          file,
+          mode,
+          preview,
+          previewFn: previewLedgerImport,
+        });
+        if (correctionResult === null) {
           notice.textContent = "CS 처리대장 업로드를 취소했습니다.";
           return;
         }
-        const approved = await confirmImportIfNeeded({ ledgerName: "CS 처리대장", mode, preview });
+        const corrections = correctionResult.corrections;
+        const approved = await confirmImportIfNeeded({ ledgerName: "CS 처리대장", mode, preview: correctionResult.preview });
         if (!approved) {
           notice.textContent = "CS 처리대장 업로드를 취소했습니다.";
           return;
@@ -12287,12 +12328,19 @@ HTML = r"""<!doctype html>
       notice.textContent = `통합관리대장 ${importModeLabel(mode)} 검토 중입니다.`;
       try {
         const preview = await previewManagementImport(file, mode);
-        const corrections = await requestImportCorrectionApproval({ ledgerName: "통합관리대장", preview });
-        if (corrections === null) {
+        const correctionResult = await resolveImportCorrections({
+          ledgerName: "통합관리대장",
+          file,
+          mode,
+          preview,
+          previewFn: previewManagementImport,
+        });
+        if (correctionResult === null) {
           notice.textContent = "통합관리대장 업로드를 취소했습니다.";
           return;
         }
-        const approved = await confirmImportIfNeeded({ ledgerName: "통합관리대장", mode, preview });
+        const corrections = correctionResult.corrections;
+        const approved = await confirmImportIfNeeded({ ledgerName: "통합관리대장", mode, preview: correctionResult.preview });
         if (!approved) {
           notice.textContent = "통합관리대장 업로드를 취소했습니다.";
           return;
@@ -21186,6 +21234,16 @@ def import_issue(field: str, label: str, message: str, input_type: str = "text")
     }
 
 
+def import_select_issue(field: str, label: str, message: str, options: list[str]) -> dict[str, object]:
+    return {
+        "field": field,
+        "label": label,
+        "message": message,
+        "input_type": "select",
+        "options": options,
+    }
+
+
 def require_text_issue(record: dict[str, object], field: str, label: str) -> dict[str, str] | None:
     if clean_cell(record.get(field)):
         return None
@@ -21211,6 +21269,49 @@ def required_numeric_issue(record: dict[str, object], field: str, label: str, mi
     return import_issue(field, label, f"{label}을 숫자 형식으로 입력해주세요.", "text")
 
 
+def optional_date_issue(record: dict[str, object], field: str, label: str) -> dict[str, str] | None:
+    value = clean_cell(record.get(field))
+    if not value:
+        return None
+    if parse_import_date_value(value):
+        return None
+    return import_issue(field, label, f"{label}은 2026-06-21, 6/21, 6월 21일 형식으로 입력해주세요.", "text")
+
+
+def is_valid_cs_status_text(value: object) -> bool:
+    text = normalize_compact(clean_cell(value))
+    if not text:
+        return True
+    if "전체처리완료" in text:
+        return True
+    if "재발송완료" in text and "회수지시" in text:
+        return True
+    return any(keyword in text for keyword in ["회수지시", "회수완료", "재발송완료"])
+
+
+def parse_import_date_value(value: object) -> str:
+    text = clean_cell(value)
+    if not text:
+        return ""
+    patterns = [
+        r"(?P<year>\d{4})[-./년\s]+(?P<month>\d{1,2})[-./월\s]+(?P<day>\d{1,2})",
+        r"(?P<month>\d{1,2})\s*월\s*(?P<day>\d{1,2})\s*일?",
+        r"(?<!\d)(?P<month>\d{1,2})[./-](?P<day>\d{1,2})(?!\d)",
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, text)
+        if not match:
+            continue
+        year = int(match.groupdict().get("year") or date.today().year)
+        month = int(match.group("month"))
+        day = int(match.group("day"))
+        try:
+            return date(year, month, day).isoformat()
+        except ValueError:
+            return ""
+    return ""
+
+
 def management_import_issues(record: dict[str, object]) -> list[dict[str, str]]:
     issues: list[dict[str, str]] = []
     for field, label in (
@@ -21224,6 +21325,13 @@ def management_import_issues(record: dict[str, object]) -> list[dict[str, str]]:
     issue = quantity_issue(record)
     if issue:
         issues.append(issue)
+    for field, label in (
+        ("order_date", "주문일자"),
+        ("ship_date", "출고일"),
+    ):
+        issue = optional_date_issue(record, field, label)
+        if issue:
+            issues.append(issue)
     for field, label, digits in (
         ("receiver_phone", "수령자연락처", 7),
         ("sender_phone", "발신자연락처", 7),
@@ -21252,6 +21360,27 @@ def cs_import_issues(record: dict[str, object]) -> list[dict[str, str]]:
     ):
         if issue:
             issues.append(issue)
+    for field, label in (
+        ("occurred_at", "날짜"),
+        ("completed_at", "완료일"),
+        ("order_date", "주문일자"),
+        ("ship_date", "출고일"),
+    ):
+        issue = optional_date_issue(record, field, label)
+        if issue:
+            issues.append(issue)
+    valid_cs_types = ["변심반품", "불량반품", "불량교환", "불량재출고(미회수)", "오출고(오배송)"]
+    if clean_cell(record.get("cs_type")) not in valid_cs_types:
+        issues.append(import_select_issue("cs_type", "처리내용", "처리내용은 기존 CS 유형 중 하나로 선택해주세요.", valid_cs_types))
+    valid_statuses = [
+        "회수지시",
+        "회수 완료",
+        "재발송 완료",
+        "재발송 완료/회수지시",
+        "전체 처리완료",
+    ]
+    if not is_valid_cs_status_text(record.get("status")):
+        issues.append(import_select_issue("status", "처리진행상태", "처리진행상태는 기존 상태 형식으로 선택해주세요.", valid_statuses))
     return issues
 
 
@@ -21281,6 +21410,32 @@ def apply_import_corrections(records: list[dict[str, object]], corrections: list
         for field in allowed_fields:
             if field in correction:
                 record[field] = clean_cell(correction.get(field))
+
+
+def normalize_management_import_records(records: list[dict[str, object]]) -> None:
+    for record in records:
+        for field in ("order_date", "ship_date"):
+            normalized = parse_import_date_value(record.get(field))
+            if normalized:
+                record[field] = normalized
+
+
+def normalize_cs_import_records(records: list[dict[str, object]]) -> None:
+    for record in records:
+        for field in ("occurred_at", "completed_at", "order_date", "ship_date", "mail_sent_at"):
+            normalized = parse_import_date_value(record.get(field))
+            if normalized:
+                record[field] = normalized
+        record["cs_type"] = normalize_cs_type_value(
+            clean_cell(record.get("cs_type")),
+            clean_cell(record.get("cs_content")),
+            clean_cell(record.get("status")),
+        )
+        record["status"] = normalize_progress_status(
+            clean_cell(record.get("status")),
+            clean_cell(record.get("completed_at")),
+            clean_cell(record.get("occurred_at")),
+        )
 
 
 def invalid_import_rows(records: list[dict[str, object]], issue_func, summary_fields: list[str]) -> list[dict[str, object]]:
@@ -21409,9 +21564,11 @@ def existing_management_duplicate_keys(connection: sqlite3.Connection) -> set[st
     return {management_duplicate_key(dict(row)) for row in rows}
 
 
-def preview_management_import(path: Path) -> dict[str, object]:
+def preview_management_import(path: Path, corrections: list[dict[str, object]] | None = None) -> dict[str, object]:
     init_db()
     records = parse_management_import_records(path)
+    apply_import_corrections(records, corrections, MANAGEMENT_IMPORT_EDITABLE_FIELDS)
+    normalize_management_import_records(records)
     connection = connect_db()
     try:
         existing_keys = existing_management_duplicate_keys(connection)
@@ -21430,14 +21587,17 @@ def import_management_workbook(path: Path, mode: str = "daily", corrections: lis
     init_db()
     records = parse_management_import_records(path)
     apply_import_corrections(records, corrections, MANAGEMENT_IMPORT_EDITABLE_FIELDS)
+    normalize_management_import_records(records)
     placeholders = ", ".join("?" for _ in MANAGEMENT_IMPORT_COLUMNS)
     insert_sql = f"INSERT OR IGNORE INTO management_records ({', '.join(MANAGEMENT_IMPORT_COLUMNS)}) VALUES ({placeholders})"
     connection = connect_db()
     inserted = 0
     skipped = 0
     try:
-        valid_records = valid_import_records(records, management_import_issues)
-        skipped += len(records) - len(valid_records)
+        invalid_rows = invalid_import_rows(records, management_import_issues, ["receiver_name", "receiver_phone", "product_name", "quantity", "invoice_number", "order_number"])
+        if invalid_rows:
+            raise ValueError(f"통합관리대장 업로드 형식 오류 {len(invalid_rows)}건을 먼저 수정해주세요.")
+        valid_records = records
         if mode == "replace":
             connection.execute("DELETE FROM management_records")
             import_records = valid_records
@@ -21616,9 +21776,11 @@ def existing_cs_duplicate_keys(connection: sqlite3.Connection) -> set[str]:
     return {cs_duplicate_key(dict(row)) for row in rows}
 
 
-def preview_cs_cases_import(path: Path) -> dict[str, object]:
+def preview_cs_cases_import(path: Path, corrections: list[dict[str, object]] | None = None) -> dict[str, object]:
     init_db()
     records = parse_cs_case_import_records(path)
+    apply_import_corrections(records, corrections, CS_IMPORT_EDITABLE_FIELDS)
+    normalize_cs_import_records(records)
     connection = connect_db()
     try:
         existing_keys = existing_cs_duplicate_keys(connection)
@@ -21637,6 +21799,7 @@ def import_cs_cases_from_workbook(path: Path, mode: str = "daily", corrections: 
     init_db()
     records = parse_cs_case_import_records(path)
     apply_import_corrections(records, corrections, CS_IMPORT_EDITABLE_FIELDS)
+    normalize_cs_import_records(records)
     placeholders = ", ".join("?" for _ in CS_IMPORT_COLUMNS)
     insert_sql = f"""
         INSERT OR IGNORE INTO cs_cases ({', '.join(CS_IMPORT_COLUMNS)})
@@ -21646,8 +21809,10 @@ def import_cs_cases_from_workbook(path: Path, mode: str = "daily", corrections: 
     inserted = 0
     skipped = 0
     try:
-        valid_records = valid_import_records(records, cs_import_issues)
-        skipped += len(records) - len(valid_records)
+        invalid_rows = invalid_import_rows(records, cs_import_issues, ["occurred_at", "receiver_name", "product_name", "original_invoice", "cs_type", "cs_content"])
+        if invalid_rows:
+            raise ValueError(f"CS 처리대장 업로드 형식 오류 {len(invalid_rows)}건을 먼저 수정해주세요.")
+        valid_records = records
         if mode == "replace":
             connection.execute("DELETE FROM cs_cases")
             import_records = valid_records
@@ -23359,7 +23524,8 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                 if not self.require_permission(user, "excel_upload", "엑셀 업로드"):
                     return
                 upload_path = save_uploaded_file(fields, "file")
-                self.send_json(preview_cs_cases_import(upload_path))
+                corrections = parse_import_corrections(fields)
+                self.send_json(preview_cs_cases_import(upload_path, corrections=corrections))
                 return
 
             if self.path == "/api/cs-cases-import":
@@ -23386,7 +23552,8 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                 if not self.require_permission(user, "excel_upload", "엑셀 업로드"):
                     return
                 upload_path = save_uploaded_file(fields, "file")
-                self.send_json(preview_management_import(upload_path))
+                corrections = parse_import_corrections(fields)
+                self.send_json(preview_management_import(upload_path, corrections=corrections))
                 return
 
             if self.path == "/api/management-import":
