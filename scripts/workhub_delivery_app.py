@@ -2362,7 +2362,7 @@ HTML = r"""<!doctype html>
     .ledger-import-button input { display: none; }
     .cell-edit-bar {
       display: none;
-      grid-template-columns: minmax(150px, auto) minmax(280px, 1fr) auto auto;
+      grid-template-columns: minmax(150px, auto) minmax(280px, 1fr) auto auto auto;
       gap: 7px;
       align-items: center;
       margin: -2px 0 10px;
@@ -2411,6 +2411,12 @@ HTML = r"""<!doctype html>
       background: #087a46;
       color: white;
     }
+    .cell-edit-button.return-check {
+      border-color: #2563eb;
+      background: #eff6ff;
+      color: #1d4ed8;
+    }
+    .cell-edit-button[hidden] { display: none; }
     .management-month-tabs {
       display: flex;
       flex-wrap: wrap;
@@ -6037,6 +6043,34 @@ HTML = r"""<!doctype html>
     </div>
   </div>
 
+  <div class="notice-popup-backdrop" id="returnCheckPopup">
+    <div class="notice-popup" role="dialog" aria-modal="true">
+      <div class="notice-popup-head">
+        <span>회수 확인 및 검수</span>
+        <button class="close" id="returnCheckClose" type="button" aria-label="닫기"><i data-lucide="x"></i></button>
+      </div>
+      <div class="notice-template">
+        <input id="returnCheckCaseId" type="hidden" />
+        <div class="notice-template-grid">
+          <select id="returnCheckResult">
+            <option>정상 입고</option>
+            <option>불량 확인</option>
+            <option>구성품 누락</option>
+            <option>파손</option>
+            <option>기타</option>
+          </select>
+          <select id="returnCheckNextStatus"></select>
+          <input id="returnCheckDate" type="text" placeholder="검수일 예) 6/21" />
+        </div>
+        <textarea id="returnCheckMemo" placeholder="검수 메모를 입력해주세요. 예) 박스 파손 없음 / 구성품 확인 완료"></textarea>
+        <div class="notice-template-actions">
+          <button class="workspace-button" type="button" id="returnCheckCancel">취소</button>
+          <button class="workspace-button" type="button" id="returnCheckSave">적용</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <div class="focus-widget-backdrop" id="focusWidget" aria-hidden="true">
     <section class="focus-widget" role="dialog" aria-modal="true" aria-labelledby="focusWidgetTitle">
       <div class="focus-widget-head">
@@ -6363,6 +6397,7 @@ HTML = r"""<!doctype html>
           <div class="cell-edit-bar" id="ledgerCellEditBar">
             <div class="cell-edit-label" id="ledgerCellEditLabel">셀 선택</div>
             <div id="ledgerCellEditMount"></div>
+            <button class="cell-edit-button return-check" id="ledgerReturnCheckButton" type="button" hidden>회수확인</button>
             <button class="cell-edit-button apply" id="ledgerCellApply" type="button">적용</button>
             <button class="cell-edit-button" id="ledgerCellCancel" type="button">취소</button>
           </div>
@@ -6656,11 +6691,21 @@ HTML = r"""<!doctype html>
     const ledgerCellEditMount = document.querySelector("#ledgerCellEditMount");
     const ledgerCellApply = document.querySelector("#ledgerCellApply");
     const ledgerCellCancel = document.querySelector("#ledgerCellCancel");
+    const ledgerReturnCheckButton = document.querySelector("#ledgerReturnCheckButton");
     const managementCellEditBar = document.querySelector("#managementCellEditBar");
     const managementCellEditLabel = document.querySelector("#managementCellEditLabel");
     const managementCellEditMount = document.querySelector("#managementCellEditMount");
     const managementCellApply = document.querySelector("#managementCellApply");
     const managementCellCancel = document.querySelector("#managementCellCancel");
+    const returnCheckPopup = document.querySelector("#returnCheckPopup");
+    const returnCheckCaseId = document.querySelector("#returnCheckCaseId");
+    const returnCheckResult = document.querySelector("#returnCheckResult");
+    const returnCheckNextStatus = document.querySelector("#returnCheckNextStatus");
+    const returnCheckDate = document.querySelector("#returnCheckDate");
+    const returnCheckMemo = document.querySelector("#returnCheckMemo");
+    const returnCheckClose = document.querySelector("#returnCheckClose");
+    const returnCheckCancel = document.querySelector("#returnCheckCancel");
+    const returnCheckSave = document.querySelector("#returnCheckSave");
     const productTable = document.querySelector("#productTable");
     const receiptTypeSelect = document.querySelector("#receiptTypeSelect");
     const supplierInput = document.querySelector("#supplierInput");
@@ -7086,6 +7131,7 @@ HTML = r"""<!doctype html>
     const crmMessengerUserBody = document.querySelector("#crmMessengerUserBody");
     const crmMessageEventBody = document.querySelector("#crmMessageEventBody");
     let currentMode = "dashboard";
+    let ledgerFollowupAlertLoading = false;
     let currentOrderMode = "delivery";
     let vendorContacts = [];
     let cachedMailSettings = {};
@@ -11149,11 +11195,68 @@ HTML = r"""<!doctype html>
       return String(element.dataset.value ?? element.textContent ?? "").trim();
     }
 
+    function setEditableCellValue(cell, value) {
+      if (!cell) return;
+      const nextValue = String(value || "");
+      cell.dataset.value = nextValue;
+      if (cell.dataset.date === "1") cell.dataset.rawDate = nextValue;
+      cell.textContent = cellDisplayValue(nextValue, { date: cell.dataset.date === "1" });
+    }
+
     function updateLedgerRowCompletion(row) {
       if (!row) return;
       const status = fieldValue(row.querySelector('[data-field="status"]'));
       const csType = fieldValue(row.querySelector('[data-field="cs_type"]'));
       row.classList.toggle("completed-cs", isCompletedByValues(csType, status));
+    }
+
+    function setLedgerRowStatus(row, status) {
+      const statusCell = row?.querySelector('[data-field="status"]');
+      setEditableCellValue(statusCell, status);
+      if (statusCell) statusCell.dataset.options = JSON.stringify(ledgerStatusOptions(status));
+      updateLedgerRowCompletion(row);
+      markRowDirty(row, true);
+      const checkbox = row?.querySelector("[data-row-check]");
+      if (checkbox) checkbox.checked = true;
+    }
+
+    function normalizedLedgerText(value) {
+      return String(value || "").replaceAll(" ", "").trim();
+    }
+
+    function ledgerTypeCategory(row) {
+      const type = normalizedLedgerText(fieldValue(row?.querySelector('[data-field="cs_type"]')));
+      if (["변심반품", "변신반품", "불량반품"].includes(type)) return "returnOnly";
+      if (["불량교환", "오출고(오배송)"].includes(type)) return "exchange";
+      if (type === "불량재출고(미회수)") return "reshipOnly";
+      return "unknown";
+    }
+
+    function isFullyCompletedStatus(status) {
+      return normalizedLedgerText(status).includes("전체처리완료");
+    }
+
+    function suggestLedgerStatusAfterInvoice(row, field, previousValue, nextValue) {
+      if (!row || !String(nextValue || "").trim() || String(previousValue || "").trim() === String(nextValue || "").trim()) return;
+      const currentStatus = fieldValue(row.querySelector('[data-field="status"]'));
+      if (isFullyCompletedStatus(currentStatus)) return;
+      const category = ledgerTypeCategory(row);
+      const hasReturn = Boolean(fieldValue(row.querySelector('[data-field="return_invoice"]')));
+      const hasReship = Boolean(fieldValue(row.querySelector('[data-field="reship_invoice"]')));
+      const dateText = todayStatusDate();
+      let suggested = "";
+      if (category === "returnOnly" && field === "return_invoice") suggested = `회수지시(${dateText})`;
+      if (category === "reshipOnly" && field === "reship_invoice") suggested = `재발송 완료(${dateText})`;
+      if (category === "exchange") {
+        if (hasReturn && hasReship) suggested = `재발송 완료(${dateText})/회수지시(${dateText})`;
+        else if (field === "return_invoice") suggested = `회수지시(${dateText})`;
+        else if (field === "reship_invoice") suggested = `재발송 완료(${dateText})`;
+      }
+      if (!suggested || suggested === currentStatus) return;
+      const label = field === "return_invoice" ? "회수 송장" : "재발송 송장";
+      if (window.confirm(`${label}이 입력되었습니다.\n처리상태를 "${suggested}"로 변경하시겠습니까?\n\n확인: 상태 변경 / 취소: 사용자 입력상태 유지`)) {
+        setLedgerRowStatus(row, suggested);
+      }
     }
 
     function ledgerFieldValue(csCase, field) {
@@ -11336,6 +11439,7 @@ HTML = r"""<!doctype html>
       parts.bar?.classList.remove("open");
       if (parts.mount) parts.mount.innerHTML = "";
       if (parts.label) parts.label.textContent = "셀 선택";
+      if (scope === "ledger" && ledgerReturnCheckButton) ledgerReturnCheckButton.hidden = true;
     }
 
     function editorOptionsFromCell(cell) {
@@ -11390,6 +11494,9 @@ HTML = r"""<!doctype html>
       parts.mount.appendChild(control);
       parts.label.textContent = rowHint ? `${label} · ${rowHint}` : label;
       parts.bar.classList.add("open");
+      if (scope === "ledger" && ledgerReturnCheckButton) {
+        ledgerReturnCheckButton.hidden = (cell.dataset.field || "") !== "status";
+      }
       cell.classList.add("selected-cell");
       activeCellEditors[scope] = { cell, control };
       setTimeout(() => {
@@ -11403,14 +11510,16 @@ HTML = r"""<!doctype html>
       if (!selected?.cell || !selected.control) return;
       const { cell, control } = selected;
       const row = cell.closest("tr");
+      const previousValue = fieldValue(cell);
       const value = control.value || "";
-      cell.dataset.value = value;
-      if (cell.dataset.date === "1") cell.dataset.rawDate = value;
-      cell.textContent = cellDisplayValue(value, { date: cell.dataset.date === "1" });
+      setEditableCellValue(cell, value);
       markRowDirty(row, true);
       const checkbox = row?.querySelector("[data-row-check]");
       if (checkbox) checkbox.checked = true;
       if (scope === "ledger") updateLedgerRowCompletion(row);
+      if (scope === "ledger" && ["return_invoice", "reship_invoice"].includes(cell.dataset.field || "")) {
+        suggestLedgerStatusAfterInvoice(row, cell.dataset.field, previousValue, value);
+      }
       if (activeLedgerFilterField || activeManagementFilterField) refreshActiveFilterOptions();
       notice.textContent = `${cell.dataset.label || "선택 셀"} 값을 반영했습니다. 저장하려면 체크된 항목 저장 버튼을 눌러주세요.`;
     }
@@ -11531,7 +11640,7 @@ HTML = r"""<!doctype html>
           ${editableCell({ scope: "ledger", field: "status", label: "처리진행상태", value: statusValue, input: "select", options: statusSelectOptions })}
           <td>${escapeHtml(csCase.completed_at)}</td>
           ${editableCell({ scope: "ledger", field: "cs_type", label: "처리내용", value: csCase.cs_type, input: "select", options: csTypeSelectOptions })}
-          <td class="left">${escapeHtml(csCase.cs_content)}</td>
+          ${editableCell({ scope: "ledger", field: "cs_content", label: "C/S 내용", value: csCase.cs_content, align: "left", input: "textarea" })}
           ${editableCell({ scope: "ledger", field: "reship_invoice", label: "재발송운송장번호", value: csCase.reship_invoice })}
           ${editableCell({ scope: "ledger", field: "return_invoice", label: "회수운송장번호", value: csCase.return_invoice })}
           <td data-full-date="${escapeHtml(csCase.order_date)}">${escapeHtml(shortKoreanDate(csCase.order_date))}</td>
@@ -11575,10 +11684,38 @@ HTML = r"""<!doctype html>
         const data = await response.json();
         ledgerCases = data.cases || [];
         applyLedgerFilters();
+        showCsFollowupAlertsIfNeeded();
       } catch {
         ledgerCases = [];
         renderLedger([]);
         notice.textContent = "CS 처리대장을 불러오지 못했습니다.";
+      }
+    }
+
+    async function showCsFollowupAlertsIfNeeded() {
+      if (currentMode !== "ledger" || ledgerFollowupAlertLoading || !can("ledger_edit")) return;
+      const todayKey = todayString();
+      const storageKey = `workhub_cs_followup_alert_${todayKey}`;
+      if (localStorage.getItem(storageKey) === "1") return;
+      try {
+        ledgerFollowupAlertLoading = true;
+        const response = await fetch("/api/cs-followup-alerts");
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "미처리 CS 알림 조회에 실패했습니다.");
+        const alerts = data.alerts || [];
+        localStorage.setItem(storageKey, "1");
+        if (!alerts.length) return;
+        const lines = alerts.slice(0, 12).map((item) => {
+          const invoice = [item.return_invoice ? `회수 ${item.return_invoice}` : "", item.reship_invoice ? `재발송 ${item.reship_invoice}` : ""].filter(Boolean).join(" / ");
+          const owner = item.receiver_name || item.sales_vendor || item.purchase_vendor || `CS #${item.id}`;
+          return `- ${owner} · ${item.product_name || "상품명 없음"} · ${invoice || "송장번호 없음"} · ${item.status || "상태 없음"}`;
+        });
+        if (alerts.length > 12) lines.push(`외 ${alerts.length - 12}건`);
+        window.alert(`전날 송장이 입력됐지만 전체 처리완료가 아닌 CS건이 ${alerts.length}건 있습니다.\n\n${lines.join("\n")}`);
+      } catch (error) {
+        console.warn(error);
+      } finally {
+        ledgerFollowupAlertLoading = false;
       }
     }
 
@@ -12079,6 +12216,7 @@ HTML = r"""<!doctype html>
         id: row.dataset.caseId,
         status: fieldValue(row.querySelector('[data-field="status"]')),
         cs_type: fieldValue(row.querySelector('[data-field="cs_type"]')),
+        cs_content: fieldValue(row.querySelector('[data-field="cs_content"]')),
         return_invoice: fieldValue(row.querySelector('[data-field="return_invoice"]')),
         reship_invoice: fieldValue(row.querySelector('[data-field="reship_invoice"]')),
       };
@@ -12100,8 +12238,72 @@ HTML = r"""<!doctype html>
       if (!savedCase) return;
       savedCase.status = payload.status;
       savedCase.cs_type = payload.cs_type;
+      savedCase.cs_content = payload.cs_content;
       savedCase.return_invoice = payload.return_invoice;
       savedCase.reship_invoice = payload.reship_invoice;
+    }
+
+    function activeLedgerRow() {
+      return activeCellEditors.ledger?.cell?.closest("tr") || null;
+    }
+
+    function returnCheckSuggestedStatus(row) {
+      const dateText = todayStatusDate();
+      const category = ledgerTypeCategory(row);
+      const hasReship = Boolean(fieldValue(row?.querySelector('[data-field="reship_invoice"]')));
+      if (category === "exchange") return hasReship ? "전체 처리완료" : `회수 완료(${dateText})`;
+      if (category === "returnOnly") return `회수 완료(${dateText})`;
+      if (category === "reshipOnly") return hasReship ? "전체 처리완료" : `회수 완료(${dateText})`;
+      return `회수 완료(${dateText})`;
+    }
+
+    function openReturnCheckPopup() {
+      const row = activeLedgerRow();
+      if (!row) {
+        notice.textContent = "회수확인할 CS 행의 처리진행상태 셀을 먼저 선택해주세요.";
+        return;
+      }
+      returnCheckCaseId.value = row.dataset.caseId || "";
+      returnCheckDate.value = todayStatusDate();
+      returnCheckMemo.value = "";
+      returnCheckResult.value = "정상 입고";
+      returnCheckNextStatus.innerHTML = "";
+      const currentStatus = fieldValue(row.querySelector('[data-field="status"]'));
+      [returnCheckSuggestedStatus(row), "전체 처리완료", `회수 완료(${todayStatusDate()})`, currentStatus]
+        .filter((value, index, values) => value && values.indexOf(value) === index)
+        .forEach((value) => {
+          const option = document.createElement("option");
+          option.value = value;
+          option.textContent = value;
+          returnCheckNextStatus.appendChild(option);
+        });
+      returnCheckPopup?.classList.add("open");
+      returnCheckResult?.focus();
+    }
+
+    function closeReturnCheckPopup() {
+      returnCheckPopup?.classList.remove("open");
+    }
+
+    function applyReturnCheckPopup() {
+      const caseId = returnCheckCaseId.value || "";
+      const row = Array.from(ledgerBody.querySelectorAll("tr[data-case-id]"))
+        .find((item) => String(item.dataset.caseId) === String(caseId));
+      if (!row) {
+        closeReturnCheckPopup();
+        notice.textContent = "회수확인할 CS 행을 찾지 못했습니다.";
+        return;
+      }
+      const dateText = returnCheckDate.value.trim() || todayStatusDate();
+      const resultText = returnCheckResult.value.trim();
+      const memoText = returnCheckMemo.value.trim();
+      const historyLine = `[회수검수 ${dateText}] ${resultText}${memoText ? ` - ${memoText}` : ""}`;
+      const contentCell = row.querySelector('[data-field="cs_content"]');
+      const previousContent = fieldValue(contentCell);
+      setEditableCellValue(contentCell, previousContent ? `${previousContent}\n${historyLine}` : historyLine);
+      setLedgerRowStatus(row, returnCheckNextStatus.value || returnCheckSuggestedStatus(row));
+      closeReturnCheckPopup();
+      notice.textContent = "회수확인/검수 결과를 반영했습니다. 저장하려면 체크된 항목 저장 버튼을 눌러주세요.";
     }
 
     async function saveLedgerRow(button) {
@@ -14053,6 +14255,13 @@ HTML = r"""<!doctype html>
     });
     [ledgerCellApply, managementCellApply].forEach((button) => {
       button?.addEventListener("click", () => applyCellEditor(button === ledgerCellApply ? "ledger" : "management"));
+    });
+    ledgerReturnCheckButton?.addEventListener("click", openReturnCheckPopup);
+    returnCheckClose?.addEventListener("click", closeReturnCheckPopup);
+    returnCheckCancel?.addEventListener("click", closeReturnCheckPopup);
+    returnCheckSave?.addEventListener("click", applyReturnCheckPopup);
+    returnCheckPopup?.addEventListener("click", (event) => {
+      if (event.target === returnCheckPopup) closeReturnCheckPopup();
     });
     [ledgerCellCancel, managementCellCancel].forEach((button) => {
       button?.addEventListener("click", () => closeCellEditor(button === ledgerCellCancel ? "ledger" : "management"));
@@ -17223,6 +17432,11 @@ def init_db() -> None:
             "courier": "TEXT",
             "quantity": "TEXT",
             "cs_type": "TEXT",
+            "return_invoice_updated_at": "TEXT",
+            "reship_invoice_updated_at": "TEXT",
+            "return_checked_at": "TEXT",
+            "return_check_result": "TEXT",
+            "return_check_memo": "TEXT",
         }
         for column, column_type in extra_columns.items():
             if column not in existing_columns:
@@ -19671,29 +19885,82 @@ def list_cs_cases(query: str = "", status: str = "", limit: int = 20, year: str 
 def update_cs_case(case_id: int, payload: dict) -> None:
     status = clean_payload_text(payload, "status")
     cs_type = clean_payload_text(payload, "cs_type")
+    cs_content = clean_payload_text(payload, "cs_content")
     return_invoice = clean_payload_text(payload, "return_invoice")
     reship_invoice = clean_payload_text(payload, "reship_invoice")
 
     init_db()
     connection = connect_db()
     try:
+        previous = connection.execute(
+            "SELECT return_invoice, reship_invoice FROM cs_cases WHERE id = ?",
+            (case_id,),
+        ).fetchone()
+        if not previous:
+            raise ValueError("수정할 CS건을 찾지 못했습니다.")
+        now = now_text()
+        return_invoice_updated_at = None
+        reship_invoice_updated_at = None
+        if return_invoice and return_invoice != (previous["return_invoice"] or ""):
+            return_invoice_updated_at = now
+        if reship_invoice and reship_invoice != (previous["reship_invoice"] or ""):
+            reship_invoice_updated_at = now
         cursor = connection.execute(
             """
             UPDATE cs_cases
                SET status = COALESCE(NULLIF(?, ''), status),
                    cs_type = ?,
+                   cs_content = ?,
                    return_invoice = ?,
                    reship_invoice = ?,
+                   return_invoice_updated_at = COALESCE(?, return_invoice_updated_at),
+                   reship_invoice_updated_at = COALESCE(?, reship_invoice_updated_at),
                    updated_at = ?
              WHERE id = ?
             """,
-            [status, cs_type, return_invoice, reship_invoice, now_text(), case_id],
+            [
+                status,
+                cs_type,
+                cs_content,
+                return_invoice,
+                reship_invoice,
+                return_invoice_updated_at,
+                reship_invoice_updated_at,
+                now,
+                case_id,
+            ],
         )
         connection.commit()
         if cursor.rowcount == 0:
             raise ValueError("수정할 CS건을 찾지 못했습니다.")
     finally:
         connection.close()
+
+
+def list_cs_followup_alerts() -> list[dict[str, str | int]]:
+    init_db()
+    target_date = (date.today() - timedelta(days=1)).isoformat()
+    connection = connect_db()
+    try:
+        rows = connection.execute(
+            """
+            SELECT id, status, cs_type, product_name, receiver_name, return_invoice,
+                   reship_invoice, sales_vendor, purchase_vendor, updated_at,
+                   return_invoice_updated_at, reship_invoice_updated_at
+              FROM cs_cases
+             WHERE COALESCE(status, '') NOT LIKE '%전체 처리완료%'
+               AND (
+                    substr(COALESCE(return_invoice_updated_at, ''), 1, 10) = ?
+                    OR substr(COALESCE(reship_invoice_updated_at, ''), 1, 10) = ?
+               )
+             ORDER BY updated_at DESC, id DESC
+             LIMIT 30
+            """,
+            (target_date, target_date),
+        ).fetchall()
+    finally:
+        connection.close()
+    return [dict(row) for row in rows]
 
 
 def delete_cs_cases(case_ids: list[int]) -> int:
@@ -22005,6 +22272,12 @@ class WorkhubHandler(BaseHTTPRequestHandler):
             if not self.require_permission(user, "mail_send", "메일 발송"):
                 return
             self.send_json({"contacts": load_vendor_contacts()})
+            return
+
+        if self.path == "/api/cs-followup-alerts":
+            if not self.require_permission(user, "ledger_edit", "대장 수정"):
+                return
+            self.send_json({"alerts": list_cs_followup_alerts()})
             return
 
         if self.path.startswith("/api/cs-cases"):
