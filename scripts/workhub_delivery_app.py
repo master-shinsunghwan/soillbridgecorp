@@ -3104,17 +3104,56 @@ HTML = r"""<!doctype html>
     }
     .dashboard-sales-metric {
       min-height: 72px;
-      padding: 12px;
+      padding: 11px 12px;
       border: 1px solid #e5e7eb;
       border-radius: 8px;
       background: #f8fafc;
+      position: relative;
+      overflow: hidden;
     }
-    .dashboard-sales-metric span {
-      display: block;
+    .dashboard-sales-metric::before {
+      content: "";
+      position: absolute;
+      inset: 0 auto 0 0;
+      width: 3px;
+      background: var(--metric-color, #64748b);
+    }
+    .dashboard-sales-metric.blue { --metric-color: #2563eb; }
+    .dashboard-sales-metric.violet { --metric-color: #7c3aed; }
+    .dashboard-sales-metric.green { --metric-color: #059669; }
+    .dashboard-sales-metric.orange { --metric-color: #f97316; }
+    .dashboard-sales-metric-top {
+      display: flex;
+      align-items: center;
+      gap: 7px;
       margin-bottom: 8px;
+      min-width: 0;
+    }
+    .dashboard-sales-icon {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      flex: 0 0 auto;
+      width: 24px;
+      height: 24px;
+      border-radius: 8px;
+      background: color-mix(in srgb, var(--metric-color, #64748b) 13%, #ffffff);
+      color: var(--metric-color, #64748b);
+    }
+    .dashboard-sales-icon svg {
+      width: 14px;
+      height: 14px;
+      stroke-width: 2.4;
+    }
+    .dashboard-sales-metric-label {
+      display: block;
+      min-width: 0;
       color: #667085;
       font-size: 11px;
       font-weight: 850;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
     .dashboard-sales-metric strong {
       color: #111827;
@@ -3151,6 +3190,40 @@ HTML = r"""<!doctype html>
       background: #fff7ed;
       color: #c2410c;
     }
+    .dashboard-sales-insights {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 7px;
+      margin-top: 10px;
+    }
+    .dashboard-sales-insight {
+      min-width: 0;
+      padding: 9px 10px;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      background: #ffffff;
+    }
+    .dashboard-sales-insight span {
+      display: block;
+      margin-bottom: 5px;
+      color: #667085;
+      font-size: 10px;
+      font-weight: 850;
+      white-space: nowrap;
+    }
+    .dashboard-sales-insight strong {
+      display: block;
+      color: #111827;
+      font-size: 13px;
+      font-weight: 950;
+      line-height: 1.25;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .dashboard-sales-insight strong.sales-positive { color: #047857; }
+    .dashboard-sales-insight strong.sales-negative { color: #b91c1c; }
+    .dashboard-sales-insight strong.notice { color: #64748b; }
     .dashboard-sales-placeholder {
       margin-top: 12px;
       padding: 13px 14px;
@@ -4994,10 +5067,27 @@ HTML = r"""<!doctype html>
                 <div class="company-card-head"><span>매출 현황</span><span class="dashboard-sales-status" id="dashboardSalesStatus">연동 대기</span></div>
                 <div class="company-card-body">
                   <div class="dashboard-sales-grid">
-                    <div class="dashboard-sales-metric"><span id="dashboardTodaySalesLabel">오늘 손익매출</span><strong id="dashboardTodaySales">-</strong></div>
-                    <div class="dashboard-sales-metric"><span id="dashboardMonthSalesLabel">이번 달 누적매출</span><strong id="dashboardMonthSales">-</strong></div>
-                    <div class="dashboard-sales-metric"><span id="dashboardSalesQuantityLabel">이번 달 판매수량</span><strong id="dashboardSalesQuantity">-</strong></div>
-                    <div class="dashboard-sales-metric"><span id="dashboardSalesCompareLabel">전영업일 대비</span><strong id="dashboardSalesCompare">-</strong></div>
+                    <div class="dashboard-sales-metric blue">
+                      <div class="dashboard-sales-metric-top"><span class="dashboard-sales-icon"><i data-lucide="circle-dollar-sign"></i></span><span class="dashboard-sales-metric-label" id="dashboardTodaySalesLabel">오늘 손익매출</span></div>
+                      <strong id="dashboardTodaySales">-</strong>
+                    </div>
+                    <div class="dashboard-sales-metric violet">
+                      <div class="dashboard-sales-metric-top"><span class="dashboard-sales-icon"><i data-lucide="bar-chart-3"></i></span><span class="dashboard-sales-metric-label" id="dashboardMonthSalesLabel">이번 달 누적매출</span></div>
+                      <strong id="dashboardMonthSales">-</strong>
+                    </div>
+                    <div class="dashboard-sales-metric green">
+                      <div class="dashboard-sales-metric-top"><span class="dashboard-sales-icon"><i data-lucide="package"></i></span><span class="dashboard-sales-metric-label" id="dashboardSalesQuantityLabel">이번 달 판매수량</span></div>
+                      <strong id="dashboardSalesQuantity">-</strong>
+                    </div>
+                    <div class="dashboard-sales-metric orange">
+                      <div class="dashboard-sales-metric-top"><span class="dashboard-sales-icon"><i data-lucide="refresh-cw"></i></span><span class="dashboard-sales-metric-label" id="dashboardSalesCompareLabel">전영업일 대비</span></div>
+                      <strong id="dashboardSalesCompare">-</strong>
+                    </div>
+                  </div>
+                  <div class="dashboard-sales-insights" aria-label="매출 보조 지표">
+                    <div class="dashboard-sales-insight"><span>월 손익마진</span><strong id="dashboardSalesMargin">-</strong></div>
+                    <div class="dashboard-sales-insight"><span>매출처 합계</span><strong id="dashboardSellerTotal">-</strong></div>
+                    <div class="dashboard-sales-insight"><span>매입처 총액</span><strong id="dashboardSupplierPurchase">-</strong></div>
                   </div>
                   <div class="dashboard-sales-placeholder" id="dashboardSalesMessage">매출현황 및 관리 데이터 연결 대기 중</div>
                 </div>
@@ -6166,6 +6256,9 @@ HTML = r"""<!doctype html>
     const dashboardSalesQuantity = document.querySelector("#dashboardSalesQuantity");
     const dashboardSalesCompareLabel = document.querySelector("#dashboardSalesCompareLabel");
     const dashboardSalesCompare = document.querySelector("#dashboardSalesCompare");
+    const dashboardSalesMargin = document.querySelector("#dashboardSalesMargin");
+    const dashboardSellerTotal = document.querySelector("#dashboardSellerTotal");
+    const dashboardSupplierPurchase = document.querySelector("#dashboardSupplierPurchase");
     const dashboardSalesMessage = document.querySelector("#dashboardSalesMessage");
     const salesReportDailyBody = document.querySelector("#salesReportDailyBody");
     const salesReportSellerBody = document.querySelector("#salesReportSellerBody");
@@ -8617,6 +8710,9 @@ HTML = r"""<!doctype html>
       setDashboardSalesMetric(dashboardMonthSalesLabel, dashboardMonthSales, "이번 달 누적매출", "-");
       setDashboardSalesMetric(dashboardSalesQuantityLabel, dashboardSalesQuantity, "이번 달 판매수량", "-");
       setDashboardSalesMetric(dashboardSalesCompareLabel, dashboardSalesCompare, "전영업일 대비", "-");
+      setDashboardSalesMetric(null, dashboardSalesMargin, "", "-");
+      setDashboardSalesMetric(null, dashboardSellerTotal, "", "-");
+      setDashboardSalesMetric(null, dashboardSupplierPurchase, "", "-");
       if (dashboardSalesMessage) dashboardSalesMessage.textContent = message || "매출현황 및 관리 데이터를 불러오는 중입니다.";
     }
 
@@ -8625,11 +8721,14 @@ HTML = r"""<!doctype html>
       const yesterday = data.yesterday || {};
       const month = data.month || {};
       const comparison = data.comparison || {};
+      const sellerTotal = data.seller_total || {};
+      const supplierPurchaseTotal = data.supplier_purchase_total || {};
       const hasTodaySalesData = Boolean(data.today_data_uploaded);
       const selectedDateLabel = shortKoreanDate(data.selected_date || today.report_date || "");
       const previousDateLabel = shortKoreanDate(data.previous_business_date || yesterday.report_date || "");
       const periodLabel = formatSalesPeriodLabel(data.period || "");
       const comparisonDelta = Number(comparison.profit_sales_amount_delta || 0);
+      const marginAmount = Number(month.profit_margin || 0);
       const hasComparison = hasTodaySalesData && Boolean(yesterday.report_date);
       setDashboardSalesStatus(hasTodaySalesData ? "연동 완료" : "금일 미업로드", hasTodaySalesData ? "connected" : "warning");
       setDashboardSalesMetric(
@@ -8658,6 +8757,9 @@ HTML = r"""<!doctype html>
         hasComparison ? formatSalesPercent(comparison.profit_sales_amount_delta_rate) : "비교 대기",
         hasComparison ? salesAmountClass(comparisonDelta) : "notice",
       );
+      setDashboardSalesMetric(null, dashboardSalesMargin, "", formatSalesNumber(marginAmount), salesAmountClass(marginAmount));
+      setDashboardSalesMetric(null, dashboardSellerTotal, "", formatSalesNumber(sellerTotal.profit_sales_amount));
+      setDashboardSalesMetric(null, dashboardSupplierPurchase, "", formatSalesNumber(supplierPurchaseTotal.purchase_total));
       if (dashboardSalesMessage) {
         dashboardSalesMessage.textContent = hasComparison
           ? `매출현황 및 관리 데이터 기준 · ${periodLabel} · 증감액 ${formatSalesNumber(comparisonDelta)}`
