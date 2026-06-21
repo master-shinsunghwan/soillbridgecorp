@@ -415,6 +415,15 @@ HTML = r"""<!doctype html>
       border: 1px solid #e4ebf5;
       border-radius: 7px;
       background: white;
+      cursor: pointer;
+    }
+    .notice-auto-item:hover {
+      border-color: #b8d2f1;
+      background: #f8fbff;
+    }
+    .notice-auto-item:focus-visible {
+      outline: 3px solid rgba(21, 91, 200, .28);
+      outline-offset: 2px;
     }
     .notice-auto-badge {
       height: 22px;
@@ -613,11 +622,10 @@ HTML = r"""<!doctype html>
       text-align: center;
     }
     .import-row-actions {
-      display: none;
+      display: inline-flex;
       gap: 6px;
       align-items: center;
     }
-    .import-progress-card.open .import-row-actions { display: inline-flex; }
     .import-row-actions button {
       height: 28px;
       border: 1px solid #cbd5e1;
@@ -628,6 +636,12 @@ HTML = r"""<!doctype html>
       font-size: 12px;
       font-weight: 900;
       cursor: pointer;
+    }
+    #importShipmentBody tr {
+      cursor: pointer;
+    }
+    #importShipmentBody tr:hover td {
+      background: #f8fbff;
     }
     .hidden-file-input {
       position: fixed;
@@ -7889,6 +7903,7 @@ HTML = r"""<!doctype html>
         .slice(0, 4)
         .map((record) => ({
           type: "import",
+          sourceId: record.id,
           badge: "컨테이너",
           date: record.warehouse_due_date || record.arrival_date || "",
           title: `${shortKoreanDate(record.warehouse_due_date || record.arrival_date)} ${record.item || "수입제품"}`,
@@ -7898,6 +7913,7 @@ HTML = r"""<!doctype html>
         .slice(0, 4)
         .map((record) => ({
           type: "cargo",
+          sourceId: record.id,
           badge: "화물출고",
           date: record.ship_date || "",
           title: `${shortKoreanDate(record.ship_date)} ${record.customer || "거래처 미정"} · ${record.item || "품목 미정"}`,
@@ -7923,7 +7939,7 @@ HTML = r"""<!doctype html>
           <div class="notice-auto-head"><span>오늘 확인할 회사 일정</span><span class="notice-auto-count">${items.length}</span></div>
           <div class="notice-auto-list">
             ${items.map((item) => `
-              <div class="notice-auto-item" title="${escapeHtml([item.title, item.detail].filter(Boolean).join(" / "))}">
+              <div class="notice-auto-item" role="button" tabindex="0" data-notice-auto-type="${escapeHtml(item.type)}" data-notice-auto-id="${escapeHtml(item.sourceId || "")}" title="${escapeHtml([item.title, item.detail].filter(Boolean).join(" / "))}">
                 <span class="notice-auto-badge ${escapeHtml(item.type)}">${escapeHtml(item.badge)}</span>
                 <span class="notice-auto-text">${escapeHtml(item.title)}${item.detail ? ` · ${escapeHtml(item.detail)}` : ""}</span>
               </div>
@@ -8181,6 +8197,7 @@ HTML = r"""<!doctype html>
       importShipmentBody.innerHTML = "";
       sortImportShipmentsByWarehouseDate(importShipments).forEach((record) => {
         const row = document.createElement("tr");
+        row.dataset.importRow = record.id;
         if (record.completed_at) row.classList.add("completed");
         const canManageImportShipment = can("import_shipment_manage");
         const canCompleteImportShipment = currentUser.role === "admin";
@@ -13249,11 +13266,45 @@ HTML = r"""<!doctype html>
         if (companyOrgBody) companyOrgBody.innerHTML = `<div class="company-org-empty">${escapeHtml(error.message)}</div>`;
       }));
     }
-    sidebarNoticePreview?.addEventListener("click", () => openNoticeWidget());
+    function openNoticeAutoItem(element) {
+      const type = element?.dataset.noticeAutoType || "";
+      const id = element?.dataset.noticeAutoId || "";
+      if (type === "import" && id) {
+        if (!can("import_shipment_manage")) {
+          notice.textContent = "수입제품 진행 관리 권한이 없습니다.";
+          return;
+        }
+        const record = importShipments.find((item) => String(item.id) === String(id));
+        if (record) openImportShipmentPopup(record);
+        return;
+      }
+      if (type === "cargo" && id) {
+        if (!canManageCargoShipments()) {
+          notice.textContent = "화물 출고건 입력 권한이 없습니다.";
+          return;
+        }
+        const record = cargoShipments.find((item) => String(item.id) === String(id));
+        if (record) openCargoShipmentPopup(record);
+        return;
+      }
+      openNoticeWidget();
+    }
+
+    sidebarNoticePreview?.addEventListener("click", (event) => {
+      const autoItem = event.target.closest("[data-notice-auto-type]");
+      if (autoItem) {
+        event.stopPropagation();
+        openNoticeAutoItem(autoItem);
+        return;
+      }
+      openNoticeWidget();
+    });
     sidebarNoticePreview?.addEventListener("keydown", (event) => {
       if (!isCardActivationKey(event)) return;
       event.preventDefault();
-      openNoticeWidget();
+      const autoItem = event.target.closest("[data-notice-auto-type]");
+      if (autoItem) openNoticeAutoItem(autoItem);
+      else openNoticeWidget();
     });
     noticePreview?.addEventListener("click", () => openNoticeWidget());
     companyOrgBody?.addEventListener("click", (event) => {
@@ -13676,14 +13727,17 @@ HTML = r"""<!doctype html>
     importShipmentBody.addEventListener("click", (event) => {
       const editButton = event.target.closest("[data-import-edit]");
       const completeButton = event.target.closest("[data-import-complete]");
-      if (editButton) {
-        const record = importShipments.find((item) => String(item.id) === String(editButton.dataset.importEdit));
-        if (record) openImportShipmentPopup(record);
-      }
       if (completeButton) {
         completeImportShipment(completeButton.dataset.importComplete).catch((error) => {
           notice.textContent = error.message;
         });
+        return;
+      }
+      const row = event.target.closest("[data-import-row]");
+      const recordId = editButton?.dataset.importEdit || row?.dataset.importRow;
+      if (recordId) {
+        const record = importShipments.find((item) => String(item.id) === String(recordId));
+        if (record) openImportShipmentPopup(record);
       }
     });
     document.querySelector("#closeModal").addEventListener("click", closeModal);
