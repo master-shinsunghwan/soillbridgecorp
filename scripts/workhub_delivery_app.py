@@ -2362,7 +2362,7 @@ HTML = r"""<!doctype html>
     .ledger-import-button input { display: none; }
     .cell-edit-bar {
       display: none;
-      grid-template-columns: minmax(150px, auto) minmax(280px, 1fr) auto auto auto;
+      grid-template-columns: minmax(140px, auto) minmax(220px, 1fr) auto auto auto;
       gap: 7px;
       align-items: center;
       margin: -2px 0 10px;
@@ -2372,6 +2372,15 @@ HTML = r"""<!doctype html>
       background: #f8fafc;
     }
     .cell-edit-bar.open { display: grid; }
+    .cell-edit-bar:has(textarea.cell-edit-control) {
+      align-items: start;
+    }
+    .cell-edit-bar:has(textarea.cell-edit-control) .cell-edit-label {
+      padding-top: 8px;
+    }
+    .cell-edit-bar:has(textarea.cell-edit-control) .cell-edit-button {
+      align-self: end;
+    }
     .cell-edit-label {
       color: #344054;
       font-size: 12px;
@@ -2391,9 +2400,11 @@ HTML = r"""<!doctype html>
       font-weight: 750;
     }
     textarea.cell-edit-control {
-      min-height: 64px;
+      min-height: 36px;
+      max-height: 180px;
       resize: vertical;
       line-height: 1.45;
+      overflow-y: auto;
     }
     .cell-edit-button {
       height: 34px;
@@ -2417,6 +2428,22 @@ HTML = r"""<!doctype html>
       color: #1d4ed8;
     }
     .cell-edit-button[hidden] { display: none; }
+    @media (max-width: 1100px) {
+      .cell-edit-bar {
+        grid-template-columns: 1fr auto auto auto;
+        align-items: center;
+      }
+      .cell-edit-label,
+      .cell-edit-bar > div:nth-child(2) {
+        grid-column: 1 / -1;
+      }
+      .cell-edit-label {
+        white-space: normal;
+      }
+      .cell-edit-button {
+        justify-self: end;
+      }
+    }
     .management-month-tabs {
       display: flex;
       flex-wrap: wrap;
@@ -11450,6 +11477,13 @@ HTML = r"""<!doctype html>
       }
     }
 
+    function resizeCellTextarea(textarea) {
+      if (!textarea || textarea.tagName !== "TEXTAREA") return;
+      textarea.style.height = "auto";
+      const nextHeight = Math.min(Math.max(textarea.scrollHeight, 36), 180);
+      textarea.style.height = `${nextHeight}px`;
+    }
+
     function createCellEditorControl(cell) {
       const inputType = cell.dataset.input || "text";
       const currentValue = cell.dataset.value || cell.textContent.trim();
@@ -11469,6 +11503,9 @@ HTML = r"""<!doctype html>
         const textarea = document.createElement("textarea");
         textarea.className = "cell-edit-control";
         textarea.value = currentValue;
+        textarea.rows = 1;
+        textarea.addEventListener("input", () => resizeCellTextarea(textarea));
+        setTimeout(() => resizeCellTextarea(textarea), 0);
         return textarea;
       }
       const input = document.createElement("input");
