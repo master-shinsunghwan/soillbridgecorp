@@ -3192,9 +3192,22 @@ HTML = r"""<!doctype html>
     }
     .dashboard-sales-insights {
       display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 7px;
+      margin-top: 10px;
+    }
+    .dashboard-sales-compare-grid {
+      display: grid;
       grid-template-columns: repeat(2, minmax(0, 1fr));
       gap: 7px;
       margin-top: 10px;
+    }
+    .dashboard-sales-compare {
+      min-width: 0;
+      padding: 9px 10px;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      background: #ffffff;
     }
     .dashboard-sales-insight {
       min-width: 0;
@@ -3203,6 +3216,7 @@ HTML = r"""<!doctype html>
       border-radius: 8px;
       background: #ffffff;
     }
+    .dashboard-sales-compare-top,
     .dashboard-sales-insight-top {
       display: flex;
       align-items: center;
@@ -3210,6 +3224,7 @@ HTML = r"""<!doctype html>
       margin-bottom: 5px;
       min-width: 0;
     }
+    .dashboard-sales-compare-icon,
     .dashboard-sales-insight-icon {
       display: inline-flex;
       align-items: center;
@@ -3221,11 +3236,13 @@ HTML = r"""<!doctype html>
       background: #f1f5f9;
       color: #475569;
     }
+    .dashboard-sales-compare-icon svg,
     .dashboard-sales-insight-icon svg {
       width: 11px;
       height: 11px;
       stroke-width: 2.5;
     }
+    .dashboard-sales-compare span,
     .dashboard-sales-insight span {
       display: block;
       min-width: 0;
@@ -3236,6 +3253,7 @@ HTML = r"""<!doctype html>
       text-overflow: ellipsis;
       white-space: nowrap;
     }
+    .dashboard-sales-compare strong,
     .dashboard-sales-insight strong {
       display: block;
       color: #111827;
@@ -3246,8 +3264,27 @@ HTML = r"""<!doctype html>
       text-overflow: ellipsis;
       white-space: nowrap;
     }
+    .dashboard-sales-compare-value {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 6px;
+      min-width: 0;
+    }
+    .dashboard-sales-rate {
+      flex: 0 0 auto;
+      color: #64748b;
+      font-size: 11px;
+      font-weight: 950;
+    }
+    .dashboard-sales-rate.sales-positive { color: #047857; }
+    .dashboard-sales-rate.sales-negative { color: #b91c1c; }
+    .dashboard-sales-rate.notice { color: #64748b; }
+    .dashboard-sales-compare strong.sales-positive,
     .dashboard-sales-insight strong.sales-positive { color: #047857; }
+    .dashboard-sales-compare strong.sales-negative,
     .dashboard-sales-insight strong.sales-negative { color: #b91c1c; }
+    .dashboard-sales-compare strong.notice,
     .dashboard-sales-insight strong.notice { color: #64748b; }
     .dashboard-sales-placeholder {
       margin-top: 12px;
@@ -5109,8 +5146,17 @@ HTML = r"""<!doctype html>
                       <strong id="dashboardSalesQuantity">-</strong>
                     </div>
                   </div>
+                  <div class="dashboard-sales-compare-grid" aria-label="전영업일 대비">
+                    <div class="dashboard-sales-compare">
+                      <div class="dashboard-sales-compare-top"><span class="dashboard-sales-compare-icon"><i data-lucide="refresh-cw"></i></span><span id="dashboardSalesAmountCompareLabel">매출금액 비교</span></div>
+                      <div class="dashboard-sales-compare-value"><strong id="dashboardSalesAmountCompare">-</strong><span class="dashboard-sales-rate" id="dashboardSalesAmountRate">-</span></div>
+                    </div>
+                    <div class="dashboard-sales-compare">
+                      <div class="dashboard-sales-compare-top"><span class="dashboard-sales-compare-icon"><i data-lucide="package"></i></span><span id="dashboardSalesQuantityCompareLabel">판매수량 비교</span></div>
+                      <div class="dashboard-sales-compare-value"><strong id="dashboardSalesQuantityCompare">-</strong><span class="dashboard-sales-rate" id="dashboardSalesQuantityRate">-</span></div>
+                    </div>
+                  </div>
                   <div class="dashboard-sales-insights" aria-label="매출 보조 지표">
-                    <div class="dashboard-sales-insight"><div class="dashboard-sales-insight-top"><span class="dashboard-sales-insight-icon"><i data-lucide="refresh-cw"></i></span><span id="dashboardSalesCompareLabel">전영업일 대비</span></div><strong id="dashboardSalesCompare">-</strong></div>
                     <div class="dashboard-sales-insight"><div class="dashboard-sales-insight-top"><span class="dashboard-sales-insight-icon"><i data-lucide="circle-dollar-sign"></i></span><span>매출처 합계</span></div><strong id="dashboardSellerTotal">-</strong></div>
                     <div class="dashboard-sales-insight"><div class="dashboard-sales-insight-top"><span class="dashboard-sales-insight-icon"><i data-lucide="truck"></i></span><span>매입처 총액</span></div><strong id="dashboardSupplierPurchase">-</strong></div>
                     <div class="dashboard-sales-insight"><div class="dashboard-sales-insight-top"><span class="dashboard-sales-insight-icon"><i data-lucide="bar-chart-3"></i></span><span>월 손익마진</span></div><strong id="dashboardSalesMargin">-</strong></div>
@@ -6282,8 +6328,12 @@ HTML = r"""<!doctype html>
     const dashboardMonthSales = document.querySelector("#dashboardMonthSales");
     const dashboardSalesQuantityLabel = document.querySelector("#dashboardSalesQuantityLabel");
     const dashboardSalesQuantity = document.querySelector("#dashboardSalesQuantity");
-    const dashboardSalesCompareLabel = document.querySelector("#dashboardSalesCompareLabel");
-    const dashboardSalesCompare = document.querySelector("#dashboardSalesCompare");
+    const dashboardSalesAmountCompareLabel = document.querySelector("#dashboardSalesAmountCompareLabel");
+    const dashboardSalesAmountCompare = document.querySelector("#dashboardSalesAmountCompare");
+    const dashboardSalesAmountRate = document.querySelector("#dashboardSalesAmountRate");
+    const dashboardSalesQuantityCompareLabel = document.querySelector("#dashboardSalesQuantityCompareLabel");
+    const dashboardSalesQuantityCompare = document.querySelector("#dashboardSalesQuantityCompare");
+    const dashboardSalesQuantityRate = document.querySelector("#dashboardSalesQuantityRate");
     const dashboardSalesMargin = document.querySelector("#dashboardSalesMargin");
     const dashboardSellerTotal = document.querySelector("#dashboardSellerTotal");
     const dashboardSupplierPurchase = document.querySelector("#dashboardSupplierPurchase");
@@ -8210,6 +8260,18 @@ HTML = r"""<!doctype html>
       return `${number.toLocaleString("ko-KR", { maximumFractionDigits: 1 })}%`;
     }
 
+    function formatSignedSalesNumber(value, suffix = "") {
+      const number = Number(value || 0);
+      const sign = number > 0 ? "+" : "";
+      return `${sign}${number.toLocaleString("ko-KR")}${suffix}`;
+    }
+
+    function formatSignedSalesPercent(value) {
+      const number = Number(value || 0);
+      const sign = number > 0 ? "+" : "";
+      return `${sign}${number.toLocaleString("ko-KR", { maximumFractionDigits: 1 })}%`;
+    }
+
     function salesAmountClass(value) {
       const number = Number(value || 0);
       if (number > 0) return "sales-positive";
@@ -8726,6 +8788,18 @@ HTML = r"""<!doctype html>
       valueElement.className = className;
     }
 
+    function setDashboardSalesCompare(labelElement, valueElement, rateElement, label, value, rate, className = "") {
+      if (labelElement) labelElement.textContent = label;
+      if (valueElement) {
+        valueElement.textContent = value;
+        valueElement.className = className;
+      }
+      if (rateElement) {
+        rateElement.textContent = rate;
+        rateElement.className = `dashboard-sales-rate${className ? ` ${className}` : ""}`;
+      }
+    }
+
     function setDashboardSalesStatus(text, state = "") {
       if (!dashboardSalesStatus) return;
       dashboardSalesStatus.textContent = text;
@@ -8738,7 +8812,8 @@ HTML = r"""<!doctype html>
       setDashboardSalesMetric(dashboardTodayQuantityLabel, dashboardTodayQuantity, "오늘 판매수량", "-");
       setDashboardSalesMetric(dashboardMonthSalesLabel, dashboardMonthSales, "이번 달 누적매출", "-");
       setDashboardSalesMetric(dashboardSalesQuantityLabel, dashboardSalesQuantity, "이번 달 판매수량", "-");
-      setDashboardSalesMetric(dashboardSalesCompareLabel, dashboardSalesCompare, "전영업일 대비", "-");
+      setDashboardSalesCompare(dashboardSalesAmountCompareLabel, dashboardSalesAmountCompare, dashboardSalesAmountRate, "매출금액 비교", "-", "-");
+      setDashboardSalesCompare(dashboardSalesQuantityCompareLabel, dashboardSalesQuantityCompare, dashboardSalesQuantityRate, "판매수량 비교", "-", "-");
       setDashboardSalesMetric(null, dashboardSalesMargin, "", "-");
       setDashboardSalesMetric(null, dashboardSellerTotal, "", "-");
       setDashboardSalesMetric(null, dashboardSupplierPurchase, "", "-");
@@ -8757,6 +8832,7 @@ HTML = r"""<!doctype html>
       const previousDateLabel = shortKoreanDate(data.previous_business_date || yesterday.report_date || "");
       const periodLabel = formatSalesPeriodLabel(data.period || "");
       const comparisonDelta = Number(comparison.profit_sales_amount_delta || 0);
+      const quantityDelta = Number(comparison.quantity_delta || 0);
       const marginAmount = Number(month.profit_margin || 0);
       const hasComparison = hasTodaySalesData && Boolean(yesterday.report_date);
       setDashboardSalesStatus(hasTodaySalesData ? "연동 완료" : "금일 미업로드", hasTodaySalesData ? "connected" : "warning");
@@ -8786,12 +8862,23 @@ HTML = r"""<!doctype html>
         "이번 달 판매수량",
         `${formatSalesNumber(month.quantity)}개`,
       );
-      setDashboardSalesMetric(
-        dashboardSalesCompareLabel,
-        dashboardSalesCompare,
-        previousDateLabel ? `${previousDateLabel} 대비` : "전영업일 대비",
-        hasComparison ? formatSalesPercent(comparison.profit_sales_amount_delta_rate) : "비교 대기",
+      setDashboardSalesCompare(
+        dashboardSalesAmountCompareLabel,
+        dashboardSalesAmountCompare,
+        dashboardSalesAmountRate,
+        previousDateLabel ? `${previousDateLabel} 매출 대비` : "매출금액 비교",
+        hasComparison ? formatSignedSalesNumber(comparisonDelta) : "비교 대기",
+        hasComparison ? formatSignedSalesPercent(comparison.profit_sales_amount_delta_rate) : "-",
         hasComparison ? salesAmountClass(comparisonDelta) : "notice",
+      );
+      setDashboardSalesCompare(
+        dashboardSalesQuantityCompareLabel,
+        dashboardSalesQuantityCompare,
+        dashboardSalesQuantityRate,
+        previousDateLabel ? `${previousDateLabel} 수량 대비` : "판매수량 비교",
+        hasComparison ? formatSignedSalesNumber(quantityDelta, "개") : "비교 대기",
+        hasComparison ? formatSignedSalesPercent(comparison.quantity_delta_rate) : "-",
+        hasComparison ? salesAmountClass(quantityDelta) : "notice",
       );
       setDashboardSalesMetric(null, dashboardSalesMargin, "", formatSalesNumber(marginAmount), salesAmountClass(marginAmount));
       setDashboardSalesMetric(null, dashboardSellerTotal, "", formatSalesNumber(sellerTotal.profit_sales_amount));
@@ -15489,6 +15576,10 @@ def sales_report_dashboard_payload(period: str = "", report_date: str = "") -> d
     yesterday_amount = int(yesterday_public.get("profit_sales_amount", 0) or 0)
     delta = today_amount - yesterday_amount
     delta_rate = round((delta / yesterday_amount) * 100, 1) if yesterday_amount else 0
+    today_quantity = int(today_public.get("quantity", 0) or 0)
+    yesterday_quantity = int(yesterday_public.get("quantity", 0) or 0)
+    quantity_delta = today_quantity - yesterday_quantity
+    quantity_delta_rate = round((quantity_delta / yesterday_quantity) * 100, 1) if yesterday_quantity else 0
     month_total = {
         "quantity": int(month["quantity"] or 0),
         "sales_amount": int(month["sales_amount"] or 0),
@@ -15544,6 +15635,8 @@ def sales_report_dashboard_payload(period: str = "", report_date: str = "") -> d
         "comparison": {
             "profit_sales_amount_delta": delta,
             "profit_sales_amount_delta_rate": delta_rate,
+            "quantity_delta": quantity_delta,
+            "quantity_delta_rate": quantity_delta_rate,
         },
         "month": month_total,
         "previous_month": previous_month_total,
