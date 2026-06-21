@@ -11274,10 +11274,36 @@ HTML = r"""<!doctype html>
       return normalizedLedgerText(status).includes("전체처리완료");
     }
 
+    function ledgerHasReturnCheck(row) {
+      return String(fieldValue(row?.querySelector('[data-field="cs_content"]')) || "").includes("[회수검수");
+    }
+
+    function ledgerOverallCompletionReason(row) {
+      if (!row) return "";
+      if (isFullyCompletedStatus(fieldValue(row.querySelector('[data-field="status"]')))) return "";
+      const category = ledgerTypeCategory(row);
+      const hasReturn = Boolean(fieldValue(row.querySelector('[data-field="return_invoice"]')));
+      const hasReship = Boolean(fieldValue(row.querySelector('[data-field="reship_invoice"]')));
+      const hasReturnCheck = ledgerHasReturnCheck(row);
+      if (category === "returnOnly" && hasReturn && hasReturnCheck) return "회수 송장과 검수 결과가 모두 입력되어 전체 처리완료로 변경했습니다.";
+      if (category === "exchange" && hasReturn && hasReship && hasReturnCheck) return "회수/재발송 송장과 검수 결과가 모두 입력되어 전체 처리완료로 변경했습니다.";
+      if (category === "reshipOnly" && hasReship) return "재발송 송장이 입력되어 전체 처리완료로 변경했습니다.";
+      return "";
+    }
+
+    function applyLedgerOverallCompletion(row, { announce = true } = {}) {
+      const reason = ledgerOverallCompletionReason(row);
+      if (!reason) return false;
+      setLedgerRowStatus(row, "전체 처리완료");
+      if (announce) notice.textContent = reason;
+      return true;
+    }
+
     function suggestLedgerStatusAfterInvoice(row, field, previousValue, nextValue) {
-      if (!row || !String(nextValue || "").trim() || String(previousValue || "").trim() === String(nextValue || "").trim()) return;
+      if (!row || !String(nextValue || "").trim() || String(previousValue || "").trim() === String(nextValue || "").trim()) return false;
       const currentStatus = fieldValue(row.querySelector('[data-field="status"]'));
-      if (isFullyCompletedStatus(currentStatus)) return;
+      if (isFullyCompletedStatus(currentStatus)) return false;
+      if (applyLedgerOverallCompletion(row)) return true;
       const category = ledgerTypeCategory(row);
       const hasReturn = Boolean(fieldValue(row.querySelector('[data-field="return_invoice"]')));
       const hasReship = Boolean(fieldValue(row.querySelector('[data-field="reship_invoice"]')));
@@ -11290,11 +11316,13 @@ HTML = r"""<!doctype html>
         else if (field === "return_invoice") suggested = `회수지시(${dateText})`;
         else if (field === "reship_invoice") suggested = `재발송 완료(${dateText})`;
       }
-      if (!suggested || suggested === currentStatus) return;
+      if (!suggested || suggested === currentStatus) return false;
       const label = field === "return_invoice" ? "회수 송장" : "재발송 송장";
       if (window.confirm(`${label}이 입력되었습니다.\n처리상태를 "${suggested}"로 변경하시겠습니까?\n\n확인: 상태 변경 / 취소: 사용자 입력상태 유지`)) {
         setLedgerRowStatus(row, suggested);
+        return true;
       }
+      return false;
     }
 
     function ledgerFieldValue(csCase, field) {
@@ -11602,11 +11630,16 @@ HTML = r"""<!doctype html>
       const checkbox = row?.querySelector("[data-row-check]");
       if (checkbox) checkbox.checked = true;
       if (scope === "ledger") updateLedgerRowCompletion(row);
+      let autoStatusApplied = false;
       if (scope === "ledger" && ["return_invoice", "reship_invoice"].includes(cell.dataset.field || "")) {
-        suggestLedgerStatusAfterInvoice(row, cell.dataset.field, previousValue, value);
+        autoStatusApplied = suggestLedgerStatusAfterInvoice(row, cell.dataset.field, previousValue, value);
+      } else if (scope === "ledger") {
+        autoStatusApplied = applyLedgerOverallCompletion(row);
       }
       if (activeLedgerFilterField || activeManagementFilterField) refreshActiveFilterOptions();
-      notice.textContent = `${cell.dataset.label || "선택 셀"} 값을 반영했습니다. 저장하려면 체크된 항목 저장 버튼을 눌러주세요.`;
+      if (!autoStatusApplied) {
+        notice.textContent = `${cell.dataset.label || "선택 셀"} 값을 반영했습니다. 저장하려면 체크된 항목 저장 버튼을 눌러주세요.`;
+      }
     }
 
     function dirtyRows(container, rowSelector) {
@@ -12335,9 +12368,10 @@ HTML = r"""<!doctype html>
     function returnCheckSuggestedStatus(row) {
       const dateText = todayStatusDate();
       const category = ledgerTypeCategory(row);
+      const hasReturn = Boolean(fieldValue(row?.querySelector('[data-field="return_invoice"]')));
       const hasReship = Boolean(fieldValue(row?.querySelector('[data-field="reship_invoice"]')));
-      if (category === "exchange") return hasReship ? "전체 처리완료" : `회수 완료(${dateText})`;
-      if (category === "returnOnly") return `회수 완료(${dateText})`;
+      if (category === "exchange") return hasReturn && hasReship ? "전체 처리완료" : `회수 완료(${dateText})`;
+      if (category === "returnOnly") return hasReturn ? "전체 처리완료" : `회수 완료(${dateText})`;
       if (category === "reshipOnly") return hasReship ? "전체 처리완료" : `회수 완료(${dateText})`;
       return `회수 완료(${dateText})`;
     }
@@ -12387,6 +12421,7 @@ HTML = r"""<!doctype html>
       const previousContent = fieldValue(contentCell);
       setEditableCellValue(contentCell, previousContent ? `${previousContent}\n${historyLine}` : historyLine);
       setLedgerRowStatus(row, returnCheckNextStatus.value || returnCheckSuggestedStatus(row));
+      applyLedgerOverallCompletion(row, { announce: false });
       closeReturnCheckPopup();
       notice.textContent = "회수확인/검수 결과를 반영했습니다. 저장하려면 체크된 항목 저장 버튼을 눌러주세요.";
     }
@@ -12394,6 +12429,7 @@ HTML = r"""<!doctype html>
     async function saveLedgerRow(button) {
       const row = button.closest("tr");
       if (!row) return;
+      applyLedgerOverallCompletion(row, { announce: false });
       const payload = collectLedgerRow(row);
       try {
         button.disabled = true;
@@ -12438,6 +12474,7 @@ HTML = r"""<!doctype html>
         return 0;
       }
       for (const row of rows) {
+        applyLedgerOverallCompletion(row, { announce: false });
         const payload = collectLedgerRow(row);
         await saveLedgerPayload(payload);
         updateLedgerCaseCache(payload);
@@ -20007,10 +20044,27 @@ def list_cs_cases(query: str = "", status: str = "", limit: int = 20, year: str 
     return [dict(row) for row in rows]
 
 
+def normalized_cs_type(value: str) -> str:
+    return re.sub(r"\s+", "", value or "")
+
+
+def should_mark_cs_case_complete(cs_type: str, cs_content: str, return_invoice: str, reship_invoice: str) -> bool:
+    normalized_type = normalized_cs_type(cs_type)
+    has_return = bool((return_invoice or "").strip())
+    has_reship = bool((reship_invoice or "").strip())
+    has_return_check = "[회수검수" in (cs_content or "")
+    if normalized_type in {"변심반품", "변신반품", "불량반품"}:
+        return has_return and has_return_check
+    if normalized_type in {"불량교환", "오출고(오배송)"}:
+        return has_return and has_reship and has_return_check
+    if normalized_type == "불량재출고(미회수)":
+        return has_reship
+    return False
+
+
 def update_cs_case(case_id: int, payload: dict) -> None:
     status = clean_payload_text(payload, "status")
     cs_type = clean_payload_text(payload, "cs_type")
-    cs_content = clean_payload_text(payload, "cs_content")
     return_invoice = clean_payload_text(payload, "return_invoice")
     reship_invoice = clean_payload_text(payload, "reship_invoice")
 
@@ -20018,11 +20072,16 @@ def update_cs_case(case_id: int, payload: dict) -> None:
     connection = connect_db()
     try:
         previous = connection.execute(
-            "SELECT return_invoice, reship_invoice FROM cs_cases WHERE id = ?",
+            "SELECT status, cs_type, cs_content, return_invoice, reship_invoice FROM cs_cases WHERE id = ?",
             (case_id,),
         ).fetchone()
         if not previous:
             raise ValueError("수정할 CS건을 찾지 못했습니다.")
+        cs_type = cs_type if "cs_type" in payload else (previous["cs_type"] or "")
+        cs_content = clean_payload_text(payload, "cs_content") if "cs_content" in payload else (previous["cs_content"] or "")
+        return_invoice = return_invoice if "return_invoice" in payload else (previous["return_invoice"] or "")
+        reship_invoice = reship_invoice if "reship_invoice" in payload else (previous["reship_invoice"] or "")
+        status = status if status else (previous["status"] or "")
         now = now_text()
         return_invoice_updated_at = None
         reship_invoice_updated_at = None
@@ -20030,10 +20089,12 @@ def update_cs_case(case_id: int, payload: dict) -> None:
             return_invoice_updated_at = now
         if reship_invoice and reship_invoice != (previous["reship_invoice"] or ""):
             reship_invoice_updated_at = now
+        if should_mark_cs_case_complete(cs_type, cs_content, return_invoice, reship_invoice):
+            status = "전체 처리완료"
         cursor = connection.execute(
             """
             UPDATE cs_cases
-               SET status = COALESCE(NULLIF(?, ''), status),
+               SET status = ?,
                    cs_type = ?,
                    cs_content = ?,
                    return_invoice = ?,
