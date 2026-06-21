@@ -129,7 +129,7 @@ PERMISSION_DEFINITIONS = (
     ("excel_download", "엑셀 다운로드", "대장 및 변환 결과 다운로드"),
     ("cs_receive", "CS접수", "통합관리대장에서 CS 처리대장 접수"),
     ("mail_send", "메일 발송", "업체 CS 메일 발송"),
-    ("import_shipment_manage", "수입제품 진행 관리", "수입제품 출고 진행 입력/완료 처리"),
+    ("import_shipment_manage", "수입제품 진행 관리", "수입제품 입고 진행 입력/완료 처리"),
     ("user_admin", "사용자 관리", "계정 추가/수정/권한 변경"),
     ("backup_manage", "백업 관리", "수동/자동 백업 파일 관리"),
     ("system_update", "시스템 업데이트", "GitHub 업데이트 확인/적용"),
@@ -441,6 +441,7 @@ HTML = r"""<!doctype html>
     .notice-auto-badge.leave { background: #f0fdf4; color: #047857; }
     .notice-auto-badge.pending { background: #fff7ed; color: #c2410c; }
     .notice-auto-badge.import { background: #eff6ff; color: #1d4ed8; }
+    .notice-auto-badge.cargo-inbound { background: #ecfdf3; color: #087443; }
     .notice-auto-badge.cargo { background: #f5f3ff; color: #6d28d9; }
     .notice-auto-text {
       min-width: 0;
@@ -3617,6 +3618,7 @@ HTML = r"""<!doctype html>
     }
     .calendar-legend-dot.project { background: #eff6ff; color: #155bc8; }
     .calendar-legend-dot.import { background: #e0f2fe; color: #0369a1; }
+    .calendar-legend-dot.cargo-inbound { background: #dcfce7; color: #15803d; }
     .calendar-legend-dot.cargo { background: #ede9fe; color: #6d28d9; }
     .calendar-legend-dot.task { background: #f0fdf4; color: #0b8f55; }
     .calendar-legend-dot.leave { background: #fff7ed; color: #c2410c; }
@@ -3722,6 +3724,11 @@ HTML = r"""<!doctype html>
       border-color: #bae6fd;
       background: #e0f2fe;
       color: #0369a1;
+    }
+    .calendar-event.cargo-inbound {
+      border-color: #bbf7d0;
+      background: #ecfdf3;
+      color: #087443;
     }
     .calendar-event.cargo {
       border-color: #ddd6fe;
@@ -5250,7 +5257,6 @@ HTML = r"""<!doctype html>
         <div class="nav-submenu">
           <button class="nav-subitem active" type="button" data-view="dashboard" data-company-tab="notice">공지사항</button>
           <button class="nav-subitem" id="noticeInputOpen" type="button">공지사항 입력</button>
-          <button class="nav-subitem" id="cargoShipmentInputOpen" type="button">화물 출고건 입력</button>
           <button class="nav-subitem" type="button" data-view="dashboard" data-company-tab="calendar">캘린더</button>
           <button class="nav-subitem" type="button" data-view="dashboard" data-company-tab="rules">사규/가이드</button>
           <button class="nav-subitem" type="button" data-view="dashboard" data-company-tab="staff">직원 대시보드</button>
@@ -5259,11 +5265,13 @@ HTML = r"""<!doctype html>
       </div>
       <div class="nav-group" id="importNavGroup">
         <button class="nav-item" id="importNavToggle" type="button" data-open="import">
-          <span class="nav-label"><i data-lucide="truck"></i> <span>수출입 업무</span></span>
+          <span class="nav-label"><i data-lucide="truck"></i> <span>수출입 업무 및 화물 입 출고 관리</span></span>
           <i class="nav-chevron" data-lucide="chevron-right"></i>
         </button>
         <div class="nav-submenu">
-          <button class="nav-subitem" id="importShipmentInputOpen" type="button">수입제품 출고 진행 입력</button>
+          <button class="nav-subitem" id="importShipmentInputOpen" type="button">수입제품 입고 진행 입력</button>
+          <button class="nav-subitem" id="cargoInboundInputOpen" type="button">화물 입고 예정건 입력</button>
+          <button class="nav-subitem" id="cargoShipmentInputOpen" type="button">화물 출고건 입력</button>
         </div>
       </div>
       <div class="nav-group" id="orderNavGroup">
@@ -5406,6 +5414,7 @@ HTML = r"""<!doctype html>
               <div class="company-calendar-legend" aria-label="캘린더 항목 구분">
                 <span><span class="calendar-legend-dot project"><i data-lucide="file-text"></i></span>프로젝트</span>
                 <span><span class="calendar-legend-dot import"><i data-lucide="package"></i></span>컨테이너</span>
+                <span><span class="calendar-legend-dot cargo-inbound"><i data-lucide="warehouse"></i></span>화물 입고</span>
                 <span><span class="calendar-legend-dot cargo"><i data-lucide="truck"></i></span>화물 출고</span>
                 <span><span class="calendar-legend-dot task"><i data-lucide="clipboard-check"></i></span>업무 마감</span>
                 <span><span class="calendar-legend-dot leave"><i data-lucide="calendar-days"></i></span>연차</span>
@@ -5721,9 +5730,9 @@ HTML = r"""<!doctype html>
 
       <section class="workspace-view" id="importWorkspace">
         <div class="workspace-head">
-          <div class="workspace-title">수출입 업무</div>
+          <div class="workspace-title">수출입 업무 및 화물 입 출고 관리</div>
           <div class="workspace-actions">
-            <button class="workspace-button" type="button" id="importShipmentWorkspaceOpen">수입제품 출고 진행 입력</button>
+            <button class="workspace-button" type="button" id="importShipmentWorkspaceOpen">수입제품 입고 진행 입력</button>
             <button class="workspace-button" type="button" id="importShipmentRefresh">새로고침</button>
           </div>
         </div>
@@ -5731,7 +5740,7 @@ HTML = r"""<!doctype html>
           <div class="import-progress-head">
             <button class="import-progress-title" type="button" id="importShipmentTreeToggle">
               <i data-lucide="chevron-right"></i>
-              <span>수입제품 출고 진행 상황</span>
+              <span>수입제품 입고 진행 상황</span>
             </button>
             <div class="import-progress-summary" id="importShipmentSummary">진행 0건</div>
           </div>
@@ -5754,7 +5763,7 @@ HTML = r"""<!doctype html>
                 </tr>
               </thead>
               <tbody id="importShipmentBody">
-                <tr><td colspan="12"><div class="import-empty">등록된 수입제품 출고 진행 건이 없습니다.</div></td></tr>
+                <tr><td colspan="12"><div class="import-empty">등록된 수입제품 입고 진행 건이 없습니다.</div></td></tr>
               </tbody>
             </table>
           </div>
@@ -6045,7 +6054,7 @@ HTML = r"""<!doctype html>
   <div class="notice-popup-backdrop" id="cargoShipmentPopup">
     <div class="notice-popup" role="dialog" aria-modal="true">
       <div class="notice-popup-head">
-        <span>화물 출고건 입력</span>
+        <span id="cargoShipmentPopupTitle">화물 출고건 입력</span>
         <button class="close" id="cargoShipmentClose" type="button" aria-label="닫기"><i data-lucide="x"></i></button>
       </div>
       <div class="notice-template">
@@ -6078,7 +6087,7 @@ HTML = r"""<!doctype html>
   <div class="notice-popup-backdrop" id="importShipmentPopup">
     <div class="notice-popup" role="dialog" aria-modal="true">
       <div class="notice-popup-head">
-        <span>수입제품 출고 진행 입력</span>
+        <span>수입제품 입고 진행 입력</span>
         <button class="close" id="importShipmentClose" type="button" aria-label="닫기"><i data-lucide="x"></i></button>
       </div>
       <div class="notice-template">
@@ -6586,6 +6595,7 @@ HTML = r"""<!doctype html>
     function applyStaticPermissions() {
       setHidden(document.querySelector("#noticeInputOpen"), !can("notice_manage"));
       setHidden(cargoShipmentInputOpen, !canManageCargoShipments());
+      setHidden(cargoInboundInputOpen, !canManageCargoShipments());
       setHidden(managementDeleteSelected, !can("ledger_delete"));
       setHidden(ledgerDeleteSelected, !can("ledger_delete"));
       setHidden(managementSaveAll, !can("ledger_edit"));
@@ -6838,12 +6848,15 @@ HTML = r"""<!doctype html>
     const noticePopup = document.querySelector("#noticePopup");
     const noticePopupClose = document.querySelector("#noticePopupClose");
     const cargoShipmentInputOpen = document.querySelector("#cargoShipmentInputOpen");
+    const cargoInboundInputOpen = document.querySelector("#cargoInboundInputOpen");
     const cargoShipmentPopup = document.querySelector("#cargoShipmentPopup");
+    const cargoShipmentPopupTitle = document.querySelector("#cargoShipmentPopupTitle");
     const cargoShipmentClose = document.querySelector("#cargoShipmentClose");
     const cargoShipmentSave = document.querySelector("#cargoShipmentSave");
     const cargoShipmentReset = document.querySelector("#cargoShipmentReset");
     const cargoVehicleReceiptLink = document.querySelector("#cargoVehicleReceiptLink");
     const cargoShipmentId = document.querySelector("#cargoShipmentId");
+    let cargoShipmentMode = "outbound";
     const cargoShipDate = document.querySelector("#cargoShipDate");
     const cargoCustomer = document.querySelector("#cargoCustomer");
     const cargoItem = document.querySelector("#cargoItem");
@@ -7916,12 +7929,12 @@ HTML = r"""<!doctype html>
           title: `${shortKoreanDate(record.warehouse_due_date || record.arrival_date)} ${record.item || "수입제품"}`,
           detail: [record.shipper, record.progress_status || "진행중"].filter(Boolean).join(" · "),
         }));
-      const cargoItems = sortCargoShipments((cargoShipments || []).filter((record) => !record.completed_at && record.status !== "출고 완료"))
+      const cargoItems = sortCargoShipments((cargoShipments || []).filter((record) => !record.completed_at && !["출고 완료", "입고 완료"].includes(record.status)))
         .slice(0, 4)
         .map((record) => ({
-          type: "cargo",
+          type: record.cargo_type === "inbound" ? "cargo-inbound" : "cargo",
           sourceId: record.id,
-          badge: "화물출고",
+          badge: record.cargo_type === "inbound" ? "화물입고" : "화물출고",
           date: record.ship_date || "",
           title: `${shortKoreanDate(record.ship_date)} ${record.customer || "거래처 미정"} · ${record.item || "품목 미정"}`,
           detail: [record.quantity, record.destination, record.status].filter(Boolean).join(" · "),
@@ -7937,7 +7950,7 @@ HTML = r"""<!doctype html>
         return `
           <div class="notice-auto-panel">
             <div class="notice-auto-head"><span>오늘 확인할 회사 일정</span><span class="notice-auto-count">0</span></div>
-            <div class="notice-auto-empty">표시할 연차, 컨테이너 일정, 화물 출고건이 없습니다.</div>
+            <div class="notice-auto-empty">표시할 연차, 컨테이너 일정, 화물 입출고건이 없습니다.</div>
           </div>
         `;
       }
@@ -8026,19 +8039,32 @@ HTML = r"""<!doctype html>
     }
 
     function resetCargoShipmentForm(record = null) {
+      cargoShipmentMode = record?.cargo_type || cargoShipmentMode || "outbound";
+      const isInbound = cargoShipmentMode === "inbound";
+      if (cargoShipmentPopupTitle) cargoShipmentPopupTitle.textContent = isInbound ? "화물 입고 예정건 입력" : "화물 출고건 입력";
+      if (cargoShipDate) cargoShipDate.placeholder = isInbound ? "입고예정일 예) 6/21" : "출고일 예) 6/21";
+      if (cargoCustomer) cargoCustomer.placeholder = isInbound ? "매입처/입고처" : "거래처/현장";
+      if (cargoDestination) cargoDestination.placeholder = isInbound ? "입고장소" : "도착지";
+      if (cargoStatus) {
+        cargoStatus.innerHTML = isInbound
+          ? `<option>입고 예정</option><option>입고 완료</option><option>보류</option>`
+          : `<option>출고 예정</option><option>배차 완료</option><option>출고 완료</option><option>보류</option>`;
+      }
+      if (cargoVehicleReceiptLink) cargoVehicleReceiptLink.classList.toggle("permission-hidden", isInbound);
       cargoShipmentId.value = record?.id || "";
       cargoShipDate.value = record?.ship_date || todayStatusDate();
       cargoCustomer.value = record?.customer || "";
       cargoItem.value = record?.item || "";
       cargoQuantity.value = record?.quantity || "";
       cargoDestination.value = record?.destination || "";
-      cargoStatus.value = record?.status || "출고 예정";
+      cargoStatus.value = record?.status || (isInbound ? "입고 예정" : "출고 예정");
       cargoMemo.value = record?.memo || "";
     }
 
     function cargoShipmentPayload() {
       return {
         id: cargoShipmentId.value,
+        cargo_type: cargoShipmentMode,
         ship_date: cargoShipDate.value.trim(),
         customer: cargoCustomer.value.trim(),
         item: cargoItem.value.trim(),
@@ -8051,7 +8077,7 @@ HTML = r"""<!doctype html>
 
     function sortCargoShipments(rows) {
       return [...rows].sort((a, b) => {
-        const completedCompare = Number(Boolean(a.completed_at) || a.status === "출고 완료") - Number(Boolean(b.completed_at) || b.status === "출고 완료");
+        const completedCompare = Number(Boolean(a.completed_at) || ["출고 완료", "입고 완료"].includes(a.status)) - Number(Boolean(b.completed_at) || ["출고 완료", "입고 완료"].includes(b.status));
         if (completedCompare) return completedCompare;
         const dateCompare = importDateSortKey(a.ship_date).localeCompare(importDateSortKey(b.ship_date));
         if (dateCompare) return dateCompare;
@@ -8059,11 +8085,12 @@ HTML = r"""<!doctype html>
       });
     }
 
-    function openCargoShipmentPopup(record = null) {
+    function openCargoShipmentPopup(record = null, mode = "outbound") {
       if (!canManageCargoShipments()) {
-        notice.textContent = "화물 출고건 입력 권한이 없습니다.";
+        notice.textContent = "화물 입출고건 입력 권한이 없습니다.";
         return;
       }
+      cargoShipmentMode = record?.cargo_type || mode || "outbound";
       resetCargoShipmentForm(record);
       cargoShipmentPopup.classList.add("open");
       setTimeout(() => cargoShipDate?.focus(), 0);
@@ -8077,7 +8104,7 @@ HTML = r"""<!doctype html>
       try {
         const response = await fetch("/api/cargo-shipments");
         const data = await response.json();
-        if (!response.ok) throw new Error(data.error || "화물 출고건을 불러오지 못했습니다.");
+        if (!response.ok) throw new Error(data.error || "화물 입출고건을 불러오지 못했습니다.");
         cargoShipments = data.shipments || [];
         renderNoticePreview();
       } catch (error) {
@@ -8089,13 +8116,13 @@ HTML = r"""<!doctype html>
 
     async function saveCargoShipment() {
       if (!canManageCargoShipments()) {
-        notice.textContent = "화물 출고건 입력 권한이 없습니다.";
+        notice.textContent = "화물 입출고건 입력 권한이 없습니다.";
         return;
       }
       const payload = cargoShipmentPayload();
-      const hasContent = Object.entries(payload).some(([key, value]) => key !== "id" && String(value || "").trim());
+      const hasContent = Object.entries(payload).some(([key, value]) => !["id", "cargo_type"].includes(key) && String(value || "").trim());
       if (!hasContent) {
-        notice.textContent = "화물 출고 내용을 입력해주세요.";
+        notice.textContent = "화물 입출고 내용을 입력해주세요.";
         return;
       }
       const response = await fetch("/api/cargo-shipment-save", {
@@ -8104,8 +8131,8 @@ HTML = r"""<!doctype html>
         body: JSON.stringify(payload),
       });
       const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "화물 출고건 저장에 실패했습니다.");
-      notice.textContent = data.message || "화물 출고건을 저장했습니다.";
+      if (!response.ok) throw new Error(data.error || "화물 입출고건 저장에 실패했습니다.");
+      notice.textContent = data.message || "화물 입출고건을 저장했습니다.";
       closeCargoShipmentPopup();
       await loadCargoShipments();
       if (companyActiveTab === "calendar") await loadCompanyCalendar().catch(() => {});
@@ -8216,7 +8243,7 @@ HTML = r"""<!doctype html>
       importShipmentSummary.textContent = `진행 ${activeCount}건 / 완료 ${doneCount}건`;
       renderDashboardImportSchedule();
       if (!importShipments.length) {
-        importShipmentBody.innerHTML = `<tr><td colspan="12"><div class="import-empty">등록된 수입제품 출고 진행 건이 없습니다.</div></td></tr>`;
+        importShipmentBody.innerHTML = `<tr><td colspan="12"><div class="import-empty">등록된 수입제품 입고 진행 건이 없습니다.</div></td></tr>`;
         return;
       }
       importShipmentBody.innerHTML = "";
@@ -8277,7 +8304,7 @@ HTML = r"""<!doctype html>
       const payload = importShipmentPayload();
       const hasContent = Object.entries(payload).some(([key, value]) => key !== "id" && String(value || "").trim());
       if (!hasContent) {
-        notice.textContent = "수입제품 출고 진행 내용을 입력해주세요.";
+        notice.textContent = "수입제품 입고 진행 내용을 입력해주세요.";
         return;
       }
       const response = await fetch("/api/import-shipment-save", {
@@ -8286,8 +8313,8 @@ HTML = r"""<!doctype html>
         body: JSON.stringify(payload),
       });
       const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "수입제품 출고 진행 저장에 실패했습니다.");
-      notice.textContent = data.message || "수입제품 출고 진행 상황을 저장했습니다.";
+      if (!response.ok) throw new Error(data.error || "수입제품 입고 진행 저장에 실패했습니다.");
+      notice.textContent = data.message || "수입제품 입고 진행 상황을 저장했습니다.";
       closeImportShipmentPopup();
       await loadImportShipments();
     }
@@ -8303,7 +8330,7 @@ HTML = r"""<!doctype html>
         body: JSON.stringify({ id }),
       });
       const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "수입제품 출고 진행 완료 처리에 실패했습니다.");
+      if (!response.ok) throw new Error(data.error || "수입제품 입고 진행 완료 처리에 실패했습니다.");
       notice.textContent = data.message || "완료 처리했습니다.";
       await loadImportShipments();
     }
@@ -9250,6 +9277,7 @@ HTML = r"""<!doctype html>
     function calendarEventLabel(event) {
       if (event.type === "project") return `프로젝트 · ${event.subtitle || ""}`;
       if (event.type === "import") return `컨테이너 · ${event.subtitle || ""}`;
+      if (event.type === "cargo-inbound") return `화물 입고 · ${event.subtitle || ""}`;
       if (event.type === "cargo") return `화물 출고 · ${event.subtitle || ""}`;
       if (event.type === "leave") return `연차 · ${event.subtitle || ""}`;
       if (event.type === "pending") return `승인대기 · ${event.subtitle || ""}`;
@@ -9285,7 +9313,7 @@ HTML = r"""<!doctype html>
             <div class="company-task-title">${escapeHtml(event.title || "일정")}</div>
             <div class="company-task-meta">${escapeHtml(calendarEventLabel(event))}</div>
           </div>
-          <span class="calendar-event ${escapeHtml(event.type || "task")}">${escapeHtml(event.type === "project" ? "프로젝트" : event.type === "import" ? "컨테이너" : event.type === "cargo" ? "화물" : event.type === "task" ? "업무" : event.type === "pending" ? "대기" : "연차")}</span>
+          <span class="calendar-event ${escapeHtml(event.type || "task")}">${escapeHtml(event.type === "project" ? "프로젝트" : event.type === "import" ? "컨테이너" : event.type === "cargo-inbound" ? "입고" : event.type === "cargo" ? "출고" : event.type === "task" ? "업무" : event.type === "pending" ? "대기" : "연차")}</span>
         </div>
       `).join("");
     }
@@ -9504,13 +9532,15 @@ HTML = r"""<!doctype html>
         ? "프로젝트"
         : event.type === "import"
           ? "컨테이너"
-          : event.type === "cargo"
-            ? "화물 출고"
-            : event.type === "pending"
-              ? "승인대기"
-              : "연차";
+          : event.type === "cargo-inbound"
+            ? "화물 입고"
+            : event.type === "cargo"
+              ? "화물 출고"
+              : event.type === "pending"
+                ? "승인대기"
+                : "연차";
       openFocusWidget({
-        kicker: event.type === "project" ? "프로젝트 일정" : event.type === "import" ? "컨테이너 일정" : event.type === "cargo" ? "화물 출고 일정" : event.type === "pending" ? "승인대기 연차" : "연차 일정",
+        kicker: event.type === "project" ? "프로젝트 일정" : event.type === "import" ? "컨테이너 일정" : event.type === "cargo-inbound" ? "화물 입고 일정" : event.type === "cargo" ? "화물 출고 일정" : event.type === "pending" ? "승인대기 연차" : "연차 일정",
         title: event.title || "일정",
         subtitle: [shortKoreanDate(event.date), event.subtitle].filter(Boolean).join(" · "),
         body: `
@@ -12939,7 +12969,7 @@ HTML = r"""<!doctype html>
         closeLedgerFilter();
         loadCrmAll().catch((error) => setCrmMessage(error.message, true));
       } else if (showImport) {
-        setPageTitle("수출입 업무");
+        setPageTitle("수출입 업무 및 화물 입 출고 관리");
         closeLedgerFilter();
         loadImportShipments();
       } else if (showFileLibrary) {
@@ -13303,9 +13333,9 @@ HTML = r"""<!doctype html>
         if (record) openImportShipmentPopup(record);
         return;
       }
-      if (type === "cargo" && id) {
+      if ((type === "cargo" || type === "cargo-inbound") && id) {
         if (!canManageCargoShipments()) {
-          notice.textContent = "화물 출고건 입력 권한이 없습니다.";
+          notice.textContent = "화물 입출고건 입력 권한이 없습니다.";
           return;
         }
         const record = cargoShipments.find((item) => String(item.id) === String(id));
@@ -13714,7 +13744,8 @@ HTML = r"""<!doctype html>
     noticePopup.addEventListener("click", (event) => {
       if (event.target === noticePopup) closeNoticePopup();
     });
-    cargoShipmentInputOpen?.addEventListener("click", () => openCargoShipmentPopup());
+    cargoInboundInputOpen?.addEventListener("click", () => openCargoShipmentPopup(null, "inbound"));
+    cargoShipmentInputOpen?.addEventListener("click", () => openCargoShipmentPopup(null, "outbound"));
     cargoShipmentClose?.addEventListener("click", closeCargoShipmentPopup);
     cargoShipmentReset?.addEventListener("click", () => resetCargoShipmentForm());
     cargoVehicleReceiptLink?.addEventListener("click", linkCargoToVehicleReceipt);
@@ -17320,6 +17351,7 @@ def init_db() -> None:
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL,
+                cargo_type TEXT NOT NULL DEFAULT 'outbound',
                 ship_date TEXT,
                 customer TEXT,
                 item TEXT,
@@ -17331,6 +17363,11 @@ def init_db() -> None:
             )
             """
         )
+        cargo_columns = {
+            row["name"] for row in connection.execute("PRAGMA table_info(cargo_shipments)").fetchall()
+        }
+        if "cargo_type" not in cargo_columns:
+            connection.execute("ALTER TABLE cargo_shipments ADD COLUMN cargo_type TEXT NOT NULL DEFAULT 'outbound'")
         connection.execute("CREATE INDEX IF NOT EXISTS idx_cargo_shipments_ship_date ON cargo_shipments(ship_date)")
         connection.execute(
             """
@@ -17792,10 +17829,11 @@ def company_calendar_payload(user: dict[str, str], month_text: str) -> dict:
         ).fetchall()
         cargo_rows = connection.execute(
             """
-            SELECT id, ship_date, customer, item, quantity, destination, status, memo, completed_at
+            SELECT id, COALESCE(cargo_type, 'outbound') AS cargo_type, ship_date, customer, item,
+                   quantity, destination, status, memo, completed_at
               FROM cargo_shipments
              WHERE (completed_at IS NULL OR completed_at = '')
-               AND COALESCE(status, '') != '출고 완료'
+               AND COALESCE(status, '') NOT IN ('출고 완료', '입고 완료')
             """
         ).fetchall()
     finally:
@@ -17868,14 +17906,15 @@ def company_calendar_payload(user: dict[str, str], month_text: str) -> dict:
         event_date = import_shipment_date_iso(row["ship_date"])
         if not event_date or not (start_text <= event_date <= end_text):
             continue
+        is_inbound = row["cargo_type"] == "inbound"
         events.append({
             "id": f"cargo:{row['id']}",
-            "type": "cargo",
+            "type": "cargo-inbound" if is_inbound else "cargo",
             "date": event_date,
-            "title": f"화물 출고 {row['customer'] or '거래처 미정'}",
-            "subtitle": " · ".join(str(value) for value in [row["item"], row["quantity"], row["destination"], row["status"] or "출고 예정"] if value),
+            "title": f"{'화물 입고' if is_inbound else '화물 출고'} {row['customer'] or '거래처 미정'}",
+            "subtitle": " · ".join(str(value) for value in [row["item"], row["quantity"], row["destination"], row["status"] or ("입고 예정" if is_inbound else "출고 예정")] if value),
             "cargo_id": row["id"],
-            "status": row["status"] or "출고 예정",
+            "status": row["status"] or ("입고 예정" if is_inbound else "출고 예정"),
             "memo": row["memo"] or "",
         })
     summary = {
@@ -17891,7 +17930,7 @@ def company_calendar_payload(user: dict[str, str], month_text: str) -> dict:
         "today": today_text,
         "can_see_team_leave": can_see_team_leave,
         "summary": summary,
-        "events": sorted(events, key=lambda item: (str(item["date"]), {"project": 0, "import": 1, "cargo": 2, "leave": 3, "pending": 4, "task": 5}.get(str(item["type"]), 9), str(item["title"]))),
+        "events": sorted(events, key=lambda item: (str(item["date"]), {"project": 0, "import": 1, "cargo-inbound": 2, "cargo": 3, "leave": 4, "pending": 5, "task": 6}.get(str(item["type"]), 9), str(item["title"]))),
     }
 
 
@@ -19805,6 +19844,7 @@ IMPORT_SHIPMENT_FIELDS = (
 )
 
 CARGO_SHIPMENT_FIELDS = (
+    "cargo_type",
     "ship_date",
     "customer",
     "item",
@@ -19874,7 +19914,8 @@ def list_cargo_shipments() -> list[dict[str, str | int]]:
     try:
         rows = connection.execute(
             """
-            SELECT id, created_at, updated_at, ship_date, customer, item, quantity,
+            SELECT id, created_at, updated_at, COALESCE(cargo_type, 'outbound') AS cargo_type,
+                   ship_date, customer, item, quantity,
                    destination, status, memo, completed_at
               FROM cargo_shipments
              ORDER BY CASE WHEN completed_at IS NULL OR completed_at = '' THEN 0 ELSE 1 END,
@@ -19887,7 +19928,7 @@ def list_cargo_shipments() -> list[dict[str, str | int]]:
     return sorted(
         records,
         key=lambda row: (
-            1 if row.get("completed_at") or row.get("status") == "출고 완료" else 0,
+            1 if row.get("completed_at") or row.get("status") in {"출고 완료", "입고 완료"} else 0,
             import_shipment_date_key(row.get("ship_date")),
             -int(row.get("id") or 0),
         ),
@@ -19898,12 +19939,13 @@ def save_cargo_shipment(payload: dict) -> int:
     init_db()
     now = now_text()
     values = {field: clean_payload_text(payload, field) for field in CARGO_SHIPMENT_FIELDS}
-    if not any(values.values()):
-        raise ValueError("화물 출고 내용을 입력해주세요.")
+    values["cargo_type"] = "inbound" if values.get("cargo_type") == "inbound" else "outbound"
+    if not any(value for key, value in values.items() if key != "cargo_type"):
+        raise ValueError("화물 입출고 내용을 입력해주세요.")
     if not values["status"]:
-        values["status"] = "출고 예정"
+        values["status"] = "입고 예정" if values["cargo_type"] == "inbound" else "출고 예정"
     cargo_id = int(payload.get("id") or 0)
-    completed_at = now if values["status"] == "출고 완료" else ""
+    completed_at = now if values["status"] in {"출고 완료", "입고 완료"} else ""
     connection = connect_db()
     try:
         if cargo_id:
@@ -19913,7 +19955,7 @@ def save_cargo_shipment(payload: dict) -> int:
                 [values[field] for field in CARGO_SHIPMENT_FIELDS] + [completed_at, now, cargo_id],
             )
             if cursor.rowcount == 0:
-                raise ValueError("수정할 화물 출고건을 찾지 못했습니다.")
+                raise ValueError("수정할 화물 입출고건을 찾지 못했습니다.")
         else:
             columns = ["created_at", "updated_at", *CARGO_SHIPMENT_FIELDS, "completed_at"]
             placeholders = ", ".join("?" for _ in columns)
@@ -19933,7 +19975,7 @@ def save_import_shipment(payload: dict) -> int:
     now = now_text()
     values = {field: clean_payload_text(payload, field) for field in IMPORT_SHIPMENT_FIELDS}
     if not any(values.values()):
-        raise ValueError("수입제품 출고 진행 내용을 입력해주세요.")
+        raise ValueError("수입제품 입고 진행 내용을 입력해주세요.")
     shipment_id = int(payload.get("id") or 0)
     connection = connect_db()
     try:
@@ -22586,17 +22628,17 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                 length = int(self.headers.get("Content-Length", "0"))
                 payload = json.loads(self.rfile.read(length).decode("utf-8"))
                 shipment_id = save_import_shipment(payload)
-                self.send_json({"message": "수입제품 출고 진행 상황을 저장했습니다.", "shipment_id": shipment_id})
+                self.send_json({"message": "수입제품 입고 진행 상황을 저장했습니다.", "shipment_id": shipment_id})
                 return
 
             if self.path == "/api/cargo-shipment-save":
                 if not (user_has_permission(user, "notice_manage") or user_has_permission(user, "import_shipment_manage")):
-                    self.send_json({"error": "화물 출고건 입력 권한이 없습니다."}, status=403)
+                    self.send_json({"error": "화물 입출고건 입력 권한이 없습니다."}, status=403)
                     return
                 length = int(self.headers.get("Content-Length", "0"))
                 payload = json.loads(self.rfile.read(length).decode("utf-8"))
                 cargo_id = save_cargo_shipment(payload)
-                self.send_json({"message": "화물 출고건을 저장했습니다.", "shipment_id": cargo_id})
+                self.send_json({"message": "화물 입출고건을 저장했습니다.", "shipment_id": cargo_id})
                 return
 
             if self.path == "/api/import-shipment-complete":
