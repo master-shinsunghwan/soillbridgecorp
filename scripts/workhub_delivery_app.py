@@ -319,39 +319,137 @@ HTML = r"""<!doctype html>
       box-shadow: 0 0 0 2px rgba(59, 130, 246, .22);
     }
     .notice-board {
-      min-height: 44px;
-      border: 1px solid var(--line);
+      position: relative;
+      min-height: 156px;
+      border: 1px solid #cbdaf1;
       border-radius: 8px;
-      background: white;
-      padding: 13px 15px;
+      background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+      padding: 16px 18px 15px;
       color: #344054;
       overflow: hidden;
-      box-shadow: var(--shadow);
+      box-shadow: 0 12px 28px rgba(15, 23, 42, .06);
+    }
+    .notice-board::before {
+      content: "";
+      position: absolute;
+      left: 0;
+      top: 0;
+      right: 0;
+      height: 4px;
+      background: linear-gradient(90deg, #155bc8, #0b9b6d);
     }
     .notice-board-kicker {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      min-height: 24px;
+      padding: 0 9px;
+      border-radius: 999px;
+      background: #eef6ff;
       font-size: 11px;
       font-weight: 900;
       color: #155bc8;
-      margin-bottom: 5px;
+      margin-bottom: 8px;
     }
     .notice-board-title {
-      font-size: 16px;
+      font-size: 18px;
       font-weight: 900;
-      line-height: 1.32;
+      line-height: 1.28;
+      color: #111827;
     }
     .notice-board-meta {
       font-size: 12px;
       color: #667085;
-      margin-top: 3px;
+      margin-top: 4px;
+      font-weight: 800;
     }
     .notice-board-body {
       font-size: 13px;
       line-height: 1.48;
       color: #475467;
-      margin-top: 7px;
-      max-height: 72px;
+      margin-top: 8px;
+      max-height: 56px;
       overflow: hidden;
       white-space: pre-line;
+    }
+    .notice-auto-panel {
+      margin-top: 13px;
+      display: grid;
+      gap: 8px;
+    }
+    .notice-auto-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding-top: 10px;
+      border-top: 1px solid #e5edf8;
+      color: #1f2937;
+      font-size: 12px;
+      font-weight: 950;
+    }
+    .notice-auto-count {
+      min-width: 26px;
+      height: 22px;
+      padding: 0 8px;
+      border-radius: 999px;
+      background: #eaf3ff;
+      color: #155bc8;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 11px;
+      font-weight: 950;
+    }
+    .notice-auto-list {
+      display: grid;
+      gap: 6px;
+    }
+    .notice-auto-item {
+      display: grid;
+      grid-template-columns: 74px minmax(0, 1fr);
+      gap: 8px;
+      align-items: center;
+      min-height: 30px;
+      padding: 6px 8px;
+      border: 1px solid #e4ebf5;
+      border-radius: 7px;
+      background: white;
+    }
+    .notice-auto-badge {
+      height: 22px;
+      border-radius: 999px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0 8px;
+      background: #eef6ff;
+      color: #155bc8;
+      font-size: 11px;
+      font-weight: 950;
+      white-space: nowrap;
+    }
+    .notice-auto-badge.leave { background: #f0fdf4; color: #047857; }
+    .notice-auto-badge.pending { background: #fff7ed; color: #c2410c; }
+    .notice-auto-badge.import { background: #eff6ff; color: #1d4ed8; }
+    .notice-auto-badge.cargo { background: #f5f3ff; color: #6d28d9; }
+    .notice-auto-text {
+      min-width: 0;
+      color: #344054;
+      font-size: 12px;
+      font-weight: 850;
+      overflow: hidden;
+      white-space: nowrap;
+      text-overflow: ellipsis;
+    }
+    .notice-auto-empty {
+      padding: 8px 10px;
+      border: 1px dashed #cbd5e1;
+      border-radius: 7px;
+      color: #667085;
+      font-size: 12px;
+      font-weight: 800;
+      background: rgba(248, 250, 252, .7);
     }
     .import-progress-card {
       overflow: hidden;
@@ -3485,6 +3583,8 @@ HTML = r"""<!doctype html>
       stroke-width: 2.7;
     }
     .calendar-legend-dot.project { background: #eff6ff; color: #155bc8; }
+    .calendar-legend-dot.import { background: #e0f2fe; color: #0369a1; }
+    .calendar-legend-dot.cargo { background: #ede9fe; color: #6d28d9; }
     .calendar-legend-dot.task { background: #f0fdf4; color: #0b8f55; }
     .calendar-legend-dot.leave { background: #fff7ed; color: #c2410c; }
     .calendar-legend-dot.pending { background: #f5f3ff; color: #9333ea; }
@@ -3584,6 +3684,16 @@ HTML = r"""<!doctype html>
       border-color: #bfdbfe;
       background: #eff6ff;
       color: #155bc8;
+    }
+    .calendar-event.import {
+      border-color: #bae6fd;
+      background: #e0f2fe;
+      color: #0369a1;
+    }
+    .calendar-event.cargo {
+      border-color: #ddd6fe;
+      background: #f5f3ff;
+      color: #6d28d9;
     }
     .calendar-event.task {
       border-color: #bbf7d0;
@@ -4948,7 +5058,7 @@ HTML = r"""<!doctype html>
     .top-search,
     .user-chip,
     .logout-button { font-size: 12px; }
-    .notice-board-title { font-size: 15px; }
+    .notice-board-title { font-size: 18px; }
     .notice-board-body,
     .import-empty,
     .notice-preview,
@@ -5107,6 +5217,7 @@ HTML = r"""<!doctype html>
         <div class="nav-submenu">
           <button class="nav-subitem active" type="button" data-view="dashboard" data-company-tab="notice">공지사항</button>
           <button class="nav-subitem" id="noticeInputOpen" type="button">공지사항 입력</button>
+          <button class="nav-subitem" id="cargoShipmentInputOpen" type="button">화물 출고건 입력</button>
           <button class="nav-subitem" type="button" data-view="dashboard" data-company-tab="calendar">캘린더</button>
           <button class="nav-subitem" type="button" data-view="dashboard" data-company-tab="rules">사규/가이드</button>
           <button class="nav-subitem" type="button" data-view="dashboard" data-company-tab="staff">직원 대시보드</button>
@@ -5261,6 +5372,8 @@ HTML = r"""<!doctype html>
               </div>
               <div class="company-calendar-legend" aria-label="캘린더 항목 구분">
                 <span><span class="calendar-legend-dot project"><i data-lucide="file-text"></i></span>프로젝트</span>
+                <span><span class="calendar-legend-dot import"><i data-lucide="package"></i></span>컨테이너</span>
+                <span><span class="calendar-legend-dot cargo"><i data-lucide="truck"></i></span>화물 출고</span>
                 <span><span class="calendar-legend-dot task"><i data-lucide="clipboard-check"></i></span>업무 마감</span>
                 <span><span class="calendar-legend-dot leave"><i data-lucide="calendar-days"></i></span>연차</span>
                 <span><span class="calendar-legend-dot pending"><i data-lucide="bell"></i></span>승인대기</span>
@@ -5896,6 +6009,38 @@ HTML = r"""<!doctype html>
     </section>
   </div>
 
+  <div class="notice-popup-backdrop" id="cargoShipmentPopup">
+    <div class="notice-popup" role="dialog" aria-modal="true">
+      <div class="notice-popup-head">
+        <span>화물 출고건 입력</span>
+        <button class="close" id="cargoShipmentClose" type="button" aria-label="닫기"><i data-lucide="x"></i></button>
+      </div>
+      <div class="notice-template">
+        <input id="cargoShipmentId" type="hidden" />
+        <div class="notice-template-grid">
+          <input id="cargoShipDate" type="text" placeholder="출고일 예) 6/21" />
+          <input id="cargoCustomer" type="text" placeholder="거래처/현장" />
+          <input id="cargoItem" type="text" placeholder="제품명" />
+        </div>
+        <div class="notice-template-grid">
+          <input id="cargoQuantity" type="text" placeholder="수량" />
+          <input id="cargoDestination" type="text" placeholder="도착지" />
+          <select id="cargoStatus">
+            <option>출고 예정</option>
+            <option>배차 완료</option>
+            <option>출고 완료</option>
+            <option>보류</option>
+          </select>
+        </div>
+        <textarea id="cargoMemo" placeholder="메모 예) 차량번호 / 담당자 / 주의사항"></textarea>
+        <div class="notice-template-actions">
+          <button class="workspace-button" type="button" id="cargoShipmentReset">초기화</button>
+          <button class="workspace-button" type="button" id="cargoShipmentSave">저장</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <div class="notice-popup-backdrop" id="importShipmentPopup">
     <div class="notice-popup" role="dialog" aria-modal="true">
       <div class="notice-popup-head">
@@ -6392,6 +6537,10 @@ HTML = r"""<!doctype html>
       return currentUserPermissions.has(permission);
     }
 
+    function canManageCargoShipments() {
+      return can("notice_manage") || can("import_shipment_manage");
+    }
+
     function permissionLabel(permission) {
       return permissionLabels[permission] || permission;
     }
@@ -6402,6 +6551,7 @@ HTML = r"""<!doctype html>
 
     function applyStaticPermissions() {
       setHidden(document.querySelector("#noticeInputOpen"), !can("notice_manage"));
+      setHidden(cargoShipmentInputOpen, !canManageCargoShipments());
       setHidden(managementDeleteSelected, !can("ledger_delete"));
       setHidden(ledgerDeleteSelected, !can("ledger_delete"));
       setHidden(managementSaveAll, !can("ledger_edit"));
@@ -6653,6 +6803,19 @@ HTML = r"""<!doctype html>
     const sidebarNoticePreview = document.querySelector("#sidebarNoticePreview");
     const noticePopup = document.querySelector("#noticePopup");
     const noticePopupClose = document.querySelector("#noticePopupClose");
+    const cargoShipmentInputOpen = document.querySelector("#cargoShipmentInputOpen");
+    const cargoShipmentPopup = document.querySelector("#cargoShipmentPopup");
+    const cargoShipmentClose = document.querySelector("#cargoShipmentClose");
+    const cargoShipmentSave = document.querySelector("#cargoShipmentSave");
+    const cargoShipmentReset = document.querySelector("#cargoShipmentReset");
+    const cargoShipmentId = document.querySelector("#cargoShipmentId");
+    const cargoShipDate = document.querySelector("#cargoShipDate");
+    const cargoCustomer = document.querySelector("#cargoCustomer");
+    const cargoItem = document.querySelector("#cargoItem");
+    const cargoQuantity = document.querySelector("#cargoQuantity");
+    const cargoDestination = document.querySelector("#cargoDestination");
+    const cargoStatus = document.querySelector("#cargoStatus");
+    const cargoMemo = document.querySelector("#cargoMemo");
     const focusWidget = document.querySelector("#focusWidget");
     const focusWidgetKicker = document.querySelector("#focusWidgetKicker");
     const focusWidgetTitle = document.querySelector("#focusWidgetTitle");
@@ -6898,6 +7061,7 @@ HTML = r"""<!doctype html>
     let companyCalendarSelectedDay = todayString();
     let companyCalendarEvents = [];
     let companyCalendarSummary = {};
+    let cargoShipments = [];
     let crmActiveTab = "dashboard";
     let crmSelectedTaskId = "";
     const CRM_TASK_STATUSES = ["대기", "진행중", "보류", "완료"];
@@ -6943,6 +7107,7 @@ HTML = r"""<!doctype html>
     applyStaticPermissions();
     loadNoticeTemplate();
     loadImportShipments();
+    loadCargoShipments();
 
     function addProductRow(productName = "", quantity = "", packQuantity = "") {
       const row = document.createElement("div");
@@ -7691,6 +7856,69 @@ HTML = r"""<!doctype html>
       };
     }
 
+    function eventUpcomingScore(value) {
+      return importDateSortKey(value || "");
+    }
+
+    function noticeAutoEvents() {
+      const todayKey = todayString();
+      const calendarItems = (companyCalendarEvents || [])
+        .filter((event) => ["leave", "pending"].includes(event.type) && event.date >= todayKey)
+        .map((event) => ({
+          type: event.type === "pending" ? "pending" : "leave",
+          badge: event.type === "pending" ? "승인대기" : "연차",
+          date: event.date,
+          title: `${shortKoreanDate(event.date)} ${event.title || ""}`,
+          detail: event.subtitle || "",
+        }));
+      const importItems = sortImportShipmentsByWarehouseDate((importShipments || []).filter((record) => !record.completed_at))
+        .slice(0, 4)
+        .map((record) => ({
+          type: "import",
+          badge: "컨테이너",
+          date: record.warehouse_due_date || record.arrival_date || "",
+          title: `${shortKoreanDate(record.warehouse_due_date || record.arrival_date)} ${record.item || "수입제품"}`,
+          detail: [record.shipper, record.progress_status || "진행중"].filter(Boolean).join(" · "),
+        }));
+      const cargoItems = sortCargoShipments((cargoShipments || []).filter((record) => !record.completed_at && record.status !== "출고 완료"))
+        .slice(0, 4)
+        .map((record) => ({
+          type: "cargo",
+          badge: "화물출고",
+          date: record.ship_date || "",
+          title: `${shortKoreanDate(record.ship_date)} ${record.customer || "거래처 미정"} · ${record.item || "품목 미정"}`,
+          detail: [record.quantity, record.destination, record.status].filter(Boolean).join(" · "),
+        }));
+      return [...calendarItems, ...importItems, ...cargoItems]
+        .sort((a, b) => eventUpcomingScore(a.date).localeCompare(eventUpcomingScore(b.date)) || a.badge.localeCompare(b.badge))
+        .slice(0, 6);
+    }
+
+    function noticeAutoHtml() {
+      const items = noticeAutoEvents();
+      if (!items.length) {
+        return `
+          <div class="notice-auto-panel">
+            <div class="notice-auto-head"><span>오늘 확인할 회사 일정</span><span class="notice-auto-count">0</span></div>
+            <div class="notice-auto-empty">표시할 연차, 컨테이너 일정, 화물 출고건이 없습니다.</div>
+          </div>
+        `;
+      }
+      return `
+        <div class="notice-auto-panel">
+          <div class="notice-auto-head"><span>오늘 확인할 회사 일정</span><span class="notice-auto-count">${items.length}</span></div>
+          <div class="notice-auto-list">
+            ${items.map((item) => `
+              <div class="notice-auto-item" title="${escapeHtml([item.title, item.detail].filter(Boolean).join(" / "))}">
+                <span class="notice-auto-badge ${escapeHtml(item.type)}">${escapeHtml(item.badge)}</span>
+                <span class="notice-auto-text">${escapeHtml(item.title)}${item.detail ? ` · ${escapeHtml(item.detail)}` : ""}</span>
+              </div>
+            `).join("")}
+          </div>
+        </div>
+      `;
+    }
+
     function renderNoticePreview() {
       const payload = noticePayload();
       if (!payload.title && !payload.body) {
@@ -7699,6 +7927,7 @@ HTML = r"""<!doctype html>
           <div class="notice-board-kicker">금일 공지사항</div>
           <div class="notice-board-title">등록된 공지 없음</div>
           <div class="notice-board-body">공지사항 입력 버튼을 눌러 내용을 입력해주세요.</div>
+          ${noticeAutoHtml()}
         `;
         return;
       }
@@ -7713,6 +7942,7 @@ HTML = r"""<!doctype html>
         <div class="notice-board-title">${escapeHtml(payload.title || "제목 없음")}</div>
         <div class="notice-board-meta">${escapeHtml(meta)}</div>
         <div class="notice-board-body">${escapeHtml(payload.body || "내용 없음")}</div>
+        ${noticeAutoHtml()}
       `;
     }
 
@@ -7756,6 +7986,92 @@ HTML = r"""<!doctype html>
       renderNoticePreview();
       if (companyStaffNoticeTitle) companyStaffNoticeTitle.textContent = "등록 전";
       notice.textContent = "공지사항 입력 내용을 초기화했습니다.";
+    }
+
+    function resetCargoShipmentForm(record = null) {
+      cargoShipmentId.value = record?.id || "";
+      cargoShipDate.value = record?.ship_date || todayStatusDate();
+      cargoCustomer.value = record?.customer || "";
+      cargoItem.value = record?.item || "";
+      cargoQuantity.value = record?.quantity || "";
+      cargoDestination.value = record?.destination || "";
+      cargoStatus.value = record?.status || "출고 예정";
+      cargoMemo.value = record?.memo || "";
+    }
+
+    function cargoShipmentPayload() {
+      return {
+        id: cargoShipmentId.value,
+        ship_date: cargoShipDate.value.trim(),
+        customer: cargoCustomer.value.trim(),
+        item: cargoItem.value.trim(),
+        quantity: cargoQuantity.value.trim(),
+        destination: cargoDestination.value.trim(),
+        status: cargoStatus.value,
+        memo: cargoMemo.value.trim(),
+      };
+    }
+
+    function sortCargoShipments(rows) {
+      return [...rows].sort((a, b) => {
+        const completedCompare = Number(Boolean(a.completed_at) || a.status === "출고 완료") - Number(Boolean(b.completed_at) || b.status === "출고 완료");
+        if (completedCompare) return completedCompare;
+        const dateCompare = importDateSortKey(a.ship_date).localeCompare(importDateSortKey(b.ship_date));
+        if (dateCompare) return dateCompare;
+        return Number(b.id || 0) - Number(a.id || 0);
+      });
+    }
+
+    function openCargoShipmentPopup(record = null) {
+      if (!canManageCargoShipments()) {
+        notice.textContent = "화물 출고건 입력 권한이 없습니다.";
+        return;
+      }
+      resetCargoShipmentForm(record);
+      cargoShipmentPopup.classList.add("open");
+      setTimeout(() => cargoShipDate?.focus(), 0);
+    }
+
+    function closeCargoShipmentPopup() {
+      cargoShipmentPopup.classList.remove("open");
+    }
+
+    async function loadCargoShipments() {
+      try {
+        const response = await fetch("/api/cargo-shipments");
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "화물 출고건을 불러오지 못했습니다.");
+        cargoShipments = data.shipments || [];
+        renderNoticePreview();
+      } catch (error) {
+        cargoShipments = [];
+        renderNoticePreview();
+        notice.textContent = error.message;
+      }
+    }
+
+    async function saveCargoShipment() {
+      if (!canManageCargoShipments()) {
+        notice.textContent = "화물 출고건 입력 권한이 없습니다.";
+        return;
+      }
+      const payload = cargoShipmentPayload();
+      const hasContent = Object.entries(payload).some(([key, value]) => key !== "id" && String(value || "").trim());
+      if (!hasContent) {
+        notice.textContent = "화물 출고 내용을 입력해주세요.";
+        return;
+      }
+      const response = await fetch("/api/cargo-shipment-save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "화물 출고건 저장에 실패했습니다.");
+      notice.textContent = data.message || "화물 출고건을 저장했습니다.";
+      closeCargoShipmentPopup();
+      await loadCargoShipments();
+      if (companyActiveTab === "calendar") await loadCompanyCalendar().catch(() => {});
     }
 
     function resetImportShipmentForm(record = null) {
@@ -7888,9 +8204,11 @@ HTML = r"""<!doctype html>
         const data = await response.json();
         importShipments = data.shipments || [];
         renderImportShipments();
+        renderNoticePreview();
       } catch (error) {
         importShipments = [];
         renderImportShipments();
+        renderNoticePreview();
         notice.textContent = error.message;
       }
     }
@@ -8875,6 +9193,8 @@ HTML = r"""<!doctype html>
 
     function calendarEventLabel(event) {
       if (event.type === "project") return `프로젝트 · ${event.subtitle || ""}`;
+      if (event.type === "import") return `컨테이너 · ${event.subtitle || ""}`;
+      if (event.type === "cargo") return `화물 출고 · ${event.subtitle || ""}`;
       if (event.type === "leave") return `연차 · ${event.subtitle || ""}`;
       if (event.type === "pending") return `승인대기 · ${event.subtitle || ""}`;
       return `업무 · ${event.subtitle || ""}`;
@@ -8909,7 +9229,7 @@ HTML = r"""<!doctype html>
             <div class="company-task-title">${escapeHtml(event.title || "일정")}</div>
             <div class="company-task-meta">${escapeHtml(calendarEventLabel(event))}</div>
           </div>
-          <span class="calendar-event ${escapeHtml(event.type || "task")}">${escapeHtml(event.type === "project" ? "프로젝트" : event.type === "task" ? "업무" : event.type === "pending" ? "대기" : "연차")}</span>
+          <span class="calendar-event ${escapeHtml(event.type || "task")}">${escapeHtml(event.type === "project" ? "프로젝트" : event.type === "import" ? "컨테이너" : event.type === "cargo" ? "화물" : event.type === "task" ? "업무" : event.type === "pending" ? "대기" : "연차")}</span>
         </div>
       `).join("");
     }
@@ -8974,6 +9294,7 @@ HTML = r"""<!doctype html>
       companyCalendarGrid.innerHTML = `<div class="calendar-empty">캘린더를 불러오는 중입니다.</div>`;
       const data = await crmFetchJson(`/api/company-calendar-events?month=${encodeURIComponent(companyCalendarMonth)}`);
       renderCompanyCalendar(data);
+      renderNoticePreview();
     }
 
     function setDashboardSalesMetric(labelElement, valueElement, label, value, className = "") {
@@ -9104,7 +9425,7 @@ HTML = r"""<!doctype html>
     }
 
     async function loadDashboardEntryData() {
-      const tasks = [loadImportShipments(), loadDashboardSalesSummary()];
+      const tasks = [loadImportShipments(), loadCargoShipments(), loadDashboardSalesSummary()];
       tasks.push(loadCompanyCalendar().catch(() => {
         if (companyCalendarGrid) companyCalendarGrid.innerHTML = `<div class="calendar-empty">캘린더를 불러오지 못했습니다.</div>`;
       }));
@@ -9123,13 +9444,22 @@ HTML = r"""<!doctype html>
         : event.type === "pending"
           ? "승인대기"
           : event.status || "승인";
+      const eventKind = event.type === "project"
+        ? "프로젝트"
+        : event.type === "import"
+          ? "컨테이너"
+          : event.type === "cargo"
+            ? "화물 출고"
+            : event.type === "pending"
+              ? "승인대기"
+              : "연차";
       openFocusWidget({
-        kicker: event.type === "project" ? "프로젝트 일정" : event.type === "pending" ? "승인대기 연차" : "연차 일정",
+        kicker: event.type === "project" ? "프로젝트 일정" : event.type === "import" ? "컨테이너 일정" : event.type === "cargo" ? "화물 출고 일정" : event.type === "pending" ? "승인대기 연차" : "연차 일정",
         title: event.title || "일정",
         subtitle: [shortKoreanDate(event.date), event.subtitle].filter(Boolean).join(" · "),
         body: `
           <div class="focus-widget-grid">
-            ${focusWidgetMetric("구분", event.type === "project" ? "프로젝트" : event.type === "pending" ? "승인대기" : "연차")}
+            ${focusWidgetMetric("구분", eventKind)}
             ${focusWidgetMetric("일자", shortKoreanDate(event.date))}
             ${focusWidgetMetric("상태", stateText)}
           </div>
@@ -13294,6 +13624,17 @@ HTML = r"""<!doctype html>
     noticePopup.addEventListener("click", (event) => {
       if (event.target === noticePopup) closeNoticePopup();
     });
+    cargoShipmentInputOpen?.addEventListener("click", () => openCargoShipmentPopup());
+    cargoShipmentClose?.addEventListener("click", closeCargoShipmentPopup);
+    cargoShipmentReset?.addEventListener("click", () => resetCargoShipmentForm());
+    cargoShipmentSave?.addEventListener("click", () => {
+      saveCargoShipment().catch((error) => {
+        notice.textContent = error.message;
+      });
+    });
+    cargoShipmentPopup?.addEventListener("click", (event) => {
+      if (event.target === cargoShipmentPopup) closeCargoShipmentPopup();
+    });
     document.addEventListener("keydown", (event) => {
       if (event.key === "Escape" && focusWidget?.classList.contains("open")) {
         closeFocusWidget();
@@ -16881,6 +17222,24 @@ def init_db() -> None:
             connection.execute("ALTER TABLE import_shipments ADD COLUMN quantity TEXT")
         connection.execute(
             """
+            CREATE TABLE IF NOT EXISTS cargo_shipments (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                ship_date TEXT,
+                customer TEXT,
+                item TEXT,
+                quantity TEXT,
+                destination TEXT,
+                status TEXT,
+                memo TEXT,
+                completed_at TEXT
+            )
+            """
+        )
+        connection.execute("CREATE INDEX IF NOT EXISTS idx_cargo_shipments_ship_date ON cargo_shipments(ship_date)")
+        connection.execute(
+            """
             CREATE TABLE IF NOT EXISTS leave_types (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 code TEXT NOT NULL UNIQUE,
@@ -17330,6 +17689,21 @@ def company_calendar_payload(user: dict[str, str], month_text: str) -> dict:
                 """,
                 tuple(leave_params),
             ).fetchall()
+        import_rows = connection.execute(
+            """
+            SELECT id, warehouse_due_date, arrival_date, shipper, item, progress_status, completed_at
+              FROM import_shipments
+             WHERE completed_at IS NULL OR completed_at = ''
+            """
+        ).fetchall()
+        cargo_rows = connection.execute(
+            """
+            SELECT id, ship_date, customer, item, quantity, destination, status, memo, completed_at
+              FROM cargo_shipments
+             WHERE (completed_at IS NULL OR completed_at = '')
+               AND COALESCE(status, '') != '출고 완료'
+            """
+        ).fetchall()
     finally:
         connection.close()
 
@@ -17383,6 +17757,33 @@ def company_calendar_payload(user: dict[str, str], month_text: str) -> dict:
                 "reason": row["reason"] or "",
             })
             cursor += timedelta(days=1)
+    for row in import_rows:
+        event_date = import_shipment_date_iso(row["warehouse_due_date"] or row["arrival_date"])
+        if not event_date or not (start_text <= event_date <= end_text):
+            continue
+        events.append({
+            "id": f"import:{row['id']}",
+            "type": "import",
+            "date": event_date,
+            "title": f"컨테이너 입고 {row['item'] or '수입제품'}",
+            "subtitle": f"{row['shipper'] or '화주 미정'} · {row['progress_status'] or '진행중'}",
+            "shipment_id": row["id"],
+            "status": row["progress_status"] or "진행중",
+        })
+    for row in cargo_rows:
+        event_date = import_shipment_date_iso(row["ship_date"])
+        if not event_date or not (start_text <= event_date <= end_text):
+            continue
+        events.append({
+            "id": f"cargo:{row['id']}",
+            "type": "cargo",
+            "date": event_date,
+            "title": f"화물 출고 {row['customer'] or '거래처 미정'}",
+            "subtitle": " · ".join(str(value) for value in [row["item"], row["quantity"], row["destination"], row["status"] or "출고 예정"] if value),
+            "cargo_id": row["id"],
+            "status": row["status"] or "출고 예정",
+            "memo": row["memo"] or "",
+        })
     summary = {
         "project": sum(1 for event in events if event["type"] == "project"),
         "task": sum(1 for event in events if event["type"] == "task"),
@@ -17396,7 +17797,7 @@ def company_calendar_payload(user: dict[str, str], month_text: str) -> dict:
         "today": today_text,
         "can_see_team_leave": can_see_team_leave,
         "summary": summary,
-        "events": sorted(events, key=lambda item: (str(item["date"]), {"project": 0, "leave": 1, "pending": 2, "task": 3}.get(str(item["type"]), 9), str(item["title"]))),
+        "events": sorted(events, key=lambda item: (str(item["date"]), {"project": 0, "import": 1, "cargo": 2, "leave": 3, "pending": 4, "task": 5}.get(str(item["type"]), 9), str(item["title"]))),
     }
 
 
@@ -19309,6 +19710,16 @@ IMPORT_SHIPMENT_FIELDS = (
     "warehouse_due_date",
 )
 
+CARGO_SHIPMENT_FIELDS = (
+    "ship_date",
+    "customer",
+    "item",
+    "quantity",
+    "destination",
+    "status",
+    "memo",
+)
+
 
 def import_shipment_date_key(value: object) -> tuple[int, int, int]:
     text = str(value or "").strip()
@@ -19324,6 +19735,16 @@ def import_shipment_date_key(value: object) -> tuple[int, int, int]:
     if match:
         return (date.today().year, int(match.group(1)), int(match.group(2)))
     return (9999, 99, 99)
+
+
+def import_shipment_date_iso(value: object) -> str:
+    year, month, day = import_shipment_date_key(value)
+    if year == 9999:
+        return ""
+    try:
+        return date(year, month, day).isoformat()
+    except ValueError:
+        return ""
 
 
 def list_import_shipments() -> list[dict[str, str | int]]:
@@ -19351,6 +19772,66 @@ def list_import_shipments() -> list[dict[str, str | int]]:
             -int(row.get("id") or 0),
         ),
     )
+
+
+def list_cargo_shipments() -> list[dict[str, str | int]]:
+    init_db()
+    connection = connect_db()
+    try:
+        rows = connection.execute(
+            """
+            SELECT id, created_at, updated_at, ship_date, customer, item, quantity,
+                   destination, status, memo, completed_at
+              FROM cargo_shipments
+             ORDER BY CASE WHEN completed_at IS NULL OR completed_at = '' THEN 0 ELSE 1 END,
+                      id DESC
+            """
+        ).fetchall()
+    finally:
+        connection.close()
+    records = [dict(row) for row in rows]
+    return sorted(
+        records,
+        key=lambda row: (
+            1 if row.get("completed_at") or row.get("status") == "출고 완료" else 0,
+            import_shipment_date_key(row.get("ship_date")),
+            -int(row.get("id") or 0),
+        ),
+    )
+
+
+def save_cargo_shipment(payload: dict) -> int:
+    init_db()
+    now = now_text()
+    values = {field: clean_payload_text(payload, field) for field in CARGO_SHIPMENT_FIELDS}
+    if not any(values.values()):
+        raise ValueError("화물 출고 내용을 입력해주세요.")
+    if not values["status"]:
+        values["status"] = "출고 예정"
+    cargo_id = int(payload.get("id") or 0)
+    completed_at = now if values["status"] == "출고 완료" else ""
+    connection = connect_db()
+    try:
+        if cargo_id:
+            assignments = ", ".join(f"{field} = ?" for field in CARGO_SHIPMENT_FIELDS)
+            cursor = connection.execute(
+                f"UPDATE cargo_shipments SET {assignments}, completed_at = ?, updated_at = ? WHERE id = ?",
+                [values[field] for field in CARGO_SHIPMENT_FIELDS] + [completed_at, now, cargo_id],
+            )
+            if cursor.rowcount == 0:
+                raise ValueError("수정할 화물 출고건을 찾지 못했습니다.")
+        else:
+            columns = ["created_at", "updated_at", *CARGO_SHIPMENT_FIELDS, "completed_at"]
+            placeholders = ", ".join("?" for _ in columns)
+            cursor = connection.execute(
+                f"INSERT INTO cargo_shipments ({', '.join(columns)}) VALUES ({placeholders})",
+                [now, now] + [values[field] for field in CARGO_SHIPMENT_FIELDS] + [completed_at],
+            )
+            cargo_id = int(cursor.lastrowid)
+        connection.commit()
+        return cargo_id
+    finally:
+        connection.close()
 
 
 def save_import_shipment(payload: dict) -> int:
@@ -21562,6 +22043,10 @@ class WorkhubHandler(BaseHTTPRequestHandler):
             self.send_json({"shipments": list_import_shipments()})
             return
 
+        if self.path == "/api/cargo-shipments":
+            self.send_json({"shipments": list_cargo_shipments()})
+            return
+
         self.send_error(404)
 
     def do_POST(self) -> None:
@@ -22008,6 +22493,16 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                 payload = json.loads(self.rfile.read(length).decode("utf-8"))
                 shipment_id = save_import_shipment(payload)
                 self.send_json({"message": "수입제품 출고 진행 상황을 저장했습니다.", "shipment_id": shipment_id})
+                return
+
+            if self.path == "/api/cargo-shipment-save":
+                if not (user_has_permission(user, "notice_manage") or user_has_permission(user, "import_shipment_manage")):
+                    self.send_json({"error": "화물 출고건 입력 권한이 없습니다."}, status=403)
+                    return
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(length).decode("utf-8"))
+                cargo_id = save_cargo_shipment(payload)
+                self.send_json({"message": "화물 출고건을 저장했습니다.", "shipment_id": cargo_id})
                 return
 
             if self.path == "/api/import-shipment-complete":
