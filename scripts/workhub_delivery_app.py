@@ -475,6 +475,16 @@ HTML = r"""<!doctype html>
     .dashboard-import-card .import-table td:nth-child(5) {
       width: 116px;
     }
+    .dashboard-import-card .import-table td {
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      word-break: normal;
+      overflow-wrap: normal;
+    }
+    .dashboard-import-card .import-table td.left {
+      font-weight: 850;
+    }
     .import-empty {
       padding: 18px;
       color: var(--muted);
@@ -2995,7 +3005,8 @@ HTML = r"""<!doctype html>
       gap: 12px;
     }
     .dashboard-import-card .import-table {
-      min-width: 720px;
+      width: 100%;
+      min-width: 0;
     }
     .company-grid {
       display: grid;
@@ -7780,6 +7791,11 @@ HTML = r"""<!doctype html>
       importShipmentPopup.classList.remove("open");
     }
 
+    function compactImportItemName(value, maxLength = 18) {
+      const text = String(value || "-").trim() || "-";
+      return text.length > maxLength ? `${text.slice(0, maxLength)}...` : text;
+    }
+
     function renderDashboardImportSchedule() {
       if (!dashboardImportScheduleBody || !dashboardImportScheduleSummary) return;
       const activeRecords = importShipments.filter((record) => !record.completed_at);
@@ -7791,7 +7807,7 @@ HTML = r"""<!doctype html>
       dashboardImportScheduleBody.innerHTML = activeRecords.slice(0, 6).map((record) => `
         <tr>
           <td>${escapeHtml(shortKoreanDate(record.arrival_date) || "-")}</td>
-          <td class="left">${escapeHtml(record.item || "-")}</td>
+          <td class="left" title="${escapeHtml(record.item || "-")}">${escapeHtml(compactImportItemName(record.item))}</td>
           <td>${escapeHtml(record.quantity || "-")}</td>
           <td>${escapeHtml(record.progress_status || "진행중")}</td>
           <td>${escapeHtml(shortKoreanDate(record.warehouse_due_date) || "-")}</td>
