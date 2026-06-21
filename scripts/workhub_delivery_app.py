@@ -1428,35 +1428,33 @@ HTML = r"""<!doctype html>
       font-weight: 950;
       color: #475569;
     }
-    .sales-compare-detail-head {
+    .sales-compare-detail-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+    }
+    .sales-compare-detail-panel {
+      min-width: 0;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      overflow: hidden;
+      background: white;
+    }
+    .sales-compare-detail-panel .sales-table-scroll {
+      max-height: 300px;
+      min-height: 160px;
+    }
+    .sales-compare-detail-title {
+      height: 34px;
+      padding: 0 10px;
       display: flex;
       align-items: center;
       justify-content: space-between;
-      gap: 10px;
-      margin-top: 4px;
-    }
-    .sales-compare-detail-tabs {
-      display: inline-flex;
-      flex-wrap: wrap;
-      gap: 6px;
-    }
-    .sales-compare-detail-tab {
-      height: 30px;
-      border: 1px solid #d8e0ec;
-      border-radius: 999px;
-      padding: 0 12px;
-      background: white;
-      color: #475569;
-      font-size: 11px;
+      border-bottom: 1px solid #e2e8f0;
+      background: #f8fafc;
+      color: #334155;
+      font-size: 12px;
       font-weight: 950;
-      cursor: pointer;
-      transition: border-color .14s ease, background .14s ease, color .14s ease;
-    }
-    .sales-compare-detail-tab.active,
-    .sales-compare-detail-tab:hover {
-      border-color: #7c3aed;
-      background: #f3e8ff;
-      color: #5b21b6;
     }
     .sales-dashboard.loading .sales-kpi,
     .sales-dashboard.loading .sales-panel {
@@ -1501,7 +1499,8 @@ HTML = r"""<!doctype html>
     }
     @media (max-width: 900px) {
       .sales-table-tabs,
-      .sales-dashboard-grid.sales-tab-panels {
+      .sales-dashboard-grid.sales-tab-panels,
+      .sales-compare-detail-grid {
         grid-template-columns: 1fr;
       }
     }
@@ -6097,8 +6096,12 @@ HTML = r"""<!doctype html>
     const salesReportProductBody = document.querySelector("#salesReportProductBody");
     const salesReportReviewBody = document.querySelector("#salesReportReviewBody");
     const salesReportMonthlyCompareBody = document.querySelector("#salesReportMonthlyCompareBody");
-    const salesReportMonthlyCompareDetailBody = document.querySelector("#salesReportMonthlyCompareDetailBody");
-    const salesReportMonthlyCompareDetailButtons = [...document.querySelectorAll("[data-sales-compare-detail]")];
+    const salesReportMonthlyCompareDetailBodies = {
+      daily: document.querySelector("#salesReportMonthlyCompareDailyBody"),
+      product: document.querySelector("#salesReportMonthlyCompareProductBody"),
+      seller: document.querySelector("#salesReportMonthlyCompareSellerBody"),
+      supplier: document.querySelector("#salesReportMonthlyCompareSupplierBody"),
+    };
     const salesReportTabButtons = [...document.querySelectorAll("[data-sales-tab]")];
     const salesReportPanels = [...document.querySelectorAll("[data-sales-panel]")];
     const salesReportTabCounts = {
@@ -8027,8 +8030,6 @@ HTML = r"""<!doctype html>
     }
 
     let activeSalesReportTab = "salesProduct";
-    let activeMonthlyCompareDetail = "daily";
-    let salesReportMonthlyCompareDetails = {};
 
     function setSalesReportTab(tabName) {
       activeSalesReportTab = tabName || "salesProduct";
@@ -8051,29 +8052,27 @@ HTML = r"""<!doctype html>
       salesReportDashboard?.classList.toggle("loading", Boolean(isLoading));
     }
 
-    function renderMonthlyCompareDetail(kind) {
-      activeMonthlyCompareDetail = kind || "daily";
-      salesReportMonthlyCompareDetailButtons.forEach((button) => {
-        const active = button.dataset.salesCompareDetail === activeMonthlyCompareDetail;
-        button.classList.toggle("active", active);
-        button.setAttribute("aria-selected", active ? "true" : "false");
-      });
-      const rows = salesReportMonthlyCompareDetails[activeMonthlyCompareDetail] || [];
+    function renderMonthlyCompareDetailTable(tbody, rows) {
       if (!rows.length) {
-        renderSalesEmpty(salesReportMonthlyCompareDetailBody, 7, "상세 비교 데이터가 없습니다.");
+        renderSalesEmpty(tbody, 5, "상세 비교 데이터가 없습니다.");
         return;
       }
-      salesReportMonthlyCompareDetailBody.innerHTML = rows.map((row) => `
+      tbody.innerHTML = rows.map((row) => `
         <tr>
           <td>${escapeHtml(row.label || "")}</td>
-          <td>${formatSalesNumber(row.current_quantity)}</td>
           <td>${formatSalesNumber(row.current)}</td>
-          <td>${formatSalesNumber(row.previous_quantity)}</td>
           <td>${formatSalesNumber(row.previous)}</td>
           <td class="${salesAmountClass(row.delta)}">${formatSalesNumber(row.delta)}</td>
           <td class="${salesAmountClass(row.delta)}">${formatSalesPercent(row.delta_rate)}</td>
         </tr>
       `).join("");
+    }
+
+    function renderMonthlyCompareDetails(details) {
+      Object.entries(salesReportMonthlyCompareDetailBodies).forEach(([key, tbody]) => {
+        if (!tbody) return;
+        renderMonthlyCompareDetailTable(tbody, details?.[key] || []);
+      });
     }
 
     function formatSalesPeriodLabel(period) {
@@ -8186,8 +8185,7 @@ HTML = r"""<!doctype html>
       } else {
         renderSalesEmpty(salesReportMonthlyCompareBody, 6, "전월 비교 데이터가 없습니다.");
       }
-      salesReportMonthlyCompareDetails = data.monthly_comparison_details || {};
-      renderMonthlyCompareDetail(activeMonthlyCompareDetail);
+      renderMonthlyCompareDetails(data.monthly_comparison_details || {});
       setSalesReportTabCount("salesProduct", dailyRows.length + productRows.length);
       setSalesReportTabCount("partner", sellerRows.length + purchaseRows.length);
       setSalesReportTabCount("monthlyCompare", monthlyCompareRows.length);
@@ -8209,7 +8207,7 @@ HTML = r"""<!doctype html>
         renderSalesEmpty(salesReportProductBody, 4, "매출현황을 불러오지 못했습니다.");
         renderSalesEmpty(salesReportReviewBody, 3, "매출현황을 불러오지 못했습니다.");
         renderSalesEmpty(salesReportMonthlyCompareBody, 6, "매출현황을 불러오지 못했습니다.");
-        renderSalesEmpty(salesReportMonthlyCompareDetailBody, 7, "매출현황을 불러오지 못했습니다.");
+        Object.values(salesReportMonthlyCompareDetailBodies).forEach((tbody) => renderSalesEmpty(tbody, 5, "매출현황을 불러오지 못했습니다."));
       } finally {
         setSalesReportLoading(false);
       }
@@ -12659,10 +12657,6 @@ HTML = r"""<!doctype html>
       panel.setAttribute("role", "tabpanel");
     });
     setSalesReportTab(activeSalesReportTab);
-    salesReportMonthlyCompareDetailButtons.forEach((button) => {
-      button.setAttribute("role", "tab");
-      button.addEventListener("click", () => renderMonthlyCompareDetail(button.dataset.salesCompareDetail || "daily"));
-    });
     document.querySelector("#noticeInputOpen").addEventListener("click", openNoticePopup);
     importShipmentInputOpen.addEventListener("click", () => {
       showWorkspace("import");
@@ -13661,20 +13655,44 @@ ADMIN_WORKSPACE_HTML = r"""
                         </table>
                       </div>
                       <div>
-                        <div class="sales-compare-detail-head">
-                          <div class="sales-compare-title">상세 비교</div>
-                          <div class="sales-compare-detail-tabs" role="tablist">
-                            <button class="sales-compare-detail-tab active" type="button" data-sales-compare-detail="daily">일별 비교</button>
-                            <button class="sales-compare-detail-tab" type="button" data-sales-compare-detail="product">상품별 비교</button>
-                            <button class="sales-compare-detail-tab" type="button" data-sales-compare-detail="seller">매출처별 비교</button>
-                            <button class="sales-compare-detail-tab" type="button" data-sales-compare-detail="supplier">매입처별 비교</button>
+                        <div class="sales-compare-title">상세 비교</div>
+                        <div class="sales-compare-detail-grid">
+                          <div class="sales-compare-detail-panel">
+                            <div class="sales-compare-detail-title">일별 비교</div>
+                            <div class="sales-table-scroll">
+                              <table class="sales-table">
+                                <thead><tr><th>일자</th><th>이번 달 금액</th><th>전월 금액</th><th>증감</th><th>증감률</th></tr></thead>
+                                <tbody id="salesReportMonthlyCompareDailyBody"></tbody>
+                              </table>
+                            </div>
                           </div>
-                        </div>
-                        <div class="sales-table-scroll">
-                          <table class="sales-table">
-                            <thead><tr><th>구분</th><th>이번 달 수량</th><th>이번 달 금액</th><th>전월 수량</th><th>전월 금액</th><th>증감</th><th>증감률</th></tr></thead>
-                            <tbody id="salesReportMonthlyCompareDetailBody"></tbody>
-                          </table>
+                          <div class="sales-compare-detail-panel">
+                            <div class="sales-compare-detail-title">상품별 비교</div>
+                            <div class="sales-table-scroll">
+                              <table class="sales-table">
+                                <thead><tr><th>상품명</th><th>이번 달 금액</th><th>전월 금액</th><th>증감</th><th>증감률</th></tr></thead>
+                                <tbody id="salesReportMonthlyCompareProductBody"></tbody>
+                              </table>
+                            </div>
+                          </div>
+                          <div class="sales-compare-detail-panel">
+                            <div class="sales-compare-detail-title">매출처별 비교</div>
+                            <div class="sales-table-scroll">
+                              <table class="sales-table">
+                                <thead><tr><th>매출처</th><th>이번 달 금액</th><th>전월 금액</th><th>증감</th><th>증감률</th></tr></thead>
+                                <tbody id="salesReportMonthlyCompareSellerBody"></tbody>
+                              </table>
+                            </div>
+                          </div>
+                          <div class="sales-compare-detail-panel">
+                            <div class="sales-compare-detail-title">매입처별 비교</div>
+                            <div class="sales-table-scroll">
+                              <table class="sales-table">
+                                <thead><tr><th>매입처</th><th>이번 달 금액</th><th>전월 금액</th><th>증감</th><th>증감률</th></tr></thead>
+                                <tbody id="salesReportMonthlyCompareSupplierBody"></tbody>
+                              </table>
+                            </div>
+                          </div>
                         </div>
                       </div>
                     </div>
