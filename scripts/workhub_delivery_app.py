@@ -11275,17 +11275,34 @@ HTML = r"""<!doctype html>
       else cell.textContent = displayValue;
     }
 
+    function syncReturnCheckButtonVisibility(row) {
+      const statusCell = row?.querySelector('[data-field="status"]');
+      const container = statusCell?.querySelector(".ledger-status-cell");
+      if (!container) return;
+      const button = container.querySelector("[data-return-check-row]");
+      const shouldHide = isFullyCompletedStatus(fieldValue(statusCell));
+      if (shouldHide) {
+        button?.remove();
+      } else if (!button) {
+        container.insertAdjacentHTML("beforeend", `<button class="ledger-row-return-check" type="button" data-return-check-row>회수확인</button>`);
+      }
+    }
+
     function updateLedgerRowCompletion(row) {
       if (!row) return;
       const status = fieldValue(row.querySelector('[data-field="status"]'));
       const csType = fieldValue(row.querySelector('[data-field="cs_type"]'));
       row.classList.toggle("completed-cs", isCompletedByValues(csType, status));
+      syncReturnCheckButtonVisibility(row);
     }
 
     function setLedgerRowStatus(row, status) {
       const statusCell = row?.querySelector('[data-field="status"]');
       setEditableCellValue(statusCell, status);
       if (statusCell) statusCell.dataset.options = JSON.stringify(ledgerStatusOptions(status));
+      if (isFullyCompletedStatus(status) && row?.children?.[5] && !row.children[5].textContent.trim()) {
+        row.children[5].textContent = todayString();
+      }
       updateLedgerRowCompletion(row);
       markRowDirty(row, true);
       const checkbox = row?.querySelector("[data-row-check]");
@@ -11782,6 +11799,9 @@ HTML = r"""<!doctype html>
         row.dataset.caseId = csCase.id;
         const statusValue = csCase.status || ledgerStatusOptions()[0];
         const statusSelectOptions = ledgerStatusOptions(statusValue);
+        const returnCheckButtonHtml = isFullyCompletedStatus(statusValue)
+          ? ""
+          : `<button class="ledger-row-return-check" type="button" data-return-check-row>회수확인</button>`;
         const csTypeSelectOptions = ["", ...csTypeOptions];
         if (isCompletedCsCase(csCase)) row.classList.add("completed-cs");
         row.innerHTML = `
@@ -11792,7 +11812,7 @@ HTML = r"""<!doctype html>
           <td class="editable-cell" data-field="status" data-label="처리진행상태" data-value="${escapeHtml(statusValue)}" data-input="select" data-options="${escapeHtml(JSON.stringify(statusSelectOptions))}">
             <span class="ledger-status-cell">
               <span class="ledger-cell-value">${escapeHtml(cellDisplayValue(statusValue))}</span>
-              <button class="ledger-row-return-check" type="button" data-return-check-row>회수확인</button>
+              ${returnCheckButtonHtml}
             </span>
           </td>
           <td>${escapeHtml(csCase.completed_at)}</td>
@@ -20122,7 +20142,7 @@ def update_cs_case(case_id: int, payload: dict) -> None:
     connection = connect_db()
     try:
         previous = connection.execute(
-            "SELECT status, cs_type, cs_content, return_invoice, reship_invoice FROM cs_cases WHERE id = ?",
+            "SELECT status, cs_type, cs_content, return_invoice, reship_invoice, completed_at FROM cs_cases WHERE id = ?",
             (case_id,),
         ).fetchone()
         if not previous:
@@ -20141,6 +20161,7 @@ def update_cs_case(case_id: int, payload: dict) -> None:
             reship_invoice_updated_at = now
         if should_mark_cs_case_complete(cs_type, cs_content, return_invoice, reship_invoice):
             status = "전체 처리완료"
+        completion_date = date.today().isoformat() if "전체 처리완료" in status and not (previous["completed_at"] or "").strip() else None
         cursor = connection.execute(
             """
             UPDATE cs_cases
@@ -20149,6 +20170,7 @@ def update_cs_case(case_id: int, payload: dict) -> None:
                    cs_content = ?,
                    return_invoice = ?,
                    reship_invoice = ?,
+                   completed_at = COALESCE(NULLIF(completed_at, ''), ?),
                    return_invoice_updated_at = COALESCE(?, return_invoice_updated_at),
                    reship_invoice_updated_at = COALESCE(?, reship_invoice_updated_at),
                    updated_at = ?
@@ -20160,6 +20182,7 @@ def update_cs_case(case_id: int, payload: dict) -> None:
                 cs_content,
                 return_invoice,
                 reship_invoice,
+                completion_date,
                 return_invoice_updated_at,
                 reship_invoice_updated_at,
                 now,
