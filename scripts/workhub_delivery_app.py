@@ -439,6 +439,42 @@ HTML = r"""<!doctype html>
       background: #f3f4f6;
       color: #667085;
     }
+    .dashboard-import-card .import-table {
+      min-width: 0;
+      table-layout: fixed;
+      font-size: 11px;
+    }
+    .dashboard-import-card .import-table th {
+      height: 28px;
+      padding: 0 5px;
+      font-size: 11px;
+    }
+    .dashboard-import-card .import-table td {
+      height: auto;
+      min-height: 30px;
+      padding: 4px 5px;
+      white-space: normal;
+      word-break: keep-all;
+      overflow-wrap: anywhere;
+      line-height: 1.25;
+      vertical-align: middle;
+    }
+    .dashboard-import-card .import-table th:nth-child(1),
+    .dashboard-import-card .import-table td:nth-child(1) {
+      width: 96px;
+    }
+    .dashboard-import-card .import-table th:nth-child(3),
+    .dashboard-import-card .import-table td:nth-child(3) {
+      width: 78px;
+    }
+    .dashboard-import-card .import-table th:nth-child(4),
+    .dashboard-import-card .import-table td:nth-child(4) {
+      width: 112px;
+    }
+    .dashboard-import-card .import-table th:nth-child(5),
+    .dashboard-import-card .import-table td:nth-child(5) {
+      width: 116px;
+    }
     .import-empty {
       padding: 18px;
       color: var(--muted);
@@ -7754,11 +7790,11 @@ HTML = r"""<!doctype html>
       }
       dashboardImportScheduleBody.innerHTML = activeRecords.slice(0, 6).map((record) => `
         <tr>
-          <td>${escapeHtml(record.arrival_date || "-")}</td>
+          <td>${escapeHtml(shortKoreanDate(record.arrival_date) || "-")}</td>
           <td class="left">${escapeHtml(record.item || "-")}</td>
           <td>${escapeHtml(record.quantity || "-")}</td>
           <td>${escapeHtml(record.progress_status || "진행중")}</td>
-          <td>${escapeHtml(record.warehouse_due_date || "-")}</td>
+          <td>${escapeHtml(shortKoreanDate(record.warehouse_due_date) || "-")}</td>
         </tr>
       `).join("");
     }
@@ -7786,8 +7822,8 @@ HTML = r"""<!doctype html>
             </td>`
           : `<td>${escapeHtml(record.completed_at ? "완료" : record.progress_status)}</td>`;
         row.innerHTML = `
-          <td>${escapeHtml(record.departure_date)}</td>
-          <td>${escapeHtml(record.arrival_date)}</td>
+          <td>${escapeHtml(shortKoreanDate(record.departure_date))}</td>
+          <td>${escapeHtml(shortKoreanDate(record.arrival_date))}</td>
           <td>${escapeHtml(record.loading_port)}</td>
           <td>${escapeHtml(record.arrival_port)}</td>
           <td class="left">${escapeHtml(record.item)}</td>
@@ -7796,7 +7832,7 @@ HTML = r"""<!doctype html>
           <td>${escapeHtml(record.size)}</td>
           ${progressCell}
           <td>${escapeHtml(record.free_time)}</td>
-          <td>${escapeHtml(record.warehouse_due_date)}</td>
+          <td>${escapeHtml(shortKoreanDate(record.warehouse_due_date))}</td>
         `;
         importShipmentBody.appendChild(row);
       });
