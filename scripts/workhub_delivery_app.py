@@ -540,21 +540,35 @@ HTML = r"""<!doctype html>
     .dashboard-import-card .import-table {
       min-width: 1180px;
       table-layout: fixed;
-      font-size: 10.5px;
+      font-size: 12px;
+    }
+    .dashboard-import-card .import-progress-head {
+      min-height: 50px;
+      padding: 0 16px;
+    }
+    .dashboard-import-card .import-progress-title {
+      font-size: 15px;
+    }
+    .dashboard-import-card .import-progress-title svg {
+      width: 18px;
+      height: 18px;
+    }
+    .dashboard-import-card .import-progress-summary {
+      font-size: 13px;
     }
     .dashboard-import-card .import-table th {
-      height: 30px;
-      padding: 0 4px;
-      font-size: 10.5px;
+      height: 36px;
+      padding: 0 6px;
+      font-size: 12px;
     }
     .dashboard-import-card .import-table td {
       height: auto;
-      min-height: 30px;
-      padding: 4px;
+      min-height: 38px;
+      padding: 7px 6px;
       white-space: normal;
       word-break: keep-all;
       overflow-wrap: anywhere;
-      line-height: 1.25;
+      line-height: 1.32;
       vertical-align: middle;
     }
     .dashboard-import-card .import-table th:nth-child(1),
