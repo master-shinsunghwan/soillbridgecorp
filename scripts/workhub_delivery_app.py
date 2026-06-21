@@ -3086,6 +3086,23 @@ HTML = r"""<!doctype html>
       padding: 4px 6px;
       font-size: 11px;
     }
+    .company-portal.notice-calendar-mode .dashboard-calendar-panel .company-calendar-shell {
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      align-items: stretch;
+    }
+    .company-portal.notice-calendar-mode .dashboard-calendar-card .company-calendar-grid {
+      min-height: 360px;
+    }
+    .company-portal.notice-calendar-mode .dashboard-calendar-card .calendar-day {
+      min-height: 60px;
+      padding: 6px;
+      gap: 4px;
+    }
+    .company-portal.notice-calendar-mode .dashboard-calendar-card .calendar-event {
+      min-height: 18px;
+      padding: 3px 5px;
+      font-size: 10px;
+    }
     .dashboard-sales-panel {
       display: grid;
       gap: 12px;
