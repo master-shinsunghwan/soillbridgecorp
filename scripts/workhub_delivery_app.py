@@ -2707,6 +2707,37 @@ HTML = r"""<!doctype html>
       outline-offset: -2px;
       background: #eef6ff;
     }
+    .ledger-status-cell {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      width: 100%;
+      min-width: 160px;
+    }
+    .ledger-cell-value {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .ledger-row-return-check {
+      height: 22px;
+      padding: 0 7px;
+      border: 1px solid #bfdbfe;
+      border-radius: 5px;
+      background: #eff6ff;
+      color: #1d4ed8;
+      font-family: inherit;
+      font-size: 10px;
+      font-weight: 900;
+      line-height: 1;
+      white-space: nowrap;
+      cursor: pointer;
+    }
+    .ledger-row-return-check:hover {
+      border-color: #2563eb;
+      background: #dbeafe;
+    }
     .ledger-status {
       display: inline-flex;
       align-items: center;
@@ -11238,7 +11269,10 @@ HTML = r"""<!doctype html>
       const nextValue = String(value || "");
       cell.dataset.value = nextValue;
       if (cell.dataset.date === "1") cell.dataset.rawDate = nextValue;
-      cell.textContent = cellDisplayValue(nextValue, { date: cell.dataset.date === "1" });
+      const displayValue = cellDisplayValue(nextValue, { date: cell.dataset.date === "1" });
+      const valueNode = cell.querySelector(".ledger-cell-value");
+      if (valueNode) valueNode.textContent = displayValue;
+      else cell.textContent = displayValue;
     }
 
     function updateLedgerRowCompletion(row) {
@@ -11755,7 +11789,12 @@ HTML = r"""<!doctype html>
           <td>${escapeHtml(csCase.occurred_at || csCase.created_at)}</td>
           <td>${escapeHtml(csCase.sales_vendor)}</td>
           <td>${escapeHtml(csCase.purchase_vendor || csCase.vendor_name)}</td>
-          ${editableCell({ scope: "ledger", field: "status", label: "처리진행상태", value: statusValue, input: "select", options: statusSelectOptions })}
+          <td class="editable-cell" data-field="status" data-label="처리진행상태" data-value="${escapeHtml(statusValue)}" data-input="select" data-options="${escapeHtml(JSON.stringify(statusSelectOptions))}">
+            <span class="ledger-status-cell">
+              <span class="ledger-cell-value">${escapeHtml(cellDisplayValue(statusValue))}</span>
+              <button class="ledger-row-return-check" type="button" data-return-check-row>회수확인</button>
+            </span>
+          </td>
           <td>${escapeHtml(csCase.completed_at)}</td>
           ${editableCell({ scope: "ledger", field: "cs_type", label: "처리내용", value: csCase.cs_type, input: "select", options: csTypeSelectOptions })}
           ${editableCell({ scope: "ledger", field: "cs_content", label: "C/S 내용", value: csCase.cs_content, align: "left", input: "textarea" })}
@@ -12365,6 +12404,11 @@ HTML = r"""<!doctype html>
       return activeCellEditors.ledger?.cell?.closest("tr") || null;
     }
 
+    function ledgerRowByCaseId(caseId) {
+      return Array.from(ledgerBody.querySelectorAll("tr[data-case-id]"))
+        .find((item) => String(item.dataset.caseId) === String(caseId));
+    }
+
     function returnCheckSuggestedStatus(row) {
       const dateText = todayStatusDate();
       const category = ledgerTypeCategory(row);
@@ -12376,10 +12420,10 @@ HTML = r"""<!doctype html>
       return `회수 완료(${dateText})`;
     }
 
-    function openReturnCheckPopup() {
-      const row = activeLedgerRow();
+    function openReturnCheckPopup(rowOverride = null) {
+      const row = rowOverride || activeLedgerRow();
       if (!row) {
-        notice.textContent = "회수확인할 CS 행의 처리진행상태 셀을 먼저 선택해주세요.";
+        notice.textContent = "회수확인할 CS 행을 선택해주세요.";
         return;
       }
       returnCheckCaseId.value = row.dataset.caseId || "";
@@ -12406,8 +12450,7 @@ HTML = r"""<!doctype html>
 
     function applyReturnCheckPopup() {
       const caseId = returnCheckCaseId.value || "";
-      const row = Array.from(ledgerBody.querySelectorAll("tr[data-case-id]"))
-        .find((item) => String(item.dataset.caseId) === String(caseId));
+      const row = ledgerRowByCaseId(caseId);
       if (!row) {
         closeReturnCheckPopup();
         notice.textContent = "회수확인할 CS 행을 찾지 못했습니다.";
@@ -14404,6 +14447,13 @@ HTML = r"""<!doctype html>
       if (csButton) receiveManagementCs(csButton);
     });
     ledgerBody.addEventListener("click", (event) => {
+      const returnCheckButton = event.target.closest("[data-return-check-row]");
+      if (returnCheckButton) {
+        event.preventDefault();
+        event.stopPropagation();
+        openReturnCheckPopup(returnCheckButton.closest("tr[data-case-id]"));
+        return;
+      }
       const editableCell = event.target.closest(".editable-cell[data-field]");
       if (editableCell) {
         openCellEditor("ledger", editableCell);
