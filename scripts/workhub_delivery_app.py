@@ -1418,6 +1418,46 @@ HTML = r"""<!doctype html>
       color: #667085;
       height: 46px;
     }
+    .sales-compare-layout {
+      display: grid;
+      gap: 10px;
+      padding: 10px;
+    }
+    .sales-compare-title {
+      font-size: 12px;
+      font-weight: 950;
+      color: #475569;
+    }
+    .sales-compare-detail-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-top: 4px;
+    }
+    .sales-compare-detail-tabs {
+      display: inline-flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+    .sales-compare-detail-tab {
+      height: 30px;
+      border: 1px solid #d8e0ec;
+      border-radius: 999px;
+      padding: 0 12px;
+      background: white;
+      color: #475569;
+      font-size: 11px;
+      font-weight: 950;
+      cursor: pointer;
+      transition: border-color .14s ease, background .14s ease, color .14s ease;
+    }
+    .sales-compare-detail-tab.active,
+    .sales-compare-detail-tab:hover {
+      border-color: #7c3aed;
+      background: #f3e8ff;
+      color: #5b21b6;
+    }
     .sales-dashboard.loading .sales-kpi,
     .sales-dashboard.loading .sales-panel {
       position: relative;
@@ -6057,6 +6097,8 @@ HTML = r"""<!doctype html>
     const salesReportProductBody = document.querySelector("#salesReportProductBody");
     const salesReportReviewBody = document.querySelector("#salesReportReviewBody");
     const salesReportMonthlyCompareBody = document.querySelector("#salesReportMonthlyCompareBody");
+    const salesReportMonthlyCompareDetailBody = document.querySelector("#salesReportMonthlyCompareDetailBody");
+    const salesReportMonthlyCompareDetailButtons = [...document.querySelectorAll("[data-sales-compare-detail]")];
     const salesReportTabButtons = [...document.querySelectorAll("[data-sales-tab]")];
     const salesReportPanels = [...document.querySelectorAll("[data-sales-panel]")];
     const salesReportTabCounts = {
@@ -7985,6 +8027,8 @@ HTML = r"""<!doctype html>
     }
 
     let activeSalesReportTab = "salesProduct";
+    let activeMonthlyCompareDetail = "daily";
+    let salesReportMonthlyCompareDetails = {};
 
     function setSalesReportTab(tabName) {
       activeSalesReportTab = tabName || "salesProduct";
@@ -8005,6 +8049,31 @@ HTML = r"""<!doctype html>
 
     function setSalesReportLoading(isLoading) {
       salesReportDashboard?.classList.toggle("loading", Boolean(isLoading));
+    }
+
+    function renderMonthlyCompareDetail(kind) {
+      activeMonthlyCompareDetail = kind || "daily";
+      salesReportMonthlyCompareDetailButtons.forEach((button) => {
+        const active = button.dataset.salesCompareDetail === activeMonthlyCompareDetail;
+        button.classList.toggle("active", active);
+        button.setAttribute("aria-selected", active ? "true" : "false");
+      });
+      const rows = salesReportMonthlyCompareDetails[activeMonthlyCompareDetail] || [];
+      if (!rows.length) {
+        renderSalesEmpty(salesReportMonthlyCompareDetailBody, 7, "상세 비교 데이터가 없습니다.");
+        return;
+      }
+      salesReportMonthlyCompareDetailBody.innerHTML = rows.map((row) => `
+        <tr>
+          <td>${escapeHtml(row.label || "")}</td>
+          <td>${formatSalesNumber(row.current_quantity)}</td>
+          <td>${formatSalesNumber(row.current)}</td>
+          <td>${formatSalesNumber(row.previous_quantity)}</td>
+          <td>${formatSalesNumber(row.previous)}</td>
+          <td class="${salesAmountClass(row.delta)}">${formatSalesNumber(row.delta)}</td>
+          <td class="${salesAmountClass(row.delta)}">${formatSalesPercent(row.delta_rate)}</td>
+        </tr>
+      `).join("");
     }
 
     function formatSalesPeriodLabel(period) {
@@ -8117,6 +8186,8 @@ HTML = r"""<!doctype html>
       } else {
         renderSalesEmpty(salesReportMonthlyCompareBody, 6, "전월 비교 데이터가 없습니다.");
       }
+      salesReportMonthlyCompareDetails = data.monthly_comparison_details || {};
+      renderMonthlyCompareDetail(activeMonthlyCompareDetail);
       setSalesReportTabCount("salesProduct", dailyRows.length + productRows.length);
       setSalesReportTabCount("partner", sellerRows.length + purchaseRows.length);
       setSalesReportTabCount("monthlyCompare", monthlyCompareRows.length);
@@ -8138,6 +8209,7 @@ HTML = r"""<!doctype html>
         renderSalesEmpty(salesReportProductBody, 4, "매출현황을 불러오지 못했습니다.");
         renderSalesEmpty(salesReportReviewBody, 3, "매출현황을 불러오지 못했습니다.");
         renderSalesEmpty(salesReportMonthlyCompareBody, 6, "매출현황을 불러오지 못했습니다.");
+        renderSalesEmpty(salesReportMonthlyCompareDetailBody, 7, "매출현황을 불러오지 못했습니다.");
       } finally {
         setSalesReportLoading(false);
       }
@@ -12587,6 +12659,10 @@ HTML = r"""<!doctype html>
       panel.setAttribute("role", "tabpanel");
     });
     setSalesReportTab(activeSalesReportTab);
+    salesReportMonthlyCompareDetailButtons.forEach((button) => {
+      button.setAttribute("role", "tab");
+      button.addEventListener("click", () => renderMonthlyCompareDetail(button.dataset.salesCompareDetail || "daily"));
+    });
     document.querySelector("#noticeInputOpen").addEventListener("click", openNoticePopup);
     importShipmentInputOpen.addEventListener("click", () => {
       showWorkspace("import");
@@ -13576,11 +13652,31 @@ ADMIN_WORKSPACE_HTML = r"""
                       <div class="sales-panel-title"><span class="sales-panel-icon">전</span>전월 비교 분석</div>
                       <span class="sales-panel-badge">전월 대비</span>
                     </div>
-                    <div class="sales-table-scroll">
-                      <table class="sales-table">
-                        <thead><tr><th>구분</th><th>기준</th><th>이번 달</th><th>전월</th><th>증감</th><th>증감률</th></tr></thead>
-                        <tbody id="salesReportMonthlyCompareBody"></tbody>
-                      </table>
+                    <div class="sales-compare-layout">
+                      <div>
+                        <div class="sales-compare-title">요약</div>
+                        <table class="sales-table">
+                          <thead><tr><th>구분</th><th>기준</th><th>이번 달</th><th>전월</th><th>증감</th><th>증감률</th></tr></thead>
+                          <tbody id="salesReportMonthlyCompareBody"></tbody>
+                        </table>
+                      </div>
+                      <div>
+                        <div class="sales-compare-detail-head">
+                          <div class="sales-compare-title">상세 비교</div>
+                          <div class="sales-compare-detail-tabs" role="tablist">
+                            <button class="sales-compare-detail-tab active" type="button" data-sales-compare-detail="daily">일별 비교</button>
+                            <button class="sales-compare-detail-tab" type="button" data-sales-compare-detail="product">상품별 비교</button>
+                            <button class="sales-compare-detail-tab" type="button" data-sales-compare-detail="seller">매출처별 비교</button>
+                            <button class="sales-compare-detail-tab" type="button" data-sales-compare-detail="supplier">매입처별 비교</button>
+                          </div>
+                        </div>
+                        <div class="sales-table-scroll">
+                          <table class="sales-table">
+                            <thead><tr><th>구분</th><th>이번 달 수량</th><th>이번 달 금액</th><th>전월 수량</th><th>전월 금액</th><th>증감</th><th>증감률</th></tr></thead>
+                            <tbody id="salesReportMonthlyCompareDetailBody"></tbody>
+                          </table>
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -14733,6 +14829,18 @@ def sales_report_delta(current_value: int, previous_value: int) -> dict[str, obj
     }
 
 
+def sales_report_compare_detail_public(row: sqlite3.Row) -> dict[str, object]:
+    current_value = int(row["current"] or 0)
+    previous_value = int(row["previous"] or 0)
+    delta = sales_report_delta(current_value, previous_value)
+    return {
+        "label": str(row["label"] or ""),
+        "current_quantity": int(row["current_quantity"] or 0),
+        "previous_quantity": int(row["previous_quantity"] or 0),
+        **delta,
+    }
+
+
 def sales_report_dashboard_payload(period: str = "", report_date: str = "") -> dict[str, object]:
     init_db()
     connection = connect_db()
@@ -14912,6 +15020,146 @@ def sales_report_dashboard_payload(period: str = "", report_date: str = "") -> d
             """,
             (selected_period,),
         ).fetchall()
+        daily_compare_rows = connection.execute(
+            """
+            WITH current_rows AS (
+                SELECT CAST(substr(report_date, 9, 2) AS INTEGER) AS day_no,
+                       COALESCE(SUM(quantity), 0) AS current_quantity,
+                       COALESCE(SUM(profit_sales_amount), 0) AS current
+                  FROM sales_report_daily_rows
+                 WHERE period = ?
+                 GROUP BY day_no
+            ),
+            previous_rows AS (
+                SELECT CAST(substr(report_date, 9, 2) AS INTEGER) AS day_no,
+                       COALESCE(SUM(quantity), 0) AS previous_quantity,
+                       COALESCE(SUM(profit_sales_amount), 0) AS previous
+                  FROM sales_report_daily_rows
+                 WHERE period = ?
+                 GROUP BY day_no
+            ),
+            keys AS (
+                SELECT day_no FROM current_rows
+                UNION
+                SELECT day_no FROM previous_rows
+            )
+            SELECT printf('%d일', keys.day_no) AS label,
+                   COALESCE(current_rows.current_quantity, 0) AS current_quantity,
+                   COALESCE(current_rows.current, 0) AS current,
+                   COALESCE(previous_rows.previous_quantity, 0) AS previous_quantity,
+                   COALESCE(previous_rows.previous, 0) AS previous
+              FROM keys
+              LEFT JOIN current_rows ON current_rows.day_no = keys.day_no
+              LEFT JOIN previous_rows ON previous_rows.day_no = keys.day_no
+             ORDER BY keys.day_no
+            """,
+            (selected_period, previous_period),
+        ).fetchall()
+        product_compare_rows = connection.execute(
+            """
+            WITH current_rows AS (
+                SELECT product_name AS label,
+                       COALESCE(SUM(quantity), 0) AS current_quantity,
+                       COALESCE(SUM(profit_sales_amount), 0) AS current
+                  FROM sales_report_product_rows
+                 WHERE period = ?
+                 GROUP BY product_name
+            ),
+            previous_rows AS (
+                SELECT product_name AS label,
+                       COALESCE(SUM(quantity), 0) AS previous_quantity,
+                       COALESCE(SUM(profit_sales_amount), 0) AS previous
+                  FROM sales_report_product_rows
+                 WHERE period = ?
+                 GROUP BY product_name
+            ),
+            keys AS (
+                SELECT label FROM current_rows
+                UNION
+                SELECT label FROM previous_rows
+            )
+            SELECT keys.label AS label,
+                   COALESCE(current_rows.current_quantity, 0) AS current_quantity,
+                   COALESCE(current_rows.current, 0) AS current,
+                   COALESCE(previous_rows.previous_quantity, 0) AS previous_quantity,
+                   COALESCE(previous_rows.previous, 0) AS previous
+              FROM keys
+              LEFT JOIN current_rows ON current_rows.label = keys.label
+              LEFT JOIN previous_rows ON previous_rows.label = keys.label
+             ORDER BY current DESC, previous DESC, keys.label COLLATE NOCASE
+            """,
+            (selected_period, previous_period),
+        ).fetchall()
+        seller_compare_rows = connection.execute(
+            """
+            WITH current_rows AS (
+                SELECT seller_name AS label,
+                       COALESCE(SUM(quantity), 0) AS current_quantity,
+                       COALESCE(SUM(profit_sales_amount), 0) AS current
+                  FROM sales_report_seller_rows
+                 WHERE period = ?
+                 GROUP BY seller_name
+            ),
+            previous_rows AS (
+                SELECT seller_name AS label,
+                       COALESCE(SUM(quantity), 0) AS previous_quantity,
+                       COALESCE(SUM(profit_sales_amount), 0) AS previous
+                  FROM sales_report_seller_rows
+                 WHERE period = ?
+                 GROUP BY seller_name
+            ),
+            keys AS (
+                SELECT label FROM current_rows
+                UNION
+                SELECT label FROM previous_rows
+            )
+            SELECT keys.label AS label,
+                   COALESCE(current_rows.current_quantity, 0) AS current_quantity,
+                   COALESCE(current_rows.current, 0) AS current,
+                   COALESCE(previous_rows.previous_quantity, 0) AS previous_quantity,
+                   COALESCE(previous_rows.previous, 0) AS previous
+              FROM keys
+              LEFT JOIN current_rows ON current_rows.label = keys.label
+              LEFT JOIN previous_rows ON previous_rows.label = keys.label
+             ORDER BY current DESC, previous DESC, keys.label COLLATE NOCASE
+            """,
+            (selected_period, previous_period),
+        ).fetchall()
+        supplier_compare_rows = connection.execute(
+            """
+            WITH current_rows AS (
+                SELECT supplier_name AS label,
+                       COALESCE(SUM(quantity), 0) AS current_quantity,
+                       COALESCE(SUM(supply_total), 0) AS current
+                  FROM sales_report_supplier_rows
+                 WHERE period = ?
+                 GROUP BY supplier_name
+            ),
+            previous_rows AS (
+                SELECT supplier_name AS label,
+                       COALESCE(SUM(quantity), 0) AS previous_quantity,
+                       COALESCE(SUM(supply_total), 0) AS previous
+                  FROM sales_report_supplier_rows
+                 WHERE period = ?
+                 GROUP BY supplier_name
+            ),
+            keys AS (
+                SELECT label FROM current_rows
+                UNION
+                SELECT label FROM previous_rows
+            )
+            SELECT keys.label AS label,
+                   COALESCE(current_rows.current_quantity, 0) AS current_quantity,
+                   COALESCE(current_rows.current, 0) AS current,
+                   COALESCE(previous_rows.previous_quantity, 0) AS previous_quantity,
+                   COALESCE(previous_rows.previous, 0) AS previous
+              FROM keys
+              LEFT JOIN current_rows ON current_rows.label = keys.label
+              LEFT JOIN previous_rows ON previous_rows.label = keys.label
+             ORDER BY current DESC, previous DESC, keys.label COLLATE NOCASE
+            """,
+            (selected_period, previous_period),
+        ).fetchall()
         review_rows = connection.execute(
             """
             SELECT 'supplier' AS kind, supplier_name AS name, cs_amount, cs_margin,
@@ -15028,6 +15276,12 @@ def sales_report_dashboard_payload(period: str = "", report_date: str = "") -> d
                 **sales_report_delta(supplier_purchase_total_public["purchase_total"], previous_supplier_purchase_total_public["purchase_total"]),
             },
         ],
+        "monthly_comparison_details": {
+            "daily": [sales_report_compare_detail_public(row) for row in daily_compare_rows],
+            "product": [sales_report_compare_detail_public(row) for row in product_compare_rows],
+            "seller": [sales_report_compare_detail_public(row) for row in seller_compare_rows],
+            "supplier": [sales_report_compare_detail_public(row) for row in supplier_compare_rows],
+        },
         "consistency": {
             "difference": difference,
             "ok": difference == 0,
