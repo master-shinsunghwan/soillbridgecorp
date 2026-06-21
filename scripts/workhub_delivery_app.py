@@ -1134,6 +1134,16 @@ HTML = r"""<!doctype html>
     #userAdminWorkspace:not(.sales-report-only) #salesReportUploadCard {
       display: none;
     }
+    #userAdminWorkspace.sales-report-only {
+      overflow-y: auto;
+      overflow-x: hidden;
+      scrollbar-gutter: stable;
+    }
+    #userAdminWorkspace.sales-report-only .workspace-mount,
+    #userAdminWorkspace.sales-report-only .admin-panel {
+      flex: 0 0 auto;
+      min-height: auto;
+    }
     .sales-dashboard {
       display: grid;
       gap: 12px;
@@ -1471,7 +1481,7 @@ HTML = r"""<!doctype html>
       color: #5b21b6;
     }
     .sales-compare-detail-scroll {
-      height: max(360px, calc(100vh - 475px));
+      height: clamp(360px, calc(100vh - 420px), 720px);
       max-height: none;
       min-height: 0;
       overflow-y: scroll;
