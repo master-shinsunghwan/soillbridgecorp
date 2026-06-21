@@ -2967,6 +2967,9 @@ HTML = r"""<!doctype html>
       gap: 12px;
       align-items: stretch;
     }
+    .company-panel[data-company-panel="notice"] .company-grid {
+      grid-template-columns: 1fr;
+    }
     .company-rule-grid {
       display: grid;
       grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -5006,6 +5009,7 @@ HTML = r"""<!doctype html>
         </button>
         <div class="nav-submenu">
           <button class="nav-subitem active" type="button" data-view="dashboard" data-company-tab="notice">공지사항</button>
+          <button class="nav-subitem" id="noticeInputOpen" type="button">공지사항 입력</button>
           <button class="nav-subitem" type="button" data-view="dashboard" data-company-tab="calendar">캘린더</button>
           <button class="nav-subitem" type="button" data-view="dashboard" data-company-tab="rules">사규/가이드</button>
           <button class="nav-subitem" type="button" data-view="dashboard" data-company-tab="staff">직원 대시보드</button>
@@ -5105,19 +5109,6 @@ HTML = r"""<!doctype html>
               <div class="notice-board-title">등록된 공지 없음</div>
               <div class="notice-board-body">공지사항 입력 버튼을 눌러 내용을 입력해주세요.</div>
             </section>
-            <article class="company-card">
-              <div class="company-card-head">
-                <span>공지 관리</span>
-                <button class="workspace-button" id="noticeInputOpen" type="button">공지사항 입력</button>
-              </div>
-              <div class="company-card-body">
-                <p>오늘 공유해야 할 출고 마감, 업체 회신 필요 건, 내부 전달사항을 이곳에서 관리합니다.</p>
-                <div class="company-mini-grid">
-                  <div><span>저장 방식</span><strong>브라우저 localStorage</strong></div>
-                  <div><span>권한</span><strong>공지사항 관리</strong></div>
-                </div>
-              </div>
-            </article>
           </div>
         </section>
 
@@ -13117,7 +13108,11 @@ HTML = r"""<!doctype html>
       button.setAttribute("role", "tab");
       button.addEventListener("click", () => renderMonthlyCompareDetail(button.dataset.salesCompareDetail || "daily"));
     });
-    document.querySelector("#noticeInputOpen").addEventListener("click", openNoticePopup);
+    document.querySelector("#noticeInputOpen")?.addEventListener("click", () => {
+      showWorkspace("dashboard");
+      setCompanyTab("notice");
+      openNoticePopup();
+    });
     importShipmentInputOpen.addEventListener("click", () => {
       showWorkspace("import");
       openImportShipmentPopup();
