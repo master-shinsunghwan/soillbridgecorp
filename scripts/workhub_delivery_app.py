@@ -2377,10 +2377,10 @@ HTML = r"""<!doctype html>
       align-items: start;
     }
     .cell-edit-bar:has(textarea.cell-edit-control) .cell-edit-label {
-      padding-top: 8px;
+      padding-top: 0;
     }
     .cell-edit-bar:has(textarea.cell-edit-control) .cell-edit-button {
-      align-self: end;
+      align-self: center;
     }
     .cell-edit-label {
       color: #344054;
@@ -2413,15 +2413,17 @@ HTML = r"""<!doctype html>
       overflow-y: auto;
     }
     .cell-edit-button {
-      height: 34px;
-      padding: 0 12px;
+      height: 28px;
+      padding: 0 9px;
       border: 1px solid #aab2bf;
-      border-radius: 7px;
+      border-radius: 6px;
       background: white;
       font-family: inherit;
-      font-size: 12px;
+      font-size: 11px;
       font-weight: 900;
       cursor: pointer;
+      align-self: center;
+      justify-self: center;
     }
     .cell-edit-button.apply {
       border-color: #087a46;
@@ -2449,7 +2451,7 @@ HTML = r"""<!doctype html>
         white-space: normal;
       }
       .cell-edit-button {
-        justify-self: end;
+        justify-self: center;
       }
     }
     .management-month-tabs {
@@ -7221,6 +7223,7 @@ HTML = r"""<!doctype html>
     const ledgerFilters = {};
     const managementFilters = {};
     let isBulkSaving = false;
+    let isNavigationSaving = false;
 
     if (managementWorkspaceMount && managementFields) managementWorkspaceMount.appendChild(managementFields);
     if (ledgerWorkspaceMount && ledgerFields) ledgerWorkspaceMount.appendChild(ledgerFields);
@@ -11477,6 +11480,20 @@ HTML = r"""<!doctype html>
       if (scope === "ledger" && ledgerReturnCheckButton) ledgerReturnCheckButton.hidden = true;
     }
 
+    function activeEditorHasChange(scope) {
+      const selected = activeCellEditors[scope];
+      if (!selected?.cell || !selected.control) return false;
+      return String(selected.control.value || "") !== fieldValue(selected.cell);
+    }
+
+    function hasPendingWorkspaceChanges(mode = currentMode) {
+      const scope = mode === "management" || mode === "ledger" ? mode : currentMode;
+      if (scope !== "management" && scope !== "ledger") return false;
+      const body = scope === "management" ? managementBody : ledgerBody;
+      const rowSelector = scope === "management" ? "tr[data-record-id]" : "tr[data-case-id]";
+      return activeEditorHasChange(scope) || dirtyRows(body, rowSelector).length > 0;
+    }
+
     function editorOptionsFromCell(cell) {
       try {
         return JSON.parse(cell.dataset.options || "[]");
@@ -12448,6 +12465,36 @@ HTML = r"""<!doctype html>
       }
     }
 
+    function confirmSaveBeforeLeaving(nextMode, resumeAction) {
+      const sourceMode = currentMode;
+      if (isNavigationSaving) return false;
+      if ((sourceMode !== "management" && sourceMode !== "ledger") || nextMode === sourceMode) return true;
+      if (!hasPendingWorkspaceChanges(sourceMode)) return true;
+      const sourceLabel = sourceMode === "management" ? "통합관리대장" : "CS 처리대장";
+      const approved = window.confirm(`${sourceLabel}에 저장되지 않은 변경 내용이 있습니다.\n변경된 내용을 저장하시겠습니까?\n\n확인: 저장 후 이동\n취소: 현재 화면 유지`);
+      if (!approved) {
+        notice.textContent = "이동을 취소했습니다. 변경 내용을 저장하거나 취소 후 다시 이동해주세요.";
+        return false;
+      }
+      if (activeEditorHasChange(sourceMode)) applyCellEditor(sourceMode);
+      isNavigationSaving = true;
+      notice.textContent = "변경 내용을 저장한 뒤 이동합니다.";
+      saveCurrentWorkspaceRows({ mode: sourceMode, silent: false, selectedOnly: false })
+        .then(() => {
+          isNavigationSaving = false;
+          if (hasPendingWorkspaceChanges(sourceMode)) {
+            notice.textContent = "저장하지 못한 변경 내용이 있어 이동하지 않았습니다.";
+            return;
+          }
+          resumeAction();
+        })
+        .catch((error) => {
+          isNavigationSaving = false;
+          notice.textContent = error.message || "변경 내용 저장에 실패했습니다.";
+        });
+      return false;
+    }
+
     function selectedIds(container, rowSelector, idName) {
       return selectedRows(container, rowSelector)
         .map((row) => row.dataset[idName])
@@ -12905,6 +12952,7 @@ HTML = r"""<!doctype html>
     }
 
     function openModal(mode) {
+      if (!confirmSaveBeforeLeaving(mode, () => openModal(mode))) return false;
       currentMode = mode;
       closeLedgerCsPopup();
       modal.classList.add("open");
@@ -13183,6 +13231,7 @@ HTML = r"""<!doctype html>
     }
 
     function showWorkspace(mode) {
+      if (!confirmSaveBeforeLeaving(mode, () => showWorkspace(mode))) return false;
       closeModal();
       if (mode === "userAdmin" && !userAdminWorkspace) mode = "dashboard";
       if (mode === "salesReport" && (!userAdminWorkspace || !can("sales_report_manage"))) mode = "dashboard";
@@ -13406,7 +13455,9 @@ HTML = r"""<!doctype html>
       loadOrderDownloads();
     }
     function openOrderModal(mode) {
-      currentOrderMode = ORDER_WORKFLOWS[mode] ? mode : "delivery";
+      const nextOrderMode = ORDER_WORKFLOWS[mode] ? mode : "delivery";
+      if (!confirmSaveBeforeLeaving(nextOrderMode, () => openOrderModal(mode))) return false;
+      currentOrderMode = nextOrderMode;
       showOrderWorkspace(currentOrderMode);
       setPageTitle(ORDER_MODAL_TITLES[currentOrderMode] || "발주업무");
       openModal(currentOrderMode);
@@ -13429,7 +13480,7 @@ HTML = r"""<!doctype html>
         if (mode === "crm") {
           const crmGroup = document.querySelector("#crmNavGroup");
           const wasCrmGroupOpen = Boolean(crmGroup?.classList.contains("open"));
-          showWorkspace("crm");
+          if (showWorkspace("crm") === false) return;
           if (button.dataset.crmNavTab) setCrmTab(button.dataset.crmNavTab);
           if (button.id === "crmNavToggle") {
             crmGroup?.classList.toggle("open", !wasCrmGroupOpen);
@@ -13443,7 +13494,7 @@ HTML = r"""<!doctype html>
           return;
         }
         if (mode === "management" || mode === "ledger" || mode === "crm" || mode === "import" || mode === "fileLibrary" || mode === "userAdmin" || mode === "salesReport" || mode === "leave" || mode === "backup" || mode === "systemUpdate") {
-          showWorkspace(mode);
+          if (showWorkspace(mode) === false) return;
           if (mode === "salesReport" && button.closest("#salesReportNavGroup")) {
             openSalesReportUploadPicker();
           }
@@ -13455,7 +13506,7 @@ HTML = r"""<!doctype html>
     document.querySelectorAll("[data-view]").forEach((button) => {
       button.addEventListener("click", () => {
         const companyGroup = document.querySelector("#companyNavGroup");
-        showWorkspace(button.dataset.view);
+        if (showWorkspace(button.dataset.view) === false) return;
         if (button.dataset.companyTab) setCompanyTab(button.dataset.companyTab);
         if (button.id === "companyNavToggle") {
           companyGroup?.classList.add("open");
@@ -13982,25 +14033,25 @@ HTML = r"""<!doctype html>
       button.addEventListener("click", () => renderMonthlyCompareDetail(button.dataset.salesCompareDetail || "daily"));
     });
     document.querySelector("#noticeInputOpen")?.addEventListener("click", () => {
-      showWorkspace("dashboard");
+      if (showWorkspace("dashboard") === false) return;
       setCompanyTab("notice");
       openNoticePopup();
     });
     importShipmentInputOpen.addEventListener("click", () => {
-      showWorkspace("import");
+      if (showWorkspace("import") === false) return;
       openImportShipmentPopup();
     });
     function openManagementImport(mode = "daily") {
       managementImportMode = mode;
       managementImportInput.value = "";
-      showWorkspace("management");
+      if (showWorkspace("management") === false) return;
       managementImportInput.click();
     }
 
     function openLedgerImport(mode = "daily") {
       ledgerImportMode = mode;
       ledgerImportInput.value = "";
-      showWorkspace("ledger");
+      if (showWorkspace("ledger") === false) return;
       ledgerImportInput.click();
     }
 
@@ -14034,7 +14085,7 @@ HTML = r"""<!doctype html>
     });
     importShipmentRefresh.addEventListener("click", loadImportShipments);
     dashboardImportScheduleOpen?.addEventListener("click", () => {
-      showWorkspace("import");
+      if (showWorkspace("import") === false) return;
       openImportShipmentPopup();
     });
     importShipmentWorkspaceOpen?.addEventListener("click", () => openImportShipmentPopup());
@@ -14380,6 +14431,12 @@ HTML = r"""<!doctype html>
     setInterval(() => {
       saveCurrentWorkspaceRows({ silent: true });
     }, 10 * 60 * 1000);
+
+    window.addEventListener("beforeunload", (event) => {
+      if (!hasPendingWorkspaceChanges(currentMode)) return;
+      event.preventDefault();
+      event.returnValue = "";
+    });
 
     uploadForm.addEventListener("submit", async (event) => {
       event.preventDefault();
