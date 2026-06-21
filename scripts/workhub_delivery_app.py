@@ -413,22 +413,22 @@ HTML = r"""<!doctype html>
       width: 100%;
       min-width: 1320px;
       border-collapse: collapse;
-      font-size: 11px;
+      font-size: 12px;
     }
     .import-table th {
-      height: 32px;
-      padding: 0 6px;
-      border: 1px solid #111827;
-      background: #ffff00;
-      color: #000;
+      height: 34px;
+      padding: 0 8px;
+      border: 1px solid #cbd5e1;
+      background: #eef6ff;
+      color: #1f2937;
       text-align: center;
       font-weight: 950;
       white-space: nowrap;
     }
     .import-table td {
-      height: 32px;
-      padding: 4px 6px;
-      border: 1px solid #111827;
+      height: 34px;
+      padding: 5px 8px;
+      border: 1px solid #e2e8f0;
       text-align: center;
       font-weight: 700;
       white-space: nowrap;
@@ -5216,10 +5216,6 @@ HTML = r"""<!doctype html>
             </button>
             <div class="import-progress-summary" id="dashboardImportScheduleSummary">진행 0건</div>
           </div>
-          <div class="import-progress-actions">
-            <button class="workspace-button" type="button" id="dashboardImportScheduleRefresh">새로고침</button>
-            <button class="workspace-button" type="button" data-view="import">전체 보기</button>
-          </div>
           <div class="import-table-wrap">
             <table class="import-table">
               <thead>
@@ -5229,8 +5225,8 @@ HTML = r"""<!doctype html>
                   <th>입항일</th>
                   <th>선적항</th>
                   <th>도착항</th>
-                  <th>SHPR</th>
-                  <th>ITEM</th>
+                  <th>화주</th>
+                  <th>제품명</th>
                   <th>선명</th>
                   <th>HBL NO.</th>
                   <th>SIZE</th>
@@ -5602,8 +5598,8 @@ HTML = r"""<!doctype html>
                   <th>입항일</th>
                   <th>선적항</th>
                   <th>도착항</th>
-                  <th>SHPR</th>
-                  <th>ITEM</th>
+                  <th>화주</th>
+                  <th>제품명</th>
                   <th>선명</th>
                   <th>HBL NO.</th>
                   <th>SIZE</th>
@@ -5917,10 +5913,10 @@ HTML = r"""<!doctype html>
         <div class="notice-template-grid">
           <input id="importLoadingPort" type="text" placeholder="선적항" />
           <input id="importArrivalPort" type="text" placeholder="도착항" />
-          <input id="importShipper" type="text" placeholder="SHPR" />
+          <input id="importShipper" type="text" placeholder="화주" />
         </div>
         <div class="notice-template-grid">
-          <input id="importItem" type="text" placeholder="ITEM" />
+          <input id="importItem" type="text" placeholder="제품명" />
           <input id="importVesselName" type="text" placeholder="선명" />
           <input id="importHblNo" type="text" placeholder="HBL NO." />
         </div>
@@ -6672,7 +6668,6 @@ HTML = r"""<!doctype html>
     const importShipmentWorkspaceOpen = document.querySelector("#importShipmentWorkspaceOpen");
     const dashboardImportScheduleBody = document.querySelector("#dashboardImportScheduleBody");
     const dashboardImportScheduleSummary = document.querySelector("#dashboardImportScheduleSummary");
-    const dashboardImportScheduleRefresh = document.querySelector("#dashboardImportScheduleRefresh");
     const dashboardImportScheduleOpen = document.querySelector("#dashboardImportScheduleOpen");
     const importShipmentPopup = document.querySelector("#importShipmentPopup");
     const importShipmentClose = document.querySelector("#importShipmentClose");
@@ -7820,7 +7815,7 @@ HTML = r"""<!doctype html>
 
     function renderDashboardImportSchedule() {
       if (!dashboardImportScheduleBody || !dashboardImportScheduleSummary) return;
-      const activeRecords = importShipments.filter((record) => !record.completed_at);
+      const activeRecords = sortImportShipmentsByWarehouseDate(importShipments.filter((record) => !record.completed_at));
       dashboardImportScheduleSummary.textContent = `진행 ${activeRecords.length}건`;
       if (!activeRecords.length) {
         dashboardImportScheduleBody.innerHTML = `<tr><td colspan="12"><div class="import-empty">등록된 수입제품 입고 일정이 없습니다.</div></td></tr>`;
@@ -7854,7 +7849,7 @@ HTML = r"""<!doctype html>
         return;
       }
       importShipmentBody.innerHTML = "";
-      importShipments.forEach((record) => {
+      sortImportShipmentsByWarehouseDate(importShipments).forEach((record) => {
         const row = document.createElement("tr");
         if (record.completed_at) row.classList.add("completed");
         const canManageImportShipment = can("import_shipment_manage");
@@ -10668,6 +10663,23 @@ HTML = r"""<!doctype html>
       return parts ? `${Number(parts.month)}월 ${Number(parts.day)}일` : String(value || "");
     }
 
+    function importDateSortKey(value) {
+      const parts = parseDateParts(value);
+      if (!parts) return "9999-99-99";
+      const year = parts.year || String(new Date().getFullYear());
+      return `${year}-${parts.month}-${parts.day}`;
+    }
+
+    function sortImportShipmentsByWarehouseDate(rows) {
+      return [...rows].sort((a, b) => {
+        const completedCompare = Number(Boolean(a.completed_at)) - Number(Boolean(b.completed_at));
+        if (completedCompare) return completedCompare;
+        const dateCompare = importDateSortKey(a.warehouse_due_date).localeCompare(importDateSortKey(b.warehouse_due_date));
+        if (dateCompare) return dateCompare;
+        return Number(b.id || 0) - Number(a.id || 0);
+      });
+    }
+
     function fullDateForSave(displayValue, rawValue) {
       const displayParts = parseDateParts(displayValue);
       if (!displayParts) return String(displayValue || "").trim();
@@ -13288,7 +13300,6 @@ HTML = r"""<!doctype html>
       }
     });
     importShipmentRefresh.addEventListener("click", loadImportShipments);
-    dashboardImportScheduleRefresh?.addEventListener("click", loadImportShipments);
     dashboardImportScheduleOpen?.addEventListener("click", () => {
       showWorkspace("import");
       openImportShipmentPopup();
@@ -19299,6 +19310,22 @@ IMPORT_SHIPMENT_FIELDS = (
 )
 
 
+def import_shipment_date_key(value: object) -> tuple[int, int, int]:
+    text = str(value or "").strip()
+    if not text:
+        return (9999, 99, 99)
+    match = re.search(r"(\d{4})[-./년\s]+(\d{1,2})[-./월\s]+(\d{1,2})", text)
+    if match:
+        return (int(match.group(1)), int(match.group(2)), int(match.group(3)))
+    match = re.search(r"(\d{1,2})\s*월\s*(\d{1,2})\s*일?", text)
+    if match:
+        return (date.today().year, int(match.group(1)), int(match.group(2)))
+    match = re.search(r"^(\d{1,2})[./-](\d{1,2})", text)
+    if match:
+        return (date.today().year, int(match.group(1)), int(match.group(2)))
+    return (9999, 99, 99)
+
+
 def list_import_shipments() -> list[dict[str, str | int]]:
     init_db()
     connection = connect_db()
@@ -19315,7 +19342,15 @@ def list_import_shipments() -> list[dict[str, str | int]]:
         ).fetchall()
     finally:
         connection.close()
-    return [dict(row) for row in rows]
+    records = [dict(row) for row in rows]
+    return sorted(
+        records,
+        key=lambda row: (
+            1 if row.get("completed_at") else 0,
+            import_shipment_date_key(row.get("warehouse_due_date")),
+            -int(row.get("id") or 0),
+        ),
+    )
 
 
 def save_import_shipment(payload: dict) -> int:
