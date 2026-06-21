@@ -3322,6 +3322,55 @@ HTML = r"""<!doctype html>
       gap: 6px;
       justify-content: flex-end;
     }
+    .company-calendar-actions .crm-mini-button {
+      min-height: 34px;
+      height: 34px;
+      padding: 0 10px;
+      border-radius: 7px;
+      gap: 5px;
+      font-size: 12px;
+      font-weight: 900;
+    }
+    .company-calendar-actions .crm-mini-button.icon-only {
+      width: 36px;
+      padding: 0;
+    }
+    .company-calendar-actions .crm-mini-button svg {
+      width: 15px;
+      height: 15px;
+      stroke-width: 2.5;
+    }
+    .company-calendar-summary {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      min-width: 0;
+      flex: 1 1 auto;
+      justify-content: flex-end;
+    }
+    .company-calendar-summary-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      min-height: 26px;
+      padding: 0 8px;
+      border: 1px solid #e5e7eb;
+      border-radius: 999px;
+      background: #ffffff;
+      color: #475569;
+      font-size: 11px;
+      font-weight: 900;
+      white-space: nowrap;
+    }
+    .company-calendar-summary-chip svg {
+      width: 12px;
+      height: 12px;
+      stroke-width: 2.5;
+      color: #2563eb;
+    }
+    .company-calendar-summary-chip.warning svg {
+      color: #c2410c;
+    }
     .company-calendar-legend {
       display: flex;
       flex-wrap: wrap;
@@ -5107,11 +5156,16 @@ HTML = r"""<!doctype html>
             <article class="company-card dashboard-calendar-card">
               <div class="company-calendar-toolbar">
                 <div class="company-calendar-title" id="companyCalendarTitle">캘린더</div>
+                <div class="company-calendar-summary" aria-label="캘린더 요약">
+                  <span class="company-calendar-summary-chip"><i data-lucide="calendar-days"></i><span id="companyCalendarMonthTotal">월 일정 0건</span></span>
+                  <span class="company-calendar-summary-chip"><i data-lucide="clipboard-check"></i><span id="companyCalendarTodayTotal">오늘 0건</span></span>
+                  <span class="company-calendar-summary-chip warning"><i data-lucide="bell"></i><span id="companyCalendarPendingTotal">대기 0건</span></span>
+                </div>
                 <div class="company-calendar-actions">
-                  <button class="crm-mini-button" type="button" id="companyCalendarPrev" aria-label="이전 달"><i data-lucide="chevron-left"></i></button>
-                  <button class="crm-mini-button" type="button" id="companyCalendarToday">오늘</button>
-                  <button class="crm-mini-button" type="button" id="companyCalendarNext" aria-label="다음 달"><i data-lucide="chevron-right"></i></button>
-                  <button class="crm-mini-button" type="button" id="companyCalendarRefresh">새로고침</button>
+                  <button class="crm-mini-button icon-only" type="button" id="companyCalendarPrev" aria-label="이전 달"><i data-lucide="chevron-left"></i></button>
+                  <button class="crm-mini-button" type="button" id="companyCalendarToday"><i data-lucide="calendar-days"></i><span>오늘</span></button>
+                  <button class="crm-mini-button icon-only" type="button" id="companyCalendarNext" aria-label="다음 달"><i data-lucide="chevron-right"></i></button>
+                  <button class="crm-mini-button" type="button" id="companyCalendarRefresh"><i data-lucide="refresh-cw"></i><span>새로고침</span></button>
                 </div>
               </div>
               <div class="company-calendar-legend" aria-label="캘린더 항목 구분">
@@ -6180,8 +6234,8 @@ HTML = r"""<!doctype html>
   </div>
 
   <script type="module">
-    import { createIcons, BriefcaseBusiness, Home, MessageCircle, Info, ChevronDown, ChevronRight, PlusSquare, RefreshCw, Ellipsis, Headphones, Package, ClipboardCheck, CircleDollarSign, FileText, FileSpreadsheet, ClipboardList, BarChart3, CopyCheck, Bell, Download, Truck, Mail, Upload, Database, CalendarDays, X, Settings } from "/lucide/dist/esm/lucide.js";
-    createIcons({ icons: { BriefcaseBusiness, Home, MessageCircle, Info, ChevronDown, ChevronRight, PlusSquare, RefreshCw, Ellipsis, Headphones, Package, ClipboardCheck, CircleDollarSign, FileText, FileSpreadsheet, ClipboardList, BarChart3, CopyCheck, Bell, Download, Truck, Mail, Upload, Database, CalendarDays, X, Settings, "package": Package, "file-text": FileText, "file-spreadsheet": FileSpreadsheet, "truck": Truck } });
+    import { createIcons, BriefcaseBusiness, Home, MessageCircle, Info, ChevronDown, ChevronLeft, ChevronRight, PlusSquare, RefreshCw, Ellipsis, Headphones, Package, ClipboardCheck, CircleDollarSign, FileText, FileSpreadsheet, ClipboardList, BarChart3, CopyCheck, Bell, Download, Truck, Mail, Upload, Database, CalendarDays, X, Settings } from "/lucide/dist/esm/lucide.js";
+    createIcons({ icons: { BriefcaseBusiness, Home, MessageCircle, Info, ChevronDown, ChevronLeft, ChevronRight, PlusSquare, RefreshCw, Ellipsis, Headphones, Package, ClipboardCheck, CircleDollarSign, FileText, FileSpreadsheet, ClipboardList, BarChart3, CopyCheck, Bell, Download, Truck, Mail, Upload, Database, CalendarDays, X, Settings, "package": Package, "file-text": FileText, "file-spreadsheet": FileSpreadsheet, "truck": Truck } });
     function applyDaisyUiClasses() {
       document.querySelectorAll(".workspace-button, .crm-mini-button, .action-button, .logout-button, .top-button").forEach((element) => {
         element.classList.add("btn", "btn-sm");
@@ -6469,6 +6523,9 @@ HTML = r"""<!doctype html>
     const companyCalendarRefresh = document.querySelector("#companyCalendarRefresh");
     const companyCalendarSelectedDate = document.querySelector("#companyCalendarSelectedDate");
     const companyCalendarSelectedList = document.querySelector("#companyCalendarSelectedList");
+    const companyCalendarMonthTotal = document.querySelector("#companyCalendarMonthTotal");
+    const companyCalendarTodayTotal = document.querySelector("#companyCalendarTodayTotal");
+    const companyCalendarPendingTotal = document.querySelector("#companyCalendarPendingTotal");
     const companyCalendarProjectCount = document.querySelector("#companyCalendarProjectCount");
     const companyCalendarTaskCount = document.querySelector("#companyCalendarTaskCount");
     const companyCalendarLeaveCount = document.querySelector("#companyCalendarLeaveCount");
@@ -8745,6 +8802,12 @@ HTML = r"""<!doctype html>
       if (companyCalendarTaskCount) companyCalendarTaskCount.textContent = `${summary.task || 0}건`;
       if (companyCalendarLeaveCount) companyCalendarLeaveCount.textContent = `${summary.leave || 0}건`;
       if (companyCalendarRiskCount) companyCalendarRiskCount.textContent = `${summary.risk || 0}건`;
+      const monthTotal = (summary.project || 0) + (summary.task || 0) + (summary.leave || 0);
+      const todayTotal = companyCalendarEvents.filter((event) => event.date === today).length;
+      const pendingTotal = companyCalendarEvents.filter((event) => event.type === "pending").length;
+      if (companyCalendarMonthTotal) companyCalendarMonthTotal.textContent = `월 일정 ${formatSalesNumber(monthTotal)}건`;
+      if (companyCalendarTodayTotal) companyCalendarTodayTotal.textContent = `오늘 ${formatSalesNumber(todayTotal)}건`;
+      if (companyCalendarPendingTotal) companyCalendarPendingTotal.textContent = `대기 ${formatSalesNumber(pendingTotal)}건`;
       const cells = [];
       for (let index = 0; index < 42; index += 1) {
         const day = new Date(gridStart);
