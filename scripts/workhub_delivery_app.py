@@ -6112,7 +6112,7 @@ HTML = r"""<!doctype html>
         <input id="sidebarSearchInput" name="workhub-menu-search" type="search" placeholder="메뉴 검색" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" />
       </label>
       <div class="nav-section">MAIN</div>
-      <div class="nav-group open" id="companyNavGroup">
+      <div class="nav-group" id="companyNavGroup">
         <button class="nav-item active" id="companyNavToggle" type="button" data-nav-tone="home" data-view="dashboard" data-company-tab="notice">
           <span class="nav-label"><i data-lucide="home"></i> <span>회사 포털</span></span>
           <i class="nav-chevron" data-lucide="chevron-right"></i>
@@ -15200,7 +15200,6 @@ HTML = r"""<!doctype html>
       }
       if (mode === "dashboard") {
         document.querySelector("#companyNavToggle")?.classList.add("active");
-        document.querySelector("#companyNavGroup")?.classList.add("open");
         syncCompanyNavState();
         return;
       }

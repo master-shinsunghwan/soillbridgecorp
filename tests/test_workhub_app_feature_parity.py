@@ -105,6 +105,16 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
             self.assertIn('companyActiveTab === "notice" && panel.dataset.companyPanel === "calendar"', html_source)
             self.assertIn("loadDashboardEntryData().catch", html_source)
 
+    def test_company_portal_sidebar_tree_starts_collapsed(self) -> None:
+        html_source = (ROOT / "scripts" / "workhub_delivery_app.py").read_text(encoding="utf-8")
+
+        self.assertIn('<div class="nav-group" id="companyNavGroup">', html_source)
+        self.assertNotIn('<div class="nav-group open" id="companyNavGroup">', html_source)
+        dashboard_nav_start = html_source.index('if (mode === "dashboard")')
+        dashboard_nav_end = html_source.index('if (mode === "import")', dashboard_nav_start)
+        dashboard_nav_source = html_source[dashboard_nav_start:dashboard_nav_end]
+        self.assertNotIn('document.querySelector("#companyNavGroup")?.classList.add("open")', dashboard_nav_source)
+
     def test_sidebar_navigation_uses_hierarchical_text_colors(self) -> None:
         html_source = (ROOT / "scripts" / "workhub_delivery_app.py").read_text(encoding="utf-8")
 
