@@ -3502,6 +3502,15 @@ HTML = r"""<!doctype html>
       font-weight: 850;
       cursor: pointer;
     }
+    .management-cs-button.compact {
+      height: 22px;
+      min-width: 38px;
+      padding: 0 6px;
+      border-radius: 5px;
+      font-size: 10px;
+      line-height: 1;
+      white-space: nowrap;
+    }
     .management-cs-button:disabled {
       border-color: #7a5a00;
       background: rgba(255,255,255,.46);
@@ -4305,7 +4314,7 @@ HTML = r"""<!doctype html>
     .dashboard-sales-insight strong.sales-negative { color: #b91c1c; }
     .dashboard-sales-compare strong.notice,
     .dashboard-sales-insight strong.notice { color: #64748b; }
-    .dashboard-sales-placeholder {
+    .dashboard-sales-weekly-chart {
       margin-top: 12px;
       padding: 13px 14px;
       border: 1px dashed #cbd5e1;
@@ -4316,6 +4325,26 @@ HTML = r"""<!doctype html>
       font-weight: 850;
       line-height: 1.5;
       text-align: center;
+    }
+    .dashboard-sales-weekly-chart svg {
+      width: 100%;
+      height: 132px;
+      display: block;
+    }
+    .dashboard-sales-weekly-chart .chart-title {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      margin-bottom: 8px;
+      color: #111827;
+      font-size: 12px;
+      font-weight: 950;
+    }
+    .dashboard-sales-weekly-chart .chart-title span:last-child {
+      color: #667085;
+      font-size: 11px;
+      font-weight: 850;
     }
     .company-calendar-toolbar {
       display: flex;
@@ -4374,9 +4403,20 @@ HTML = r"""<!doctype html>
       border-radius: 999px;
       background: #ffffff;
       color: #475569;
+      font-family: inherit;
       font-size: 11px;
       font-weight: 900;
       white-space: nowrap;
+      cursor: pointer;
+    }
+    .company-calendar-summary-chip:hover {
+      border-color: #bfdbfe;
+      background: #f8fbff;
+      color: #155bc8;
+    }
+    .company-calendar-summary-chip:focus-visible {
+      outline: 3px solid rgba(37, 99, 235, .18);
+      outline-offset: 2px;
     }
     .company-calendar-summary-chip svg {
       width: 12px;
@@ -4386,6 +4426,29 @@ HTML = r"""<!doctype html>
     }
     .company-calendar-summary-chip.warning svg {
       color: #c2410c;
+    }
+    .calendar-summary-list {
+      display: grid;
+      gap: 8px;
+    }
+    .calendar-summary-item {
+      width: 100%;
+      min-height: 48px;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 10px;
+      align-items: center;
+      padding: 9px 10px;
+      border: 1px solid #e4ebf5;
+      border-radius: 7px;
+      background: white;
+      text-align: left;
+      font-family: inherit;
+      cursor: pointer;
+    }
+    .calendar-summary-item:hover {
+      border-color: #bfdbfe;
+      background: #f8fbff;
     }
     .company-calendar-legend {
       display: flex;
@@ -6196,9 +6259,9 @@ HTML = r"""<!doctype html>
               <div class="company-calendar-toolbar">
                 <div class="company-calendar-title" id="companyCalendarTitle">캘린더</div>
                 <div class="company-calendar-summary" aria-label="캘린더 요약">
-                  <span class="company-calendar-summary-chip"><i data-lucide="calendar-days"></i><span id="companyCalendarMonthTotal">월 일정 0건</span></span>
-                  <span class="company-calendar-summary-chip"><i data-lucide="clipboard-check"></i><span id="companyCalendarTodayTotal">오늘 0건</span></span>
-                  <span class="company-calendar-summary-chip warning"><i data-lucide="bell"></i><span id="companyCalendarPendingTotal">대기 0건</span></span>
+                  <button class="company-calendar-summary-chip" type="button" data-calendar-summary="month"><i data-lucide="calendar-days"></i><span id="companyCalendarMonthTotal">월 일정 0건</span></button>
+                  <button class="company-calendar-summary-chip" type="button" data-calendar-summary="today"><i data-lucide="clipboard-check"></i><span id="companyCalendarTodayTotal">오늘 0건</span></button>
+                  <button class="company-calendar-summary-chip warning" type="button" data-calendar-summary="pending"><i data-lucide="bell"></i><span id="companyCalendarPendingTotal">대기 0건</span></button>
                 </div>
                 <div class="company-calendar-actions">
                   <button class="crm-mini-button icon-only" type="button" id="companyCalendarPrev" aria-label="이전 달"><i data-lucide="chevron-left"></i></button>
@@ -6272,7 +6335,7 @@ HTML = r"""<!doctype html>
                     <div class="dashboard-sales-insight"><div class="dashboard-sales-insight-top"><span class="dashboard-sales-insight-icon"><i data-lucide="truck"></i></span><span>매입처 총액</span></div><strong id="dashboardSupplierPurchase">-</strong></div>
                     <div class="dashboard-sales-insight"><div class="dashboard-sales-insight-top"><span class="dashboard-sales-insight-icon"><i data-lucide="bar-chart-3"></i></span><span>월 손익마진</span></div><strong id="dashboardSalesMargin">-</strong></div>
                   </div>
-                  <div class="dashboard-sales-placeholder" id="dashboardSalesMessage">매출현황 및 관리 데이터 연결 대기 중</div>
+                  <div class="dashboard-sales-weekly-chart" id="dashboardSalesWeeklyChart">최근 7일 매출 데이터 연결 대기 중</div>
                 </div>
               </article>
             </aside>
@@ -7351,6 +7414,7 @@ HTML = r"""<!doctype html>
             <table class="ledger-table">
               <colgroup>
                 <col class="select-col" data-management-col="select" />
+                <col class="action-col compact-cs-col" data-management-col="cs_action" />
                 <col class="date-col" data-management-col="order_date" />
                 <col class="date-col" data-management-col="ship_date" />
                 <col class="vendor-col" data-management-col="purchase_vendor" />
@@ -7367,11 +7431,11 @@ HTML = r"""<!doctype html>
                 <col class="courier-col" data-management-col="courier" />
                 <col class="original-invoice-col" data-management-col="invoice_number" />
                 <col class="memo-col" data-management-col="memo" />
-                <col class="action-col" data-management-col="cs_action" />
               </colgroup>
               <thead>
                 <tr>
                   <th class="select-head"><input class="ledger-check" id="managementSelectAll" type="checkbox" title="전체 선택" /></th>
+                  <th>CS</th>
                   <th class="has-filter"><span class="ledger-th-title">주문일자</span><button class="ledger-filter-trigger" type="button" data-management-filter-button="order_date" data-label="주문일자">▼</button></th>
                   <th class="has-filter"><span class="ledger-th-title">출고일</span><button class="ledger-filter-trigger" type="button" data-management-filter-button="ship_date" data-label="출고일">▼</button></th>
                   <th class="has-filter"><span class="ledger-th-title">매입거래처</span><button class="ledger-filter-trigger" type="button" data-management-filter-button="purchase_vendor" data-label="매입거래처">▼</button></th>
@@ -7388,7 +7452,6 @@ HTML = r"""<!doctype html>
                   <th class="has-filter"><span class="ledger-th-title">택배사</span><button class="ledger-filter-trigger" type="button" data-management-filter-button="courier" data-label="택배사">▼</button></th>
                   <th class="has-filter"><span class="ledger-th-title">운송장번호</span><button class="ledger-filter-trigger" type="button" data-management-filter-button="invoice_number" data-label="운송장번호">▼</button></th>
                   <th class="has-filter"><span class="ledger-th-title">특이사항</span><button class="ledger-filter-trigger" type="button" data-management-filter-button="memo" data-label="특이사항">▼</button></th>
-                  <th>CS접수</th>
                 </tr>
               </thead>
               <tbody id="managementBody"></tbody>
@@ -7695,7 +7758,7 @@ HTML = r"""<!doctype html>
     const dashboardSalesMargin = document.querySelector("#dashboardSalesMargin");
     const dashboardSellerTotal = document.querySelector("#dashboardSellerTotal");
     const dashboardSupplierPurchase = document.querySelector("#dashboardSupplierPurchase");
-    const dashboardSalesMessage = document.querySelector("#dashboardSalesMessage");
+    const dashboardSalesWeeklyChart = document.querySelector("#dashboardSalesWeeklyChart");
     const salesReportDailyBody = document.querySelector("#salesReportDailyBody");
     const salesReportSellerBody = document.querySelector("#salesReportSellerBody");
     const salesReportProductBody = document.querySelector("#salesReportProductBody");
@@ -10553,6 +10616,50 @@ HTML = r"""<!doctype html>
       `).join("");
     }
 
+    function calendarSummaryEvents(view) {
+      const today = todayString();
+      if (view === "today") return companyCalendarEvents.filter((event) => event.date === today);
+      if (view === "pending") return companyCalendarEvents.filter((event) => event.type === "pending");
+      return companyCalendarEvents.filter((event) => String(event.date || "").startsWith(companyCalendarMonth));
+    }
+
+    function calendarSummaryTitle(view) {
+      if (view === "today") return "오늘 일정";
+      if (view === "pending") return "승인대기 일정";
+      return `${monthTitle(companyCalendarMonth)} 월 일정`;
+    }
+
+    function calendarEventTypeLabel(event) {
+      if (event.type === "project") return "프로젝트";
+      if (event.type === "import") return "컨테이너";
+      if (event.type === "cargo-inbound") return "입고";
+      if (event.type === "cargo") return "출고";
+      if (event.type === "task") return "업무";
+      if (event.type === "pending") return "대기";
+      return "연차";
+    }
+
+    function openCalendarSummaryWidget(view) {
+      const items = calendarSummaryEvents(view);
+      const title = calendarSummaryTitle(view);
+      openFocusWidget({
+        kicker: "캘린더",
+        title,
+        subtitle: `${formatSalesNumber(items.length)}건`,
+        body: items.length
+          ? `<div class="calendar-summary-list">${items.map((event) => `
+              <button class="calendar-summary-item" type="button" data-calendar-event-id="${escapeHtml(event.id)}" aria-label="${escapeHtml(calendarEventLabel(event))}">
+                <div>
+                  <div class="company-task-title">${escapeHtml(shortKoreanDate(event.date))} · ${escapeHtml(event.title || "일정")}</div>
+                  <div class="company-task-meta">${escapeHtml(calendarEventLabel(event))}</div>
+                </div>
+                <span class="calendar-event ${escapeHtml(event.type || "task")}">${escapeHtml(calendarEventTypeLabel(event))}</span>
+              </button>
+            `).join("")}</div>`
+          : `<div class="calendar-empty">표시할 일정이 없습니다.</div>`,
+      });
+    }
+
     function renderCompanyCalendar(payload = {}) {
       if (!companyCalendarGrid) return;
       companyCalendarMonth = payload.month || companyCalendarMonth;
@@ -10646,6 +10753,41 @@ HTML = r"""<!doctype html>
       dashboardSalesStatus.className = `dashboard-sales-status${state ? ` ${state}` : ""}`;
     }
 
+    function renderDashboardSalesWeeklyChart(rows = [], message = "") {
+      if (!dashboardSalesWeeklyChart) return;
+      const weeklyRows = [...(rows || [])]
+        .filter((row) => row && (row.report_date || row.label))
+        .sort((left, right) => String(left.report_date || left.label || "").localeCompare(String(right.report_date || right.label || "")))
+        .slice(-7);
+      if (!weeklyRows.length) {
+        dashboardSalesWeeklyChart.textContent = message || "최근 7일 매출 데이터가 없습니다.";
+        return;
+      }
+      const maxValue = Math.max(...weeklyRows.map((row) => Number(row.profit_sales_amount || 0)), 1);
+      const bars = weeklyRows.map((row, index) => {
+        const value = Number(row.profit_sales_amount || 0);
+        const height = Math.max(4, Math.round((value / maxValue) * 74));
+        const x = 20 + index * 46;
+        const y = 92 - height;
+        const label = shortKoreanDate(row.report_date || row.label || "").replace("월 ", "/").replace("일", "");
+        return `
+          <g>
+            <rect x="${x}" y="${y}" width="24" height="${height}" rx="5" fill="#2563eb"></rect>
+            <text x="${x + 12}" y="112" text-anchor="middle" font-size="9" fill="#64748b">${escapeHtml(label)}</text>
+            <text x="${x + 12}" y="${Math.max(12, y - 6)}" text-anchor="middle" font-size="9" font-weight="800" fill="#111827">${escapeHtml(formatSalesNumber(value))}</text>
+          </g>
+        `;
+      }).join("");
+      const total = weeklyRows.reduce((sum, row) => sum + Number(row.profit_sales_amount || 0), 0);
+      dashboardSalesWeeklyChart.innerHTML = `
+        <div class="chart-title"><span>최근 7일 매출</span><span>합계 ${escapeHtml(formatSalesNumber(total))}</span></div>
+        <svg viewBox="0 0 352 128" role="img" aria-label="최근 7일 매출 현황">
+          <line x1="10" y1="96" x2="342" y2="96" stroke="#e5e7eb" stroke-width="1"></line>
+          ${bars}
+        </svg>
+      `;
+    }
+
     function renderDashboardSalesUnavailable(message) {
       setDashboardSalesStatus("연동 대기");
       setDashboardSalesMetric(dashboardTodaySalesLabel, dashboardTodaySales, "오늘 손익매출", "-");
@@ -10660,7 +10802,7 @@ HTML = r"""<!doctype html>
       setDashboardSalesMetric(null, dashboardSalesMargin, "", "-");
       setDashboardSalesMetric(null, dashboardSellerTotal, "", "-");
       setDashboardSalesMetric(null, dashboardSupplierPurchase, "", "-");
-      if (dashboardSalesMessage) dashboardSalesMessage.textContent = message || "매출현황 및 관리 데이터를 불러오는 중입니다.";
+      renderDashboardSalesWeeklyChart([], message || "매출현황 및 관리 데이터를 불러오는 중입니다.");
     }
 
     function renderDashboardSalesSummary(data) {
@@ -10741,11 +10883,7 @@ HTML = r"""<!doctype html>
       setDashboardSalesMetric(null, dashboardSalesMargin, "", formatSalesNumber(marginAmount), salesAmountClass(marginAmount));
       setDashboardSalesMetric(null, dashboardSellerTotal, "", formatSalesNumber(sellerTotal.profit_sales_amount));
       setDashboardSalesMetric(null, dashboardSupplierPurchase, "", formatSalesNumber(supplierPurchaseTotal.purchase_total));
-      if (dashboardSalesMessage) {
-        dashboardSalesMessage.textContent = hasComparison
-          ? `매출현황 및 관리 데이터 기준 · ${periodLabel} · 증감액 ${formatSalesNumber(comparisonDelta)}`
-          : "금일 매출 데이터 업로드 후 전영업일 대비가 표시됩니다.";
-      }
+      renderDashboardSalesWeeklyChart(data.daily_rows || [], hasComparison ? "" : "금일 매출 데이터 업로드 후 최근 7일 그래프가 표시됩니다.");
     }
 
     async function loadDashboardSalesSummary() {
@@ -10762,7 +10900,7 @@ HTML = r"""<!doctype html>
         renderDashboardSalesSummary(data);
       } catch (error) {
         setDashboardSalesStatus("연동 오류", "warning");
-        if (dashboardSalesMessage) dashboardSalesMessage.textContent = error.message || "매출현황을 불러오지 못했습니다.";
+        renderDashboardSalesWeeklyChart([], error.message || "매출현황을 불러오지 못했습니다.");
       }
     }
 
@@ -11942,6 +12080,7 @@ HTML = r"""<!doctype html>
       const payload = latestNoticeRecord() || { date: todayString(), title: "", owner: "", body: "" };
       focusWidgetTaskId = "";
       focusWidgetEmployeeId = "";
+      closeNoticePopup();
       const meta = [shortKoreanDate(payload.date), payload.owner ? `담당 ${payload.owner}` : ""].filter(Boolean).join(" / ");
       openFocusWidget({
         kicker: "공지사항",
@@ -13665,7 +13804,7 @@ HTML = r"""<!doctype html>
         courier: { min: 70, max: 112, header: "택배사" },
         invoice_number: { min: 104, max: 170, header: "운송장번호" },
         memo: { min: 120, max: 210, header: "특이사항" },
-        cs_action: { min: 74, max: 86, header: "CS접수" },
+        cs_action: { min: 46, max: 56, header: "CS" },
       };
       const sample = (records || []).slice(0, 500);
       document.querySelectorAll('.management-wrap col[data-management-col]').forEach((col) => {
@@ -13732,6 +13871,7 @@ HTML = r"""<!doctype html>
         if (csReceived) row.classList.add("management-cs-received");
         row.innerHTML = `
           <td><input class="ledger-check" type="checkbox" data-row-check /></td>
+          <td><button class="management-cs-button compact" type="button" ${csReceived ? "disabled" : ""}>${csReceived ? "완료" : "CS"}</button></td>
           ${editableCell({ scope: "management", field: "order_date", label: "주문일자", value: record.order_date, date: true, input: "date" })}
           ${editableCell({ scope: "management", field: "ship_date", label: "출고일", value: record.ship_date, date: true, input: "date" })}
           ${editableCell({ scope: "management", field: "purchase_vendor", label: "매입거래처", value: record.purchase_vendor })}
@@ -13748,7 +13888,6 @@ HTML = r"""<!doctype html>
           ${editableCell({ scope: "management", field: "courier", label: "택배사", value: record.courier })}
           ${editableCell({ scope: "management", field: "invoice_number", label: "운송장번호", value: record.invoice_number })}
           ${editableCell({ scope: "management", field: "memo", label: "특이사항", value: record.memo, align: "left", input: "textarea" })}
-          <td><button class="management-cs-button" type="button" ${csReceived ? "disabled" : ""}>${csReceived ? "접수완료" : "CS접수"}</button></td>
         `;
         applyRowPermissions(row);
         managementBody.appendChild(row);
@@ -15490,6 +15629,9 @@ HTML = r"""<!doctype html>
     companyCalendarRefresh?.addEventListener("click", () => loadCompanyCalendar().catch(() => {
       if (companyCalendarGrid) companyCalendarGrid.innerHTML = `<div class="calendar-empty">캘린더를 새로고침하지 못했습니다.</div>`;
     }));
+    document.querySelectorAll("[data-calendar-summary]").forEach((button) => {
+      button.addEventListener("click", () => openCalendarSummaryWidget(button.dataset.calendarSummary));
+    });
     companyCalendarGrid?.addEventListener("click", (event) => {
       const eventButton = event.target.closest("[data-calendar-event-id]");
       if (eventButton) {
@@ -15849,6 +15991,11 @@ HTML = r"""<!doctype html>
       const openTaskButton = event.target.closest("[data-focus-open-task]");
       if (openTaskButton) {
         openCrmTaskWidget(openTaskButton.dataset.focusOpenTask).catch((error) => setCrmMessage(error.message, true));
+        return;
+      }
+      const openCalendarEventButton = event.target.closest("[data-calendar-event-id]");
+      if (openCalendarEventButton) {
+        openCalendarEventWidget(openCalendarEventButton.dataset.calendarEventId);
         return;
       }
       const filterProjectButton = event.target.closest("[data-focus-filter-project]");

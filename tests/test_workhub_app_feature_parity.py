@@ -92,7 +92,10 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
             sales_panel_start = html_source.index('id="dashboardSalesPanel"')
             sales_panel_end = html_source.index('</aside>', sales_panel_start)
             sales_panel_html = html_source[sales_panel_start:sales_panel_end]
-            self.assertIn("매출현황 및 관리 데이터 연결 대기 중", sales_panel_html)
+            self.assertTrue(
+                'id="dashboardSalesWeeklyChart"' in sales_panel_html
+                or "매출현황 및 관리 데이터 연결 대기 중" in sales_panel_html
+            )
             self.assertNotIn("선택한 날짜", sales_panel_html)
             self.assertNotIn("이번 달 요약", sales_panel_html)
             self.assertIn(".dashboard-calendar-panel", html_source)
@@ -185,6 +188,63 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         ledger_click_end = html_source.index('ledgerBody.addEventListener("dblclick"', ledger_click_start)
         self.assertNotIn('openCellEditor("management", editableCell)', html_source[management_click_start:management_click_end])
         self.assertNotIn('openCellEditor("ledger", editableCell)', html_source[ledger_click_start:ledger_click_end])
+
+    def test_management_cs_button_sits_next_to_row_selector_as_compact_action(self) -> None:
+        html_source = (ROOT / "scripts" / "workhub_delivery_app.py").read_text(encoding="utf-8")
+
+        colgroup_start = html_source.index('<col class="select-col" data-management-col="select"')
+        order_date_col = html_source.index('data-management-col="order_date"', colgroup_start)
+        cs_action_col = html_source.index('data-management-col="cs_action"', colgroup_start)
+        self.assertLess(cs_action_col, order_date_col)
+        self.assertIn('<col class="action-col compact-cs-col" data-management-col="cs_action" />', html_source)
+        self.assertNotIn('<col class="action-col" data-management-col="cs_action" />', html_source)
+
+        row_template_start = html_source.index('row.innerHTML = `', html_source.index('function renderManagement(records)'))
+        first_checkbox = html_source.index('data-row-check', row_template_start)
+        first_editable_cell = html_source.index('field: "order_date"', row_template_start)
+        cs_button = html_source.index('class="management-cs-button compact"', row_template_start)
+        self.assertLess(first_checkbox, cs_button)
+        self.assertLess(cs_button, first_editable_cell)
+
+        self.assertIn('cs_action: { min: 46, max: 56', html_source)
+        self.assertIn('.management-cs-button.compact', html_source)
+
+    def test_notice_preview_click_opens_read_only_focus_widget_not_input_popup(self) -> None:
+        html_source = (ROOT / "scripts" / "workhub_delivery_app.py").read_text(encoding="utf-8")
+
+        open_notice_start = html_source.index("function openNoticeWidget()")
+        open_notice_end = html_source.index("function openCompanyCardWidget", open_notice_start)
+        open_notice_source = html_source[open_notice_start:open_notice_end]
+        self.assertIn("closeNoticePopup();", open_notice_source)
+        self.assertIn("openFocusWidget({", open_notice_source)
+        self.assertNotIn("openNoticePopup(", open_notice_source)
+
+        preview_click_start = html_source.index('sidebarNoticePreview?.addEventListener("click"')
+        preview_click_end = html_source.index('sidebarNoticePreview?.addEventListener("keydown"', preview_click_start)
+        preview_click_source = html_source[preview_click_start:preview_click_end]
+        self.assertIn("openNoticeWidget();", preview_click_source)
+        self.assertNotIn("openNoticePopup", preview_click_source)
+
+    def test_dashboard_calendar_summary_chips_open_event_lists(self) -> None:
+        html_source = (ROOT / "scripts" / "workhub_delivery_app.py").read_text(encoding="utf-8")
+
+        for view in ("month", "today", "pending"):
+            self.assertIn(f'data-calendar-summary="{view}"', html_source)
+        self.assertIn("function calendarSummaryEvents(view)", html_source)
+        self.assertIn("function openCalendarSummaryWidget(view)", html_source)
+        self.assertIn('document.querySelectorAll("[data-calendar-summary]")', html_source)
+        self.assertIn("openCalendarSummaryWidget(button.dataset.calendarSummary)", html_source)
+        self.assertIn("calendar-summary-list", html_source)
+
+    def test_dashboard_sales_message_is_replaced_by_weekly_sales_chart(self) -> None:
+        html_source = (ROOT / "scripts" / "workhub_delivery_app.py").read_text(encoding="utf-8")
+
+        self.assertIn('id="dashboardSalesWeeklyChart"', html_source)
+        self.assertNotIn('id="dashboardSalesMessage"', html_source)
+        self.assertIn("function renderDashboardSalesWeeklyChart", html_source)
+        self.assertIn("dashboard-sales-weekly-chart", html_source)
+        self.assertIn("최근 7일 매출", html_source)
+        self.assertIn("slice(-7)", html_source)
 
     def test_cs_mail_flow_supports_mail_attachments_without_ledger_sidebar_entry(self) -> None:
         html_source = (ROOT / "scripts" / "workhub_delivery_app.py").read_text(encoding="utf-8")
