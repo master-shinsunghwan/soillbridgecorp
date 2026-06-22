@@ -41,4 +41,5 @@ python scripts\workhub_delivery_app.py 8770
 ## Handoff
 
 - Handoff note: `WORKHUB_HANDOFF_20260622.md`
-- Transfer package: include `config/workhub.db`, and exclude `.git`, `node_modules`, caches, and sensitive mail/token files.
+- Transfer package: include `config/workhub.db`; for other-PC checks, use the portable ZIP that also includes `runtime/python`.
+- Exclude `.git`, `node_modules`, caches, and sensitive mail/token files.

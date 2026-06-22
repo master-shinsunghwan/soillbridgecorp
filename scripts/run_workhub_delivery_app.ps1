@@ -5,12 +5,19 @@ $Root = Split-Path -Parent $ScriptDir
 $App = Join-Path $ScriptDir "workhub_delivery_app.py"
 $Port = if ($env:WORKHUB_PORT) { [int]$env:WORKHUB_PORT } else { 8770 }
 $Url = "http://127.0.0.1:$Port"
+$LogPath = Join-Path $Root "workhub_run_error.log"
 
 $PythonCandidates = @(
+  (Join-Path $Root "runtime\python\python.exe"),
   (Join-Path $env:USERPROFILE ".cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe"),
   "python",
   "py"
 )
+
+function Write-RunLog($Message) {
+  $Timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+  Add-Content -LiteralPath $LogPath -Encoding UTF8 -Value "[$Timestamp] $Message"
+}
 
 function Find-Python {
   foreach ($Candidate in $PythonCandidates) {
@@ -29,8 +36,8 @@ function Find-Python {
 
 function Test-Workhub {
   try {
-    $Response = Invoke-WebRequest -UseBasicParsing -Uri $Url -TimeoutSec 1
-    return ($Response.StatusCode -eq 200)
+    $Response = Invoke-WebRequest -UseBasicParsing -Uri "$Url/login" -TimeoutSec 1
+    return ($Response.StatusCode -eq 200 -and ($Response.Content -like "*소일브릿지*" -or $Response.Content -like "*로그인*"))
   } catch {
     return $false
   }
@@ -55,18 +62,27 @@ function Ensure-Requirements($Python) {
 }
 
 if (-not (Test-Path -LiteralPath $App)) {
+  Write-RunLog "App file missing: $App"
   throw "Workhub app file was not found: $App"
 }
 
 if (-not (Test-Workhub)) {
-  $Python = Find-Python
-  Ensure-Requirements $Python
+  try {
+    $Python = Find-Python
+    Write-RunLog "Using Python: $Python"
+    Ensure-Requirements $Python
 
-  Start-Process `
-    -FilePath $Python `
-    -ArgumentList @("`"$App`"", "$Port") `
-    -WorkingDirectory $Root `
-    -WindowStyle Hidden
+    $Process = Start-Process `
+      -FilePath $Python `
+      -ArgumentList @("`"$App`"", "$Port") `
+      -WorkingDirectory $Root `
+      -WindowStyle Hidden `
+      -PassThru
+    Write-RunLog "Started Workhub process id: $($Process.Id), port: $Port"
+  } catch {
+    Write-RunLog "Startup failed: $($_.Exception.Message)"
+    throw
+  }
 
   $Ready = $false
   for ($i = 0; $i -lt 20; $i++) {
@@ -78,8 +94,10 @@ if (-not (Test-Workhub)) {
   }
 
   if (-not $Ready) {
+    Write-RunLog "Workhub did not respond on $Url/login"
     throw "Workhub did not start in time. Wait a moment and run this file again."
   }
 }
 
+Write-RunLog "Opening $Url"
 Start-Process $Url
