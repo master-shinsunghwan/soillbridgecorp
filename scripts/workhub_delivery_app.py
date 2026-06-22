@@ -170,7 +170,68 @@ DEFAULT_ROLE_PERMISSIONS = {
     "user": ("ledger_edit", "excel_download", "cs_receive", "leave_view", "crm_view"),
 }
 LUCIDE_FALLBACK_JS = """
-export function createIcons() {}
+const fallbackPaths = {
+  "bar-chart-3": "M3 3v18h18|M8 17V9|M13 17V5|M18 17v-7",
+  "bell": "M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9|M10 21h4",
+  "briefcase-business": "M10 6V5a2 2 0 0 1 2-2h0a2 2 0 0 1 2 2v1|M3 8h18v11H3z|M3 13h18",
+  "calendar-days": "M7 3v4|M17 3v4|M3 9h18|M5 5h14a2 2 0 0 1 2 2v12H3V7a2 2 0 0 1 2-2z",
+  "chevron-down": "M6 9l6 6 6-6",
+  "chevron-left": "M15 18l-6-6 6-6",
+  "chevron-right": "M9 18l6-6-6-6",
+  "circle-dollar-sign": "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18|M15 9.5c-.6-1-1.8-1.5-3-1.5-1.7 0-3 .8-3 2s1.2 1.8 3 2 3 .8 3 2-1.3 2-3 2c-1.2 0-2.4-.5-3-1.5|M12 6v12",
+  "clipboard-check": "M9 4h6l1 2h3v15H5V6h3z|M9 13l2 2 4-5",
+  "clipboard-list": "M9 4h6l1 2h3v15H5V6h3z|M9 11h6|M9 15h6",
+  "copy-check": "M8 8h10v12H8z|M6 16H4V4h12v2|M10 14l2 2 4-5",
+  "database": "M4 6c0-2 16-2 16 0v12c0 2-16 2-16 0z|M4 6c0 2 16 2 16 0|M4 12c0 2 16 2 16 0",
+  "download": "M12 3v12|M7 10l5 5 5-5|M5 21h14",
+  "ellipsis": "M5 12h.01|M12 12h.01|M19 12h.01",
+  "file-spreadsheet": "M6 3h9l3 3v15H6z|M9 13h6|M9 17h6|M9 9h2",
+  "file-text": "M6 3h9l3 3v15H6z|M9 10h6|M9 14h6|M9 18h4",
+  "headphones": "M4 14v-2a8 8 0 0 1 16 0v2|M4 14h4v6H4z|M16 14h4v6h-4z",
+  "home": "M3 11l9-8 9 8|M5 10v10h14V10|M9 20v-6h6v6",
+  "info": "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18|M12 10v6|M12 7h.01",
+  "log-out": "M10 17l5-5-5-5|M15 12H3|M21 3v18h-7",
+  "mail": "M4 5h16v14H4z|M4 7l8 6 8-6",
+  "message-circle": "M21 11.5a8.5 8.5 0 0 1-12.5 7.5L3 21l2-5.5A8.5 8.5 0 1 1 21 11.5z",
+  "package": "M4 7l8-4 8 4-8 4z|M4 7v10l8 4 8-4V7|M12 11v10",
+  "plus-square": "M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z|M12 8v8|M8 12h8",
+  "refresh-cw": "M20 6v6h-6|M4 18v-6h6|M20 12a8 8 0 0 0-14-5|M4 12a8 8 0 0 0 14 5",
+  "search": "M11 19a8 8 0 1 1 0-16 8 8 0 0 1 0 16|M21 21l-4.3-4.3",
+  "settings": "M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6|M19 12a7 7 0 0 0-.1-1l2-1.5-2-3.5-2.4 1a7 7 0 0 0-1.7-1L14.5 3h-5l-.3 3a7 7 0 0 0-1.7 1l-2.4-1-2 3.5L5.1 11a7 7 0 0 0 0 2l-2 1.5 2 3.5 2.4-1a7 7 0 0 0 1.7 1l.3 3h5l.3-3a7 7 0 0 0 1.7-1l2.4 1 2-3.5-2-1.5a7 7 0 0 0 .1-1z",
+  "truck": "M3 6h11v10H3z|M14 10h4l3 3v3h-7z|M7 20a2 2 0 1 0 0-4 2 2 0 0 0 0 4|M18 20a2 2 0 1 0 0-4 2 2 0 0 0 0 4",
+  "upload": "M12 21V9|M7 14l5-5 5 5|M5 3h14",
+  "warehouse": "M3 10l9-6 9 6v10H3z|M7 20v-6h10v6|M9 14v6|M15 14v6",
+  "x": "M6 6l12 12|M18 6L6 18",
+  "default": "M4 4h16v16H4z|M8 8h8v8H8z"
+};
+
+function fallbackName(name) {
+  return String(name || "default").replace(/[A-Z]/g, (match, offset) => `${offset ? "-" : ""}${match.toLowerCase()}`);
+}
+
+export function createIcons() {
+  document.querySelectorAll("[data-lucide]").forEach((node) => {
+    const name = fallbackName(node.getAttribute("data-lucide"));
+    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    svg.setAttribute("viewBox", "0 0 24 24");
+    svg.setAttribute("width", node.getAttribute("width") || "24");
+    svg.setAttribute("height", node.getAttribute("height") || "24");
+    svg.setAttribute("fill", "none");
+    svg.setAttribute("stroke", "currentColor");
+    svg.setAttribute("stroke-width", "2");
+    svg.setAttribute("stroke-linecap", "round");
+    svg.setAttribute("stroke-linejoin", "round");
+    svg.setAttribute("aria-hidden", "true");
+    svg.setAttribute("data-lucide", name);
+    if (node.className) svg.setAttribute("class", node.className);
+    (fallbackPaths[name] || fallbackPaths.default).split("|").forEach((pathData) => {
+      const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+      path.setAttribute("d", pathData);
+      svg.appendChild(path);
+    });
+    node.replaceWith(svg);
+  });
+}
 export const BriefcaseBusiness = {};
 export const Home = {};
 export const MessageCircle = {};
@@ -12935,6 +12996,11 @@ HTML = r"""<!doctype html>
       setTimeout(() => vendorNameInput?.focus(), 0);
     }
 
+    function openLedgerCsIntakeModal() {
+      if (openModal("ledger") === false) return;
+      openLedgerCsPopup();
+    }
+
     function closeLedgerCsPopup() {
       csFields.classList.remove("ledger-cs-popup");
       if (currentMode === "ledger") csFields.style.display = "none";
@@ -15918,7 +15984,7 @@ HTML = r"""<!doctype html>
         closeLedgerFilter();
       }
     });
-    ledgerAddCs.addEventListener("click", openLedgerCsPopup);
+    ledgerAddCs.addEventListener("click", openLedgerCsIntakeModal);
     ledgerCsPopupClose.addEventListener("click", closeLedgerCsPopup);
     ledgerImportInput.addEventListener("change", uploadLedgerWorkbook);
     managementRefresh.addEventListener("click", () => loadManagementRecords({ showPicker: true }));

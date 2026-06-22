@@ -367,6 +367,24 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         self.assertIn(".workhub-modal.attention,", html_source)
         self.assertIn(".app-confirm-dialog.attention", html_source)
 
+    def test_ledger_cs_add_button_opens_visible_cs_intake_modal(self) -> None:
+        html_source = (ROOT / "scripts" / "workhub_delivery_app.py").read_text(encoding="utf-8")
+
+        self.assertIn("function openLedgerCsIntakeModal()", html_source)
+        self.assertIn('if (openModal("ledger") === false) return;', html_source)
+        self.assertIn("openLedgerCsPopup();", html_source)
+        self.assertIn('ledgerAddCs.addEventListener("click", openLedgerCsIntakeModal)', html_source)
+        self.assertNotIn('ledgerAddCs.addEventListener("click", openLedgerCsPopup)', html_source)
+
+    def test_lucide_fallback_renders_sidebar_icons_without_node_modules(self) -> None:
+        html_source = (ROOT / "scripts" / "workhub_delivery_app.py").read_text(encoding="utf-8")
+
+        self.assertNotIn("export function createIcons() {}", html_source)
+        self.assertIn('document.querySelectorAll("[data-lucide]")', html_source)
+        self.assertIn("node.replaceWith(svg)", html_source)
+        for icon_name in ("home", "truck", "clipboard-list", "database", "clipboard-check", "message-circle", "settings"):
+            self.assertIn(f'"{icon_name}":', html_source)
+
     def test_naver_mail_defaults_are_managed_from_admin_workspace(self) -> None:
         for app_file in (
             ROOT / "scripts" / "workhub_delivery_app.py",
