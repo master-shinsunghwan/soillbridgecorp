@@ -371,9 +371,16 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         html_source = (ROOT / "scripts" / "workhub_delivery_app.py").read_text(encoding="utf-8")
 
         self.assertIn("function openLedgerCsIntakeModal()", html_source)
-        self.assertIn('if (openModal("ledger") === false) return;', html_source)
+        self.assertNotIn('if (openModal("ledger") === false) return;', html_source)
+        self.assertIn('currentMode = "cs-intake";', html_source)
+        self.assertIn('modalPanel.classList.add("cs-intake-modal");', html_source)
+        self.assertIn("function closeLedgerCsIntakeModal()", html_source)
+        self.assertIn(".workhub-modal.cs-intake-modal", html_source)
         self.assertIn("openLedgerCsPopup();", html_source)
-        self.assertIn('ledgerAddCs.addEventListener("click", openLedgerCsIntakeModal)', html_source)
+        self.assertIn('ledgerAddCs.addEventListener("click", (event) => {', html_source)
+        self.assertIn("event.stopPropagation();", html_source)
+        self.assertIn("openLedgerCsIntakeModal();", html_source)
+        self.assertIn('if (currentMode === "cs-intake") closeLedgerCsIntakeModal();', html_source)
         self.assertNotIn('ledgerAddCs.addEventListener("click", openLedgerCsPopup)', html_source)
 
     def test_lucide_fallback_renders_sidebar_icons_without_node_modules(self) -> None:
@@ -384,6 +391,30 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         self.assertIn("node.replaceWith(svg)", html_source)
         for icon_name in ("home", "truck", "clipboard-list", "database", "clipboard-check", "message-circle", "settings"):
             self.assertIn(f'"{icon_name}":', html_source)
+
+    def test_sidebar_nav_uses_colored_menu_icon_tones(self) -> None:
+        html_source = (ROOT / "scripts" / "workhub_delivery_app.py").read_text(encoding="utf-8")
+
+        for tone in ("home", "import", "order", "management", "cs", "crm", "mail", "leave", "sales", "admin", "files"):
+            self.assertIn(f'.nav-item[data-nav-tone="{tone}"]', html_source)
+            self.assertIn(f'data-nav-tone="{tone}"', html_source)
+        self.assertIn('id="ledgerNavToggle" type="button" data-nav-tone="cs"', html_source)
+        self.assertIn('<i data-lucide="headphones"></i> <span>CS', html_source)
+
+    def test_cs_vendor_picker_is_purchase_search_input(self) -> None:
+        html_source = (ROOT / "scripts" / "workhub_delivery_app.py").read_text(encoding="utf-8")
+        cs_fields_start = html_source.index('class="cs-fields" id="csFields"')
+        recipient_field = html_source.index('id="recipientEmailInput"', cs_fields_start)
+        cs_contact_slice = html_source[cs_fields_start:recipient_field]
+
+        self.assertIn('id="vendorContactSelect" type="text" list="vendorContactOptions"', cs_contact_slice)
+        self.assertIn('id="vendorContactOptions"', cs_contact_slice)
+        self.assertIn('id="vendorTypeSelect" name="vendor_type" type="hidden" value="purchase"', cs_contact_slice)
+        self.assertNotIn('<select id="vendorTypeSelect"', cs_contact_slice)
+        self.assertIn("function findPurchaseVendorContact(value)", html_source)
+        self.assertIn('(contact.vendor_type || "purchase") === "purchase"', html_source)
+        self.assertIn('vendorContactSelect.addEventListener("input", applySelectedVendor)', html_source)
+        self.assertIn('vendor_type: "purchase"', html_source)
 
     def test_naver_mail_defaults_are_managed_from_admin_workspace(self) -> None:
         for app_file in (

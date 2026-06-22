@@ -733,10 +733,28 @@ HTML = r"""<!doctype html>
     }
     .nav-item.active {
       color: var(--sidebar-text-primary);
-      background: rgba(72, 118, 255, .28);
+      background: var(--nav-active-bg, rgba(72, 118, 255, .28));
       box-shadow: inset 0 0 0 1px rgba(255,255,255,.08);
     }
     .nav-item svg { width: 13px; height: 13px; flex: 0 0 auto; color: var(--sidebar-text-muted); }
+    .nav-item .nav-label > svg,
+    .nav-item > svg:not(.nav-chevron) {
+      width: 16px;
+      height: 16px;
+      color: var(--nav-icon, var(--sidebar-text-muted));
+      stroke-width: 2.45;
+    }
+    .nav-item[data-nav-tone="home"] { --nav-icon: #60a5fa; --nav-active-bg: rgba(37, 99, 235, .28); }
+    .nav-item[data-nav-tone="import"] { --nav-icon: #34d399; --nav-active-bg: rgba(5, 150, 105, .24); }
+    .nav-item[data-nav-tone="order"] { --nav-icon: #38bdf8; --nav-active-bg: rgba(14, 165, 233, .24); }
+    .nav-item[data-nav-tone="management"] { --nav-icon: #22c55e; --nav-active-bg: rgba(34, 197, 94, .22); }
+    .nav-item[data-nav-tone="cs"] { --nav-icon: #fb7185; --nav-active-bg: rgba(244, 63, 94, .22); }
+    .nav-item[data-nav-tone="crm"] { --nav-icon: #a78bfa; --nav-active-bg: rgba(124, 58, 237, .24); }
+    .nav-item[data-nav-tone="mail"] { --nav-icon: #2dd4bf; --nav-active-bg: rgba(20, 184, 166, .22); }
+    .nav-item[data-nav-tone="leave"] { --nav-icon: #facc15; --nav-active-bg: rgba(234, 179, 8, .20); }
+    .nav-item[data-nav-tone="sales"] { --nav-icon: #4ade80; --nav-active-bg: rgba(22, 163, 74, .22); }
+    .nav-item[data-nav-tone="admin"] { --nav-icon: #fbbf24; --nav-active-bg: rgba(245, 158, 11, .22); }
+    .nav-item[data-nav-tone="files"] { --nav-icon: #5eead4; --nav-active-bg: rgba(13, 148, 136, .20); }
     .nav-item .nav-label {
       display: flex;
       align-items: center;
@@ -755,12 +773,13 @@ HTML = r"""<!doctype html>
     }
     .nav-item:hover svg,
     .nav-item.active svg {
-      color: var(--sidebar-accent);
+      color: var(--nav-icon, var(--sidebar-accent));
     }
     .nav-item .nav-chevron {
       margin-left: auto;
       width: 10px;
       height: 10px;
+      color: var(--sidebar-text-muted);
       transition: transform .16s ease;
     }
     .nav-group.open .nav-chevron { transform: rotate(90deg); }
@@ -2611,6 +2630,43 @@ HTML = r"""<!doctype html>
     .ledger-fields { display: none; }
     .management-fields { display: none; }
     .ledger-cs-popup-head { display: none; }
+    .workhub-modal.cs-intake-modal {
+      width: min(620px, calc(100vw - 48px));
+      max-width: 620px;
+      max-height: calc(100vh - 72px);
+      margin-left: auto;
+      align-self: center;
+      padding: 0;
+      overflow: hidden;
+    }
+    .workhub-modal.cs-intake-modal .workhub-modal-head,
+    .workhub-modal.cs-intake-modal .drop-label,
+    .workhub-modal.cs-intake-modal .dropzone,
+    .workhub-modal.cs-intake-modal .delivery-options,
+    .workhub-modal.cs-intake-modal .template-upload,
+    .workhub-modal.cs-intake-modal .vehicle-fields,
+    .workhub-modal.cs-intake-modal .stock-notice-fields,
+    .workhub-modal.cs-intake-modal .vendor-contact-manage-fields,
+    .workhub-modal.cs-intake-modal .ledger-fields,
+    .workhub-modal.cs-intake-modal .management-fields,
+    .workhub-modal.cs-intake-modal .message-placeholder,
+    .workhub-modal.cs-intake-modal .modal-actions {
+      display: none !important;
+    }
+    .workhub-modal.cs-intake-modal #uploadForm { display: block; }
+    .workhub-modal.cs-intake-modal .cs-fields.ledger-cs-popup {
+      position: static;
+      z-index: auto;
+      display: block !important;
+      width: auto;
+      max-height: calc(100vh - 72px);
+      overflow: auto;
+      padding: 18px;
+      border: 0;
+      border-radius: 10px;
+      background: white;
+      box-shadow: none;
+    }
     .workhub-modal.ledger-modal .cs-fields.ledger-cs-popup {
       position: absolute;
       z-index: 35;
@@ -2625,6 +2681,19 @@ HTML = r"""<!doctype html>
       border-radius: 10px;
       background: white;
       box-shadow: 0 18px 44px rgba(15, 23, 42, .28);
+    }
+    .workhub-modal.cs-intake-modal .cs-fields.ledger-cs-popup .ledger-cs-popup-head {
+      position: sticky;
+      top: -18px;
+      z-index: 2;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin: -18px -18px 14px;
+      padding: 15px 18px;
+      border-bottom: 1px solid #d7dce5;
+      background: white;
     }
     .workhub-modal.ledger-modal .cs-fields.ledger-cs-popup .ledger-cs-popup-head {
       position: sticky;
@@ -5981,7 +6050,7 @@ HTML = r"""<!doctype html>
       </label>
       <div class="nav-section">MAIN</div>
       <div class="nav-group open" id="companyNavGroup">
-        <button class="nav-item active" id="companyNavToggle" type="button" data-view="dashboard" data-company-tab="notice">
+        <button class="nav-item active" id="companyNavToggle" type="button" data-nav-tone="home" data-view="dashboard" data-company-tab="notice">
           <span class="nav-label"><i data-lucide="home"></i> <span>회사 포털</span></span>
           <i class="nav-chevron" data-lucide="chevron-right"></i>
         </button>
@@ -5995,7 +6064,7 @@ HTML = r"""<!doctype html>
         </div>
       </div>
       <div class="nav-group" id="importNavGroup">
-        <button class="nav-item" id="importNavToggle" type="button" data-open="import">
+        <button class="nav-item" id="importNavToggle" type="button" data-nav-tone="import" data-open="import">
           <span class="nav-label"><i data-lucide="truck"></i> <span>수출입 업무 및 화물 입 출고 관리</span></span>
           <i class="nav-chevron" data-lucide="chevron-right"></i>
         </button>
@@ -6006,12 +6075,12 @@ HTML = r"""<!doctype html>
         </div>
       </div>
       <div class="nav-group" id="orderNavGroup">
-        <button class="nav-item" id="orderNavToggle" type="button" data-open="order">
+        <button class="nav-item" id="orderNavToggle" type="button" data-nav-tone="order" data-open="order">
           <span class="nav-label"><i data-lucide="clipboard-list"></i> <span>발주업무</span></span>
         </button>
       </div>
       <div class="nav-group" id="managementNavGroup">
-        <button class="nav-item" id="managementNavToggle" type="button" data-open="management">
+        <button class="nav-item" id="managementNavToggle" type="button" data-nav-tone="management" data-open="management">
           <span class="nav-label"><i data-lucide="database"></i> <span>통합관리대장 관리</span></span>
           <i class="nav-chevron" data-lucide="chevron-right"></i>
         </button>
@@ -6020,8 +6089,8 @@ HTML = r"""<!doctype html>
         </div>
       </div>
       <div class="nav-group" id="ledgerNavGroup">
-        <button class="nav-item" id="ledgerNavToggle" type="button" data-open="ledger">
-          <span class="nav-label"><i data-lucide="clipboard-check"></i> <span>CS 처리대장</span></span>
+        <button class="nav-item" id="ledgerNavToggle" type="button" data-nav-tone="cs" data-open="ledger">
+          <span class="nav-label"><i data-lucide="headphones"></i> <span>CS 처리대장</span></span>
           <i class="nav-chevron" data-lucide="chevron-right"></i>
         </button>
         <div class="nav-submenu">
@@ -6030,7 +6099,7 @@ HTML = r"""<!doctype html>
         </div>
       </div>
       <div class="nav-group" id="crmNavGroup">
-        <button class="nav-item" id="crmNavToggle" type="button" data-open="crm" data-crm-nav-tab="dashboard">
+        <button class="nav-item" id="crmNavToggle" type="button" data-nav-tone="crm" data-open="crm" data-crm-nav-tab="dashboard">
           <span class="nav-label"><i data-lucide="message-circle"></i> <span>업무관리</span></span>
           <i class="nav-chevron" data-lucide="chevron-right"></i>
         </button>
@@ -6043,7 +6112,7 @@ HTML = r"""<!doctype html>
         </div>
       </div>
       <div class="nav-group" id="distributionMailNavGroup">
-        <button class="nav-item" id="distributionMailNavToggle" type="button">
+        <button class="nav-item" id="distributionMailNavToggle" type="button" data-nav-tone="mail">
           <span class="nav-label"><i data-lucide="mail"></i> <span>거래처 업무관련</span></span>
           <i class="nav-chevron" data-lucide="chevron-right"></i>
         </button>
@@ -6057,7 +6126,7 @@ HTML = r"""<!doctype html>
       __SALES_REPORT_NAV__
       __ADMIN_TOOLS_NAV__
       <div class="nav-section">보조 도구</div>
-      <button class="nav-item" type="button" data-open="fileLibrary"><i data-lucide="download"></i> <span>업무 파일 자료실</span></button>
+      <button class="nav-item" type="button" data-nav-tone="files" data-open="fileLibrary"><i data-lucide="download"></i> <span>업무 파일 자료실</span></button>
     </aside>
 
     <main>
@@ -7013,16 +7082,9 @@ HTML = r"""<!doctype html>
           </div>
           <div class="text-field">
             <label class="field-label" for="vendorContactSelect">거래처 선택</label>
-            <select id="vendorContactSelect">
-              <option value="">업체를 선택해주세요</option>
-            </select>
-          </div>
-          <div class="text-field">
-            <label class="field-label" for="vendorTypeSelect">거래처 구분</label>
-            <select id="vendorTypeSelect">
-              <option value="purchase">매입처</option>
-              <option value="sales">매출처</option>
-            </select>
+            <input id="vendorContactSelect" type="text" list="vendorContactOptions" autocomplete="off" placeholder="업체명 또는 메일을 검색해주세요" />
+            <datalist id="vendorContactOptions"></datalist>
+            <input id="vendorTypeSelect" name="vendor_type" type="hidden" value="purchase" />
           </div>
           <div class="text-field">
             <label class="field-label" for="recipientEmailInput">받는 거래처 메일</label>
@@ -7612,6 +7674,7 @@ HTML = r"""<!doctype html>
     const vendorContactSelect = document.querySelector("#vendorContactSelect");
     const vendorContactsFileInput = document.querySelector("#vendorContactsFileInput");
     const vendorContactsDropMain = document.querySelector("#vendorContactsDropMain");
+    const vendorContactOptions = document.querySelector("#vendorContactOptions");
     const salesReportFileInput = document.querySelector("#salesReportFileInput");
     const salesReportUploadMessage = document.querySelector("#salesReportUploadMessage");
     const salesReportRecentList = document.querySelector("#salesReportRecentList");
@@ -9690,20 +9753,44 @@ HTML = r"""<!doctype html>
     }
 
     function renderVendorContacts() {
-      vendorContactSelect.innerHTML = "";
-      const emptyOption = document.createElement("option");
-      emptyOption.value = "";
-      emptyOption.textContent = vendorContacts.length ? "업체를 선택해주세요" : "저장된 업체가 없습니다";
-      vendorContactSelect.appendChild(emptyOption);
-
-      vendorContacts.forEach((contact) => {
+      if (vendorContactOptions) vendorContactOptions.innerHTML = "";
+      const purchaseContacts = vendorContacts.filter((contact) => (contact.vendor_type || "purchase") === "purchase");
+      if (vendorContactSelect) {
+        vendorContactSelect.placeholder = purchaseContacts.length ? "업체명 또는 메일을 검색해주세요" : "저장된 매입처 메일이 없습니다";
+      }
+      purchaseContacts.forEach((contact) => {
         const option = document.createElement("option");
-        option.value = `${contact.vendor_type || "purchase"}::${contact.vendor_name}`;
-        option.textContent = `[${contact.vendor_type_label || "매입처"}] ${contact.vendor_name} / ${contact.email}`;
-        vendorContactSelect.appendChild(option);
+        option.value = vendorContactDisplayValue(contact);
+        option.label = contact.email || contact.vendor_name;
+        if (vendorContactOptions) vendorContactOptions.appendChild(option);
       });
       renderStockVendorContacts();
       renderVendorManageContacts();
+    }
+
+    function vendorContactDisplayValue(contact) {
+      const vendorName = contact?.vendor_name || "";
+      const email = contact?.email || "";
+      return email ? `${vendorName} / ${email}` : vendorName;
+    }
+
+    function findPurchaseVendorContact(value) {
+      const rawValue = String(value || "").trim();
+      if (!rawValue) return null;
+      const targetKey = normalizeSearchKeyword(rawValue);
+      const matches = vendorContacts.filter((contact) => {
+        if ((contact.vendor_type || "purchase") !== "purchase") return false;
+        const displayKey = normalizeSearchKeyword(vendorContactDisplayValue(contact));
+        const nameKey = normalizeSearchKeyword(contact.vendor_name);
+        const emailKey = normalizeSearchKeyword(contact.email);
+        return displayKey === targetKey
+          || nameKey === targetKey
+          || emailKey === targetKey
+          || displayKey.includes(targetKey)
+          || nameKey.includes(targetKey)
+          || emailKey.includes(targetKey);
+      });
+      return matches.length === 1 ? matches[0] : null;
     }
 
     function vendorManageTypeLabelText(type = activeVendorManageType) {
@@ -9794,20 +9881,18 @@ HTML = r"""<!doctype html>
     }
 
     function applySelectedVendor() {
-      const [selectedType, selectedName] = vendorContactSelect.value.split("::");
-      const selected = vendorContacts.find((contact) => (
-        (contact.vendor_type || "purchase") === selectedType && contact.vendor_name === selectedName
-      ));
+      const selected = findPurchaseVendorContact(vendorContactSelect.value);
       if (!selected) return;
-      vendorTypeSelect.value = selected.vendor_type || "purchase";
+      vendorTypeSelect.value = "purchase";
       vendorNameInput.value = selected.vendor_name;
       recipientEmailInput.value = selected.email;
+      vendorContactSelect.value = vendorContactDisplayValue(selected);
       csSubjectInput.value = currentMode === "mail-stock" ? "입고 및 품절 공지" : defaultCsSubject(selected.vendor_name);
     }
 
     function syncVendorEmailFromName({ overwrite = false } = {}) {
       const vendorName = vendorNameInput?.value.trim() || "";
-      const vendorType = vendorTypeSelect?.value || "purchase";
+      const vendorType = "purchase";
       if (!vendorName) return;
       const targetKey = normalizeSearchKeyword(vendorName);
       const selected = vendorContacts.find((contact) => (
@@ -9818,7 +9903,7 @@ HTML = r"""<!doctype html>
       if (overwrite || !recipientEmailInput.value.trim()) {
         recipientEmailInput.value = selected.email;
       }
-      if (vendorContactSelect) vendorContactSelect.value = `${vendorType}::${selected.vendor_name}`;
+      if (vendorContactSelect) vendorContactSelect.value = vendorContactDisplayValue(selected);
     }
 
     function setSelectedStockVendor(selected) {
@@ -9866,7 +9951,8 @@ HTML = r"""<!doctype html>
     async function saveCurrentVendorContact() {
       const vendorName = vendorNameInput.value.trim();
       const email = recipientEmailInput.value.trim();
-      const vendorType = vendorTypeSelect.value || "purchase";
+      const vendorType = "purchase";
+      vendorTypeSelect.value = "purchase";
       if (!vendorName || !email) {
         notice.textContent = "거래처명과 받는 거래처 메일을 입력해주세요.";
         return;
@@ -9882,7 +9968,7 @@ HTML = r"""<!doctype html>
         if (!response.ok) throw new Error(data.error || "거래처 메일 저장에 실패했습니다.");
         vendorContacts = data.contacts || [];
         renderVendorContacts();
-        vendorContactSelect.value = `${vendorType}::${vendorName}`;
+        vendorContactSelect.value = vendorContactDisplayValue({ vendor_name: vendorName, email });
         notice.textContent = "거래처 메일 주소를 저장했습니다.";
       } catch (error) {
         notice.textContent = error.message;
@@ -9968,7 +10054,9 @@ HTML = r"""<!doctype html>
         if (!response.ok) throw new Error(data.error || "거래처 메일 저장에 실패했습니다.");
         vendorContacts = data.contacts || [];
         renderVendorContacts();
-        if (vendorContactSelect) vendorContactSelect.value = `${activeVendorManageType}::${vendorName}`;
+        if (vendorContactSelect && activeVendorManageType === "purchase") {
+          vendorContactSelect.value = vendorContactDisplayValue({ vendor_name: vendorName, email });
+        }
         notice.textContent = `${vendorManageTypeLabelText()} 메일 주소를 저장했습니다.`;
       } catch (error) {
         notice.textContent = error.message;
@@ -10249,7 +10337,7 @@ HTML = r"""<!doctype html>
     function collectCsPayload() {
       return {
         case_id: activeCsCaseId,
-        vendor_type: vendorTypeSelect.value || "purchase",
+        vendor_type: "purchase",
         recipient_email: recipientEmailInput.value.trim(),
         vendor_name: vendorNameInput.value.trim(),
         cs_origin: csOriginInput.value.trim(),
@@ -12997,13 +13085,49 @@ HTML = r"""<!doctype html>
     }
 
     function openLedgerCsIntakeModal() {
-      if (openModal("ledger") === false) return;
+      if (!confirmSaveBeforeLeaving("cs-intake", openLedgerCsIntakeModal)) return false;
+      currentMode = "cs-intake";
+      closeLedgerFilter();
+      modal.classList.add("open");
+      const modalPanel = modal.querySelector(".workhub-modal");
+      modal.style.visibility = "visible";
+      modalPanel.style.visibility = "visible";
+      modalPanel.style.color = "#1a2230";
+      modalPanel.classList.remove("ledger-modal", "ledger-view", "management-view");
+      modalPanel.classList.add("cs-intake-modal");
+      result.classList.remove("open");
+      resultText.value = "";
+      fileInput.value = "";
+      templateInput.value = "";
+      notice.textContent = "";
+      deliveryOptions.style.display = "none";
+      templateUpload.style.display = "none";
+      vehicleFields.style.display = "none";
+      ledgerFields.style.display = "none";
+      managementFields.style.display = "none";
+      messagePlaceholder.style.display = "none";
+      if (stockNoticeFields) stockNoticeFields.style.display = "none";
+      if (vendorContactManageFields) vendorContactManageFields.style.display = "none";
+      const fileDrop = document.querySelector("label[for='fileInput']");
+      if (fileDrop) fileDrop.style.display = "none";
+      fileLabel.style.display = "none";
+      submitButton.textContent = "닫기";
+      submitButton.className = "btn";
+      activeCsCaseId = "";
       openLedgerCsPopup();
+      return true;
     }
 
     function closeLedgerCsPopup() {
       csFields.classList.remove("ledger-cs-popup");
-      if (currentMode === "ledger") csFields.style.display = "none";
+      if (currentMode === "ledger" || currentMode === "cs-intake") csFields.style.display = "none";
+    }
+
+    function closeLedgerCsIntakeModal() {
+      closeLedgerCsPopup();
+      modal.querySelector(".workhub-modal")?.classList.remove("cs-intake-modal");
+      modal.classList.remove("open");
+      if (ledgerWorkspace?.classList.contains("active")) currentMode = "ledger";
     }
 
     function syncLedgerSelectAll() {
@@ -13746,7 +13870,7 @@ HTML = r"""<!doctype html>
       openModal("cs");
       await loadVendorContacts();
       activeCsCaseId = String(prompt.case_id || payload.case_id || "");
-      vendorTypeSelect.value = payload.vendor_type || "purchase";
+      vendorTypeSelect.value = "purchase";
       vendorNameInput.value = payload.vendor_name || prompt.vendor_name || "";
       recipientEmailInput.value = payload.recipient_email || prompt.recipient_email || "";
       csOriginInput.value = payload.cs_origin || "";
@@ -13758,7 +13882,10 @@ HTML = r"""<!doctype html>
       csContentInput.value = payload.cs_content || "";
       csSubjectInput.value = payload.subject || defaultCsSubject(vendorNameInput.value.trim());
       csBodyInput.value = payload.body || defaultCsBody();
-      vendorContactSelect.value = `${vendorTypeSelect.value}::${vendorNameInput.value}`;
+      vendorContactSelect.value = vendorContactDisplayValue({
+        vendor_name: vendorNameInput.value,
+        email: recipientEmailInput.value,
+      });
       if (!recipientEmailInput.value.trim()) {
         notice.textContent = "매입처 메일 주소가 없습니다. 주소록 업로드 또는 직접 입력 후 발송해주세요.";
       } else {
@@ -14523,6 +14650,7 @@ HTML = r"""<!doctype html>
       modal.style.visibility = "visible";
       modalPanel.style.visibility = "visible";
       modalPanel.style.color = "#1a2230";
+      modalPanel.classList.remove("cs-intake-modal");
       modalPanel.classList.toggle("ledger-modal", mode === "ledger" || mode === "management");
       modalPanel.classList.toggle("ledger-view", mode === "ledger");
       modalPanel.classList.toggle("management-view", mode === "management");
@@ -14754,6 +14882,7 @@ HTML = r"""<!doctype html>
     function closeModal() {
       closeLedgerCsPopup();
       closeLedgerFilter();
+      modal.querySelector(".workhub-modal")?.classList.remove("cs-intake-modal");
       modal.classList.remove("open");
     }
 
@@ -15930,6 +16059,7 @@ HTML = r"""<!doctype html>
     [noticeDateInput, noticeTitleInput, noticeOwnerInput, noticeBodyInput]
       .forEach((input) => input.addEventListener("input", renderNoticePreview));
     receiptTypeSelect.addEventListener("change", resetProductRows);
+    vendorContactSelect.addEventListener("input", applySelectedVendor);
     vendorContactSelect.addEventListener("change", applySelectedVendor);
     saveVendorContactButton.addEventListener("click", saveCurrentVendorContact);
     if (vendorContactsFileInput) vendorContactsFileInput.addEventListener("change", uploadVendorContactsWorkbook);
@@ -15984,8 +16114,15 @@ HTML = r"""<!doctype html>
         closeLedgerFilter();
       }
     });
-    ledgerAddCs.addEventListener("click", openLedgerCsIntakeModal);
-    ledgerCsPopupClose.addEventListener("click", closeLedgerCsPopup);
+    ledgerAddCs.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      openLedgerCsIntakeModal();
+    });
+    ledgerCsPopupClose.addEventListener("click", () => {
+      if (currentMode === "cs-intake") closeLedgerCsIntakeModal();
+      else closeLedgerCsPopup();
+    });
     ledgerImportInput.addEventListener("change", uploadLedgerWorkbook);
     managementRefresh.addEventListener("click", () => loadManagementRecords({ showPicker: true }));
     managementImportInput.addEventListener("change", uploadManagementWorkbook);
@@ -16242,7 +16379,7 @@ HTML = r"""<!doctype html>
       notice.textContent = "처리 중입니다.";
       submitButton.disabled = true;
       try {
-        if (currentMode === "ledger" || currentMode === "management" || currentMode === "vendor-contacts") {
+        if (currentMode === "ledger" || currentMode === "management" || currentMode === "vendor-contacts" || currentMode === "cs-intake") {
           closeModal();
         } else if (currentMode === "cs") {
           refreshCsBody();
@@ -16566,7 +16703,7 @@ LOGIN_HTML = r"""<!doctype html>
 
 ADMIN_TOOLS_NAV_HTML = r"""
       <div class="nav-group" id="adminNavGroup">
-        <button class="nav-item" id="adminNavToggle" type="button">
+        <button class="nav-item" id="adminNavToggle" type="button" data-nav-tone="admin">
           <span class="nav-label"><i data-lucide="settings"></i> <span>관리자</span></span>
           <i class="nav-chevron" data-lucide="chevron-right"></i>
         </button>
@@ -16582,7 +16719,7 @@ ADMIN_TOOLS_NAV_HTML = r"""
 
 SALES_REPORT_NAV_HTML = r"""
       <div class="nav-group" id="salesReportNavGroup">
-        <button class="nav-item" id="salesReportNavToggle" type="button">
+        <button class="nav-item" id="salesReportNavToggle" type="button" data-nav-tone="sales">
           <span class="nav-label"><i data-lucide="bar-chart-3"></i> <span>매출현황 및 관리</span></span>
           <i class="nav-chevron" data-lucide="chevron-right"></i>
         </button>
@@ -16593,7 +16730,7 @@ SALES_REPORT_NAV_HTML = r"""
 """
 
 LEAVE_NAV_HTML = r"""
-      <button class="nav-item" type="button" data-open="leave"><i data-lucide="calendar-days"></i> <span>__LEAVE_TITLE__</span></button>
+      <button class="nav-item" type="button" data-nav-tone="leave" data-open="leave"><i data-lucide="calendar-days"></i> <span>__LEAVE_TITLE__</span></button>
 """
 
 LEAVE_WORKSPACE_HTML = r"""
