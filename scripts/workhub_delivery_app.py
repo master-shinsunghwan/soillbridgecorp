@@ -4316,10 +4316,10 @@ HTML = r"""<!doctype html>
     .dashboard-sales-insight strong.notice { color: #64748b; }
     .dashboard-sales-weekly-chart {
       margin-top: 12px;
-      padding: 13px 14px;
+      padding: 12px 12px 10px;
       border: 1px solid #d8dee8;
       border-radius: 8px;
-      background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+      background: #ffffff;
       color: #667085;
       font-size: 12px;
       font-weight: 850;
@@ -4328,7 +4328,7 @@ HTML = r"""<!doctype html>
     }
     .dashboard-sales-weekly-chart svg {
       width: 100%;
-      height: 158px;
+      height: 172px;
       display: block;
     }
     .dashboard-sales-weekly-chart .chart-title {
@@ -10767,11 +10767,11 @@ HTML = r"""<!doctype html>
         return;
       }
       const series = [
-        { key: "profit_supply_amount", label: "매입가", color: "#3b82f6", width: 1.7, radius: 2.8, opacity: 0.58, dash: "" },
-        { key: "profit_margin", label: "손익마진", color: "#10b981", width: 2.2, radius: 3.4, opacity: 0.9, dash: "6 4" },
-        { key: "profit_sales_amount", label: "매출가", color: "#ef4444", width: 3.6, radius: 4.8, opacity: 1, dash: "" },
+        { key: "profit_supply_amount", label: "매입가", color: "#3b82f6", width: 1.55, radius: 2.7, opacity: 0.52, dash: "" },
+        { key: "profit_margin", label: "손익마진", color: "#16a34a", width: 2, radius: 3.2, opacity: 0.82, dash: "7 5" },
+        { key: "profit_sales_amount", label: "매출가", color: "#ef4444", width: 3.8, radius: 4.9, opacity: 1, dash: "" },
       ];
-      const chart = { left: 42, right: 420, top: 14, bottom: 118, width: 378, height: 104 };
+      const chart = { left: 46, right: 432, top: 12, bottom: 126, width: 386, height: 114 };
       const values = weeklyRows.flatMap((row) => series.map((item) => Number(row[item.key] || 0)));
       const maxValue = Math.max(0, ...values, 1);
       const minValue = Math.min(0, ...values);
@@ -10792,8 +10792,8 @@ HTML = r"""<!doctype html>
         const y = chart.top + (index / tickCount) * chart.height;
         return `
           <g>
-            <line x1="${chart.left}" y1="${y}" x2="${chart.right}" y2="${y}" stroke="#d7dde7" stroke-width="1"></line>
-            <text x="${chart.left - 8}" y="${y + 3}" text-anchor="end" font-size="9" fill="#475467">${escapeHtml(formatAxisValue(value))}</text>
+            <line x1="${chart.left}" y1="${y}" x2="${chart.right}" y2="${y}" stroke="#d1d5db" stroke-width="0.85"></line>
+            <text x="${chart.left - 9}" y="${y + 3}" text-anchor="end" font-size="9" fill="#475467">${escapeHtml(formatAxisValue(value))}</text>
           </g>
         `;
       }).join("");
@@ -10801,36 +10801,40 @@ HTML = r"""<!doctype html>
       const xLabels = weeklyRows.map((row, index) => {
         const x = xForIndex(index);
         const label = shortKoreanDate(row.report_date || row.label || "").replace("월 ", "-").replace("일", "");
-        return `<text x="${x}" y="136" text-anchor="middle" font-size="9" fill="#111827">${escapeHtml(label)}</text>`;
+        return `<text x="${x}" y="144" text-anchor="middle" font-size="9.5" fill="#111827">${escapeHtml(label)}</text>`;
       }).join("");
       const seriesLines = series.map((item) => {
         const points = weeklyRows.map((row, index) => `${xForIndex(index)},${yForValue(row[item.key])}`).join(" ");
         const dots = weeklyRows.map((row, index) => `
-          <circle cx="${xForIndex(index)}" cy="${yForValue(row[item.key])}" r="${item.radius}" fill="${item.color}" fill-opacity="${item.opacity}" stroke="white" stroke-width="${item.key === "profit_sales_amount" ? "1.6" : "1"}"></circle>
+          <circle cx="${xForIndex(index)}" cy="${yForValue(row[item.key])}" r="${item.radius}" fill="${item.color}" fill-opacity="${item.opacity}" stroke="white" stroke-width="${item.key === "profit_sales_amount" ? "1.8" : "1"}"></circle>
         `).join("");
+        const salesUnderlay = item.key === "profit_sales_amount"
+          ? `<polyline points="${points}" fill="none" stroke="#ffffff" stroke-width="${item.width + 3.4}" stroke-linecap="round" stroke-linejoin="round"></polyline>`
+          : "";
         return `
+          ${salesUnderlay}
           <polyline points="${points}" fill="none" stroke="${item.color}" stroke-opacity="${item.opacity}" stroke-width="${item.width}" ${item.dash ? `stroke-dasharray="${item.dash}"` : ""} stroke-linecap="round" stroke-linejoin="round"></polyline>
           ${dots}
         `;
       }).join("");
       const legendSeries = [series[2], series[0], series[1]];
       const legend = legendSeries.map((item, index) => {
-        const y = 22 + index * 18;
+        const y = 24 + index * 21;
         return `
           <g>
-            <line x1="442" y1="${y}" x2="462" y2="${y}" stroke="${item.color}" stroke-opacity="${item.opacity}" stroke-width="${item.width}" ${item.dash ? `stroke-dasharray="${item.dash}"` : ""}></line>
-            <circle cx="452" cy="${y}" r="${item.key === "profit_sales_amount" ? "4" : "3"}" fill="${item.color}" fill-opacity="${item.opacity}"></circle>
-            <text x="468" y="${y + 4}" font-size="10" font-weight="${item.key === "profit_sales_amount" ? "950" : "750"}" fill="${item.key === "profit_sales_amount" ? "#111827" : "#667085"}">${escapeHtml(item.label)}</text>
+            <line x1="448" y1="${y}" x2="468" y2="${y}" stroke="${item.color}" stroke-opacity="${item.opacity}" stroke-width="${item.width}" ${item.dash ? `stroke-dasharray="${item.dash}"` : ""}></line>
+            <circle cx="458" cy="${y}" r="${item.key === "profit_sales_amount" ? "4.2" : "3"}" fill="${item.color}" fill-opacity="${item.opacity}"></circle>
+            <text x="474" y="${y + 4}" font-size="10.5" font-weight="${item.key === "profit_sales_amount" ? "950" : "800"}" fill="${item.key === "profit_sales_amount" ? "#111827" : "#475467"}">${escapeHtml(item.label)}</text>
           </g>
         `;
       }).join("");
       const total = weeklyRows.reduce((sum, row) => sum + Number(row.profit_sales_amount || 0), 0);
       dashboardSalesWeeklyChart.innerHTML = `
         <div class="chart-title"><span>최근 7일 매출</span><span>합계 ${escapeHtml(formatSalesNumber(total))}</span></div>
-        <svg viewBox="0 0 520 148" role="img" aria-label="최근 7일 매출 현황">
-          <rect x="0" y="0" width="520" height="148" fill="#ffffff" rx="6"></rect>
+        <svg viewBox="0 0 540 156" role="img" aria-label="최근 7일 매출 현황">
+          <rect x="0" y="0" width="540" height="156" fill="#ffffff" rx="6"></rect>
           ${gridLines}
-          <line x1="${chart.left}" y1="${zeroY}" x2="${chart.right}" y2="${zeroY}" stroke="#111827" stroke-width="1.2"></line>
+          <line x1="${chart.left}" y1="${zeroY}" x2="${chart.right}" y2="${zeroY}" stroke="#111827" stroke-width="1"></line>
           ${seriesLines}
           ${xLabels}
           ${legend}
