@@ -3,7 +3,7 @@ $ErrorActionPreference = "Stop"
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $Root = Split-Path -Parent $ScriptDir
 $App = Join-Path $ScriptDir "workhub_delivery_app.py"
-$Port = 8770
+$Port = if ($env:WORKHUB_PORT) { [int]$env:WORKHUB_PORT } else { 8770 }
 $Url = "http://127.0.0.1:$Port"
 
 $PythonCandidates = @(
@@ -24,7 +24,7 @@ function Find-Python {
     }
   }
 
-  throw "Python 실행 파일을 찾지 못했습니다."
+  throw "Python executable was not found. Install Python 3.11+ or run this from Codex with the bundled Python runtime."
 }
 
 function Test-Workhub {
@@ -36,12 +36,32 @@ function Test-Workhub {
   }
 }
 
+function Ensure-Requirements($Python) {
+  $Requirements = Join-Path $Root "requirements.txt"
+  if (-not (Test-Path -LiteralPath $Requirements)) {
+    return
+  }
+
+  & $Python -c "import openpyxl" 2>$null
+  if ($LASTEXITCODE -eq 0) {
+    return
+  }
+
+  Write-Host "Installing required Python packages..."
+  & $Python -m pip install -r $Requirements
+  if ($LASTEXITCODE -ne 0) {
+    throw "Required Python packages could not be installed. Run: python -m pip install -r requirements.txt"
+  }
+}
+
 if (-not (Test-Path -LiteralPath $App)) {
-  throw "업무허브 프로그램 파일을 찾지 못했습니다: $App"
+  throw "Workhub app file was not found: $App"
 }
 
 if (-not (Test-Workhub)) {
   $Python = Find-Python
+  Ensure-Requirements $Python
+
   Start-Process `
     -FilePath $Python `
     -ArgumentList @("`"$App`"", "$Port") `
@@ -58,7 +78,7 @@ if (-not (Test-Workhub)) {
   }
 
   if (-not $Ready) {
-    throw "업무허브를 시작하지 못했습니다. 잠시 후 다시 실행해주세요."
+    throw "Workhub did not start in time. Wait a moment and run this file again."
   }
 }
 

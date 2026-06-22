@@ -2,33 +2,43 @@
 
 ## Local Host
 
-- URL: http://127.0.0.1:8776/login
-- Host: 127.0.0.1
-- Port: 8776
+- URL: `http://127.0.0.1:8770/`
+- Login URL: `http://127.0.0.1:8770/login`
+- Port: `8770`
 
 ## Workspace
 
 - Local folder: `C:\Users\ssh19\OneDrive\Documents\Codex\soillbridgecorp`
-- GitHub: https://github.com/master-shinsunghwan/soillbridgecorp
-- Current commit: `136515d Add supply format management template support`
+- GitHub: `https://github.com/master-shinsunghwan/soillbridgecorp`
+- Branch: `main`
+- App verification commit: `826c3b8 Fix Workhub lucide icon import`
 
 ## Run Locally
 
 ```powershell
-$env:WORKHUB_PORT = "8776"
-& "C:\Users\ssh19\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe" scripts\workhub_delivery_app.py
+.\업무허브 실행.cmd
 ```
 
-Open:
+또는:
 
-```text
-http://127.0.0.1:8776/login
+```powershell
+python -m pip install -r requirements.txt
+python scripts\workhub_delivery_app.py 8770
 ```
 
-## Latest Work
+## Login
 
-- Added `통합관리대장 양식` download option.
-- Saved the supplied `Supply` Excel format as the management ledger export template.
-- Removed real row data from the saved template and kept only the blank format/style.
-- Added support for the same format in individual delivery text summary.
-- Preserved extra columns: `주문상품고유번호`, `상품코드`, `주문번호`, `고객선택옵션`.
+- Admin: `admin / admin1234`
+
+## Latest Verified Work
+
+- Restored and stabilized the other-PC Workhub transfer.
+- Fixed the login-after-screen freeze caused by a missing lucide `ArrowRight` export.
+- Updated the sales KPI card to show `매입처별 총합계 금액`.
+- Verified login and sidebar navigation in the browser.
+- Full test suite passed: `55 tests OK`.
+
+## Handoff
+
+- Handoff note: `WORKHUB_HANDOFF_20260622.md`
+- Transfer package: include `config/workhub.db`, and exclude `.git`, `node_modules`, caches, and sensitive mail/token files.
