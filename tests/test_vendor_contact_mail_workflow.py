@@ -126,38 +126,6 @@ class VendorContactMailWorkflowTests(unittest.TestCase):
             self.assertEqual(prompt["recipient_email"], "purchase@example.com")
             self.assertEqual(prompt["payload"]["cs_product"], "테스트 상품")
 
-    def test_management_cs_creation_uses_receipt_date_for_cs_ledger_date(self) -> None:
-        with tempfile.TemporaryDirectory() as directory:
-            app = load_app(Path(directory))
-            app.init_db()
-            fixed_receipt_time = "2026-06-22 09:30:00"
-            connection = app.connect_db()
-            try:
-                cursor = connection.execute(
-                    """
-                    INSERT INTO management_records (
-                        created_at, source_file, source_sheet, source_row, purchase_vendor, sales_vendor,
-                        order_date, ship_date, orderer_name, sender_phone, receiver_name, receiver_phone,
-                        product_name, quantity, receiver_address, courier, invoice_number, memo
-                    ) VALUES (?, 'source.xlsx', 'Sheet1', 7, 'Supplier A', 'Seller A',
-                              '2026-06-01', '2026-06-03', 'Orderer', '010-1111-2222',
-                              'Receiver', '010-0000-0000', 'Product A', '1',
-                              'Seoul', 'Courier A', '1234567890', 'memo')
-                    """,
-                    ("2026-06-01 10:00:00",),
-                )
-                connection.commit()
-                record_id = int(cursor.lastrowid)
-            finally:
-                connection.close()
-
-            with patch.object(app, "now_text", return_value=fixed_receipt_time):
-                case_id = app.create_cs_case_from_management(record_id)
-
-            cs_case = app.get_cs_case(case_id)
-            self.assertEqual(cs_case["occurred_at"], fixed_receipt_time)
-            self.assertEqual(cs_case["order_date"], "2026-06-01")
-            self.assertEqual(cs_case["ship_date"], "2026-06-03")
 
     def test_mail_settings_store_bulk_mail_technical_defaults(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

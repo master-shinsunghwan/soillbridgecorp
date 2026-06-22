@@ -102,30 +102,8 @@ SECRET_KEY_PATH = CONFIG_DIR / "secret.key"
 TOKEN_PREFIX_DPAPI = "dpapi:"
 TOKEN_PREFIX_KEY = "key1:"
 SESSION_COOKIE_NAME = "workhub_session"
-
-
-def env_bool(name: str, default: bool = False) -> bool:
-    value = os.environ.get(name)
-    if value is None:
-        return default
-    return value.strip().lower() in {"1", "true", "yes", "on"}
-
-
-def env_int(name: str, default: int, minimum: int = 1) -> int:
-    try:
-        return max(minimum, int(str(os.environ.get(name, default)).strip()))
-    except (TypeError, ValueError):
-        return default
-
-
-WORKHUB_ENV = os.environ.get("WORKHUB_ENV", "development").strip().lower()
-WORKHUB_PRODUCTION = WORKHUB_ENV in {"prod", "production"}
-SESSION_SECONDS = env_int("WORKHUB_SESSION_SECONDS", 60 * 60 * 12, minimum=60)
-SESSION_IDLE_SECONDS = env_int("WORKHUB_SESSION_IDLE_SECONDS", 60 * 60 * 2, minimum=60)
-WORKHUB_COOKIE_SECURE = env_bool("WORKHUB_COOKIE_SECURE", WORKHUB_PRODUCTION)
-WORKHUB_COOKIE_SAMESITE = os.environ.get("WORKHUB_COOKIE_SAMESITE", "Lax").strip().capitalize() or "Lax"
-if WORKHUB_COOKIE_SAMESITE not in {"Lax", "Strict", "None"}:
-    WORKHUB_COOKIE_SAMESITE = "Lax"
+SESSION_SECONDS = 60 * 60 * 12
+SESSION_IDLE_SECONDS = 60 * 60 * 2
 LOGIN_MAX_FAILURES = 5
 LOGIN_FAILURE_WINDOW_SECONDS = 15 * 60
 LOGIN_LOCK_SECONDS = 15 * 60
@@ -139,9 +117,9 @@ _SYSTEM_UPDATE_LOCK = threading.Lock()
 _SALES_REPORT_ALERT_SCHEDULER_STARTED = False
 SALES_REPORT_UPLOAD_ALERT_HOUR = 15
 SALES_REPORT_UPLOAD_ALERT_INTERVAL_MINUTES = 30
-DEFAULT_LOCAL_BOOTSTRAP_USERS = (
-    ("admin", "관리자", "admin"),
-    ("user", "사용자", "user"),
+DEFAULT_USERS = (
+    ("admin", "관리자", "admin", "admin1234"),
+    ("user", "사용자", "user", "user1234"),
 )
 PERMISSION_DEFINITIONS = (
     ("ledger_delete", "대장 삭제", "통합관리대장/CS처리대장 선택 삭제"),
@@ -192,66 +170,49 @@ DEFAULT_ROLE_PERMISSIONS = {
     "user": ("ledger_edit", "excel_download", "cs_receive", "leave_view", "crm_view"),
 }
 LUCIDE_FALLBACK_JS = """
-const fallbackPaths = {
-  "bar-chart-3": "M3 3v18h18|M8 17V9|M13 17V5|M18 17v-7",
-  "bell": "M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9|M10 21h4",
-  "briefcase-business": "M10 6V5a2 2 0 0 1 2-2h0a2 2 0 0 1 2 2v1|M3 8h18v11H3z|M3 13h18",
-  "calendar-days": "M7 3v4|M17 3v4|M3 9h18|M5 5h14a2 2 0 0 1 2 2v12H3V7a2 2 0 0 1 2-2z",
-  "chevron-down": "M6 9l6 6 6-6",
-  "chevron-left": "M15 18l-6-6 6-6",
-  "chevron-right": "M9 18l6-6-6-6",
-  "circle-dollar-sign": "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18|M15 9.5c-.6-1-1.8-1.5-3-1.5-1.7 0-3 .8-3 2s1.2 1.8 3 2 3 .8 3 2-1.3 2-3 2c-1.2 0-2.4-.5-3-1.5|M12 6v12",
-  "clipboard-check": "M9 4h6l1 2h3v15H5V6h3z|M9 13l2 2 4-5",
-  "clipboard-list": "M9 4h6l1 2h3v15H5V6h3z|M9 11h6|M9 15h6",
-  "copy-check": "M8 8h10v12H8z|M6 16H4V4h12v2|M10 14l2 2 4-5",
-  "database": "M4 6c0-2 16-2 16 0v12c0 2-16 2-16 0z|M4 6c0 2 16 2 16 0|M4 12c0 2 16 2 16 0",
-  "download": "M12 3v12|M7 10l5 5 5-5|M5 21h14",
-  "ellipsis": "M5 12h.01|M12 12h.01|M19 12h.01",
-  "file-spreadsheet": "M6 3h9l3 3v15H6z|M9 13h6|M9 17h6|M9 9h2",
-  "file-text": "M6 3h9l3 3v15H6z|M9 10h6|M9 14h6|M9 18h4",
-  "headphones": "M4 14v-2a8 8 0 0 1 16 0v2|M4 14h4v6H4z|M16 14h4v6h-4z",
-  "home": "M3 11l9-8 9 8|M5 10v10h14V10|M9 20v-6h6v6",
-  "info": "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18|M12 10v6|M12 7h.01",
-  "log-out": "M10 17l5-5-5-5|M15 12H3|M21 3v18h-7",
-  "mail": "M4 5h16v14H4z|M4 7l8 6 8-6",
-  "message-circle": "M21 11.5a8.5 8.5 0 0 1-12.5 7.5L3 21l2-5.5A8.5 8.5 0 1 1 21 11.5z",
-  "package": "M4 7l8-4 8 4-8 4z|M4 7v10l8 4 8-4V7|M12 11v10",
-  "plus-square": "M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z|M12 8v8|M8 12h8",
-  "refresh-cw": "M20 6v6h-6|M4 18v-6h6|M20 12a8 8 0 0 0-14-5|M4 12a8 8 0 0 0 14 5",
-  "search": "M11 19a8 8 0 1 1 0-16 8 8 0 0 1 0 16|M21 21l-4.3-4.3",
-  "settings": "M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6|M19 12a7 7 0 0 0-.1-1l2-1.5-2-3.5-2.4 1a7 7 0 0 0-1.7-1L14.5 3h-5l-.3 3a7 7 0 0 0-1.7 1l-2.4-1-2 3.5L5.1 11a7 7 0 0 0 0 2l-2 1.5 2 3.5 2.4-1a7 7 0 0 0 1.7 1l.3 3h5l.3-3a7 7 0 0 0 1.7-1l2.4 1 2-3.5-2-1.5a7 7 0 0 0 .1-1z",
-  "truck": "M3 6h11v10H3z|M14 10h4l3 3v3h-7z|M7 20a2 2 0 1 0 0-4 2 2 0 0 0 0 4|M18 20a2 2 0 1 0 0-4 2 2 0 0 0 0 4",
-  "upload": "M12 21V9|M7 14l5-5 5 5|M5 3h14",
-  "warehouse": "M3 10l9-6 9 6v10H3z|M7 20v-6h10v6|M9 14v6|M15 14v6",
-  "x": "M6 6l12 12|M18 6L6 18",
-  "default": "M4 4h16v16H4z|M8 8h8v8H8z"
+const iconPaths = {
+  "bar-chart-3": "<path d='M4 19V9'/><path d='M12 19V5'/><path d='M20 19v-7'/>",
+  "bell": "<path d='M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9'/><path d='M10 21h4'/>",
+  "briefcase-business": "<path d='M10 6V5a2 2 0 0 1 2-2h0a2 2 0 0 1 2 2v1'/><rect x='3' y='7' width='18' height='13' rx='2'/><path d='M3 13h18'/>",
+  "calendar-days": "<path d='M8 2v4'/><path d='M16 2v4'/><rect x='3' y='4' width='18' height='18' rx='2'/><path d='M3 10h18'/><path d='M8 14h.01'/><path d='M12 14h.01'/><path d='M16 14h.01'/><path d='M8 18h.01'/><path d='M12 18h.01'/><path d='M16 18h.01'/>",
+  "chevron-down": "<path d='m6 9 6 6 6-6'/>",
+  "chevron-left": "<path d='m15 18-6-6 6-6'/>",
+  "chevron-right": "<path d='m9 18 6-6-6-6'/>",
+  "circle-dollar-sign": "<circle cx='12' cy='12' r='10'/><path d='M16 8h-6a2 2 0 0 0 0 4h4a2 2 0 0 1 0 4H8'/><path d='M12 18V6'/>",
+  "clipboard-check": "<rect x='8' y='2' width='8' height='4' rx='1'/><path d='M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2'/><path d='m9 14 2 2 4-4'/>",
+  "clipboard-list": "<rect x='8' y='2' width='8' height='4' rx='1'/><path d='M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2'/><path d='M8 11h8'/><path d='M8 16h8'/>",
+  "copy-check": "<path d='M7 7V5a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-2'/><rect x='4' y='8' width='11' height='11' rx='2'/><path d='m7 14 2 2 4-4'/>",
+  "database": "<ellipse cx='12' cy='5' rx='8' ry='3'/><path d='M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5'/><path d='M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3'/>",
+  "download": "<path d='M12 3v12'/><path d='m7 10 5 5 5-5'/><path d='M5 21h14'/>",
+  "file-spreadsheet": "<path d='M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z'/><path d='M14 2v6h6'/><path d='M8 13h8'/><path d='M8 17h8'/><path d='M11 11v8'/>",
+  "file-text": "<path d='M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z'/><path d='M14 2v6h6'/><path d='M8 13h8'/><path d='M8 17h5'/>",
+  "headphones": "<path d='M3 18v-6a9 9 0 0 1 18 0v6'/><path d='M21 19a2 2 0 0 1-2 2h-1v-7h3z'/><path d='M3 19a2 2 0 0 0 2 2h1v-7H3z'/>",
+  "home": "<path d='m3 11 9-8 9 8'/><path d='M5 10v11h14V10'/><path d='M9 21v-6h6v6'/>",
+  "info": "<circle cx='12' cy='12' r='10'/><path d='M12 16v-4'/><path d='M12 8h.01'/>",
+  "log-out": "<path d='M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4'/><path d='M16 17l5-5-5-5'/><path d='M21 12H9'/>",
+  "mail": "<rect x='3' y='5' width='18' height='14' rx='2'/><path d='m3 7 9 6 9-6'/>",
+  "message-circle": "<path d='M21 11.5a8.5 8.5 0 0 1-12.8 7.3L3 21l2.2-5.2A8.5 8.5 0 1 1 21 11.5Z'/>",
+  "package": "<path d='m7.5 4.3 9 5.2'/><path d='M21 8 12 3 3 8v8l9 5 9-5z'/><path d='M3 8l9 5 9-5'/><path d='M12 13v8'/>",
+  "plus-square": "<rect x='3' y='3' width='18' height='18' rx='2'/><path d='M12 8v8'/><path d='M8 12h8'/>",
+  "refresh-cw": "<path d='M21 12a9 9 0 0 1-15 6.7L3 16'/><path d='M3 21v-5h5'/><path d='M3 12a9 9 0 0 1 15-6.7L21 8'/><path d='M21 3v5h-5'/>",
+  "search": "<circle cx='11' cy='11' r='7'/><path d='m21 21-4.3-4.3'/>",
+  "settings": "<path d='M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z'/><path d='M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2 3.4-.2-.1a1.7 1.7 0 0 0-1.9.3 1.7 1.7 0 0 0-.8 1.7V22H9v-.3a1.7 1.7 0 0 0-.8-1.7 1.7 1.7 0 0 0-1.9-.3l-.2.1-2-3.4.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.5-1H3V9h.2a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.9l-.1-.1 2-3.4.2.1a1.7 1.7 0 0 0 1.9-.3A1.7 1.7 0 0 0 9.2.7V.5h5.6v.2a1.7 1.7 0 0 0 .8 1.7 1.7 1.7 0 0 0 1.9.3l.2-.1 2 3.4-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.5 1h.2v4h-.2a1.7 1.7 0 0 0-1.4 1Z'/>",
+  "truck": "<path d='M10 17H5V6h11v11h-2'/><path d='M16 8h3l2 3v6h-3'/><circle cx='7' cy='17' r='2'/><circle cx='17' cy='17' r='2'/>",
+  "upload": "<path d='M12 21V9'/><path d='m7 14 5-5 5 5'/><path d='M5 3h14'/>",
+  "warehouse": "<path d='M3 21h18'/><path d='M5 21V8l7-5 7 5v13'/><path d='M9 21v-6h6v6'/><path d='M9 10h6'/>",
+  "x": "<path d='M18 6 6 18'/><path d='m6 6 12 12'/>",
 };
-
-function fallbackName(name) {
-  return String(name || "default").replace(/[A-Z]/g, (match, offset) => `${offset ? "-" : ""}${match.toLowerCase()}`);
+function toKebab(name) {
+  return String(name || "").replace(/([a-z0-9])([A-Z])/g, "$1-$2").replace(/_/g, "-").toLowerCase();
 }
-
+function svgFor(name) {
+  const key = toKebab(name);
+  const paths = iconPaths[key] || "<circle cx='12' cy='12' r='8'/>";
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false" data-lucide-rendered="${key}">${paths}</svg>`;
+}
 export function createIcons() {
-  document.querySelectorAll("[data-lucide]").forEach((node) => {
-    const name = fallbackName(node.getAttribute("data-lucide"));
-    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-    svg.setAttribute("viewBox", "0 0 24 24");
-    svg.setAttribute("width", node.getAttribute("width") || "24");
-    svg.setAttribute("height", node.getAttribute("height") || "24");
-    svg.setAttribute("fill", "none");
-    svg.setAttribute("stroke", "currentColor");
-    svg.setAttribute("stroke-width", "2");
-    svg.setAttribute("stroke-linecap", "round");
-    svg.setAttribute("stroke-linejoin", "round");
-    svg.setAttribute("aria-hidden", "true");
-    svg.setAttribute("data-lucide", name);
-    if (node.className) svg.setAttribute("class", node.className);
-    (fallbackPaths[name] || fallbackPaths.default).split("|").forEach((pathData) => {
-      const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
-      path.setAttribute("d", pathData);
-      svg.appendChild(path);
-    });
-    node.replaceWith(svg);
+  document.querySelectorAll("[data-lucide]").forEach((element) => {
+    element.outerHTML = svgFor(element.getAttribute("data-lucide"));
   });
 }
 export const BriefcaseBusiness = {};
@@ -675,13 +636,13 @@ HTML = r"""<!doctype html>
     .dashboard-import-card .import-table th:nth-child(3),
     .dashboard-import-card .import-table td:nth-child(3) { width: 72px; }
     .dashboard-import-card .import-table th:nth-child(4),
-    .dashboard-import-card .import-table td:nth-child(4) { width: 78px; }
+    .dashboard-import-card .import-table td:nth-child(4),
     .dashboard-import-card .import-table th:nth-child(5),
-    .dashboard-import-card .import-table td:nth-child(5) { width: 138px; }
+    .dashboard-import-card .import-table td:nth-child(5) { width: 78px; }
     .dashboard-import-card .import-table th:nth-child(6),
-    .dashboard-import-card .import-table td:nth-child(6) { width: 64px; }
+    .dashboard-import-card .import-table td:nth-child(6) { width: 138px; }
     .dashboard-import-card .import-table th:nth-child(7),
-    .dashboard-import-card .import-table td:nth-child(7) { width: 164px; }
+    .dashboard-import-card .import-table td:nth-child(7) { width: 150px; }
     .dashboard-import-card .import-table th:nth-child(8),
     .dashboard-import-card .import-table td:nth-child(8) { width: 142px; }
     .dashboard-import-card .import-table th:nth-child(9),
@@ -755,28 +716,10 @@ HTML = r"""<!doctype html>
     }
     .nav-item.active {
       color: var(--sidebar-text-primary);
-      background: var(--nav-active-bg, rgba(72, 118, 255, .28));
+      background: rgba(72, 118, 255, .28);
       box-shadow: inset 0 0 0 1px rgba(255,255,255,.08);
     }
-    .nav-item svg { width: 13px; height: 13px; flex: 0 0 auto; color: var(--sidebar-text-muted); }
-    .nav-item .nav-label > svg,
-    .nav-item > svg:not(.nav-chevron) {
-      width: 16px;
-      height: 16px;
-      color: var(--nav-icon, var(--sidebar-text-muted));
-      stroke-width: 2.45;
-    }
-    .nav-item[data-nav-tone="home"] { --nav-icon: #60a5fa; --nav-active-bg: rgba(37, 99, 235, .28); }
-    .nav-item[data-nav-tone="import"] { --nav-icon: #34d399; --nav-active-bg: rgba(5, 150, 105, .24); }
-    .nav-item[data-nav-tone="order"] { --nav-icon: #38bdf8; --nav-active-bg: rgba(14, 165, 233, .24); }
-    .nav-item[data-nav-tone="management"] { --nav-icon: #22c55e; --nav-active-bg: rgba(34, 197, 94, .22); }
-    .nav-item[data-nav-tone="cs"] { --nav-icon: #fb7185; --nav-active-bg: rgba(244, 63, 94, .22); }
-    .nav-item[data-nav-tone="crm"] { --nav-icon: #a78bfa; --nav-active-bg: rgba(124, 58, 237, .24); }
-    .nav-item[data-nav-tone="mail"] { --nav-icon: #2dd4bf; --nav-active-bg: rgba(20, 184, 166, .22); }
-    .nav-item[data-nav-tone="leave"] { --nav-icon: #facc15; --nav-active-bg: rgba(234, 179, 8, .20); }
-    .nav-item[data-nav-tone="sales"] { --nav-icon: #4ade80; --nav-active-bg: rgba(22, 163, 74, .22); }
-    .nav-item[data-nav-tone="admin"] { --nav-icon: #fbbf24; --nav-active-bg: rgba(245, 158, 11, .22); }
-    .nav-item[data-nav-tone="files"] { --nav-icon: #5eead4; --nav-active-bg: rgba(13, 148, 136, .20); }
+    .nav-item svg { width: 15px; height: 15px; flex: 0 0 auto; color: var(--sidebar-text-muted); }
     .nav-item .nav-label {
       display: flex;
       align-items: center;
@@ -795,13 +738,12 @@ HTML = r"""<!doctype html>
     }
     .nav-item:hover svg,
     .nav-item.active svg {
-      color: var(--nav-icon, var(--sidebar-accent));
+      color: var(--sidebar-accent);
     }
     .nav-item .nav-chevron {
       margin-left: auto;
       width: 10px;
       height: 10px;
-      color: var(--sidebar-text-muted);
       transition: transform .16s ease;
     }
     .nav-group.open .nav-chevron { transform: rotate(90deg); }
@@ -970,7 +912,9 @@ HTML = r"""<!doctype html>
     .logout-button svg,
     .workspace-button svg,
     .crm-mini-button svg,
-    .btn svg { width: 11px; height: 11px; }
+    .btn svg { width: 14px; height: 14px; }
+    .topbar .icon-button svg,
+    .top-search-submit svg { width: 16px; height: 16px; }
     .user-chip {
       height: 36px;
       display: flex;
@@ -1749,61 +1693,9 @@ HTML = r"""<!doctype html>
       flex-direction: column;
       min-height: 0;
     }
-    .workhub-modal-head { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-bottom: 24px; }
+    .workhub-modal-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; }
     .modal-title { font-size: 25px; font-weight: 850; color: #1a2230; }
-    .close {
-      width: 38px;
-      height: 38px;
-      flex: 0 0 38px;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      border: 1px solid #cbd5e1;
-      border-radius: 8px;
-      background: #f8fafc;
-      color: #1f2937;
-      cursor: pointer;
-      padding: 0;
-      box-shadow: 0 3px 8px rgba(15, 23, 42, .06);
-    }
-    .close svg { width: 19px; height: 19px; stroke-width: 2.4; }
-    .close::before {
-      content: "X";
-      color: #1f2937;
-      font-size: 18px;
-      font-weight: 950;
-      line-height: 1;
-    }
-    .close i,
-    .close svg {
-      display: none;
-    }
-    .close:hover {
-      background: #fff1f1;
-      border-color: #f1a7a7;
-    }
-    .close:hover::before { color: #b42318; }
-    .close:focus-visible {
-      outline: 3px solid rgba(180, 35, 24, .28);
-      outline-offset: 2px;
-    }
-    .workhub-modal.attention,
-    .search-result-dialog.attention,
-    .safe-number-dialog.attention,
-    .focus-widget-panel.attention,
-    .notice-popup.attention,
-    .cargo-shipment-popup.attention,
-    .import-shipment-popup.attention,
-    .return-check-popup.attention,
-    .app-confirm-dialog.attention {
-      animation: modal-attention .18s ease-out;
-      box-shadow: 0 0 0 3px rgba(21, 91, 200, .16), var(--shadow);
-    }
-    @keyframes modal-attention {
-      0% { transform: scale(1); }
-      50% { transform: scale(1.006); }
-      100% { transform: scale(1); }
-    }
+    .close { border: 0; background: transparent; color: #3f4650; cursor: pointer; padding: 4px; }
     .field-label { display: block; font-size: 18px; font-weight: 750; margin-bottom: 10px; color: #1a2230; }
     .dropzone {
       border: 1px dashed #9aa4b2; border-radius: 8px; background: #fbfcff;
@@ -1879,16 +1771,6 @@ HTML = r"""<!doctype html>
     #userAdminWorkspace:not(.sales-report-only) #salesReportUploadCard {
       display: none;
     }
-    #userAdminWorkspace:not(.sales-report-only) {
-      overflow-y: auto;
-      overflow-x: hidden;
-      scrollbar-gutter: stable;
-    }
-    #userAdminWorkspace:not(.sales-report-only) .workspace-mount,
-    #userAdminWorkspace:not(.sales-report-only) .admin-panel {
-      flex: 0 0 auto;
-      min-height: auto;
-    }
     #userAdminWorkspace.sales-report-only {
       overflow-y: auto;
       overflow-x: hidden;
@@ -1910,12 +1792,14 @@ HTML = r"""<!doctype html>
       gap: 8px;
     }
     .sales-kpi {
+      --kpi-bg: #ffffff;
       position: relative;
       min-height: 88px;
       padding: 10px 10px 10px 14px;
-      border: 1px solid #d8e0ec;
+      border: 1px solid color-mix(in srgb, var(--kpi-color, #94a3b8) 22%, #d8e0ec);
       border-radius: 8px;
-      background: white;
+      background:
+        linear-gradient(135deg, color-mix(in srgb, var(--kpi-color, #94a3b8) 10%, white), var(--kpi-bg) 48%, #ffffff);
       overflow: hidden;
       box-shadow: 0 6px 16px rgba(15, 23, 42, .04);
     }
@@ -1928,13 +1812,13 @@ HTML = r"""<!doctype html>
       width: 4px;
       background: var(--kpi-color, #94a3b8);
     }
-    .sales-kpi.blue { --kpi-color: #2563eb; }
-    .sales-kpi.slate { --kpi-color: #64748b; }
-    .sales-kpi.green { --kpi-color: #059669; }
+    .sales-kpi.blue { --kpi-color: #2563eb; --kpi-bg: #f4f8ff; }
+    .sales-kpi.slate { --kpi-color: #64748b; --kpi-bg: #f8fafc; }
+    .sales-kpi.green { --kpi-color: #059669; --kpi-bg: #f2fbf7; }
     .sales-kpi.red { --kpi-color: #dc2626; }
-    .sales-kpi.violet { --kpi-color: #7c3aed; }
-    .sales-kpi.orange { --kpi-color: #f97316; }
-    .sales-kpi.teal { --kpi-color: #0d9488; }
+    .sales-kpi.violet { --kpi-color: #7c3aed; --kpi-bg: #f8f5ff; }
+    .sales-kpi.orange { --kpi-color: #f97316; --kpi-bg: #fff7ed; }
+    .sales-kpi.teal { --kpi-color: #0d9488; --kpi-bg: #f0fdfa; }
     .sales-kpi.muted { --kpi-color: #94a3b8; background: #f8fafc; }
     .sales-kpi.primary {
       border-color: rgba(37, 99, 235, .55);
@@ -2050,7 +1934,7 @@ HTML = r"""<!doctype html>
       box-shadow: 0 8px 18px color-mix(in srgb, var(--tab-color, #2563eb) 14%, transparent);
     }
     .sales-table-tab[data-sales-tab="salesProduct"] { --tab-color: #2563eb; }
-    .sales-table-tab[data-sales-tab="partner"] { --tab-color: #f97316; }
+    .sales-table-tab[data-sales-tab="partner"] { --tab-color: #2563eb; }
     .sales-table-tab[data-sales-tab="monthlyCompare"] { --tab-color: #7c3aed; }
     .sales-table-tab-count {
       min-width: 34px;
@@ -2090,9 +1974,9 @@ HTML = r"""<!doctype html>
       animation: salesPanelIn .18s ease both;
     }
     .sales-panel.daily { --panel-color: #2563eb; }
-    .sales-panel.seller { --panel-color: #f97316; }
+    .sales-panel.seller { --panel-color: #2563eb; }
     .sales-panel.product { --panel-color: #7c3aed; }
-    .sales-panel.supplier { --panel-color: #0d9488; }
+    .sales-panel.supplier { --panel-color: #f97316; }
     .sales-panel.violet {
       --panel-color: #7c3aed;
       grid-column: 1 / -1;
@@ -2108,7 +1992,7 @@ HTML = r"""<!doctype html>
       gap: 8px;
       padding: 0 12px;
       border-bottom: 1px solid #e2e8f0;
-      background: #f8fafc;
+      background: linear-gradient(90deg, color-mix(in srgb, var(--panel-color) 12%, #ffffff), #f8fafc 70%);
       font-size: 13px;
       font-weight: 950;
     }
@@ -2147,6 +2031,7 @@ HTML = r"""<!doctype html>
       width: 100%;
       border-collapse: collapse;
       font-size: 12px;
+      font-variant-numeric: tabular-nums;
     }
     .sales-table-scroll {
       height: max(420px, calc(100vh - 395px));
@@ -2162,7 +2047,7 @@ HTML = r"""<!doctype html>
       top: 0;
       z-index: 1;
       background: color-mix(in srgb, var(--panel-color) 7%, #f8fafc);
-      color: #475569;
+      color: #1f2937;
       border-bottom: 1px solid #e2e8f0;
       text-align: right;
       font-weight: 950;
@@ -2180,6 +2065,32 @@ HTML = r"""<!doctype html>
       font-weight: 750;
       white-space: nowrap;
       transition: background .14s ease, color .14s ease;
+    }
+    .sales-table td:first-child {
+      color: #111827;
+      font-weight: 850;
+    }
+    .sales-panel.seller .sales-table th,
+    .sales-panel.seller .sales-table td {
+      background-clip: padding-box;
+    }
+    .sales-panel.seller .sales-table td:nth-child(3),
+    .sales-panel.seller .sales-table th:nth-child(3),
+    .sales-panel.product .sales-table td:nth-child(3),
+    .sales-panel.product .sales-table th:nth-child(3),
+    .sales-panel.daily .sales-table td:nth-child(3),
+    .sales-panel.daily .sales-table th:nth-child(3),
+    .sales-panel.daily .sales-table td:nth-child(4),
+    .sales-panel.daily .sales-table th:nth-child(4) {
+      box-shadow: inset 0 0 0 9999px rgba(37, 99, 235, .035);
+    }
+    .sales-panel.supplier .sales-table td:nth-child(2),
+    .sales-panel.supplier .sales-table th:nth-child(2) {
+      box-shadow: inset 0 0 0 9999px rgba(249, 115, 22, .07);
+    }
+    .sales-panel .sales-table td:last-child,
+    .sales-panel .sales-table th:last-child {
+      box-shadow: inset 0 0 0 9999px color-mix(in srgb, var(--panel-color) 5%, transparent);
     }
     .sales-table tbody tr {
       transition: background .14s ease;
@@ -2662,43 +2573,6 @@ HTML = r"""<!doctype html>
     .ledger-fields { display: none; }
     .management-fields { display: none; }
     .ledger-cs-popup-head { display: none; }
-    .workhub-modal.cs-intake-modal {
-      width: min(620px, calc(100vw - 48px));
-      max-width: 620px;
-      max-height: calc(100vh - 72px);
-      margin-left: auto;
-      align-self: center;
-      padding: 0;
-      overflow: hidden;
-    }
-    .workhub-modal.cs-intake-modal .workhub-modal-head,
-    .workhub-modal.cs-intake-modal .drop-label,
-    .workhub-modal.cs-intake-modal .dropzone,
-    .workhub-modal.cs-intake-modal .delivery-options,
-    .workhub-modal.cs-intake-modal .template-upload,
-    .workhub-modal.cs-intake-modal .vehicle-fields,
-    .workhub-modal.cs-intake-modal .stock-notice-fields,
-    .workhub-modal.cs-intake-modal .vendor-contact-manage-fields,
-    .workhub-modal.cs-intake-modal .ledger-fields,
-    .workhub-modal.cs-intake-modal .management-fields,
-    .workhub-modal.cs-intake-modal .message-placeholder,
-    .workhub-modal.cs-intake-modal .modal-actions {
-      display: none !important;
-    }
-    .workhub-modal.cs-intake-modal #uploadForm { display: block; }
-    .workhub-modal.cs-intake-modal .cs-fields.ledger-cs-popup {
-      position: static;
-      z-index: auto;
-      display: block !important;
-      width: auto;
-      max-height: calc(100vh - 72px);
-      overflow: auto;
-      padding: 18px;
-      border: 0;
-      border-radius: 10px;
-      background: white;
-      box-shadow: none;
-    }
     .workhub-modal.ledger-modal .cs-fields.ledger-cs-popup {
       position: absolute;
       z-index: 35;
@@ -2713,19 +2587,6 @@ HTML = r"""<!doctype html>
       border-radius: 10px;
       background: white;
       box-shadow: 0 18px 44px rgba(15, 23, 42, .28);
-    }
-    .workhub-modal.cs-intake-modal .cs-fields.ledger-cs-popup .ledger-cs-popup-head {
-      position: sticky;
-      top: -18px;
-      z-index: 2;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 12px;
-      margin: -18px -18px 14px;
-      padding: 15px 18px;
-      border-bottom: 1px solid #d7dce5;
-      background: white;
     }
     .workhub-modal.ledger-modal .cs-fields.ledger-cs-popup .ledger-cs-popup-head {
       position: sticky;
@@ -2746,20 +2607,13 @@ HTML = r"""<!doctype html>
     }
     .ledger-cs-popup-close {
       height: 34px;
-      min-width: 70px;
-      border: 1px solid #111827;
-      border-radius: 8px;
-      background: #111827;
-      color: #ffffff;
+      min-width: 64px;
+      border: 1px solid #aab2bf;
+      border-radius: 6px;
+      background: white;
       font-family: inherit;
       font-weight: 800;
       cursor: pointer;
-      box-shadow: 0 8px 18px rgba(15, 23, 42, .12);
-    }
-    .ledger-cs-popup-close:hover { background: #b42318; border-color: #b42318; }
-    .ledger-cs-popup-close:focus-visible {
-      outline: 3px solid rgba(180, 35, 24, .28);
-      outline-offset: 2px;
     }
     .text-field { margin-top: 14px; }
     .text-field input,
@@ -3168,6 +3022,19 @@ HTML = r"""<!doctype html>
       background: white;
       scrollbar-gutter: stable both-edges;
     }
+    .ledger-fields::before {
+      content: "우선순위: 상태와 C/S 내용을 먼저 보고, 필요한 행을 선택한 뒤 상단 저장을 눌러줘.";
+      display: block;
+      margin: 0 0 8px;
+      padding: 9px 12px;
+      border: 1px solid #dbeafe;
+      border-radius: 8px;
+      background: #eff6ff;
+      color: #1d4ed8;
+      font-size: 12px;
+      line-height: 1.35;
+      font-weight: 900;
+    }
     .workhub-modal.ledger-modal.ledger-view .ledger-fields {
       display: flex !important;
       flex-direction: column;
@@ -3196,6 +3063,7 @@ HTML = r"""<!doctype html>
       table-layout: fixed;
       border-collapse: collapse;
       font-size: 12px;
+      font-variant-numeric: tabular-nums;
     }
     .ledger-table col.select-col { width: 28px; }
     .ledger-table col.date-col { width: 82px; }
@@ -3220,16 +3088,16 @@ HTML = r"""<!doctype html>
     .ledger-table th {
       position: sticky;
       top: 0;
-      z-index: 1;
-      background: #d9efc3;
-      border-bottom: 1px solid #a8cb82;
-      color: #18350f;
-      font-weight: 850;
-      padding: 4px 5px;
+      z-index: 2;
+      background: #f8fafc;
+      border-bottom: 1px solid #d7dce5;
+      color: #344054;
+      font-weight: 950;
+      padding: 7px 6px;
       text-align: center;
       white-space: nowrap;
       vertical-align: bottom;
-      line-height: 1.18;
+      line-height: 1.2;
     }
     .ledger-table th .ledger-th-title {
       overflow: hidden;
@@ -3339,28 +3207,34 @@ HTML = r"""<!doctype html>
       color: white;
     }
     .ledger-table th.invoice-head.reship-head {
-      background: #fde7a4;
-      border-bottom-color: #e7b744;
-      color: #4a3100;
+      background: #fff7ed;
+      border-bottom-color: #fed7aa;
+      color: #9a3412;
     }
     .ledger-table th.invoice-head.return-head {
-      background: #dbeafe;
-      border-bottom-color: #93c5fd;
+      background: #eff6ff;
+      border-bottom-color: #bfdbfe;
       color: #1e3a8a;
     }
     .ledger-table td {
       border-bottom: 1px solid #e6eaf0;
-      padding: 4px 6px;
-      height: 28px;
+      padding: 7px 8px;
+      height: 36px;
       box-sizing: border-box;
       vertical-align: middle;
       text-align: center;
       color: #1f2937;
-      font-size: 11px;
-      line-height: 1.22;
+      font-size: 12px;
+      line-height: 1.35;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
+    }
+    .ledger-table tbody tr:nth-child(even) td {
+      background-color: #fbfcff;
+    }
+    .ledger-table tbody tr:hover td {
+      background-color: #f2f7ff;
     }
     .ledger-table td:first-child {
       width: 28px;
@@ -3396,6 +3270,57 @@ HTML = r"""<!doctype html>
       background: var(--duplicate-row-color, #eef6ff);
     }
     .ledger-table td.left { text-align: left; }
+    .ledger-table td[data-field="cs_content"],
+    .ledger-table td[data-field="product_name"],
+    .ledger-table td[data-field="receiver_address"],
+    .ledger-table td[data-field="memo"],
+    .ledger-table td[data-management-field="purchase_vendor"],
+    .ledger-table td[data-management-field="sales_vendor"],
+    .ledger-table td[data-management-field="orderer_name"],
+    .ledger-table td[data-management-field="sender_name"],
+    .ledger-table td[data-management-field="receiver_name"],
+    .ledger-table td[data-management-field="product_name"],
+    .ledger-table td[data-management-field="receiver_address"],
+    .ledger-table td[data-management-field="memo"] {
+      text-align: left;
+    }
+    .ledger-table td[data-field="cs_content"],
+    .ledger-table td[data-field="product_name"],
+    .ledger-table td[data-field="receiver_address"],
+    .ledger-table td[data-management-field="product_name"],
+    .ledger-table td[data-management-field="receiver_address"] {
+      white-space: normal;
+      line-height: 1.38;
+      max-height: 44px;
+    }
+    .ledger-table td[data-field="quantity"],
+    .ledger-table td[data-management-field="quantity"] {
+      text-align: right;
+      font-weight: 900;
+    }
+    .ledger-table td[data-management-field="purchase_vendor"] {
+      background: #fff7ed;
+      color: #7c2d12;
+      box-shadow: inset 3px 0 0 rgba(249, 115, 22, .35);
+    }
+    .ledger-table td[data-management-field="sales_vendor"] {
+      background: #eff6ff;
+      color: #1e3a8a;
+      box-shadow: inset 3px 0 0 rgba(37, 99, 235, .35);
+    }
+    .ledger-table td[data-field="cs_status"],
+    .ledger-table td[data-field="status"],
+    .ledger-table td[data-management-field="transaction_type"],
+    .ledger-table td[data-management-field="ledger_checked"] {
+      font-weight: 900;
+      color: #1f2937;
+      background: #f8fafc;
+    }
+    .ledger-table td[data-field="status"] {
+      background: #eef6ff;
+      color: #155bc8;
+      box-shadow: inset 3px 0 0 rgba(21, 91, 200, .35);
+    }
     .ledger-table td.editable-cell {
       cursor: pointer;
       white-space: nowrap;
@@ -3533,15 +3458,6 @@ HTML = r"""<!doctype html>
       font-size: 11px;
       font-weight: 850;
       cursor: pointer;
-    }
-    .management-cs-button.compact {
-      height: 22px;
-      min-width: 38px;
-      padding: 0 6px;
-      border-radius: 5px;
-      font-size: 10px;
-      line-height: 1;
-      white-space: nowrap;
     }
     .management-cs-button:disabled {
       border-color: #7a5a00;
@@ -4127,11 +4043,13 @@ HTML = r"""<!doctype html>
       gap: 8px;
     }
     .dashboard-sales-metric {
+      --metric-bg: #ffffff;
       min-height: 72px;
       padding: 11px 12px;
-      border: 1px solid #e5e7eb;
+      border: 1px solid color-mix(in srgb, var(--metric-color, #64748b) 18%, #e5e7eb);
       border-radius: 8px;
-      background: #f8fafc;
+      background:
+        linear-gradient(135deg, color-mix(in srgb, var(--metric-color, #64748b) 10%, white), var(--metric-bg) 58%, #ffffff);
       position: relative;
       overflow: hidden;
     }
@@ -4142,10 +4060,10 @@ HTML = r"""<!doctype html>
       width: 3px;
       background: var(--metric-color, #64748b);
     }
-    .dashboard-sales-metric.blue { --metric-color: #2563eb; }
-    .dashboard-sales-metric.violet { --metric-color: #7c3aed; }
-    .dashboard-sales-metric.green { --metric-color: #059669; }
-    .dashboard-sales-metric.orange { --metric-color: #f97316; }
+    .dashboard-sales-metric.blue { --metric-color: #2563eb; --metric-bg: #f4f8ff; }
+    .dashboard-sales-metric.violet { --metric-color: #7c3aed; --metric-bg: #f8f5ff; }
+    .dashboard-sales-metric.green { --metric-color: #059669; --metric-bg: #f2fbf7; }
+    .dashboard-sales-metric.orange { --metric-color: #f97316; --metric-bg: #fff7ed; }
     .dashboard-sales-metric-top {
       display: flex;
       align-items: center;
@@ -4236,19 +4154,30 @@ HTML = r"""<!doctype html>
       margin-top: 8px;
     }
     .dashboard-sales-compare {
+      --mini-card-color: #64748b;
       min-width: 0;
       padding: 9px 10px;
-      border: 1px solid #e5e7eb;
+      border: 1px solid color-mix(in srgb, var(--mini-card-color) 16%, #e5e7eb);
       border-radius: 8px;
-      background: #ffffff;
+      background: linear-gradient(135deg, color-mix(in srgb, var(--mini-card-color) 7%, white), #ffffff 62%);
     }
     .dashboard-sales-insight {
+      --insight-color: #64748b;
       min-width: 0;
       padding: 9px 10px;
-      border: 1px solid #e5e7eb;
+      border: 1px solid color-mix(in srgb, var(--insight-color) 18%, #e5e7eb);
       border-radius: 8px;
-      background: #ffffff;
+      background: linear-gradient(135deg, color-mix(in srgb, var(--insight-color) 8%, white), #ffffff 62%);
+      box-shadow: inset 3px 0 0 var(--insight-color);
     }
+    .dashboard-sales-compare:nth-child(1) { --mini-card-color: #2563eb; }
+    .dashboard-sales-compare:nth-child(2) { --mini-card-color: #059669; }
+    .dashboard-sales-insight.sales-insight-revenue,
+    .dashboard-sales-insight:nth-child(1) { --insight-color: #2563eb; }
+    .dashboard-sales-insight.sales-insight-purchase,
+    .dashboard-sales-insight:nth-child(2) { --insight-color: #f97316; }
+    .dashboard-sales-insight.sales-insight-margin,
+    .dashboard-sales-insight:nth-child(3) { --insight-color: #7c3aed; }
     .dashboard-sales-previous {
       min-width: 0;
       padding: 8px 9px;
@@ -4280,8 +4209,8 @@ HTML = r"""<!doctype html>
       height: 18px;
       flex: 0 0 auto;
       border-radius: 6px;
-      background: #f1f5f9;
-      color: #475569;
+      background: color-mix(in srgb, var(--mini-card-color, var(--insight-color, #64748b)) 12%, #ffffff);
+      color: var(--mini-card-color, var(--insight-color, #475569));
     }
     .dashboard-sales-compare-icon svg,
     .dashboard-sales-previous-icon svg,
@@ -4313,6 +4242,7 @@ HTML = r"""<!doctype html>
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
+      font-variant-numeric: tabular-nums;
     }
     .dashboard-sales-previous strong {
       font-size: 14px;
@@ -4346,37 +4276,635 @@ HTML = r"""<!doctype html>
     .dashboard-sales-insight strong.sales-negative { color: #b91c1c; }
     .dashboard-sales-compare strong.notice,
     .dashboard-sales-insight strong.notice { color: #64748b; }
-    .dashboard-sales-weekly-chart {
+    .dashboard-sales-placeholder {
       margin-top: 12px;
-      padding: 12px 12px 10px;
-      border: 1px solid #d8dee8;
+      padding: 13px 14px;
+      border: 1px dashed #cbd5e1;
       border-radius: 8px;
-      background: #ffffff;
+      background: #fbfcff;
       color: #667085;
       font-size: 12px;
       font-weight: 850;
       line-height: 1.5;
       text-align: center;
     }
-    .dashboard-sales-weekly-chart svg {
-      width: 100%;
-      height: 172px;
-      display: block;
+    .dashboard-sales-placeholder.has-chart {
+      padding: 0;
+      border: 0;
+      background: transparent;
+      text-align: left;
     }
-    .dashboard-sales-weekly-chart .chart-title {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
+    .dashboard-recent-sales {
+      display: grid;
       gap: 8px;
-      margin-bottom: 8px;
+      padding: 10px;
+      border: 1px solid #d7e3f2;
+      border-radius: 8px;
+      background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+      box-shadow: 0 8px 18px rgba(15, 23, 42, .05);
+      text-align: left;
+    }
+    .dashboard-recent-sales-head {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 10px;
+    }
+    .dashboard-recent-sales-title {
       color: #111827;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
       font-size: 12px;
       font-weight: 950;
     }
-    .dashboard-sales-weekly-chart .chart-title span:last-child {
-      color: #667085;
+    .dashboard-recent-sales-title::before {
+      content: "";
+      width: 7px;
+      height: 7px;
+      border-radius: 999px;
+      background: #2563eb;
+      box-shadow: 0 0 0 3px rgba(37, 99, 235, .12);
+    }
+    .dashboard-recent-sales-caption {
+      padding: 3px 7px;
+      border-radius: 999px;
+      background: #eef6ff;
+      color: #64748b;
+      font-size: 10px;
+      font-weight: 850;
+      white-space: nowrap;
+    }
+    .dashboard-recent-summary {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 6px;
+    }
+    .dashboard-recent-summary-card {
+      min-width: 0;
+      padding: 6px 8px;
+      border: 1px solid #e2eaf4;
+      border-radius: 8px;
+      background: #ffffff;
+    }
+    .dashboard-recent-summary-card span {
+      display: block;
+      color: #64748b;
+      font-size: 8.5px;
+      font-weight: 900;
+      line-height: 1.2;
+      white-space: nowrap;
+    }
+    .dashboard-recent-summary-card strong {
+      display: block;
+      min-width: 0;
+      margin-top: 3px;
+      color: #0f172a;
+      font-size: 13px;
+      font-weight: 950;
+      line-height: 1.15;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      font-variant-numeric: tabular-nums;
+    }
+    .dashboard-recent-summary-card.delta strong {
+      color: #047857;
+    }
+    .dashboard-recent-summary-card.delta.negative strong {
+      color: #b91c1c;
+    }
+    .dashboard-recent-chart {
+      display: grid;
+      gap: 5px;
+    }
+    .dashboard-recent-chart-frame {
+      position: relative;
+      min-height: 82px;
+      padding: 6px 8px;
+      border: 1px solid #e1eaf5;
+      border-radius: 8px;
+      background: linear-gradient(180deg, #f8fbff 0%, #ffffff 100%);
+      overflow: hidden;
+    }
+    .dashboard-recent-scale {
+      position: absolute;
+      z-index: 3;
+      inset: 6px 8px;
+      pointer-events: none;
+    }
+    .dashboard-recent-scale span {
+      position: absolute;
+      right: 0;
+      top: var(--scale-y);
+      transform: translateY(-50%);
+      padding: 1px 5px;
+      border: 1px solid rgba(203, 213, 225, .78);
+      border-radius: 999px;
+      background: rgba(255, 255, 255, .88);
+      color: #64748b;
+      font-size: 8px;
+      font-weight: 950;
+      line-height: 1.25;
+      white-space: nowrap;
+      box-shadow: 0 4px 10px rgba(15, 23, 42, .05);
+    }
+    .dashboard-recent-chart-frame::before {
+      content: "";
+      position: absolute;
+      inset: 6px 8px;
+      background: repeating-linear-gradient(0deg, transparent 0, transparent 22px, rgba(148, 163, 184, .14) 23px);
+      pointer-events: none;
+    }
+    .dashboard-recent-chart-frame svg {
+      position: relative;
+      z-index: 1;
+      width: 100%;
+      height: 72px;
+      display: block;
+      overflow: visible;
+    }
+    .dashboard-recent-area {
+      fill: url(#dashboardRecentSalesGradient);
+      opacity: .76;
+    }
+    .dashboard-recent-line {
+      fill: none;
+      stroke: #1d4ed8;
+      stroke-width: 2.2;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      vector-effect: non-scaling-stroke;
+    }
+    .dashboard-recent-points {
+      position: absolute;
+      z-index: 2;
+      inset: 6px 8px;
+      pointer-events: none;
+    }
+    .dashboard-recent-point {
+      position: absolute;
+      left: var(--point-x);
+      top: var(--point-y);
+      width: 8px;
+      height: 8px;
+      border: 2px solid #1d4ed8;
+      border-radius: 999px;
+      background: #ffffff;
+      box-shadow: 0 0 0 4px rgba(29, 78, 216, .12);
+      transform: translate(-50%, -50%);
+    }
+    .dashboard-recent-point.latest {
+      width: 10px;
+      height: 10px;
+      border-color: #059669;
+      box-shadow: 0 0 0 4px rgba(5, 150, 105, .14);
+    }
+    .dashboard-recent-point.missing {
+      border-color: #94a3b8;
+      background: #f8fafc;
+      box-shadow: 0 0 0 3px rgba(148, 163, 184, .12);
+    }
+    .dashboard-recent-axis {
+      display: grid;
+      grid-template-columns: repeat(7, minmax(0, 1fr));
+      gap: 4px;
+      color: #64748b;
+      font-size: 8.5px;
+      font-weight: 900;
+      text-align: center;
+      white-space: nowrap;
+    }
+    .dashboard-recent-note {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      color: #64748b;
+      font-size: 9px;
+      font-weight: 850;
+      padding-top: 2px;
+    }
+    .content.company-portal {
+      background: #f6f7f9;
+    }
+    .company-portal .company-tab {
+      min-height: 40px;
+      color: rgba(0, 12, 30, .62);
+      font-size: 12px;
+      font-weight: 850;
+    }
+    .company-portal .company-tab.active {
+      color: #155bc8;
+      border-bottom-color: #155bc8;
+    }
+    .company-portal .import-progress-card,
+    .company-portal .company-card {
+      border: 0;
+      border-radius: 16px;
+      background: #ffffff;
+      box-shadow: none;
+    }
+    .company-portal .import-progress-head,
+    .company-portal .company-card-head {
+      min-height: 54px;
+      padding: 0 20px;
+      border-bottom: 1px solid rgba(0, 23, 51, .06);
+      background: #ffffff;
+      color: rgba(0, 12, 30, .88);
+      font-size: 15px;
+      font-weight: 900;
+    }
+    .company-portal .company-card-body {
+      padding: 18px 20px 20px;
+    }
+    .company-portal.notice-calendar-mode .dashboard-calendar-panel .company-calendar-shell {
+      grid-template-columns: minmax(0, 1fr);
+      gap: 16px;
+      align-items: stretch;
+    }
+    .company-portal.notice-calendar-mode #dashboardSalesPanel {
+      grid-column: 1 / -1;
+      order: -1;
+    }
+    .company-portal.notice-calendar-mode .dashboard-calendar-card {
+      grid-column: 1 / -1;
+    }
+    .company-portal.notice-calendar-mode .dashboard-calendar-card .company-calendar-grid {
+      min-height: 520px;
+    }
+    .company-portal.notice-calendar-mode .dashboard-calendar-card .calendar-day {
+      min-height: 82px;
+      padding: 8px;
+    }
+    .dashboard-sales-panel {
+      gap: 16px;
+    }
+    .dashboard-sales-panel > .company-card {
+      height: auto;
+    }
+    .dashboard-sales-panel .company-card-head {
+      border-bottom: 0;
+      padding-bottom: 0;
+    }
+    .dashboard-sales-panel .company-card-body {
+      display: grid;
+      grid-template-columns: repeat(12, minmax(0, 1fr));
+      gap: 12px;
+      align-content: start;
+    }
+    .dashboard-sales-primary-grid,
+    .dashboard-sales-previous-grid,
+    .dashboard-sales-compare-grid,
+    .dashboard-sales-month-grid {
+      grid-column: span 4;
+      margin-top: 0;
+    }
+    .dashboard-sales-insights {
+      grid-column: span 8;
+      margin-top: 0;
+    }
+    .dashboard-sales-placeholder {
+      grid-column: 1 / -1;
+      margin-top: 0;
+    }
+    .dashboard-sales-grid,
+    .dashboard-sales-previous-grid,
+    .dashboard-sales-compare-grid,
+    .dashboard-sales-insights {
+      gap: 10px;
+      align-content: stretch;
+    }
+    .dashboard-sales-metric,
+    .dashboard-sales-previous,
+    .dashboard-sales-compare,
+    .dashboard-sales-insight {
+      min-height: 104px;
+      padding: 15px 16px;
+      border: 1px solid rgba(0, 27, 55, .08);
+      border-radius: 16px;
+      background: #ffffff;
+      box-shadow: none;
+    }
+    .dashboard-sales-primary-grid .dashboard-sales-metric {
+      min-height: 118px;
+    }
+    .dashboard-sales-metric {
+      border-top: 3px solid color-mix(in srgb, var(--metric-color, #64748b) 44%, #eef2f7);
+      background: #ffffff;
+    }
+    .dashboard-sales-metric::before {
+      display: none;
+    }
+    .dashboard-sales-compare,
+    .dashboard-sales-insight {
+      border-top: 3px solid color-mix(in srgb, var(--mini-card-color, var(--insight-color, #64748b)) 44%, #eef2f7);
+    }
+    .dashboard-sales-previous {
+      border-top: 3px solid #e5e7eb;
+      background: #ffffff;
+    }
+    .dashboard-sales-icon,
+    .dashboard-sales-compare-icon,
+    .dashboard-sales-previous-icon,
+    .dashboard-sales-insight-icon {
+      border-radius: 10px;
+      background: rgba(0, 23, 51, .04);
+    }
+    .dashboard-sales-icon {
+      width: 30px;
+      height: 30px;
+    }
+    .dashboard-sales-icon svg {
+      width: 16px;
+      height: 16px;
+    }
+    .dashboard-sales-metric-top {
+      margin-bottom: 12px;
+    }
+    .dashboard-sales-metric-label,
+    .dashboard-sales-compare span,
+    .dashboard-sales-previous span,
+    .dashboard-sales-insight span {
+      color: rgba(0, 12, 30, .58);
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: 0;
+    }
+    .dashboard-sales-metric strong {
+      color: rgba(0, 12, 30, .9);
+      font-size: 24px;
+      font-weight: 900;
+      letter-spacing: 0;
+      font-variant-numeric: tabular-nums;
+    }
+    .dashboard-sales-previous strong,
+    .dashboard-sales-compare strong,
+    .dashboard-sales-insight strong {
+      color: rgba(0, 12, 30, .88);
+      font-size: 17px;
+      font-weight: 900;
+      letter-spacing: 0;
+      font-variant-numeric: tabular-nums;
+    }
+    .dashboard-sales-insight strong {
+      margin-top: 6px;
+      font-size: 21px;
+      line-height: 1.12;
+    }
+    .dashboard-sales-rate {
+      color: rgba(0, 12, 30, .48);
+      font-size: 12px;
+      font-weight: 900;
+    }
+    .dashboard-sales-status {
+      min-height: 26px;
+      padding: 4px 10px;
+      border-radius: 999px;
+      background: rgba(0, 23, 51, .04);
+      color: rgba(0, 12, 30, .58);
+      font-size: 11px;
+      font-weight: 900;
+    }
+    .dashboard-sales-status.connected {
+      background: rgba(0, 150, 92, .08);
+      color: #00895a;
+    }
+    .dashboard-sales-placeholder.has-chart {
+      padding: 0;
+    }
+    .dashboard-sales-decision {
+      grid-column: 1 / -1;
+      display: grid;
+      grid-template-columns: minmax(0, 1.2fr) repeat(3, minmax(150px, .55fr));
+      gap: 10px;
+      align-items: stretch;
+      padding: 14px 16px;
+      border: 1px solid rgba(21, 91, 200, .16);
+      border-radius: 16px;
+      background: linear-gradient(135deg, rgba(21, 91, 200, .08), rgba(0, 150, 92, .06) 62%, #fff);
+    }
+    .dashboard-sales-decision-main {
+      min-width: 0;
+      display: grid;
+      gap: 5px;
+      align-content: center;
+    }
+    .dashboard-sales-decision-label {
+      color: rgba(0, 12, 30, .54);
+      font-size: 11px;
+      font-weight: 900;
+    }
+    .dashboard-sales-decision-title {
+      color: rgba(0, 12, 30, .92);
+      font-size: 18px;
+      line-height: 1.25;
+      font-weight: 950;
+      word-break: keep-all;
+    }
+    .dashboard-sales-decision-note {
+      color: rgba(0, 12, 30, .58);
+      font-size: 12px;
+      line-height: 1.45;
+      font-weight: 800;
+      word-break: keep-all;
+    }
+    .dashboard-sales-decision-chip {
+      min-width: 0;
+      padding: 10px 12px;
+      border-radius: 12px;
+      background: rgba(255, 255, 255, .72);
+      border: 1px solid rgba(0, 27, 55, .07);
+    }
+    .dashboard-sales-decision-chip span {
+      display: block;
+      color: rgba(0, 12, 30, .5);
+      font-size: 10px;
+      font-weight: 900;
+      white-space: nowrap;
+    }
+    .dashboard-sales-decision-chip strong {
+      display: block;
+      margin-top: 5px;
+      color: rgba(0, 12, 30, .9);
+      font-size: 18px;
+      line-height: 1.1;
+      font-weight: 950;
+      font-variant-numeric: tabular-nums;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .dashboard-sales-decision-chip.good strong { color: #00895a; }
+    .dashboard-sales-decision-chip.warn strong { color: #c2410c; }
+    .dashboard-sales-decision-chip.bad strong { color: #b42318; }
+    .dashboard-recent-sales {
+      gap: 14px;
+      padding: 20px;
+      border: 1px solid rgba(0, 27, 55, .08);
+      border-radius: 16px;
+      background: #ffffff;
+      box-shadow: none;
+    }
+    .dashboard-recent-sales-title {
+      color: rgba(0, 12, 30, .9);
+      font-size: 16px;
+      font-weight: 900;
+    }
+    .dashboard-recent-sales-title::before {
+      width: 8px;
+      height: 8px;
+      background: #3182f6;
+      box-shadow: 0 0 0 4px rgba(49, 130, 246, .12);
+    }
+    .dashboard-recent-sales-caption {
+      padding: 5px 9px;
+      border-radius: 999px;
+      background: rgba(0, 23, 51, .04);
+      color: rgba(0, 12, 30, .5);
       font-size: 11px;
       font-weight: 850;
+    }
+    .dashboard-recent-summary {
+      gap: 10px;
+    }
+    .dashboard-recent-summary-card {
+      padding: 12px 14px;
+      border: 0;
+      border-radius: 14px;
+      background: #f6f7f9;
+    }
+    .dashboard-recent-summary-card span {
+      color: rgba(0, 12, 30, .52);
+      font-size: 11px;
+      font-weight: 850;
+    }
+    .dashboard-recent-summary-card strong {
+      margin-top: 6px;
+      color: rgba(0, 12, 30, .9);
+      font-size: 21px;
+      font-weight: 900;
+    }
+    .dashboard-recent-chart {
+      gap: 8px;
+    }
+    .dashboard-recent-chart-frame {
+      min-height: 184px;
+      padding: 16px 18px 18px;
+      border: 1px solid rgba(0, 27, 55, .08);
+      border-radius: 16px;
+      background: #ffffff;
+    }
+    .dashboard-recent-chart-frame::before {
+      inset: 16px 18px 18px;
+      background: repeating-linear-gradient(0deg, transparent 0, transparent 37px, rgba(0, 27, 55, .07) 38px);
+    }
+    .dashboard-recent-chart-frame svg {
+      height: 150px;
+    }
+    .dashboard-recent-scale,
+    .dashboard-recent-points {
+      inset: 16px 18px 18px;
+    }
+    .dashboard-recent-scale span {
+      padding: 2px 7px;
+      border: 0;
+      background: rgba(246, 247, 249, .92);
+      color: rgba(0, 12, 30, .52);
+      font-size: 10px;
+      font-weight: 900;
+      box-shadow: none;
+    }
+    .dashboard-recent-line {
+      stroke: #3182f6;
+      stroke-width: 2.4;
+    }
+    .dashboard-recent-area {
+      opacity: .64;
+    }
+    .dashboard-recent-point {
+      border-color: #3182f6;
+      box-shadow: 0 0 0 5px rgba(49, 130, 246, .12);
+    }
+    .dashboard-recent-axis {
+      gap: 8px;
+      color: rgba(0, 12, 30, .48);
+      font-size: 11px;
+      font-weight: 850;
+    }
+    .dashboard-recent-note {
+      color: rgba(0, 12, 30, .52);
+      font-size: 11px;
+      font-weight: 800;
+    }
+    .company-portal .company-calendar-toolbar {
+      min-height: 64px;
+      padding: 18px 20px 10px;
+      border-bottom: 0;
+      background: #ffffff;
+      align-items: flex-start;
+    }
+    .company-portal .company-calendar-title {
+      flex: 0 0 auto;
+      min-width: max-content;
+      color: rgba(0, 12, 30, .9);
+      font-size: 21px;
+      font-weight: 900;
+      line-height: 1.2;
+      white-space: nowrap;
+    }
+    .company-portal .company-calendar-summary {
+      gap: 7px;
+    }
+    .company-portal .company-calendar-summary-chip {
+      min-height: 30px;
+      padding: 0 10px;
+      border: 0;
+      border-radius: 10px;
+      background: rgba(0, 23, 51, .04);
+      color: rgba(0, 12, 30, .58);
+      font-size: 11px;
+      font-weight: 850;
+    }
+    .company-portal .company-calendar-actions .crm-mini-button {
+      min-height: 34px;
+      height: 34px;
+      border-color: rgba(0, 27, 55, .1);
+      border-radius: 10px;
+      background: #ffffff;
+      color: rgba(0, 12, 30, .72);
+      box-shadow: none;
+    }
+    .company-portal .company-calendar-legend {
+      padding: 2px 20px 16px;
+      border-bottom: 1px solid rgba(0, 23, 51, .06);
+      color: rgba(0, 12, 30, .52);
+      font-size: 11px;
+      font-weight: 800;
+    }
+    .company-portal .company-calendar-weekdays {
+      border-bottom: 1px solid rgba(0, 23, 51, .06);
+      background: #fafbfc;
+      color: rgba(0, 12, 30, .48);
+      font-size: 11px;
+      font-weight: 850;
+    }
+    .company-portal .company-calendar-grid {
+      background: rgba(0, 23, 51, .06);
+    }
+    .company-portal .calendar-day {
+      background: #ffffff;
+    }
+    .company-portal .calendar-day.other-month {
+      background: #fafbfc;
+    }
+    .company-portal .calendar-date {
+      color: rgba(0, 12, 30, .78);
+      font-weight: 900;
+    }
+    .company-portal .calendar-event {
+      border-radius: 8px;
+      font-weight: 800;
     }
     .company-calendar-toolbar {
       display: flex;
@@ -4388,10 +4916,14 @@ HTML = r"""<!doctype html>
       background: #fbfcff;
     }
     .company-calendar-title {
+      flex: 0 0 124px;
+      min-width: 124px;
       color: #111827;
       font-size: 18px;
       font-weight: 950;
       letter-spacing: 0;
+      line-height: 1.2;
+      white-space: nowrap;
     }
     .company-calendar-actions {
       display: flex;
@@ -4422,7 +4954,7 @@ HTML = r"""<!doctype html>
       align-items: center;
       gap: 6px;
       min-width: 0;
-      flex: 1 1 auto;
+      flex: 0 1 auto;
       justify-content: flex-end;
     }
     .company-calendar-summary-chip {
@@ -4435,20 +4967,9 @@ HTML = r"""<!doctype html>
       border-radius: 999px;
       background: #ffffff;
       color: #475569;
-      font-family: inherit;
       font-size: 11px;
       font-weight: 900;
       white-space: nowrap;
-      cursor: pointer;
-    }
-    .company-calendar-summary-chip:hover {
-      border-color: #bfdbfe;
-      background: #f8fbff;
-      color: #155bc8;
-    }
-    .company-calendar-summary-chip:focus-visible {
-      outline: 3px solid rgba(37, 99, 235, .18);
-      outline-offset: 2px;
     }
     .company-calendar-summary-chip svg {
       width: 12px;
@@ -4458,29 +4979,6 @@ HTML = r"""<!doctype html>
     }
     .company-calendar-summary-chip.warning svg {
       color: #c2410c;
-    }
-    .calendar-summary-list {
-      display: grid;
-      gap: 8px;
-    }
-    .calendar-summary-item {
-      width: 100%;
-      min-height: 48px;
-      display: grid;
-      grid-template-columns: minmax(0, 1fr) auto;
-      gap: 10px;
-      align-items: center;
-      padding: 9px 10px;
-      border: 1px solid #e4ebf5;
-      border-radius: 7px;
-      background: white;
-      text-align: left;
-      font-family: inherit;
-      cursor: pointer;
-    }
-    .calendar-summary-item:hover {
-      border-color: #bfdbfe;
-      background: #f8fbff;
     }
     .company-calendar-legend {
       display: flex;
@@ -4923,6 +5421,790 @@ HTML = r"""<!doctype html>
       font-size: 13px;
       font-weight: 950;
     }
+    .floating-messenger {
+      position: fixed;
+      right: 24px;
+      bottom: 24px;
+      z-index: 80;
+      display: grid;
+      justify-items: end;
+      pointer-events: none;
+    }
+    .floating-messenger-fab,
+    .floating-messenger-panel {
+      pointer-events: auto;
+    }
+    .floating-messenger-fab {
+      position: relative;
+      width: 58px;
+      height: 58px;
+      border: 0;
+      border-radius: 999px;
+      display: grid;
+      place-items: center;
+      background: #3182f6;
+      color: #ffffff;
+      box-shadow: 0 18px 34px rgba(49, 130, 246, .32);
+      cursor: pointer;
+      transition: opacity .16s ease, transform .16s ease, box-shadow .16s ease, background .16s ease;
+    }
+    .floating-messenger-fab:hover {
+      transform: translateY(-2px);
+      background: #1d6ee8;
+      box-shadow: 0 22px 40px rgba(49, 130, 246, .38);
+    }
+    .floating-messenger-fab svg {
+      width: 27px;
+      height: 27px;
+      stroke-width: 2.4;
+    }
+    .floating-messenger-badge {
+      position: absolute;
+      top: -3px;
+      right: -3px;
+      min-width: 20px;
+      height: 20px;
+      padding: 0 6px;
+      border: 2px solid #ffffff;
+      border-radius: 999px;
+      display: none;
+      place-items: center;
+      background: #f04452;
+      color: #ffffff;
+      font-size: 10px;
+      font-weight: 950;
+      line-height: 1;
+    }
+    .floating-messenger-badge.visible {
+      display: grid;
+    }
+    .floating-messenger-panel {
+      position: absolute;
+      right: 0;
+      bottom: 0;
+      width: min(392px, calc(100vw - 28px));
+      height: min(656px, calc(100vh - 40px));
+      display: grid;
+      grid-template-rows: minmax(0, 1fr) 76px;
+      overflow: hidden;
+      border: 1px solid rgba(255, 255, 255, .08);
+      border-radius: 24px;
+      background: #2f3133;
+      color: #f5f7f8;
+      box-shadow: 0 30px 90px rgba(0, 0, 0, .34);
+      opacity: 0;
+      transform: translateY(14px) scale(.98);
+      pointer-events: none;
+      transition: opacity .16s ease, transform .16s ease;
+    }
+    .floating-messenger.open .floating-messenger-fab {
+      opacity: 0;
+      transform: scale(.82);
+      pointer-events: none;
+    }
+    .floating-messenger.open .floating-messenger-panel {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+      pointer-events: auto;
+    }
+    .floating-messenger-utility {
+      position: absolute;
+      top: 16px;
+      right: 14px;
+      z-index: 3;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .floating-messenger-icon-button {
+      width: 32px;
+      height: 32px;
+      padding: 0;
+      border: 1px solid rgba(255, 255, 255, .08);
+      border-radius: 999px;
+      display: inline-grid;
+      place-items: center;
+      background: rgba(255, 255, 255, .05);
+      color: rgba(255, 255, 255, .76);
+      cursor: pointer;
+      transition: background .14s ease, color .14s ease;
+    }
+    .floating-messenger-icon-button:hover {
+      background: rgba(255, 255, 255, .1);
+      color: #ffffff;
+    }
+    .floating-messenger-icon-button svg {
+      width: 16px;
+      height: 16px;
+      stroke-width: 2.5;
+    }
+    .floating-messenger-screen {
+      min-height: 0;
+      display: none;
+      flex-direction: column;
+      padding: 24px 18px 0;
+      overflow: hidden;
+    }
+    .floating-messenger-screen.active {
+      display: flex;
+    }
+    .floating-messenger-scroll {
+      min-height: 0;
+      overflow: auto;
+      padding-bottom: 14px;
+      scrollbar-width: thin;
+      scrollbar-color: rgba(255, 255, 255, .32) transparent;
+    }
+    .floating-messenger-brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 26px;
+      padding-right: 112px;
+    }
+    .floating-messenger-logo {
+      position: relative;
+      width: 44px;
+      height: 44px;
+      flex: 0 0 auto;
+      border-radius: 999px;
+      background:
+        radial-gradient(circle at 66% 31%, rgba(255, 255, 255, .72), transparent 0 16%, transparent 100%),
+        linear-gradient(135deg, #121318 0%, #3e4148 46%, #08090d 47%, #808692 100%);
+      box-shadow: inset 0 1px 8px rgba(255, 255, 255, .12), 0 8px 20px rgba(0, 0, 0, .22);
+    }
+    .floating-messenger-logo::after {
+      content: "";
+      position: absolute;
+      inset: 6px 18px 6px 13px;
+      border-radius: 999px;
+      background: linear-gradient(160deg, rgba(255, 255, 255, .62), rgba(255, 255, 255, 0) 54%);
+      transform: rotate(28deg);
+    }
+    .floating-messenger-brand strong,
+    .floating-messenger-page-title {
+      color: #f5f7f8;
+      font-size: 21px;
+      font-weight: 950;
+      line-height: 1.1;
+      letter-spacing: 0;
+    }
+    .floating-messenger-page-title {
+      margin: 0 112px 16px 0;
+    }
+    .floating-messenger-card {
+      border-radius: 20px;
+      background: rgba(255, 255, 255, .1);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, .05);
+    }
+    .floating-messenger-intro {
+      display: grid;
+      gap: 14px;
+      padding: 14px 12px 14px;
+      margin-bottom: 14px;
+    }
+    .floating-messenger-intro-head {
+      display: grid;
+      grid-template-columns: 34px minmax(0, 1fr);
+      gap: 10px;
+      align-items: start;
+    }
+    .floating-messenger-intro-title {
+      color: rgba(255, 255, 255, .86);
+      font-size: 12px;
+      font-weight: 950;
+      line-height: 1.3;
+    }
+    .floating-messenger-intro-copy {
+      margin: 3px 0 0;
+      color: rgba(255, 255, 255, .72);
+      font-size: 14px;
+      font-weight: 820;
+      line-height: 1.46;
+    }
+    .floating-messenger-primary {
+      min-height: 42px;
+      border: 0;
+      border-radius: 13px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 7px;
+      background: #e9f8ff;
+      color: #0f171b;
+      font-family: inherit;
+      font-size: 14px;
+      font-weight: 950;
+      cursor: pointer;
+    }
+    .floating-messenger-plane {
+      position: relative;
+      width: 13px;
+      height: 13px;
+      display: inline-block;
+    }
+    .floating-messenger-plane::before {
+      content: "";
+      position: absolute;
+      left: 1px;
+      top: 2px;
+      width: 0;
+      height: 0;
+      border-left: 11px solid currentColor;
+      border-top: 5px solid transparent;
+      border-bottom: 5px solid transparent;
+      transform: rotate(-22deg);
+    }
+    .floating-messenger-plane::after {
+      content: "";
+      position: absolute;
+      left: 3px;
+      top: 6px;
+      width: 6px;
+      height: 1px;
+      background: #e9f8ff;
+      transform: rotate(-22deg);
+    }
+    .floating-messenger-alert-card {
+      padding: 12px;
+      margin-bottom: 12px;
+    }
+    .floating-messenger-alert-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 9px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid rgba(255, 255, 255, .07);
+      color: rgba(255, 255, 255, .46);
+      font-size: 12px;
+      font-weight: 950;
+    }
+    .floating-messenger-text-button {
+      border: 0;
+      padding: 0;
+      background: transparent;
+      color: rgba(255, 255, 255, .72);
+      font-family: inherit;
+      font-size: 12px;
+      font-weight: 950;
+      cursor: pointer;
+    }
+    .floating-messenger-preview {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 10px;
+      align-items: center;
+      min-height: 56px;
+    }
+    .floating-messenger-preview-title {
+      color: #ffffff;
+      font-size: 13px;
+      font-weight: 950;
+      line-height: 1.35;
+    }
+    .floating-messenger-preview-body {
+      margin-top: 3px;
+      color: rgba(255, 255, 255, .68);
+      font-size: 13px;
+      font-weight: 820;
+      line-height: 1.35;
+      overflow: hidden;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+    }
+    .floating-messenger-preview-badge {
+      width: 42px;
+      height: 42px;
+      border-radius: 12px;
+      display: grid;
+      place-items: center;
+      background: linear-gradient(135deg, #12142b, #0b52d9 72%, #6e57ff);
+      color: #ffffff;
+      font-size: 9px;
+      font-weight: 950;
+      box-shadow: inset 0 1px 8px rgba(255, 255, 255, .16);
+    }
+    .floating-messenger-secondary {
+      width: 100%;
+      min-height: 32px;
+      margin-top: 10px;
+      border: 0;
+      border-radius: 10px;
+      background: #4d7584;
+      color: #8ce3ff;
+      font-family: inherit;
+      font-size: 12px;
+      font-weight: 900;
+      cursor: pointer;
+    }
+    .floating-messenger-status {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 5px;
+      color: rgba(255, 255, 255, .36);
+      font-size: 11px;
+      font-weight: 900;
+    }
+    .floating-messenger-status-dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 999px;
+      display: inline-grid;
+      place-items: center;
+      border: 2px solid rgba(255, 255, 255, .34);
+      font-size: 7px;
+      line-height: 1;
+    }
+    .floating-messenger-chat-notice {
+      min-height: 36px;
+      padding: 0 12px;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      background: rgba(255, 255, 255, .08);
+      color: rgba(255, 255, 255, .52);
+      font-size: 12px;
+      font-weight: 850;
+      margin-bottom: 12px;
+    }
+    .floating-messenger-thread {
+      min-height: 0;
+      flex: 1 1 auto;
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr) auto;
+      overflow: hidden;
+    }
+    .floating-messenger-thread[hidden] {
+      display: none;
+    }
+    .floating-messenger-thread-head {
+      display: grid;
+      grid-template-columns: 34px minmax(0, 1fr);
+      gap: 8px;
+      align-items: center;
+      padding: 0 0 10px;
+    }
+    .floating-messenger-thread-back {
+      width: 32px;
+      height: 32px;
+      border: 0;
+      border-radius: 999px;
+      display: grid;
+      place-items: center;
+      background: rgba(255, 255, 255, .08);
+      color: rgba(255, 255, 255, .8);
+      cursor: pointer;
+    }
+    .floating-messenger-thread-back svg {
+      width: 17px;
+      height: 17px;
+      stroke-width: 2.7;
+    }
+    .floating-messenger-title {
+      color: rgba(255, 255, 255, .82);
+      font-size: 14px;
+      font-weight: 950;
+      line-height: 1.25;
+    }
+    .floating-messenger-kicker {
+      margin: 2px 0 8px;
+      color: rgba(255, 255, 255, .42);
+      font-size: 11px;
+      font-weight: 850;
+    }
+    .floating-messenger-roombar {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      min-height: 0;
+      padding: 2px 0 16px;
+      overflow: auto;
+      scrollbar-width: thin;
+      scrollbar-color: rgba(255, 255, 255, .32) transparent;
+    }
+    .floating-messenger-room {
+      width: 100%;
+      min-height: 58px;
+      padding: 0;
+      border: 0;
+      border-radius: 14px;
+      display: grid;
+      grid-template-columns: 42px minmax(0, 1fr) auto;
+      gap: 10px;
+      align-items: center;
+      background: transparent;
+      color: rgba(255, 255, 255, .76);
+      font-family: inherit;
+      font-size: 12px;
+      font-weight: 900;
+      cursor: pointer;
+      text-align: left;
+      white-space: normal;
+      transition: background .14s ease;
+    }
+    .floating-messenger-room:hover,
+    .floating-messenger-room.active {
+      background: rgba(255, 255, 255, .06);
+      color: rgba(255, 255, 255, .88);
+    }
+    .floating-messenger-room-avatar {
+      width: 38px;
+      height: 38px;
+      border-radius: 999px;
+      display: grid;
+      place-items: center;
+      background:
+        radial-gradient(circle at 65% 30%, rgba(255, 255, 255, .72), transparent 0 15%, transparent 100%),
+        linear-gradient(135deg, #17191f 0%, #4c505a 46%, #0b0d12 48%, #8d939e 100%);
+      color: rgba(255, 255, 255, .82);
+      font-size: 10px;
+      font-weight: 950;
+      box-shadow: 0 6px 14px rgba(0, 0, 0, .24);
+    }
+    .floating-messenger-room-main {
+      min-width: 0;
+    }
+    .floating-messenger-room-top {
+      display: flex;
+      align-items: baseline;
+      gap: 7px;
+      min-width: 0;
+    }
+    .floating-messenger-room-title {
+      min-width: 0;
+      color: rgba(255, 255, 255, .84);
+      font-size: 13px;
+      font-weight: 950;
+      line-height: 1.25;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .floating-messenger-room-date {
+      color: rgba(255, 255, 255, .34);
+      font-size: 11px;
+      font-weight: 850;
+      white-space: nowrap;
+    }
+    .floating-messenger-room-preview {
+      margin-top: 3px;
+      color: rgba(255, 255, 255, .5);
+      font-size: 13px;
+      font-weight: 820;
+      line-height: 1.35;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .floating-messenger-room-dot {
+      width: 5px;
+      height: 5px;
+      margin-right: 2px;
+      border-radius: 999px;
+      background: #ff5366;
+    }
+    .floating-messenger-list {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      min-height: 0;
+      padding: 6px 0 12px;
+      overflow: auto;
+      background: transparent;
+      scrollbar-width: thin;
+      scrollbar-color: rgba(255, 255, 255, .32) transparent;
+    }
+    .floating-messenger-empty {
+      margin: auto;
+      color: rgba(255, 255, 255, .48);
+      font-size: 12px;
+      font-weight: 850;
+      line-height: 1.5;
+      text-align: center;
+    }
+    .floating-thread-message {
+      max-width: 86%;
+      padding: 10px 12px;
+      border-radius: 16px;
+      align-self: flex-start;
+      background: rgba(255, 255, 255, .1);
+      color: rgba(255, 255, 255, .74);
+    }
+    .floating-thread-message.mine {
+      align-self: flex-end;
+      background: #3182f6;
+      color: #ffffff;
+    }
+    .floating-thread-message .internal-message-meta {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-bottom: 4px;
+      color: rgba(255, 255, 255, .48);
+      font-size: 10px;
+      font-weight: 850;
+      line-height: 1.25;
+    }
+    .floating-thread-message.mine .internal-message-meta {
+      color: rgba(255, 255, 255, .72);
+    }
+    .floating-thread-message .internal-message-name {
+      color: rgba(255, 255, 255, .84);
+      font-size: 11px;
+      font-weight: 950;
+    }
+    .floating-thread-message .internal-message-body {
+      color: rgba(255, 255, 255, .82);
+      font-size: 13px;
+      font-weight: 850;
+      line-height: 1.45;
+      white-space: pre-wrap;
+    }
+    .floating-thread-message.mine .internal-message-body,
+    .floating-thread-message.mine .internal-message-name {
+      color: #ffffff;
+    }
+    .floating-thread-message.command-ok .internal-message-body {
+      color: #dff7e8;
+    }
+    .floating-thread-message.command-error .internal-message-body {
+      color: #ffd4d9;
+    }
+    .floating-messenger-form {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 8px;
+      padding: 10px 0 0;
+      border-top: 1px solid rgba(255, 255, 255, .08);
+      background: transparent;
+    }
+    .floating-messenger-input-wrap {
+      display: grid;
+      gap: 6px;
+      min-width: 0;
+    }
+    .floating-messenger-hint {
+      color: rgba(255, 255, 255, .42);
+      font-size: 10px;
+      font-weight: 800;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .floating-messenger-form textarea {
+      width: 100%;
+      min-height: 44px;
+      max-height: 96px;
+      resize: vertical;
+      border: 1px solid rgba(232, 248, 255, .32);
+      border-radius: 14px;
+      padding: 10px 12px;
+      background: rgba(255, 255, 255, .96);
+      color: #161d22;
+      font-family: inherit;
+      font-size: 13px;
+      font-weight: 800;
+      line-height: 1.4;
+      outline: none;
+    }
+    .floating-messenger-form textarea:focus {
+      border-color: #e9f8ff;
+      background: #ffffff;
+      box-shadow: 0 0 0 3px rgba(233, 248, 255, .16);
+    }
+    .floating-messenger-send {
+      align-self: end;
+      min-width: 58px;
+      min-height: 44px;
+      border: 0;
+      border-radius: 14px;
+      background: #3182f6;
+      color: #ffffff;
+      font-family: inherit;
+      font-size: 13px;
+      font-weight: 950;
+      cursor: pointer;
+    }
+    .floating-messenger-send:disabled {
+      opacity: .55;
+      cursor: wait;
+    }
+    .floating-messenger-settings-profile {
+      display: grid;
+      justify-items: center;
+      gap: 8px;
+      padding: 26px 0 24px;
+      border-bottom: 1px solid rgba(255, 255, 255, .08);
+      margin: 0 -18px 10px;
+    }
+    .floating-messenger-profile-icon {
+      width: 52px;
+      height: 52px;
+      border-radius: 16px;
+      display: grid;
+      place-items: center;
+      background: linear-gradient(135deg, #9a74ff, #c49aff);
+      color: #ffffff;
+      font-size: 26px;
+      font-weight: 950;
+    }
+    .floating-messenger-profile-name {
+      color: rgba(255, 255, 255, .78);
+      font-size: 14px;
+      font-weight: 950;
+    }
+    .floating-messenger-profile-phone,
+    .floating-messenger-version {
+      color: rgba(255, 255, 255, .34);
+      font-size: 12px;
+      font-weight: 850;
+    }
+    .floating-messenger-profile-edit {
+      min-height: 24px;
+      padding: 0 10px;
+      border: 0;
+      border-radius: 8px;
+      background: rgba(255, 255, 255, .1);
+      color: rgba(255, 255, 255, .6);
+      font-family: inherit;
+      font-size: 12px;
+      font-weight: 900;
+      cursor: pointer;
+    }
+    .floating-messenger-setting-section {
+      padding: 10px 0 14px;
+      border-bottom: 1px solid rgba(255, 255, 255, .08);
+    }
+    .floating-messenger-setting-section:last-child {
+      border-bottom: 0;
+    }
+    .floating-messenger-setting-label {
+      margin-bottom: 8px;
+      color: rgba(255, 255, 255, .34);
+      font-size: 12px;
+      font-weight: 950;
+    }
+    .floating-messenger-setting-row {
+      min-height: 36px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      color: rgba(255, 255, 255, .72);
+      font-size: 14px;
+      font-weight: 880;
+    }
+    .floating-messenger-setting-value {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      color: rgba(255, 255, 255, .58);
+      font-size: 13px;
+      font-weight: 850;
+    }
+    .floating-messenger-setting-value svg {
+      width: 15px;
+      height: 15px;
+      stroke-width: 2.6;
+    }
+    .floating-messenger-switch {
+      position: relative;
+      width: 34px;
+      height: 21px;
+      flex: 0 0 auto;
+    }
+    .floating-messenger-switch input {
+      position: absolute;
+      inset: 0;
+      opacity: 0;
+      cursor: pointer;
+    }
+    .floating-messenger-switch span {
+      position: absolute;
+      inset: 0;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, .12);
+      transition: background .16s ease;
+    }
+    .floating-messenger-switch span::after {
+      content: "";
+      position: absolute;
+      width: 15px;
+      height: 15px;
+      left: 3px;
+      top: 3px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, .34);
+      transition: transform .16s ease, background .16s ease;
+    }
+    .floating-messenger-switch input:checked + span {
+      background: #2ed96f;
+    }
+    .floating-messenger-switch input:checked + span::after {
+      transform: translateX(13px);
+      background: #ffffff;
+    }
+    .floating-messenger-bottom-nav {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      align-items: center;
+      padding: 6px 26px 10px;
+      border-top: 1px solid rgba(255, 255, 255, .06);
+      background: #2f3133;
+    }
+    .floating-messenger-tab-button {
+      position: relative;
+      min-height: 56px;
+      border: 0;
+      border-radius: 14px;
+      display: grid;
+      justify-items: center;
+      align-content: center;
+      gap: 4px;
+      background: transparent;
+      color: rgba(255, 255, 255, .44);
+      font-family: inherit;
+      font-size: 11px;
+      font-weight: 850;
+      cursor: pointer;
+    }
+    .floating-messenger-tab-button svg {
+      width: 21px;
+      height: 21px;
+      stroke-width: 2.45;
+    }
+    .floating-messenger-tab-button.active {
+      color: #ffffff;
+    }
+    .floating-messenger-tab-dot {
+      position: absolute;
+      top: 8px;
+      right: calc(50% - 18px);
+      width: 5px;
+      height: 5px;
+      border-radius: 999px;
+      display: none;
+      background: #ff5366;
+    }
+    .floating-messenger-tab-dot.visible {
+      display: block;
+    }
+    @media (max-width: 640px) {
+      .floating-messenger {
+        right: 12px;
+        bottom: 14px;
+      }
+      .floating-messenger-panel {
+        width: calc(100vw - 24px);
+        height: min(656px, calc(100vh - 28px));
+      }
+    }
     .company-staff-layout {
       display: grid;
       grid-template-columns: minmax(0, 1.45fr) minmax(280px, .55fr);
@@ -5335,6 +6617,37 @@ HTML = r"""<!doctype html>
     }
     .crm-form-grid .wide { grid-column: span 2; }
     .crm-form-grid .full { grid-column: 1 / -1; }
+    .crm-task-form {
+      order: 20;
+    }
+    .crm-task-form.collapsed {
+      order: 20;
+    }
+    .crm-task-form:not(.collapsed) {
+      order: 20;
+      border-color: #bfdbfe;
+      background: #fbfdff;
+    }
+    .crm-task-form:not(.collapsed) .crm-card-head {
+      min-height: 38px;
+      background: #eff6ff;
+    }
+    .crm-task-form:not(.collapsed) .crm-card-body {
+      padding: 10px;
+      grid-template-columns: repeat(6, minmax(0, 1fr));
+      align-items: start;
+    }
+    .crm-task-form:not(.collapsed) .crm-form-grid .wide {
+      grid-column: span 2;
+    }
+    .crm-task-form:not(.collapsed) .crm-textarea.full {
+      grid-column: span 4;
+      height: 44px;
+      min-height: 44px;
+    }
+    .crm-task-form:not(.collapsed) #crmTaskReset {
+      min-height: 32px;
+    }
     .crm-table-wrap {
       overflow: auto;
       border: 1px solid var(--line);
@@ -5706,6 +7019,18 @@ HTML = r"""<!doctype html>
       .crm-task-detail { min-height: 320px; }
       .company-grid { grid-template-columns: 1fr; }
       .company-calendar-shell { grid-template-columns: 1fr; }
+      .dashboard-sales-primary-grid,
+      .dashboard-sales-previous-grid,
+      .dashboard-sales-compare-grid,
+      .dashboard-sales-month-grid {
+        grid-column: span 6;
+      }
+      .dashboard-sales-decision {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+      .dashboard-sales-decision-main {
+        grid-column: 1 / -1;
+      }
       .company-staff-layout { grid-template-columns: 1fr; }
       .crm-task-toolbar { grid-template-columns: repeat(3, minmax(0, 1fr)); }
       .crm-advanced-filters { grid-template-columns: repeat(3, minmax(0, 1fr)); }
@@ -5726,6 +7051,27 @@ HTML = r"""<!doctype html>
       .company-rule-grid,
       .company-mini-grid,
       .internal-chat-side { grid-template-columns: 1fr; }
+      .dashboard-sales-primary-grid,
+      .dashboard-sales-previous-grid,
+      .dashboard-sales-compare-grid,
+      .dashboard-sales-month-grid,
+      .dashboard-sales-insights,
+      .dashboard-sales-placeholder {
+        grid-column: 1 / -1;
+      }
+      .dashboard-sales-grid,
+      .dashboard-sales-previous-grid,
+      .dashboard-sales-compare-grid,
+      .dashboard-sales-insights,
+      .dashboard-recent-summary {
+        grid-template-columns: 1fr;
+      }
+      .dashboard-sales-decision {
+        grid-template-columns: 1fr;
+      }
+      .dashboard-sales-decision-main {
+        grid-column: auto;
+      }
       .company-org-tree { min-width: 560px; }
       .company-calendar-grid { min-height: 520px; }
       .calendar-day { min-height: 92px; padding: 6px; }
@@ -5984,16 +7330,17 @@ HTML = r"""<!doctype html>
       }
     }
 
-    /* Compact typography pass: keep controls usable while reducing visual bulk. */
-    .brand-label { font-size: 16px; }
-    .nav-item, .nav-section, .app-add { font-size: 13px; }
-    .nav-subitem { font-size: 12px; }
-    .title { font-size: 22px; }
+    /* Readability pass: keep dense work screens scannable without making text feel cramped. */
+    body { font-size: 14px; }
+    .brand-label { font-size: 17px; line-height: 1.38; }
+    .nav-item, .nav-section, .app-add { font-size: 14px; line-height: 1.35; }
+    .nav-subitem { font-size: 13px; line-height: 1.35; }
+    .title { font-size: 24px; }
     .top-button,
     .top-search,
     .user-chip,
-    .logout-button { font-size: 12px; }
-    .notice-board-title { font-size: 18px; }
+    .logout-button { font-size: 13px; }
+    .notice-board-title { font-size: 20px; line-height: 1.35; }
     .notice-board-body,
     .import-empty,
     .notice-preview,
@@ -6002,10 +7349,10 @@ HTML = r"""<!doctype html>
     .system-message,
     .backup-message,
     .leave-message,
-    .admin-message { font-size: 12px; }
-    .dashboard-title { font-size: 15px; }
-    .action-title { font-size: 14px; }
-    .action-sub { min-height: 34px; font-size: 11px; }
+    .admin-message { font-size: 13px; line-height: 1.55; }
+    .dashboard-title { font-size: 16px; }
+    .action-title { font-size: 15px; line-height: 1.35; }
+    .action-sub { min-height: 38px; font-size: 12px; line-height: 1.45; }
     .modal-title { font-size: 22px; }
     .field-label { font-size: 15px; }
     .drop-main { font-size: 15px; }
@@ -6014,9 +7361,9 @@ HTML = r"""<!doctype html>
     textarea,
     .text-field input,
     .text-field select,
-    .text-field textarea { font-size: 13px; }
+    .text-field textarea { font-size: 14px; line-height: 1.45; }
     .btn { font-size: 14px; }
-    .notice { font-size: 12px; }
+    .notice { font-size: 13px; line-height: 1.55; }
     .notice-template input,
     .notice-template textarea,
     .admin-form input,
@@ -6027,39 +7374,39 @@ HTML = r"""<!doctype html>
     .leave-form textarea,
     .backup-summary-card span,
     .system-summary-card span,
-    .leave-summary-card span { font-size: 12px; }
+    .leave-summary-card span { font-size: 13px; line-height: 1.45; }
     .permission-item,
     .admin-table,
     .leave-table,
     .system-table,
-    .import-table { font-size: 12px; }
+    .import-table { font-size: 13px; line-height: 1.4; }
     .backup-summary-card strong { font-size: 16px; }
     .leave-summary-card strong { font-size: 25px; }
     .leave-card-title { font-size: 15px; }
     .ledger-cs-popup-title { font-size: 18px; }
     .product-row input,
     .checkbox-field,
-    .cs-case-head { font-size: 13px; }
-    .cs-case-item { font-size: 12px; }
-    .cs-case-meta { font-size: 11px; }
+    .cs-case-head { font-size: 14px; }
+    .cs-case-item { font-size: 13px; line-height: 1.45; }
+    .cs-case-meta { font-size: 12px; }
     .ledger-toolbar input,
     .ledger-toolbar select,
     .ledger-toolbar .btn,
     .ledger-count,
-    .management-month-tab { font-size: 11px; }
-    .ledger-table { font-size: 11px; }
+    .management-month-tab { font-size: 12px; }
+    .ledger-table { font-size: 12px; }
     .ledger-filter-trigger,
     .ledger-table td,
     .ledger-edit,
     .ledger-status-select,
     .ledger-save,
-    .management-edit,
-    .management-cs-button { font-size: 10px; }
+    .management-edit { font-size: 11px; }
+    .management-cs-button { font-size: 11px; }
     .ledger-filter-title,
-    .ledger-filter-search { font-size: 12px; }
+    .ledger-filter-search { font-size: 13px; }
     .ledger-filter-option,
-    .workspace-button { font-size: 11px; }
-    .workspace-title { font-size: 16px; }
+    .workspace-button { font-size: 12px; }
+    .workspace-title { font-size: 18px; line-height: 1.35; }
     .ledger-table th {
       padding: 3px 5px;
       line-height: 1.05;
@@ -6081,6 +7428,19 @@ HTML = r"""<!doctype html>
     .ledger-table td {
       padding: 2px 4px;
       line-height: 1.1;
+    }
+    .ledger-table td {
+      padding: 7px 8px;
+      line-height: 1.35;
+    }
+    .ledger-table td[data-field="cs_content"],
+    .ledger-table td[data-field="product_name"],
+    .ledger-table td[data-field="receiver_address"],
+    .ledger-table td[data-management-field="product_name"],
+    .ledger-table td[data-management-field="receiver_address"] {
+      white-space: normal;
+      line-height: 1.38;
+      max-height: 44px;
     }
     .ledger-edit,
     .ledger-status-select {
@@ -6127,6 +7487,39 @@ HTML = r"""<!doctype html>
       .top-tools { display: none; }
       .content { padding: 0 12px 18px; }
       .title { font-size: 22px; }
+      .top-search { width: 100%; min-width: 0; }
+      .company-calendar-toolbar {
+        flex-wrap: wrap;
+        align-items: flex-start;
+      }
+      .company-calendar-title {
+        flex: 1 0 100%;
+        min-width: 0;
+      }
+      .company-calendar-summary {
+        justify-content: flex-start;
+        flex-wrap: wrap;
+      }
+      .company-calendar-actions {
+        width: 100%;
+        justify-content: flex-start;
+      }
+      .admin-card,
+      .admin-panel,
+      .workspace-view { min-width: 0; }
+      .admin-form {
+        grid-template-columns: 1fr;
+        gap: 12px;
+      }
+      .admin-form label,
+      .admin-form input,
+      .admin-form select,
+      .admin-form button,
+      .admin-check {
+        min-width: 0;
+        width: 100%;
+      }
+      .permission-grid { grid-template-columns: 1fr; }
       .stat-grid,
       .action-grid { grid-template-columns: 1fr; }
     }
@@ -6144,8 +7537,8 @@ HTML = r"""<!doctype html>
         <input id="sidebarSearchInput" name="workhub-menu-search" type="search" placeholder="메뉴 검색" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" />
       </label>
       <div class="nav-section">MAIN</div>
-      <div class="nav-group" id="companyNavGroup">
-        <button class="nav-item active" id="companyNavToggle" type="button" data-nav-tone="home" data-view="dashboard" data-company-tab="notice">
+      <div class="nav-group open" id="companyNavGroup">
+        <button class="nav-item active" id="companyNavToggle" type="button" data-view="dashboard" data-company-tab="notice">
           <span class="nav-label"><i data-lucide="home"></i> <span>회사 포털</span></span>
           <i class="nav-chevron" data-lucide="chevron-right"></i>
         </button>
@@ -6158,8 +7551,9 @@ HTML = r"""<!doctype html>
           <button class="nav-subitem" type="button" data-view="dashboard" data-company-tab="chat">사내 메신저</button>
         </div>
       </div>
+      __SALES_REPORT_NAV__
       <div class="nav-group" id="importNavGroup">
-        <button class="nav-item" id="importNavToggle" type="button" data-nav-tone="import" data-open="import">
+        <button class="nav-item" id="importNavToggle" type="button" data-open="import">
           <span class="nav-label"><i data-lucide="truck"></i> <span>수출입 업무 및 화물 입 출고 관리</span></span>
           <i class="nav-chevron" data-lucide="chevron-right"></i>
         </button>
@@ -6170,22 +7564,31 @@ HTML = r"""<!doctype html>
         </div>
       </div>
       <div class="nav-group" id="orderNavGroup">
-        <button class="nav-item" id="orderNavToggle" type="button" data-nav-tone="order" data-open="order">
+        <button class="nav-item" id="orderNavToggle" type="button" data-open="order">
           <span class="nav-label"><i data-lucide="clipboard-list"></i> <span>발주업무</span></span>
         </button>
       </div>
       <div class="nav-group" id="managementNavGroup">
-        <button class="nav-item" id="managementNavToggle" type="button" data-nav-tone="management" data-open="management">
+        <button class="nav-item" id="managementNavToggle" type="button" data-open="management">
           <span class="nav-label"><i data-lucide="database"></i> <span>통합관리대장 관리</span></span>
+          <i class="nav-chevron" data-lucide="chevron-right"></i>
         </button>
+        <div class="nav-submenu">
+          <button class="nav-subitem" id="managementImportOpen" type="button" data-management-import-mode="daily">통합관리대장 업로드</button>
+        </div>
       </div>
       <div class="nav-group" id="ledgerNavGroup">
-        <button class="nav-item" id="ledgerNavToggle" type="button" data-nav-tone="cs" data-open="ledger">
-          <span class="nav-label"><i data-lucide="headphones"></i> <span>CS 처리대장</span></span>
+        <button class="nav-item" id="ledgerNavToggle" type="button" data-open="ledger">
+          <span class="nav-label"><i data-lucide="clipboard-check"></i> <span>CS 처리대장</span></span>
+          <i class="nav-chevron" data-lucide="chevron-right"></i>
         </button>
+        <div class="nav-submenu">
+          <button class="nav-subitem" id="ledgerImportOpen" type="button" data-ledger-import-mode="daily">CS처리대장 업로드</button>
+          <button class="nav-subitem" type="button" data-mail-popup="cs">CS처리 요청</button>
+        </div>
       </div>
       <div class="nav-group" id="crmNavGroup">
-        <button class="nav-item" id="crmNavToggle" type="button" data-nav-tone="crm" data-open="crm" data-crm-nav-tab="dashboard">
+        <button class="nav-item" id="crmNavToggle" type="button" data-open="crm" data-crm-nav-tab="dashboard">
           <span class="nav-label"><i data-lucide="message-circle"></i> <span>업무관리</span></span>
           <i class="nav-chevron" data-lucide="chevron-right"></i>
         </button>
@@ -6198,7 +7601,7 @@ HTML = r"""<!doctype html>
         </div>
       </div>
       <div class="nav-group" id="distributionMailNavGroup">
-        <button class="nav-item" id="distributionMailNavToggle" type="button" data-nav-tone="mail">
+        <button class="nav-item" id="distributionMailNavToggle" type="button">
           <span class="nav-label"><i data-lucide="mail"></i> <span>거래처 업무관련</span></span>
           <i class="nav-chevron" data-lucide="chevron-right"></i>
         </button>
@@ -6209,10 +7612,9 @@ HTML = r"""<!doctype html>
         </div>
       </div>
       __LEAVE_NAV__
-      __SALES_REPORT_NAV__
       __ADMIN_TOOLS_NAV__
       <div class="nav-section">보조 도구</div>
-      <button class="nav-item" type="button" data-nav-tone="files" data-open="fileLibrary"><i data-lucide="download"></i> <span>업무 파일 자료실</span></button>
+      <button class="nav-item" type="button" data-open="fileLibrary"><i data-lucide="download"></i> <span>업무 파일 자료실</span></button>
     </aside>
 
     <main>
@@ -6244,6 +7646,69 @@ HTML = r"""<!doctype html>
         </div>
 
         <section class="company-panel active" data-company-panel="notice">
+          <aside class="dashboard-sales-panel" id="dashboardSalesPanel">
+            <article class="company-card">
+              <div class="company-card-head"><span>매출 현황</span><span class="dashboard-sales-status" id="dashboardSalesStatus">연동 대기</span></div>
+              <div class="company-card-body">
+                <div class="dashboard-sales-decision" id="dashboardSalesDecision">
+                  <div class="dashboard-sales-decision-main">
+                    <span class="dashboard-sales-decision-label">관리자 요약</span>
+                    <strong class="dashboard-sales-decision-title" id="dashboardSalesDecisionTitle">매출현황 데이터 연결 대기 중</strong>
+                    <span class="dashboard-sales-decision-note" id="dashboardSalesDecisionNote">금일 매출 업로드 후 손익, 매입, 마진 기준을 바로 확인할 수 있습니다.</span>
+                  </div>
+                  <div class="dashboard-sales-decision-chip" id="dashboardDecisionTodayChip"><span>선택일 손익</span><strong id="dashboardDecisionTodaySales">-</strong></div>
+                  <div class="dashboard-sales-decision-chip" id="dashboardDecisionPurchaseChip"><span>월 매입</span><strong id="dashboardDecisionPurchase">-</strong></div>
+                  <div class="dashboard-sales-decision-chip" id="dashboardDecisionMarginChip"><span>월 마진</span><strong id="dashboardDecisionMargin">-</strong></div>
+                </div>
+                <div class="dashboard-sales-grid dashboard-sales-primary-grid">
+                  <div class="dashboard-sales-metric blue">
+                    <div class="dashboard-sales-metric-top"><span class="dashboard-sales-icon"><i data-lucide="circle-dollar-sign"></i></span><span class="dashboard-sales-metric-label" id="dashboardTodaySalesLabel">오늘 손익매출</span></div>
+                    <strong id="dashboardTodaySales">-</strong>
+                  </div>
+                  <div class="dashboard-sales-metric green">
+                    <div class="dashboard-sales-metric-top"><span class="dashboard-sales-icon"><i data-lucide="package"></i></span><span class="dashboard-sales-metric-label" id="dashboardTodayQuantityLabel">오늘 판매수량</span></div>
+                    <strong id="dashboardTodayQuantity">-</strong>
+                  </div>
+                </div>
+                <div class="dashboard-sales-previous-grid" aria-label="직전 영업일 데이터">
+                  <div class="dashboard-sales-previous">
+                    <div class="dashboard-sales-previous-top"><span class="dashboard-sales-previous-icon"><i data-lucide="calendar-days"></i></span><span id="dashboardPreviousSalesLabel">직전 영업일 매출</span></div>
+                    <strong id="dashboardPreviousSales">-</strong>
+                  </div>
+                  <div class="dashboard-sales-previous">
+                    <div class="dashboard-sales-previous-top"><span class="dashboard-sales-previous-icon"><i data-lucide="package"></i></span><span id="dashboardPreviousQuantityLabel">직전 영업일 수량</span></div>
+                    <strong id="dashboardPreviousQuantity">-</strong>
+                  </div>
+                </div>
+                <div class="dashboard-sales-compare-grid" aria-label="전영업일 대비">
+                  <div class="dashboard-sales-compare" id="dashboardSalesAmountCompareCard">
+                    <div class="dashboard-sales-compare-top"><span class="dashboard-sales-compare-icon"><i data-lucide="refresh-cw"></i></span><span id="dashboardSalesAmountCompareLabel">매출금액 비교</span></div>
+                    <div class="dashboard-sales-compare-value"><strong id="dashboardSalesAmountCompare">-</strong><span class="dashboard-sales-rate" id="dashboardSalesAmountRate">-</span></div>
+                  </div>
+                  <div class="dashboard-sales-compare" id="dashboardSalesQuantityCompareCard">
+                    <div class="dashboard-sales-compare-top"><span class="dashboard-sales-compare-icon"><i data-lucide="package"></i></span><span id="dashboardSalesQuantityCompareLabel">판매수량 비교</span></div>
+                    <div class="dashboard-sales-compare-value"><strong id="dashboardSalesQuantityCompare">-</strong><span class="dashboard-sales-rate" id="dashboardSalesQuantityRate">-</span></div>
+                  </div>
+                </div>
+                <div class="dashboard-sales-grid dashboard-sales-month-grid">
+                  <div class="dashboard-sales-metric violet">
+                    <div class="dashboard-sales-metric-top"><span class="dashboard-sales-icon"><i data-lucide="bar-chart-3"></i></span><span class="dashboard-sales-metric-label" id="dashboardMonthSalesLabel">이번 달 누적매출</span></div>
+                    <strong id="dashboardMonthSales">-</strong>
+                  </div>
+                  <div class="dashboard-sales-metric green">
+                    <div class="dashboard-sales-metric-top"><span class="dashboard-sales-icon"><i data-lucide="package"></i></span><span class="dashboard-sales-metric-label" id="dashboardSalesQuantityLabel">이번 달 판매수량</span></div>
+                    <strong id="dashboardSalesQuantity">-</strong>
+                  </div>
+                </div>
+                <div class="dashboard-sales-insights" aria-label="매출 보조 지표">
+                  <div class="dashboard-sales-insight sales-insight-revenue"><div class="dashboard-sales-insight-top"><span class="dashboard-sales-insight-icon"><i data-lucide="circle-dollar-sign"></i></span><span>매출처 합계</span></div><strong id="dashboardSellerTotal">-</strong></div>
+                  <div class="dashboard-sales-insight sales-insight-purchase"><div class="dashboard-sales-insight-top"><span class="dashboard-sales-insight-icon"><i data-lucide="truck"></i></span><span>매입처 총액</span></div><strong id="dashboardSupplierPurchase">-</strong></div>
+                  <div class="dashboard-sales-insight sales-insight-margin"><div class="dashboard-sales-insight-top"><span class="dashboard-sales-insight-icon"><i data-lucide="bar-chart-3"></i></span><span>월 손익마진</span></div><strong id="dashboardSalesMargin">-</strong></div>
+                </div>
+                <div class="dashboard-sales-placeholder" id="dashboardSalesMessage">매출현황 및 관리 데이터 연결 대기 중</div>
+              </div>
+            </article>
+          </aside>
           <div class="company-grid">
             <section class="notice-board company-notice" id="sidebarNoticePreview" role="button" tabindex="0" aria-label="공지사항 크게 보기">
               <div class="notice-board-kicker">금일 공지사항</div>
@@ -6278,7 +7743,7 @@ HTML = r"""<!doctype html>
                 </tr>
               </thead>
               <tbody id="dashboardImportScheduleBody">
-                <tr><td colspan="11"><div class="import-empty">수입제품 입고 일정을 불러오는 중입니다.</div></td></tr>
+                <tr><td colspan="10"><div class="import-empty">수입제품 입고 일정을 불러오는 중입니다.</div></td></tr>
               </tbody>
             </table>
           </div>
@@ -6291,9 +7756,9 @@ HTML = r"""<!doctype html>
               <div class="company-calendar-toolbar">
                 <div class="company-calendar-title" id="companyCalendarTitle">캘린더</div>
                 <div class="company-calendar-summary" aria-label="캘린더 요약">
-                  <button class="company-calendar-summary-chip" type="button" data-calendar-summary="month"><i data-lucide="calendar-days"></i><span id="companyCalendarMonthTotal">월 일정 0건</span></button>
-                  <button class="company-calendar-summary-chip" type="button" data-calendar-summary="today"><i data-lucide="clipboard-check"></i><span id="companyCalendarTodayTotal">오늘 0건</span></button>
-                  <button class="company-calendar-summary-chip warning" type="button" data-calendar-summary="pending"><i data-lucide="bell"></i><span id="companyCalendarPendingTotal">대기 0건</span></button>
+                  <span class="company-calendar-summary-chip"><i data-lucide="calendar-days"></i><span id="companyCalendarMonthTotal">월 일정 0건</span></span>
+                  <span class="company-calendar-summary-chip"><i data-lucide="clipboard-check"></i><span id="companyCalendarTodayTotal">오늘 0건</span></span>
+                  <span class="company-calendar-summary-chip warning"><i data-lucide="bell"></i><span id="companyCalendarPendingTotal">대기 0건</span></span>
                 </div>
                 <div class="company-calendar-actions">
                   <button class="crm-mini-button icon-only" type="button" id="companyCalendarPrev" aria-label="이전 달"><i data-lucide="chevron-left"></i></button>
@@ -6318,59 +7783,6 @@ HTML = r"""<!doctype html>
                 <div class="calendar-empty">캘린더를 불러오는 중입니다.</div>
               </div>
             </article>
-            <aside class="dashboard-sales-panel" id="dashboardSalesPanel">
-              <article class="company-card">
-                <div class="company-card-head"><span>매출 현황</span><span class="dashboard-sales-status" id="dashboardSalesStatus">연동 대기</span></div>
-                <div class="company-card-body">
-                  <div class="dashboard-sales-grid">
-                    <div class="dashboard-sales-metric blue">
-                      <div class="dashboard-sales-metric-top"><span class="dashboard-sales-icon"><i data-lucide="circle-dollar-sign"></i></span><span class="dashboard-sales-metric-label" id="dashboardTodaySalesLabel">오늘 손익매출</span></div>
-                      <strong id="dashboardTodaySales">-</strong>
-                    </div>
-                    <div class="dashboard-sales-metric green">
-                      <div class="dashboard-sales-metric-top"><span class="dashboard-sales-icon"><i data-lucide="package"></i></span><span class="dashboard-sales-metric-label" id="dashboardTodayQuantityLabel">오늘 판매수량</span></div>
-                      <strong id="dashboardTodayQuantity">-</strong>
-                    </div>
-                  </div>
-                  <div class="dashboard-sales-previous-grid" aria-label="직전 영업일 데이터">
-                    <div class="dashboard-sales-previous">
-                      <div class="dashboard-sales-previous-top"><span class="dashboard-sales-previous-icon"><i data-lucide="calendar-days"></i></span><span id="dashboardPreviousSalesLabel">직전 영업일 매출</span></div>
-                      <strong id="dashboardPreviousSales">-</strong>
-                    </div>
-                    <div class="dashboard-sales-previous">
-                      <div class="dashboard-sales-previous-top"><span class="dashboard-sales-previous-icon"><i data-lucide="package"></i></span><span id="dashboardPreviousQuantityLabel">직전 영업일 수량</span></div>
-                      <strong id="dashboardPreviousQuantity">-</strong>
-                    </div>
-                  </div>
-                  <div class="dashboard-sales-compare-grid" aria-label="전영업일 대비">
-                    <div class="dashboard-sales-compare" id="dashboardSalesAmountCompareCard">
-                      <div class="dashboard-sales-compare-top"><span class="dashboard-sales-compare-icon"><i data-lucide="refresh-cw"></i></span><span id="dashboardSalesAmountCompareLabel">매출금액 비교</span></div>
-                      <div class="dashboard-sales-compare-value"><strong id="dashboardSalesAmountCompare">-</strong><span class="dashboard-sales-rate" id="dashboardSalesAmountRate">-</span></div>
-                    </div>
-                    <div class="dashboard-sales-compare" id="dashboardSalesQuantityCompareCard">
-                      <div class="dashboard-sales-compare-top"><span class="dashboard-sales-compare-icon"><i data-lucide="package"></i></span><span id="dashboardSalesQuantityCompareLabel">판매수량 비교</span></div>
-                      <div class="dashboard-sales-compare-value"><strong id="dashboardSalesQuantityCompare">-</strong><span class="dashboard-sales-rate" id="dashboardSalesQuantityRate">-</span></div>
-                    </div>
-                  </div>
-                  <div class="dashboard-sales-grid">
-                    <div class="dashboard-sales-metric violet">
-                      <div class="dashboard-sales-metric-top"><span class="dashboard-sales-icon"><i data-lucide="bar-chart-3"></i></span><span class="dashboard-sales-metric-label" id="dashboardMonthSalesLabel">이번 달 누적매출</span></div>
-                      <strong id="dashboardMonthSales">-</strong>
-                    </div>
-                    <div class="dashboard-sales-metric green">
-                      <div class="dashboard-sales-metric-top"><span class="dashboard-sales-icon"><i data-lucide="package"></i></span><span class="dashboard-sales-metric-label" id="dashboardSalesQuantityLabel">이번 달 판매수량</span></div>
-                      <strong id="dashboardSalesQuantity">-</strong>
-                    </div>
-                  </div>
-                  <div class="dashboard-sales-insights" aria-label="매출 보조 지표">
-                    <div class="dashboard-sales-insight"><div class="dashboard-sales-insight-top"><span class="dashboard-sales-insight-icon"><i data-lucide="circle-dollar-sign"></i></span><span>매출처 합계</span></div><strong id="dashboardSellerTotal">-</strong></div>
-                    <div class="dashboard-sales-insight"><div class="dashboard-sales-insight-top"><span class="dashboard-sales-insight-icon"><i data-lucide="truck"></i></span><span>매입처 총액</span></div><strong id="dashboardSupplierPurchase">-</strong></div>
-                    <div class="dashboard-sales-insight"><div class="dashboard-sales-insight-top"><span class="dashboard-sales-insight-icon"><i data-lucide="bar-chart-3"></i></span><span>월 손익마진</span></div><strong id="dashboardSalesMargin">-</strong></div>
-                  </div>
-                  <div class="dashboard-sales-weekly-chart" id="dashboardSalesWeeklyChart">최근 7일 매출 데이터 연결 대기 중</div>
-                </div>
-              </article>
-            </aside>
             <aside class="company-calendar-side">
               <article class="company-card">
                 <div class="company-card-head"><span>선택 날짜 일정</span><span class="dashboard-sales-status" id="companyCalendarSelectedCount">0건</span></div>
@@ -7168,9 +8580,16 @@ HTML = r"""<!doctype html>
           </div>
           <div class="text-field">
             <label class="field-label" for="vendorContactSelect">거래처 선택</label>
-            <input id="vendorContactSelect" type="text" list="vendorContactOptions" autocomplete="off" placeholder="업체명 또는 메일을 검색해주세요" />
-            <datalist id="vendorContactOptions"></datalist>
-            <input id="vendorTypeSelect" name="vendor_type" type="hidden" value="purchase" />
+            <select id="vendorContactSelect">
+              <option value="">업체를 선택해주세요</option>
+            </select>
+          </div>
+          <div class="text-field">
+            <label class="field-label" for="vendorTypeSelect">거래처 구분</label>
+            <select id="vendorTypeSelect">
+              <option value="purchase">매입처</option>
+              <option value="sales">매출처</option>
+            </select>
           </div>
           <div class="text-field">
             <label class="field-label" for="recipientEmailInput">받는 거래처 메일</label>
@@ -7446,7 +8865,6 @@ HTML = r"""<!doctype html>
             <table class="ledger-table">
               <colgroup>
                 <col class="select-col" data-management-col="select" />
-                <col class="action-col compact-cs-col" data-management-col="cs_action" />
                 <col class="date-col" data-management-col="order_date" />
                 <col class="date-col" data-management-col="ship_date" />
                 <col class="vendor-col" data-management-col="purchase_vendor" />
@@ -7463,11 +8881,11 @@ HTML = r"""<!doctype html>
                 <col class="courier-col" data-management-col="courier" />
                 <col class="original-invoice-col" data-management-col="invoice_number" />
                 <col class="memo-col" data-management-col="memo" />
+                <col class="action-col" data-management-col="cs_action" />
               </colgroup>
               <thead>
                 <tr>
                   <th class="select-head"><input class="ledger-check" id="managementSelectAll" type="checkbox" title="전체 선택" /></th>
-                  <th>CS</th>
                   <th class="has-filter"><span class="ledger-th-title">주문일자</span><button class="ledger-filter-trigger" type="button" data-management-filter-button="order_date" data-label="주문일자">▼</button></th>
                   <th class="has-filter"><span class="ledger-th-title">출고일</span><button class="ledger-filter-trigger" type="button" data-management-filter-button="ship_date" data-label="출고일">▼</button></th>
                   <th class="has-filter"><span class="ledger-th-title">매입거래처</span><button class="ledger-filter-trigger" type="button" data-management-filter-button="purchase_vendor" data-label="매입거래처">▼</button></th>
@@ -7484,6 +8902,7 @@ HTML = r"""<!doctype html>
                   <th class="has-filter"><span class="ledger-th-title">택배사</span><button class="ledger-filter-trigger" type="button" data-management-filter-button="courier" data-label="택배사">▼</button></th>
                   <th class="has-filter"><span class="ledger-th-title">운송장번호</span><button class="ledger-filter-trigger" type="button" data-management-filter-button="invoice_number" data-label="운송장번호">▼</button></th>
                   <th class="has-filter"><span class="ledger-th-title">특이사항</span><button class="ledger-filter-trigger" type="button" data-management-filter-button="memo" data-label="특이사항">▼</button></th>
+                  <th>CS접수</th>
                 </tr>
               </thead>
               <tbody id="managementBody"></tbody>
@@ -7565,6 +8984,120 @@ HTML = r"""<!doctype html>
         <button class="btn primary" id="importCorrectionApply" type="button">수정 후 적용</button>
       </div>
     </div>
+  </div>
+
+  <div class="floating-messenger" id="floatingMessenger" aria-live="polite">
+    <section class="floating-messenger-panel" id="floatingMessengerPanel" role="dialog" aria-modal="false" aria-labelledby="floatingMessengerTitle" aria-hidden="true">
+      <div class="floating-messenger-utility">
+        <button class="floating-messenger-icon-button" type="button" id="floatingMessengerRefresh" aria-label="메신저 새로고침"><i data-lucide="refresh-cw"></i></button>
+        <button class="floating-messenger-icon-button" type="button" id="floatingMessengerOpenFull" aria-label="사내 메신저 전체 화면 열기"><i data-lucide="chevron-right"></i></button>
+        <button class="floating-messenger-icon-button" type="button" id="floatingMessengerClose" aria-label="메신저 닫기"><i data-lucide="x"></i></button>
+      </div>
+      <div class="floating-messenger-screen floating-messenger-home active" data-floating-messenger-screen="home">
+        <div class="floating-messenger-scroll">
+          <div class="floating-messenger-brand">
+            <span class="floating-messenger-logo" aria-hidden="true"></span>
+            <strong>사내 메신저</strong>
+          </div>
+          <article class="floating-messenger-card floating-messenger-intro">
+            <div class="floating-messenger-intro-head">
+              <span class="floating-messenger-logo" aria-hidden="true"></span>
+              <div>
+                <div class="floating-messenger-intro-title">사내 메신저</div>
+                <p class="floating-messenger-intro-copy">
+                  안녕하세요, 소일브릿지 업무 공유를 빠르게 이어주는 사내 상담센터입니다.
+                  궁금한 내용이나 업무 지시를 바로 남겨주세요.
+                </p>
+              </div>
+            </div>
+            <button class="floating-messenger-primary" type="button" id="floatingMessengerHomeCta">문의하기 <span class="floating-messenger-plane" aria-hidden="true"></span></button>
+          </article>
+          <article class="floating-messenger-card floating-messenger-alert-card">
+            <div class="floating-messenger-alert-head">
+              <span id="floatingMessengerUnreadSummary">최근 알림</span>
+              <button class="floating-messenger-text-button" type="button" id="floatingMessengerReadAll">모두 읽기</button>
+            </div>
+            <div class="floating-messenger-preview" id="floatingMessengerHomePreview">
+              <div>
+                <div class="floating-messenger-preview-title">메시지를 불러오는 중입니다</div>
+                <div class="floating-messenger-preview-body">잠시만 기다려줘.</div>
+              </div>
+              <div class="floating-messenger-preview-badge">WORK</div>
+            </div>
+            <button class="floating-messenger-secondary" type="button" id="floatingMessengerNoticeCta">지금 업무 상담 진행하기</button>
+          </article>
+          <div class="floating-messenger-status"><span class="floating-messenger-status-dot">c</span> 사내 채팅 이용중</div>
+        </div>
+      </div>
+      <div class="floating-messenger-screen floating-messenger-chat" data-floating-messenger-screen="chat">
+        <h2 class="floating-messenger-page-title">대화</h2>
+        <div class="floating-messenger-chat-notice">
+          <span id="floatingMessengerChatNotice">최근 대화를 확인해줘</span>
+          <button class="floating-messenger-text-button" type="button" id="floatingMessengerChatReadAll">모두 읽기</button>
+        </div>
+        <div class="floating-messenger-roombar" id="floatingMessengerRoomList" aria-label="대화 목록">
+          <button class="floating-messenger-room active" type="button" data-floating-chat-room="global">
+            <span class="floating-messenger-room-avatar" aria-hidden="true"></span>
+            <span class="floating-messenger-room-main">
+              <span class="floating-messenger-room-top"><span class="floating-messenger-room-title">전체방</span></span>
+              <span class="floating-messenger-room-preview">메시지를 불러오는 중입니다.</span>
+            </span>
+            <span class="floating-messenger-room-dot" aria-hidden="true"></span>
+          </button>
+        </div>
+        <div class="floating-messenger-thread" id="floatingMessengerThread" hidden>
+          <div class="floating-messenger-thread-head">
+            <button class="floating-messenger-thread-back" type="button" id="floatingMessengerThreadBack" aria-label="대화 목록으로 돌아가기"><i data-lucide="chevron-left"></i></button>
+            <div>
+              <div class="floating-messenger-title" id="floatingMessengerTitle">전체방</div>
+              <div class="floating-messenger-kicker" id="floatingMessengerKicker">빠른 대화</div>
+            </div>
+          </div>
+          <div class="floating-messenger-list" id="floatingMessengerList">
+            <div class="floating-messenger-empty">메시지를 불러오는 중입니다.</div>
+          </div>
+          <form class="floating-messenger-form" id="floatingMessengerForm">
+            <div class="floating-messenger-input-wrap">
+              <textarea id="floatingMessengerBody" placeholder="메시지 또는 /업무 @직원 내용 / 기한"></textarea>
+              <div class="floating-messenger-hint" id="floatingMessengerHint">전체방 공유와 업무 지시를 바로 남길 수 있어.</div>
+            </div>
+            <button class="floating-messenger-send" type="submit" id="floatingMessengerSend">보내기</button>
+          </form>
+        </div>
+      </div>
+      <div class="floating-messenger-screen floating-messenger-settings" data-floating-messenger-screen="settings">
+        <div class="floating-messenger-scroll">
+          <h2 class="floating-messenger-page-title">설정</h2>
+          <div class="floating-messenger-settings-profile">
+            <div class="floating-messenger-profile-icon">●</div>
+            <div class="floating-messenger-profile-name" id="floatingMessengerProfileName">사용자</div>
+            <div class="floating-messenger-profile-phone">010-3663-0838</div>
+            <button class="floating-messenger-profile-edit" type="button">정보 수정하기</button>
+          </div>
+          <section class="floating-messenger-setting-section">
+            <div class="floating-messenger-setting-label">상담 환경</div>
+            <div class="floating-messenger-setting-row"><span>언어</span><span class="floating-messenger-setting-value">한국어 <i data-lucide="chevron-right"></i></span></div>
+            <label class="floating-messenger-setting-row"><span>메시지 번역 표시</span><span class="floating-messenger-switch"><input type="checkbox" checked><span></span></span></label>
+            <label class="floating-messenger-setting-row"><span>알림음</span><span class="floating-messenger-switch"><input type="checkbox" checked><span></span></span></label>
+          </section>
+          <section class="floating-messenger-setting-section">
+            <div class="floating-messenger-setting-label">업무 수신 설정</div>
+            <label class="floating-messenger-setting-row"><span>문자 수신거부</span><span class="floating-messenger-switch"><input type="checkbox"><span></span></span></label>
+            <label class="floating-messenger-setting-row"><span>이메일 수신거부</span><span class="floating-messenger-switch"><input type="checkbox"><span></span></span></label>
+          </section>
+          <div class="floating-messenger-version">v17.1.11</div>
+        </div>
+      </div>
+      <nav class="floating-messenger-bottom-nav" aria-label="사내 메신저 탭">
+        <button class="floating-messenger-tab-button active" type="button" data-floating-messenger-tab="home"><i data-lucide="home"></i><span>홈</span></button>
+        <button class="floating-messenger-tab-button" type="button" data-floating-messenger-tab="chat"><span class="floating-messenger-tab-dot" id="floatingMessengerTabDot"></span><i data-lucide="message-circle"></i><span>대화</span></button>
+        <button class="floating-messenger-tab-button" type="button" data-floating-messenger-tab="settings"><i data-lucide="settings"></i><span>설정</span></button>
+      </nav>
+    </section>
+    <button class="floating-messenger-fab" type="button" id="floatingMessengerToggle" aria-label="사내 메신저 열기" aria-expanded="false" aria-controls="floatingMessengerPanel">
+      <i data-lucide="message-circle"></i>
+      <span class="floating-messenger-badge" id="floatingMessengerBadge">0</span>
+    </button>
   </div>
 
   <script type="module">
@@ -7728,27 +9261,6 @@ HTML = r"""<!doctype html>
     const searchResultDescription = document.querySelector("#searchResultDescription");
     const searchResultList = document.querySelector("#searchResultList");
     const searchResultClose = document.querySelector("#searchResultClose");
-
-    function nudgeOpenDialog(backdrop) {
-      if (!backdrop) return;
-      const panel = backdrop.querySelector(
-        ".workhub-modal, .search-result-dialog, .safe-number-dialog, .focus-widget-panel, .notice-popup, .cargo-shipment-popup, .import-shipment-popup, .return-check-popup, .app-confirm-dialog"
-      ) || backdrop.firstElementChild;
-      if (!panel) return;
-      panel.classList.remove("attention");
-      void panel.offsetWidth;
-      panel.classList.add("attention");
-      setTimeout(() => panel.classList.remove("attention"), 220);
-    }
-
-    function keepDialogOpenOnBackdropClick(event, backdrop) {
-      if (event.target !== backdrop) return false;
-      event.preventDefault();
-      event.stopPropagation();
-      nudgeOpenDialog(backdrop);
-      return true;
-    }
-
     const productTable = document.querySelector("#productTable");
     const receiptTypeSelect = document.querySelector("#receiptTypeSelect");
     const supplierInput = document.querySelector("#supplierInput");
@@ -7760,7 +9272,6 @@ HTML = r"""<!doctype html>
     const vendorContactSelect = document.querySelector("#vendorContactSelect");
     const vendorContactsFileInput = document.querySelector("#vendorContactsFileInput");
     const vendorContactsDropMain = document.querySelector("#vendorContactsDropMain");
-    const vendorContactOptions = document.querySelector("#vendorContactOptions");
     const salesReportFileInput = document.querySelector("#salesReportFileInput");
     const salesReportUploadMessage = document.querySelector("#salesReportUploadMessage");
     const salesReportRecentList = document.querySelector("#salesReportRecentList");
@@ -7790,7 +9301,15 @@ HTML = r"""<!doctype html>
     const dashboardSalesMargin = document.querySelector("#dashboardSalesMargin");
     const dashboardSellerTotal = document.querySelector("#dashboardSellerTotal");
     const dashboardSupplierPurchase = document.querySelector("#dashboardSupplierPurchase");
-    const dashboardSalesWeeklyChart = document.querySelector("#dashboardSalesWeeklyChart");
+    const dashboardSalesDecisionTitle = document.querySelector("#dashboardSalesDecisionTitle");
+    const dashboardSalesDecisionNote = document.querySelector("#dashboardSalesDecisionNote");
+    const dashboardDecisionTodaySales = document.querySelector("#dashboardDecisionTodaySales");
+    const dashboardDecisionPurchase = document.querySelector("#dashboardDecisionPurchase");
+    const dashboardDecisionMargin = document.querySelector("#dashboardDecisionMargin");
+    const dashboardDecisionTodayChip = document.querySelector("#dashboardDecisionTodayChip");
+    const dashboardDecisionPurchaseChip = document.querySelector("#dashboardDecisionPurchaseChip");
+    const dashboardDecisionMarginChip = document.querySelector("#dashboardDecisionMarginChip");
+    const dashboardSalesMessage = document.querySelector("#dashboardSalesMessage");
     const salesReportDailyBody = document.querySelector("#salesReportDailyBody");
     const salesReportSellerBody = document.querySelector("#salesReportSellerBody");
     const salesReportProductBody = document.querySelector("#salesReportProductBody");
@@ -7949,6 +9468,34 @@ HTML = r"""<!doctype html>
     const internalChatForm = document.querySelector("#internalChatForm");
     const internalChatBody = document.querySelector("#internalChatBody");
     const internalChatRefresh = document.querySelector("#internalChatRefresh");
+    const floatingMessenger = document.querySelector("#floatingMessenger");
+    const floatingMessengerPanel = document.querySelector("#floatingMessengerPanel");
+    const floatingMessengerToggle = document.querySelector("#floatingMessengerToggle");
+    const floatingMessengerClose = document.querySelector("#floatingMessengerClose");
+    const floatingMessengerRefresh = document.querySelector("#floatingMessengerRefresh");
+    const floatingMessengerOpenFull = document.querySelector("#floatingMessengerOpenFull");
+    const floatingMessengerRoomList = document.querySelector("#floatingMessengerRoomList");
+    const floatingMessengerThread = document.querySelector("#floatingMessengerThread");
+    const floatingMessengerThreadBack = document.querySelector("#floatingMessengerThreadBack");
+    const floatingMessengerTitle = document.querySelector("#floatingMessengerTitle");
+    const floatingMessengerKicker = document.querySelector("#floatingMessengerKicker");
+    const floatingMessengerList = document.querySelector("#floatingMessengerList");
+    const floatingMessengerForm = document.querySelector("#floatingMessengerForm");
+    const floatingMessengerBody = document.querySelector("#floatingMessengerBody");
+    const floatingMessengerSend = document.querySelector("#floatingMessengerSend");
+    const floatingMessengerHint = document.querySelector("#floatingMessengerHint");
+    const floatingMessengerBadge = document.querySelector("#floatingMessengerBadge");
+    const floatingMessengerScreens = document.querySelectorAll("[data-floating-messenger-screen]");
+    const floatingMessengerTabButtons = document.querySelectorAll("[data-floating-messenger-tab]");
+    const floatingMessengerTabDot = document.querySelector("#floatingMessengerTabDot");
+    const floatingMessengerHomeCta = document.querySelector("#floatingMessengerHomeCta");
+    const floatingMessengerNoticeCta = document.querySelector("#floatingMessengerNoticeCta");
+    const floatingMessengerReadAll = document.querySelector("#floatingMessengerReadAll");
+    const floatingMessengerChatReadAll = document.querySelector("#floatingMessengerChatReadAll");
+    const floatingMessengerUnreadSummary = document.querySelector("#floatingMessengerUnreadSummary");
+    const floatingMessengerChatNotice = document.querySelector("#floatingMessengerChatNotice");
+    const floatingMessengerHomePreview = document.querySelector("#floatingMessengerHomePreview");
+    const floatingMessengerProfileName = document.querySelector("#floatingMessengerProfileName");
     const noticeDateInput = document.querySelector("#noticeDateInput");
     const noticeTitleInput = document.querySelector("#noticeTitleInput");
     const noticeOwnerInput = document.querySelector("#noticeOwnerInput");
@@ -8221,29 +9768,21 @@ HTML = r"""<!doctype html>
     let crmUsers = [];
     let internalChatUsers = [];
     let internalChatRoom = { type: "global", userId: "" };
+    let floatingMessengerRoom = { type: "global", userId: "" };
+    let floatingMessengerOpen = false;
+    let floatingMessengerLastSeenId = 0;
+    let floatingMessengerUnread = 0;
+    let floatingMessengerPollTimer = null;
+    let floatingMessengerSending = false;
+    let floatingMessengerActiveTab = "home";
+    let floatingMessengerChatMode = "list";
+    let floatingMessengerMessagesCache = [];
     let companyActiveTab = "notice";
     let companyCalendarMonth = todayString().slice(0, 7);
     let companyCalendarSelectedDay = todayString();
     let companyCalendarEvents = [];
     let companyCalendarSummary = {};
     let cargoShipments = [];
-
-    function handleDashboardScheduleShortcut(event) {
-      const autoItem = event.target.closest("#sidebarNoticePreview [data-notice-auto-type]");
-      const calendarItem = event.target.closest("#companyCalendarGrid [data-calendar-event-id], #companyCalendarSelectedList [data-calendar-event-id]");
-      if (!autoItem && !calendarItem) return;
-      if (event.type === "keydown" && !isCardActivationKey(event)) return;
-      event.preventDefault();
-      event.stopImmediatePropagation();
-      if (autoItem) {
-        openNoticeAutoItem(autoItem);
-        return;
-      }
-      openCalendarEventWidget(calendarItem.dataset.calendarEventId);
-    }
-
-    document.addEventListener("click", handleDashboardScheduleShortcut, true);
-    document.addEventListener("keydown", handleDashboardScheduleShortcut, true);
     let crmActiveTab = "dashboard";
     let crmSelectedTaskId = "";
     const CRM_TASK_STATUSES = ["대기", "진행중", "보류", "완료"];
@@ -9088,39 +10627,32 @@ HTML = r"""<!doctype html>
       return importDateSortKey(value || "");
     }
 
-    function isTodayNoticeDate(value) {
-      if (!value) return false;
-      return importDateSortKey(value) === todayString();
-    }
-
     function noticeAutoEvents() {
+      const todayKey = todayString();
       const calendarItems = (companyCalendarEvents || [])
-        .filter((event) => ["leave", "pending"].includes(event.type) && isTodayNoticeDate(event.date))
+        .filter((event) => ["leave", "pending"].includes(event.type) && event.date >= todayKey)
         .map((event) => ({
           type: event.type === "pending" ? "pending" : "leave",
-          eventId: event.id,
           badge: event.type === "pending" ? "승인대기" : "연차",
           date: event.date,
           title: `${shortKoreanDate(event.date)} ${event.title || ""}`,
           detail: event.subtitle || "",
         }));
-      const importItems = sortImportShipmentsByWarehouseDate((importShipments || []).filter((record) => !record.completed_at && isTodayNoticeDate(record.warehouse_due_date || record.arrival_date)))
+      const importItems = sortImportShipmentsByWarehouseDate((importShipments || []).filter((record) => !record.completed_at))
         .slice(0, 4)
         .map((record) => ({
           type: "import",
           sourceId: record.id,
-          eventId: `import:${record.id}`,
           badge: "컨테이너",
           date: record.warehouse_due_date || record.arrival_date || "",
           title: `${shortKoreanDate(record.warehouse_due_date || record.arrival_date)} ${record.item || "수입제품"}`,
           detail: [record.shipper, record.progress_status || "진행중"].filter(Boolean).join(" · "),
         }));
-      const cargoItems = sortCargoShipments((cargoShipments || []).filter((record) => !record.completed_at && isTodayNoticeDate(record.ship_date) && !["출고 완료", "입고 완료"].includes(record.status)))
+      const cargoItems = sortCargoShipments((cargoShipments || []).filter((record) => !record.completed_at && !["출고 완료", "입고 완료"].includes(record.status)))
         .slice(0, 4)
         .map((record) => ({
           type: record.cargo_type === "inbound" ? "cargo-inbound" : "cargo",
           sourceId: record.id,
-          eventId: `cargo:${record.id}`,
           badge: record.cargo_type === "inbound" ? "화물입고" : "화물출고",
           date: record.ship_date || "",
           title: `${shortKoreanDate(record.ship_date)} ${record.customer || "거래처 미정"} · ${record.item || "품목 미정"}`,
@@ -9146,7 +10678,7 @@ HTML = r"""<!doctype html>
           <div class="notice-auto-head"><span>오늘 확인할 회사 일정</span><span class="notice-auto-count">${items.length}</span></div>
           <div class="notice-auto-list">
             ${items.map((item) => `
-              <div class="notice-auto-item" role="button" tabindex="0" data-notice-auto-type="${escapeHtml(item.type)}" data-notice-auto-id="${escapeHtml(item.sourceId || "")}" data-notice-auto-event-id="${escapeHtml(item.eventId || "")}" title="${escapeHtml([item.title, item.detail].filter(Boolean).join(" / "))}">
+              <div class="notice-auto-item" role="button" tabindex="0" data-notice-auto-type="${escapeHtml(item.type)}" data-notice-auto-id="${escapeHtml(item.sourceId || "")}" title="${escapeHtml([item.title, item.detail].filter(Boolean).join(" / "))}">
                 <span class="notice-auto-badge ${escapeHtml(item.type)}">${escapeHtml(item.badge)}</span>
                 <span class="notice-auto-text">${escapeHtml(item.title)}${item.detail ? ` · ${escapeHtml(item.detail)}` : ""}</span>
               </div>
@@ -9451,7 +10983,7 @@ HTML = r"""<!doctype html>
       const activeRecords = sortImportShipmentsByWarehouseDate(importShipments.filter((record) => !record.completed_at));
       dashboardImportScheduleSummary.textContent = `진행 ${activeRecords.length}건`;
       if (!activeRecords.length) {
-        dashboardImportScheduleBody.innerHTML = `<tr><td colspan="11"><div class="import-empty">등록된 수입제품 입고 일정이 없습니다.</div></td></tr>`;
+        dashboardImportScheduleBody.innerHTML = `<tr><td colspan="10"><div class="import-empty">등록된 수입제품 입고 일정이 없습니다.</div></td></tr>`;
         return;
       }
       dashboardImportScheduleBody.innerHTML = activeRecords.slice(0, 6).map((record) => `
@@ -9863,44 +11395,20 @@ HTML = r"""<!doctype html>
     }
 
     function renderVendorContacts() {
-      if (vendorContactOptions) vendorContactOptions.innerHTML = "";
-      const purchaseContacts = vendorContacts.filter((contact) => (contact.vendor_type || "purchase") === "purchase");
-      if (vendorContactSelect) {
-        vendorContactSelect.placeholder = purchaseContacts.length ? "업체명 또는 메일을 검색해주세요" : "저장된 매입처 메일이 없습니다";
-      }
-      purchaseContacts.forEach((contact) => {
+      vendorContactSelect.innerHTML = "";
+      const emptyOption = document.createElement("option");
+      emptyOption.value = "";
+      emptyOption.textContent = vendorContacts.length ? "업체를 선택해주세요" : "저장된 업체가 없습니다";
+      vendorContactSelect.appendChild(emptyOption);
+
+      vendorContacts.forEach((contact) => {
         const option = document.createElement("option");
-        option.value = vendorContactDisplayValue(contact);
-        option.label = contact.email || contact.vendor_name;
-        if (vendorContactOptions) vendorContactOptions.appendChild(option);
+        option.value = `${contact.vendor_type || "purchase"}::${contact.vendor_name}`;
+        option.textContent = `[${contact.vendor_type_label || "매입처"}] ${contact.vendor_name} / ${contact.email}`;
+        vendorContactSelect.appendChild(option);
       });
       renderStockVendorContacts();
       renderVendorManageContacts();
-    }
-
-    function vendorContactDisplayValue(contact) {
-      const vendorName = contact?.vendor_name || "";
-      const email = contact?.email || "";
-      return email ? `${vendorName} / ${email}` : vendorName;
-    }
-
-    function findPurchaseVendorContact(value) {
-      const rawValue = String(value || "").trim();
-      if (!rawValue) return null;
-      const targetKey = normalizeSearchKeyword(rawValue);
-      const matches = vendorContacts.filter((contact) => {
-        if ((contact.vendor_type || "purchase") !== "purchase") return false;
-        const displayKey = normalizeSearchKeyword(vendorContactDisplayValue(contact));
-        const nameKey = normalizeSearchKeyword(contact.vendor_name);
-        const emailKey = normalizeSearchKeyword(contact.email);
-        return displayKey === targetKey
-          || nameKey === targetKey
-          || emailKey === targetKey
-          || displayKey.includes(targetKey)
-          || nameKey.includes(targetKey)
-          || emailKey.includes(targetKey);
-      });
-      return matches.length === 1 ? matches[0] : null;
     }
 
     function vendorManageTypeLabelText(type = activeVendorManageType) {
@@ -9991,18 +11499,20 @@ HTML = r"""<!doctype html>
     }
 
     function applySelectedVendor() {
-      const selected = findPurchaseVendorContact(vendorContactSelect.value);
+      const [selectedType, selectedName] = vendorContactSelect.value.split("::");
+      const selected = vendorContacts.find((contact) => (
+        (contact.vendor_type || "purchase") === selectedType && contact.vendor_name === selectedName
+      ));
       if (!selected) return;
-      vendorTypeSelect.value = "purchase";
+      vendorTypeSelect.value = selected.vendor_type || "purchase";
       vendorNameInput.value = selected.vendor_name;
       recipientEmailInput.value = selected.email;
-      vendorContactSelect.value = vendorContactDisplayValue(selected);
       csSubjectInput.value = currentMode === "mail-stock" ? "입고 및 품절 공지" : defaultCsSubject(selected.vendor_name);
     }
 
     function syncVendorEmailFromName({ overwrite = false } = {}) {
       const vendorName = vendorNameInput?.value.trim() || "";
-      const vendorType = "purchase";
+      const vendorType = vendorTypeSelect?.value || "purchase";
       if (!vendorName) return;
       const targetKey = normalizeSearchKeyword(vendorName);
       const selected = vendorContacts.find((contact) => (
@@ -10013,7 +11523,7 @@ HTML = r"""<!doctype html>
       if (overwrite || !recipientEmailInput.value.trim()) {
         recipientEmailInput.value = selected.email;
       }
-      if (vendorContactSelect) vendorContactSelect.value = vendorContactDisplayValue(selected);
+      if (vendorContactSelect) vendorContactSelect.value = `${vendorType}::${selected.vendor_name}`;
     }
 
     function setSelectedStockVendor(selected) {
@@ -10061,8 +11571,7 @@ HTML = r"""<!doctype html>
     async function saveCurrentVendorContact() {
       const vendorName = vendorNameInput.value.trim();
       const email = recipientEmailInput.value.trim();
-      const vendorType = "purchase";
-      vendorTypeSelect.value = "purchase";
+      const vendorType = vendorTypeSelect.value || "purchase";
       if (!vendorName || !email) {
         notice.textContent = "거래처명과 받는 거래처 메일을 입력해주세요.";
         return;
@@ -10078,7 +11587,7 @@ HTML = r"""<!doctype html>
         if (!response.ok) throw new Error(data.error || "거래처 메일 저장에 실패했습니다.");
         vendorContacts = data.contacts || [];
         renderVendorContacts();
-        vendorContactSelect.value = vendorContactDisplayValue({ vendor_name: vendorName, email });
+        vendorContactSelect.value = `${vendorType}::${vendorName}`;
         notice.textContent = "거래처 메일 주소를 저장했습니다.";
       } catch (error) {
         notice.textContent = error.message;
@@ -10141,6 +11650,18 @@ HTML = r"""<!doctype html>
       return number.toLocaleString("ko-KR");
     }
 
+    function formatSalesMillion(value, signed = false) {
+      const number = Number(value || 0);
+      const sign = signed && number > 0 ? "+" : "";
+      const absolute = Math.abs(number) / 1000000;
+      return `${number < 0 ? "-" : sign}${absolute.toLocaleString("ko-KR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}백만`;
+    }
+
+    function formatSalesCompactMoney(value, signed = false) {
+      const number = Number(value || 0);
+      return formatSalesMillion(number, signed);
+    }
+
     function formatSalesPercent(value) {
       const number = Number(value || 0);
       return `${number.toLocaleString("ko-KR", { maximumFractionDigits: 1 })}%`;
@@ -10164,9 +11685,7 @@ HTML = r"""<!doctype html>
         if (!response.ok) throw new Error(data.error || "거래처 메일 저장에 실패했습니다.");
         vendorContacts = data.contacts || [];
         renderVendorContacts();
-        if (vendorContactSelect && activeVendorManageType === "purchase") {
-          vendorContactSelect.value = vendorContactDisplayValue({ vendor_name: vendorName, email });
-        }
+        if (vendorContactSelect) vendorContactSelect.value = `${activeVendorManageType}::${vendorName}`;
         notice.textContent = `${vendorManageTypeLabelText()} 메일 주소를 저장했습니다.`;
       } catch (error) {
         notice.textContent = error.message;
@@ -10299,8 +11818,8 @@ HTML = r"""<!doctype html>
         { label: previousDateLabel ? `${previousDateLabel} 전영업일 매출` : "전영업일 매출", value: yesterday.report_date ? formatSalesNumber(yesterday.profit_sales_amount) : "데이터 없음", note: yesterday.report_date ? `수량 ${formatSalesNumber(yesterday.quantity)}` : "전영업일 매출 데이터가 없습니다.", variant: "slate", icon: "영", badge: "전영업일", valueClass: yesterday.report_date ? "" : "notice" },
         { label: previousDateLabel ? `${previousDateLabel} 대비` : "전영업일 대비", value: hasTodaySalesData && yesterday.report_date ? formatSalesPercent(comparison.profit_sales_amount_delta_rate) : "비교 대기", note: hasTodaySalesData && yesterday.report_date ? formatSalesNumber(comparison.profit_sales_amount_delta) : "금일 데이터 업로드 후 비교 가능", variant: !hasTodaySalesData || !yesterday.report_date ? "muted" : (comparisonDelta < 0 ? "red" : "green"), icon: !hasTodaySalesData || !yesterday.report_date ? "-" : (comparisonDelta < 0 ? "↓" : "↑"), badge: "증감", valueClass: hasTodaySalesData && yesterday.report_date ? salesAmountClass(comparison.profit_sales_amount_delta) : "notice" },
         { label: `${periodLabel || "월"} 누적 매출`, value: formatSalesNumber(month.profit_sales_amount), note: periodLabel || "", variant: "violet", icon: "월", badge: "누적" },
-        { label: "매출처별 합계", value: formatSalesNumber(sellerTotal.profit_sales_amount), note: `판매사 수량 ${formatSalesNumber(sellerTotal.quantity)}`, variant: "orange", icon: "매", badge: "매출처" },
-        { label: "매입처별 총합계 금액", value: formatSalesNumber(supplierPurchaseTotal.purchase_total), note: `공급사 수량 ${formatSalesNumber(supplierPurchaseTotal.quantity)}`, variant: "teal", icon: "입", badge: "매입처" },
+        { label: "매출처별 합계", value: formatSalesNumber(sellerTotal.profit_sales_amount), note: `판매사 수량 ${formatSalesNumber(sellerTotal.quantity)}`, variant: "blue", icon: "매", badge: "매출처" },
+        { label: "매입처별 총합계 금액", value: formatSalesNumber(supplierPurchaseTotal.purchase_total), note: `공급사 수량 ${formatSalesNumber(supplierPurchaseTotal.quantity)}`, variant: "orange", icon: "입", badge: "매입처" },
       ];
       salesReportKpiGrid.innerHTML = kpiCards.map((card) => `
         <div class="sales-kpi ${escapeHtml(card.variant)}">
@@ -10447,7 +11966,7 @@ HTML = r"""<!doctype html>
     function collectCsPayload() {
       return {
         case_id: activeCsCaseId,
-        vendor_type: "purchase",
+        vendor_type: vendorTypeSelect.value || "purchase",
         recipient_email: recipientEmailInput.value.trim(),
         vendor_name: vendorNameInput.value.trim(),
         cs_origin: csOriginInput.value.trim(),
@@ -10672,50 +12191,6 @@ HTML = r"""<!doctype html>
       `).join("");
     }
 
-    function calendarSummaryEvents(view) {
-      const today = todayString();
-      if (view === "today") return companyCalendarEvents.filter((event) => event.date === today);
-      if (view === "pending") return companyCalendarEvents.filter((event) => event.type === "pending");
-      return companyCalendarEvents.filter((event) => String(event.date || "").startsWith(companyCalendarMonth));
-    }
-
-    function calendarSummaryTitle(view) {
-      if (view === "today") return "오늘 일정";
-      if (view === "pending") return "승인대기 일정";
-      return `${monthTitle(companyCalendarMonth)} 월 일정`;
-    }
-
-    function calendarEventTypeLabel(event) {
-      if (event.type === "project") return "프로젝트";
-      if (event.type === "import") return "컨테이너";
-      if (event.type === "cargo-inbound") return "입고";
-      if (event.type === "cargo") return "출고";
-      if (event.type === "task") return "업무";
-      if (event.type === "pending") return "대기";
-      return "연차";
-    }
-
-    function openCalendarSummaryWidget(view) {
-      const items = calendarSummaryEvents(view);
-      const title = calendarSummaryTitle(view);
-      openFocusWidget({
-        kicker: "캘린더",
-        title,
-        subtitle: `${formatSalesNumber(items.length)}건`,
-        body: items.length
-          ? `<div class="calendar-summary-list">${items.map((event) => `
-              <button class="calendar-summary-item" type="button" data-calendar-event-id="${escapeHtml(event.id)}" aria-label="${escapeHtml(calendarEventLabel(event))}">
-                <div>
-                  <div class="company-task-title">${escapeHtml(shortKoreanDate(event.date))} · ${escapeHtml(event.title || "일정")}</div>
-                  <div class="company-task-meta">${escapeHtml(calendarEventLabel(event))}</div>
-                </div>
-                <span class="calendar-event ${escapeHtml(event.type || "task")}">${escapeHtml(calendarEventTypeLabel(event))}</span>
-              </button>
-            `).join("")}</div>`
-          : `<div class="calendar-empty">표시할 일정이 없습니다.</div>`,
-      });
-    }
-
     function renderCompanyCalendar(payload = {}) {
       if (!companyCalendarGrid) return;
       companyCalendarMonth = payload.month || companyCalendarMonth;
@@ -10779,18 +12254,22 @@ HTML = r"""<!doctype html>
       renderNoticePreview();
     }
 
-    function setDashboardSalesMetric(labelElement, valueElement, label, value, className = "") {
+    function setDashboardSalesMetric(labelElement, valueElement, label, value, className = "", title = "") {
       if (labelElement) labelElement.textContent = label;
       if (!valueElement) return;
       valueElement.textContent = value;
       valueElement.className = className;
+      if (title) valueElement.title = title;
+      else valueElement.removeAttribute("title");
     }
 
-    function setDashboardSalesCompare(labelElement, valueElement, rateElement, label, value, rate, className = "") {
+    function setDashboardSalesCompare(labelElement, valueElement, rateElement, label, value, rate, className = "", title = "") {
       if (labelElement) labelElement.textContent = label;
       if (valueElement) {
         valueElement.textContent = value;
         valueElement.className = className;
+        if (title) valueElement.title = title;
+        else valueElement.removeAttribute("title");
       }
       if (rateElement) {
         rateElement.textContent = rate;
@@ -10803,96 +12282,21 @@ HTML = r"""<!doctype html>
       dashboardSalesQuantityCompareCard?.classList.toggle("waiting", Boolean(quantityWaiting));
     }
 
+    function setDashboardDecisionChip(chipElement, valueElement, value, title = "", state = "") {
+      if (valueElement) {
+        valueElement.textContent = value;
+        if (title) valueElement.title = title;
+        else valueElement.removeAttribute("title");
+      }
+      if (!chipElement) return;
+      chipElement.classList.remove("good", "warn", "bad");
+      if (state) chipElement.classList.add(state);
+    }
+
     function setDashboardSalesStatus(text, state = "") {
       if (!dashboardSalesStatus) return;
       dashboardSalesStatus.textContent = text;
       dashboardSalesStatus.className = `dashboard-sales-status${state ? ` ${state}` : ""}`;
-    }
-
-    function renderDashboardSalesWeeklyChart(rows = [], message = "") {
-      if (!dashboardSalesWeeklyChart) return;
-      const weeklyRows = [...(rows || [])]
-        .filter((row) => row && (row.report_date || row.label))
-        .sort((left, right) => String(left.report_date || left.label || "").localeCompare(String(right.report_date || right.label || "")))
-        .slice(-7);
-      if (!weeklyRows.length) {
-        dashboardSalesWeeklyChart.textContent = message || "최근 7일 매출 데이터가 없습니다.";
-        return;
-      }
-      const series = [
-        { key: "profit_supply_amount", label: "매입가", color: "#3b82f6", width: 1.55, radius: 2.7, opacity: 0.52, dash: "" },
-        { key: "profit_margin", label: "손익마진", color: "#16a34a", width: 2, radius: 3.2, opacity: 0.82, dash: "7 5" },
-        { key: "profit_sales_amount", label: "매출가", color: "#ef4444", width: 3.8, radius: 4.9, opacity: 1, dash: "" },
-      ];
-      const chart = { left: 46, right: 432, top: 12, bottom: 126, width: 386, height: 114 };
-      const values = weeklyRows.flatMap((row) => series.map((item) => Number(row[item.key] || 0)));
-      const maxValue = Math.max(0, ...values, 1);
-      const minValue = Math.min(0, ...values);
-      const rangeValue = Math.max(maxValue - minValue, 1);
-      const tickCount = 4;
-      const yForValue = (value) => chart.bottom - ((Number(value || 0) - minValue) / rangeValue) * chart.height;
-      const xForIndex = (index) => chart.left + (weeklyRows.length <= 1 ? chart.width / 2 : (index / (weeklyRows.length - 1)) * chart.width);
-      const formatAxisValue = (value) => {
-        const number = Math.round(Number(value || 0));
-        const sign = number < 0 ? "-" : "";
-        const absNumber = Math.abs(number);
-        if (absNumber >= 100000000) return `${sign}${formatSalesNumber(Math.round(absNumber / 1000000))}백만`;
-        if (absNumber >= 10000) return `${sign}${formatSalesNumber(Math.round(absNumber / 10000))}`;
-        return formatSalesNumber(number);
-      };
-      const gridLines = Array.from({ length: tickCount + 1 }, (_, index) => {
-        const value = maxValue - (rangeValue / tickCount) * index;
-        const y = chart.top + (index / tickCount) * chart.height;
-        return `
-          <g>
-            <line x1="${chart.left}" y1="${y}" x2="${chart.right}" y2="${y}" stroke="#d1d5db" stroke-width="0.85"></line>
-            <text x="${chart.left - 9}" y="${y + 3}" text-anchor="end" font-size="9" fill="#475467">${escapeHtml(formatAxisValue(value))}</text>
-          </g>
-        `;
-      }).join("");
-      const zeroY = yForValue(0);
-      const xLabels = weeklyRows.map((row, index) => {
-        const x = xForIndex(index);
-        const label = shortKoreanDate(row.report_date || row.label || "").replace("월 ", "-").replace("일", "");
-        return `<text x="${x}" y="144" text-anchor="middle" font-size="9.5" fill="#111827">${escapeHtml(label)}</text>`;
-      }).join("");
-      const seriesLines = series.map((item) => {
-        const points = weeklyRows.map((row, index) => `${xForIndex(index)},${yForValue(row[item.key])}`).join(" ");
-        const dots = weeklyRows.map((row, index) => `
-          <circle cx="${xForIndex(index)}" cy="${yForValue(row[item.key])}" r="${item.radius}" fill="${item.color}" fill-opacity="${item.opacity}" stroke="white" stroke-width="${item.key === "profit_sales_amount" ? "1.8" : "1"}"></circle>
-        `).join("");
-        const salesUnderlay = item.key === "profit_sales_amount"
-          ? `<polyline points="${points}" fill="none" stroke="#ffffff" stroke-width="${item.width + 3.4}" stroke-linecap="round" stroke-linejoin="round"></polyline>`
-          : "";
-        return `
-          ${salesUnderlay}
-          <polyline points="${points}" fill="none" stroke="${item.color}" stroke-opacity="${item.opacity}" stroke-width="${item.width}" ${item.dash ? `stroke-dasharray="${item.dash}"` : ""} stroke-linecap="round" stroke-linejoin="round"></polyline>
-          ${dots}
-        `;
-      }).join("");
-      const legendSeries = [series[2], series[0], series[1]];
-      const legend = legendSeries.map((item, index) => {
-        const y = 24 + index * 21;
-        return `
-          <g>
-            <line x1="448" y1="${y}" x2="468" y2="${y}" stroke="${item.color}" stroke-opacity="${item.opacity}" stroke-width="${item.width}" ${item.dash ? `stroke-dasharray="${item.dash}"` : ""}></line>
-            <circle cx="458" cy="${y}" r="${item.key === "profit_sales_amount" ? "4.2" : "3"}" fill="${item.color}" fill-opacity="${item.opacity}"></circle>
-            <text x="474" y="${y + 4}" font-size="10.5" font-weight="${item.key === "profit_sales_amount" ? "950" : "800"}" fill="${item.key === "profit_sales_amount" ? "#111827" : "#475467"}">${escapeHtml(item.label)}</text>
-          </g>
-        `;
-      }).join("");
-      const total = weeklyRows.reduce((sum, row) => sum + Number(row.profit_sales_amount || 0), 0);
-      dashboardSalesWeeklyChart.innerHTML = `
-        <div class="chart-title"><span>최근 7일 매출</span><span>합계 ${escapeHtml(formatSalesNumber(total))}</span></div>
-        <svg viewBox="0 0 540 156" role="img" aria-label="최근 7일 매출 현황">
-          <rect x="0" y="0" width="540" height="156" fill="#ffffff" rx="6"></rect>
-          ${gridLines}
-          <line x1="${chart.left}" y1="${zeroY}" x2="${chart.right}" y2="${zeroY}" stroke="#111827" stroke-width="1"></line>
-          ${seriesLines}
-          ${xLabels}
-          ${legend}
-        </svg>
-      `;
     }
 
     function renderDashboardSalesUnavailable(message) {
@@ -10909,7 +12313,163 @@ HTML = r"""<!doctype html>
       setDashboardSalesMetric(null, dashboardSalesMargin, "", "-");
       setDashboardSalesMetric(null, dashboardSellerTotal, "", "-");
       setDashboardSalesMetric(null, dashboardSupplierPurchase, "", "-");
-      renderDashboardSalesWeeklyChart([], message || "매출현황 및 관리 데이터를 불러오는 중입니다.");
+      if (dashboardSalesDecisionTitle) dashboardSalesDecisionTitle.textContent = "매출현황 데이터 연결 대기 중";
+      if (dashboardSalesDecisionNote) dashboardSalesDecisionNote.textContent = "금일 매출 업로드 후 손익, 매입, 마진 기준을 바로 확인할 수 있습니다.";
+      [
+        dashboardDecisionTodayChip,
+        dashboardDecisionPurchaseChip,
+        dashboardDecisionMarginChip,
+      ].forEach((chip) => {
+        chip?.classList.remove("good", "warn", "bad");
+      });
+      if (dashboardDecisionTodaySales) dashboardDecisionTodaySales.textContent = "-";
+      if (dashboardDecisionPurchase) dashboardDecisionPurchase.textContent = "-";
+      if (dashboardDecisionMargin) dashboardDecisionMargin.textContent = "-";
+      if (dashboardSalesMessage) {
+        dashboardSalesMessage.classList.remove("has-chart");
+        dashboardSalesMessage.textContent = message || "매출현황 및 관리 데이터를 불러오는 중입니다.";
+      }
+    }
+
+    function dashboardRecentSalesRows(dailyRows = [], baseDateText = "") {
+      const rowsByDate = new Map();
+      dailyRows.forEach((row) => {
+        const date = parseLocalDate(row.report_date || "");
+        if (!date) return;
+        const key = localDateString(date);
+        rowsByDate.set(key, {
+          key,
+          amount: Number(row.profit_sales_amount || 0),
+          quantity: Number(row.quantity || 0),
+          hasData: true,
+        });
+      });
+      const fallbackDate = dailyRows
+        .map((row) => row.report_date || "")
+        .filter(Boolean)
+        .sort((left, right) => left.localeCompare(right, "ko"))
+        .at(-1);
+      const baseDate = parseLocalDate(baseDateText || fallbackDate || todayString());
+      if (!baseDate) return [];
+      const startDate = new Date(baseDate);
+      startDate.setDate(baseDate.getDate() - 6);
+      return Array.from({ length: 7 }, (_, index) => {
+        const day = new Date(startDate);
+        day.setDate(startDate.getDate() + index);
+        const key = localDateString(day);
+        const row = rowsByDate.get(key);
+        return {
+          key,
+          label: shortKoreanDate(key),
+          axisLabel: `${day.getMonth() + 1}/${day.getDate()}`,
+          amount: row?.amount || 0,
+          quantity: row?.quantity || 0,
+          hasData: Boolean(row?.hasData),
+        };
+      });
+    }
+
+    function renderDashboardRecentSalesChart(data, { comparisonDelta = 0, hasComparison = false } = {}) {
+      if (!dashboardSalesMessage) return;
+      const recentRows = dashboardRecentSalesRows(data.daily_rows || [], data.selected_date || data.today?.report_date || "");
+      const dataRows = recentRows.filter((row) => row.hasData);
+      if (!recentRows.length || !dataRows.length) {
+        dashboardSalesMessage.classList.remove("has-chart");
+        dashboardSalesMessage.textContent = "최근 7일 매출 추세는 매출현황 업로드 후 표시됩니다.";
+        return;
+      }
+      const values = dataRows.map((row) => row.amount);
+      const minAmount = Math.min(0, ...values);
+      const maxAmount = Math.max(1, ...values);
+      const range = Math.max(maxAmount - minAmount, 1);
+      const chartTop = 8;
+      const chartBottom = 64;
+      const pointForRow = (row, index) => {
+        const x = 4 + (index * (92 / 6));
+        const y = row.hasData
+          ? chartBottom - (((row.amount - minAmount) / range) * (chartBottom - chartTop))
+          : chartBottom;
+        return { x: Number(x.toFixed(2)), y: Number(y.toFixed(2)) };
+      };
+      const points = recentRows.map(pointForRow);
+      const dataPoints = recentRows
+        .map((row, index) => ({ row, ...points[index] }))
+        .filter((point) => point.row.hasData);
+      const linePoints = dataPoints.map((point) => `${point.x},${point.y}`).join(" ");
+      const areaPath = dataPoints.length > 1
+        ? `M ${dataPoints[0].x} ${chartBottom} L ${dataPoints.map((point) => `${point.x} ${point.y}`).join(" L ")} L ${dataPoints.at(-1).x} ${chartBottom} Z`
+        : "";
+      const totalAmount = dataRows.reduce((total, row) => total + row.amount, 0);
+      const totalQuantity = dataRows.reduce((total, row) => total + row.quantity, 0);
+      const latestRow = dataRows.at(-1);
+      const chartYPercent = (y) => `${Math.max(0, Math.min(100, (y / 72) * 100)).toFixed(2)}%`;
+      const pointYPercent = (point) => chartYPercent(point.y);
+      const summaryText = hasComparison
+        ? formatSalesMillion(comparisonDelta, true)
+        : "비교 대기";
+      const captionText = `${recentRows[0].label}~${recentRows.at(-1).label}`;
+      const scaleRows = [
+        { label: formatSalesMillion(maxAmount), y: chartTop },
+        { label: formatSalesMillion((maxAmount + minAmount) / 2), y: (chartTop + chartBottom) / 2 },
+        { label: formatSalesMillion(minAmount), y: chartBottom },
+      ];
+      dashboardSalesMessage.classList.add("has-chart");
+      dashboardSalesMessage.innerHTML = `
+        <div class="dashboard-recent-sales" aria-label="최근 7일 손익매출 추세">
+          <div class="dashboard-recent-sales-head">
+            <div class="dashboard-recent-sales-title">최근 7일 손익매출</div>
+            <div class="dashboard-recent-sales-caption">${escapeHtml(captionText)}</div>
+          </div>
+          <div class="dashboard-recent-summary" aria-label="최근 7일 매출 요약">
+            <div class="dashboard-recent-summary-card">
+              <span>최신</span>
+              <strong title="${escapeHtml(formatSalesNumber(latestRow.amount))}">${escapeHtml(formatSalesMillion(latestRow.amount))}</strong>
+            </div>
+            <div class="dashboard-recent-summary-card">
+              <span>7일 합계</span>
+              <strong title="${escapeHtml(formatSalesNumber(totalAmount))}">${escapeHtml(formatSalesMillion(totalAmount))}</strong>
+            </div>
+            <div class="dashboard-recent-summary-card delta${comparisonDelta < 0 ? " negative" : ""}">
+              <span>전영업일 대비</span>
+              <strong title="${escapeHtml(hasComparison ? formatSignedSalesNumber(comparisonDelta) : "비교 대기")}">${escapeHtml(summaryText)}</strong>
+            </div>
+          </div>
+          <div class="dashboard-recent-chart">
+            <div class="dashboard-recent-chart-frame">
+              <div class="dashboard-recent-scale" aria-hidden="true">
+                ${scaleRows.map((row) => `<span style="--scale-y: ${chartYPercent(row.y)}">${escapeHtml(row.label)}</span>`).join("")}
+              </div>
+              <svg viewBox="0 0 100 72" preserveAspectRatio="none" role="img" aria-label="${escapeHtml(`최근 7일 손익매출 합계 ${formatSalesMillion(totalAmount)}`)}">
+                <defs>
+                  <linearGradient id="dashboardRecentSalesGradient" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stop-color="#2563eb" stop-opacity=".20"></stop>
+                    <stop offset="100%" stop-color="#16a34a" stop-opacity=".02"></stop>
+                  </linearGradient>
+                </defs>
+                ${areaPath ? `<path class="dashboard-recent-area" d="${escapeHtml(areaPath)}"></path>` : ""}
+                ${linePoints ? `<polyline class="dashboard-recent-line" points="${escapeHtml(linePoints)}"></polyline>` : ""}
+              </svg>
+              <div class="dashboard-recent-points" aria-hidden="true">
+              ${recentRows.map((row, index) => {
+                const point = points[index];
+                const title = row.hasData
+                  ? `${row.label} · ${formatSalesMillion(row.amount)} (${formatSalesNumber(row.amount)}) · 수량 ${formatSalesNumber(row.quantity)}개`
+                  : `${row.label} · 데이터 없음`;
+                const isLatest = row.key === latestRow.key;
+                return `<span class="dashboard-recent-point${row.hasData ? "" : " missing"}${isLatest ? " latest" : ""}" style="--point-x: ${point.x}%; --point-y: ${pointYPercent(point)}" title="${escapeHtml(title)}"></span>`;
+              }).join("")}
+              </div>
+            </div>
+            <div class="dashboard-recent-axis">
+              ${recentRows.map((row) => `<span>${escapeHtml(row.axisLabel)}</span>`).join("")}
+            </div>
+          </div>
+          <div class="dashboard-recent-note">
+            <span>판매수량 합계 ${escapeHtml(formatSalesNumber(totalQuantity))}개</span>
+            <span>선택일 ${escapeHtml(latestRow.label)}</span>
+          </div>
+        </div>
+      `;
     }
 
     function renderDashboardSalesSummary(data) {
@@ -10923,17 +12483,55 @@ HTML = r"""<!doctype html>
       const selectedDateLabel = shortKoreanDate(data.selected_date || today.report_date || "");
       const previousDateLabel = shortKoreanDate(data.previous_business_date || yesterday.report_date || "");
       const periodLabel = formatSalesPeriodLabel(data.period || "");
+      const todaySalesAmount = Number(today.profit_sales_amount || 0);
+      const previousSalesAmount = Number(yesterday.profit_sales_amount || 0);
+      const monthSalesAmount = Number(month.profit_sales_amount || 0);
+      const sellerSalesAmount = Number(sellerTotal.profit_sales_amount || 0);
+      const purchaseAmount = Number(supplierPurchaseTotal.purchase_total || 0);
       const comparisonDelta = Number(comparison.profit_sales_amount_delta || 0);
       const quantityDelta = Number(comparison.quantity_delta || 0);
       const marginAmount = Number(month.profit_margin || 0);
+      const marginRate = monthSalesAmount ? (marginAmount / monthSalesAmount) * 100 : 0;
       const hasComparison = hasTodaySalesData && Boolean(yesterday.report_date);
       setDashboardSalesStatus(hasTodaySalesData ? "연동 완료" : "금일 미업로드", hasTodaySalesData ? "connected" : "warning");
+      if (dashboardSalesDecisionTitle) {
+        dashboardSalesDecisionTitle.textContent = hasTodaySalesData
+          ? `${selectedDateLabel || "선택일"} 손익 ${formatSalesCompactMoney(todaySalesAmount)} · 전영업일 대비 ${hasComparison ? formatSalesCompactMoney(comparisonDelta, true) : "비교 대기"}`
+          : "금일 매출 업로드가 아직 필요합니다";
+      }
+      if (dashboardSalesDecisionNote) {
+        dashboardSalesDecisionNote.textContent = hasTodaySalesData
+          ? `월 마진 ${formatSalesCompactMoney(marginAmount)}(${formatSalesPercent(marginRate)}) 기준으로 매출·매입 흐름을 확인하세요.`
+          : "매출표 업로드 후 손익, 매입, 마진 기준을 바로 확인할 수 있습니다.";
+      }
+      setDashboardDecisionChip(
+        dashboardDecisionTodayChip,
+        dashboardDecisionTodaySales,
+        hasTodaySalesData ? formatSalesCompactMoney(todaySalesAmount) : "미업로드",
+        hasTodaySalesData ? formatSalesNumber(todaySalesAmount) : "",
+        hasTodaySalesData ? "good" : "warn",
+      );
+      setDashboardDecisionChip(
+        dashboardDecisionPurchaseChip,
+        dashboardDecisionPurchase,
+        formatSalesCompactMoney(purchaseAmount),
+        formatSalesNumber(purchaseAmount),
+        purchaseAmount > 0 ? "warn" : "",
+      );
+      setDashboardDecisionChip(
+        dashboardDecisionMarginChip,
+        dashboardDecisionMargin,
+        formatSalesCompactMoney(marginAmount),
+        formatSalesNumber(marginAmount),
+        marginAmount < 0 ? "bad" : "good",
+      );
       setDashboardSalesMetric(
         dashboardTodaySalesLabel,
         dashboardTodaySales,
         `${selectedDateLabel || "오늘"} 손익매출`,
-        hasTodaySalesData ? formatSalesNumber(today.profit_sales_amount) : "미업로드",
+        hasTodaySalesData ? formatSalesCompactMoney(todaySalesAmount) : "미업로드",
         hasTodaySalesData ? "" : "notice",
+        hasTodaySalesData ? formatSalesNumber(todaySalesAmount) : "",
       );
       setDashboardSalesMetric(
         dashboardTodayQuantityLabel,
@@ -10946,8 +12544,9 @@ HTML = r"""<!doctype html>
         dashboardPreviousSalesLabel,
         dashboardPreviousSales,
         previousDateLabel ? `${previousDateLabel} 직전 영업일 매출` : "직전 영업일 매출",
-        yesterday.report_date ? formatSalesNumber(yesterday.profit_sales_amount) : "데이터 없음",
+        yesterday.report_date ? formatSalesCompactMoney(previousSalesAmount) : "데이터 없음",
         yesterday.report_date ? "" : "notice",
+        yesterday.report_date ? formatSalesNumber(previousSalesAmount) : "",
       );
       setDashboardSalesMetric(
         dashboardPreviousQuantityLabel,
@@ -10960,7 +12559,9 @@ HTML = r"""<!doctype html>
         dashboardMonthSalesLabel,
         dashboardMonthSales,
         "이번 달 누적매출",
-        formatSalesNumber(month.profit_sales_amount),
+        formatSalesCompactMoney(monthSalesAmount),
+        "",
+        formatSalesNumber(monthSalesAmount),
       );
       setDashboardSalesMetric(
         dashboardSalesQuantityLabel,
@@ -10973,9 +12574,10 @@ HTML = r"""<!doctype html>
         dashboardSalesAmountCompare,
         dashboardSalesAmountRate,
         previousDateLabel ? `${previousDateLabel} 매출 대비` : "매출금액 비교",
-        hasComparison ? formatSignedSalesNumber(comparisonDelta) : "비교 대기",
+        hasComparison ? formatSalesCompactMoney(comparisonDelta, true) : "비교 대기",
         hasComparison ? formatSignedSalesPercent(comparison.profit_sales_amount_delta_rate) : "-",
         hasComparison ? salesAmountClass(comparisonDelta) : "notice",
+        hasComparison ? formatSignedSalesNumber(comparisonDelta) : "",
       );
       setDashboardSalesCompare(
         dashboardSalesQuantityCompareLabel,
@@ -10987,10 +12589,10 @@ HTML = r"""<!doctype html>
         hasComparison ? salesAmountClass(quantityDelta) : "notice",
       );
       setDashboardCompareWaiting(!hasComparison, !hasComparison);
-      setDashboardSalesMetric(null, dashboardSalesMargin, "", formatSalesNumber(marginAmount), salesAmountClass(marginAmount));
-      setDashboardSalesMetric(null, dashboardSellerTotal, "", formatSalesNumber(sellerTotal.profit_sales_amount));
-      setDashboardSalesMetric(null, dashboardSupplierPurchase, "", formatSalesNumber(supplierPurchaseTotal.purchase_total));
-      renderDashboardSalesWeeklyChart(data.daily_rows || [], hasComparison ? "" : "금일 매출 데이터 업로드 후 최근 7일 그래프가 표시됩니다.");
+      setDashboardSalesMetric(null, dashboardSalesMargin, "", formatSalesCompactMoney(marginAmount), salesAmountClass(marginAmount), formatSalesNumber(marginAmount));
+      setDashboardSalesMetric(null, dashboardSellerTotal, "", formatSalesCompactMoney(sellerSalesAmount), "", formatSalesNumber(sellerSalesAmount));
+      setDashboardSalesMetric(null, dashboardSupplierPurchase, "", formatSalesCompactMoney(purchaseAmount), "", formatSalesNumber(purchaseAmount));
+      renderDashboardRecentSalesChart(data, { comparisonDelta, hasComparison });
     }
 
     async function loadDashboardSalesSummary() {
@@ -11007,7 +12609,10 @@ HTML = r"""<!doctype html>
         renderDashboardSalesSummary(data);
       } catch (error) {
         setDashboardSalesStatus("연동 오류", "warning");
-        renderDashboardSalesWeeklyChart([], error.message || "매출현황을 불러오지 못했습니다.");
+        if (dashboardSalesMessage) {
+          dashboardSalesMessage.classList.remove("has-chart");
+          dashboardSalesMessage.textContent = error.message || "매출현황을 불러오지 못했습니다.";
+        }
       }
     }
 
@@ -11024,33 +12629,6 @@ HTML = r"""<!doctype html>
       if (!event) return;
       if (event.type === "task" && event.task_id) {
         openCrmTaskWidget(event.task_id).catch((error) => setCrmMessage(error.message, true));
-        return;
-      }
-      if (event.type === "import" && event.shipment_id) {
-        const record = importShipments.find((item) => String(item.id) === String(event.shipment_id));
-        if (record) {
-          openImportShipmentDetailWidget(record);
-          return;
-        }
-        openImportShipmentDetailWidget(event);
-        return;
-      }
-      if ((event.type === "cargo" || event.type === "cargo-inbound") && event.cargo_id) {
-        const record = cargoShipments.find((item) => String(item.id) === String(event.cargo_id));
-        if (record) {
-          openCargoShipmentDetailWidget(record);
-          return;
-        }
-        openCargoShipmentDetailWidget({
-          cargo_type: event.type === "cargo-inbound" ? "inbound" : "outbound",
-          ship_date: event.date,
-          customer: String(event.title || "").replace(/^화물\s*(입고|출고)\s*/, ""),
-          item: event.item || "",
-          quantity: event.quantity || "",
-          destination: event.destination || "",
-          status: event.status || "",
-          memo: event.memo || event.subtitle || "",
-        });
         return;
       }
       const stateText = event.type === "project"
@@ -11207,11 +12785,13 @@ HTML = r"""<!doctype html>
       if (!can("crm_view")) {
         internalChatUsers = [];
         renderInternalChatRooms();
+        renderFloatingMessengerRooms();
         return;
       }
       const data = await crmFetchJson("/api/company-staff-dashboard");
       internalChatUsers = data.staff || [];
       renderInternalChatRooms();
+      renderFloatingMessengerRooms();
     }
 
     function internalMessageClass(message) {
@@ -11277,6 +12857,7 @@ HTML = r"""<!doctype html>
       });
       internalChatBody.value = "";
       await loadInternalMessages();
+      loadFloatingMessengerMessages({ silent: true }).catch(() => {});
       if (body.startsWith("/업무")) {
         await Promise.all([
           loadCrmTasks().catch(() => {}),
@@ -11288,6 +12869,321 @@ HTML = r"""<!doctype html>
         ]);
       }
       internalChatBody?.focus();
+    }
+
+    function floatingMessengerRoomLabel(room = floatingMessengerRoom) {
+      if (room.type === "dm") {
+        const user = internalChatUsers.find((item) => String(item.id) === String(room.userId));
+        return user ? `${user.display_name || user.username} DM` : "직원 DM";
+      }
+      return "전체방";
+    }
+
+    function floatingMessengerRoomHint(room = floatingMessengerRoom) {
+      return room.type === "dm"
+        ? "DM에서도 /업무 @직원 내용 / 기한 형식으로 바로 업무를 만들 수 있어."
+        : "전체 공유와 /업무 @직원 내용 / 기한 업무 지시를 바로 남길 수 있어.";
+    }
+
+    function floatingMessengerDateLabel(value) {
+      const raw = String(value || "").trim();
+      if (!raw) return "";
+      const datePart = raw.split(" ")[0] || raw;
+      const currentYear = String(new Date().getFullYear());
+      if (datePart.startsWith(currentYear + "-")) return datePart.slice(5).replace("-", "/");
+      return datePart.replaceAll("-", ".");
+    }
+
+    function renderFloatingMessengerProfile() {
+      if (!floatingMessengerProfileName) return;
+      floatingMessengerProfileName.textContent = currentUser.display_name || currentUser.username || "사용자";
+    }
+
+    function renderFloatingMessengerHome(messages = floatingMessengerMessagesCache) {
+      renderFloatingMessengerProfile();
+      const rows = messages || [];
+      const latest = rows[rows.length - 1];
+      const unreadText = floatingMessengerUnread > 0
+        ? `${floatingMessengerUnread}개의 안 읽은 알림이 있어요`
+        : (rows.length ? "최근 알림" : "새 알림이 없어요");
+      if (floatingMessengerUnreadSummary) floatingMessengerUnreadSummary.textContent = unreadText;
+      if (floatingMessengerChatNotice) floatingMessengerChatNotice.textContent = unreadText;
+      if (!floatingMessengerHomePreview) return;
+      if (!latest) {
+        floatingMessengerHomePreview.innerHTML = `
+          <div>
+            <div class="floating-messenger-preview-title">아직 메시지가 없습니다</div>
+            <div class="floating-messenger-preview-body">첫 공유나 업무 지시를 남겨줘.</div>
+          </div>
+          <div class="floating-messenger-preview-badge">WORK</div>
+        `;
+        return;
+      }
+      const sender = latest.display_name || latest.username || "직원";
+      const body = String(latest.body || "").replace(/\s+/g, " ").trim();
+      floatingMessengerHomePreview.innerHTML = `
+        <div>
+          <div class="floating-messenger-preview-title">${escapeHtml(sender)} · ${escapeHtml(floatingMessengerDateLabel(latest.created_at))}</div>
+          <div class="floating-messenger-preview-body">${escapeHtml(body || "새 메시지가 도착했습니다.")}</div>
+        </div>
+        <div class="floating-messenger-preview-badge">WORK</div>
+      `;
+    }
+
+    function floatingMessengerRoomPreview(room) {
+      const isCurrent = floatingMessengerRoom.type === room.type && String(floatingMessengerRoom.userId || "") === String(room.userId || "");
+      const latest = isCurrent ? floatingMessengerMessagesCache[floatingMessengerMessagesCache.length - 1] : null;
+      const fallback = room.type === "global" ? "전체 공지와 업무 대화를 확인해줘." : "DM을 시작해줘.";
+      if (!latest) return { body: fallback, date: "" };
+      const body = String(latest.body || "").replace(/\s+/g, " ").trim();
+      return {
+        body: body || "새 메시지가 도착했습니다.",
+        date: floatingMessengerDateLabel(latest.created_at),
+      };
+    }
+
+    function setFloatingMessengerChatMode(mode = "list") {
+      floatingMessengerChatMode = mode === "thread" ? "thread" : "list";
+      const isThread = floatingMessengerChatMode === "thread";
+      if (floatingMessengerRoomList) floatingMessengerRoomList.hidden = isThread;
+      if (floatingMessengerThread) floatingMessengerThread.hidden = !isThread;
+      const noticeShell = floatingMessengerChatNotice?.closest(".floating-messenger-chat-notice");
+      if (noticeShell) noticeShell.hidden = isThread;
+      if (!isThread) {
+        renderFloatingMessengerRooms();
+      }
+    }
+
+    function setFloatingMessengerTab(tabName, { focusInput = false } = {}) {
+      const nextTab = ["home", "chat", "settings"].includes(tabName) ? tabName : "home";
+      floatingMessengerActiveTab = nextTab;
+      floatingMessengerScreens.forEach((screen) => {
+        screen.classList.toggle("active", screen.dataset.floatingMessengerScreen === nextTab);
+      });
+      floatingMessengerTabButtons.forEach((button) => {
+        const active = button.dataset.floatingMessengerTab === nextTab;
+        button.classList.toggle("active", active);
+        button.setAttribute("aria-selected", active ? "true" : "false");
+      });
+      if (nextTab === "chat") {
+        setFloatingMessengerChatMode(focusInput ? "thread" : "list");
+        if (focusInput) {
+          loadFloatingMessengerMessages({ silent: true }).then(() => {
+            setTimeout(() => floatingMessengerBody?.focus(), 0);
+          }).catch(() => {});
+        }
+      }
+    }
+
+    function renderFloatingMessengerRooms() {
+      renderFloatingMessengerProfile();
+      if (!floatingMessengerRoomList) {
+        renderFloatingMessengerHome();
+        return;
+      }
+      const rooms = [{ type: "global", userId: "", label: "전체방" }];
+      internalChatUsers.forEach((user) => {
+        if (String(user.id) === String(currentUser.id)) return;
+        rooms.push({ type: "dm", userId: String(user.id), label: user.display_name || user.username || "직원" });
+      });
+      const rows = rooms.map((room) => {
+        const active = floatingMessengerRoom.type === room.type && String(floatingMessengerRoom.userId || "") === String(room.userId || "");
+        const preview = floatingMessengerRoomPreview(room);
+        const unread = active && floatingMessengerUnread > 0;
+        return `
+          <button class="floating-messenger-room${active ? " active" : ""}" type="button" data-floating-chat-room="${escapeHtml(room.type)}"${room.userId ? ` data-floating-chat-user-id="${escapeHtml(room.userId)}"` : ""}>
+            <span class="floating-messenger-room-avatar" aria-hidden="true">${escapeHtml(room.type === "global" ? "W" : String(room.label || "직원").slice(0, 1))}</span>
+            <span class="floating-messenger-room-main">
+              <span class="floating-messenger-room-top">
+                <span class="floating-messenger-room-title">${escapeHtml(room.label)}</span>
+                ${preview.date ? `<span class="floating-messenger-room-date">${escapeHtml(preview.date)}</span>` : ""}
+              </span>
+              <span class="floating-messenger-room-preview">${escapeHtml(preview.body)}</span>
+            </span>
+            ${unread ? `<span class="floating-messenger-room-dot" aria-hidden="true"></span>` : `<span></span>`}
+          </button>
+        `;
+      });
+      floatingMessengerRoomList.innerHTML = rows.join("");
+      if (floatingMessengerTitle) floatingMessengerTitle.textContent = floatingMessengerRoomLabel();
+      if (floatingMessengerKicker) floatingMessengerKicker.textContent = floatingMessengerRoom.type === "dm" ? "직원 DM" : "빠른 대화";
+      if (floatingMessengerHint) floatingMessengerHint.textContent = floatingMessengerRoomHint();
+      renderFloatingMessengerHome();
+    }
+
+    function updateFloatingMessengerBadge() {
+      if (!floatingMessengerBadge) return;
+      const count = Math.max(0, Number(floatingMessengerUnread || 0));
+      floatingMessengerBadge.textContent = count > 99 ? "99+" : String(count);
+      floatingMessengerBadge.classList.toggle("visible", count > 0);
+      if (floatingMessengerTabDot) floatingMessengerTabDot.classList.toggle("visible", count > 0);
+      renderFloatingMessengerHome();
+    }
+
+    function renderFloatingMessengerMessages(messages = []) {
+      if (!floatingMessengerList) return;
+      const rows = messages || [];
+      floatingMessengerMessagesCache = rows;
+      renderFloatingMessengerHome(rows);
+      if (!rows.length) {
+        floatingMessengerList.innerHTML = `<div class="floating-messenger-empty">아직 메시지가 없습니다.<br>첫 공유나 DM을 남겨줘.</div>`;
+        return;
+      }
+      floatingMessengerList.innerHTML = rows.map((message) => {
+        const isMine = String(message.user_id) === String(currentUser.id);
+        const body = String(message.body || "").replace(/\s+/g, " ").trim();
+        const sender = message.display_name || message.username || "직원";
+        return `
+          <article class="floating-thread-message${isMine ? " mine" : ""}${internalMessageClass(message)}">
+            <div class="internal-message-meta">
+              <span class="internal-message-name">${escapeHtml(sender)}</span>
+              <span>${escapeHtml(floatingMessengerDateLabel(message.created_at))}</span>
+            </div>
+            <div class="internal-message-body">${escapeHtml(body || "새 메시지")}</div>
+            ${message.command_result ? `<div class="internal-message-meta"><span>${escapeHtml(message.command_result)}</span></div>` : ""}
+            ${message.command_error ? `<div class="internal-message-meta"><span>${escapeHtml(message.command_error)}</span></div>` : ""}
+          </article>
+        `;
+      }).join("");
+      floatingMessengerList.scrollTop = floatingMessengerList.scrollHeight;
+    }
+
+    async function loadFloatingMessengerMessages({ silent = false } = {}) {
+      if (!floatingMessengerList) return;
+      renderFloatingMessengerRooms();
+      if (!silent) {
+        floatingMessengerList.innerHTML = `<div class="floating-messenger-empty">메시지를 불러오는 중입니다.</div>`;
+      }
+      const params = new URLSearchParams({ limit: "80", room: floatingMessengerRoom.type });
+      if (floatingMessengerRoom.type === "dm" && floatingMessengerRoom.userId) params.set("user_id", floatingMessengerRoom.userId);
+      const data = await crmFetchJson(`/api/internal-messages?${params.toString()}`);
+      const messages = data.messages || [];
+      renderFloatingMessengerMessages(messages);
+      const latestId = messages.reduce((maxId, message) => Math.max(maxId, Number(message.id || 0)), 0);
+      if (floatingMessengerOpen) {
+        floatingMessengerLastSeenId = latestId;
+        floatingMessengerUnread = 0;
+      } else if (!floatingMessengerLastSeenId) {
+        floatingMessengerLastSeenId = latestId;
+      } else if (latestId > floatingMessengerLastSeenId) {
+        const incoming = messages.filter((message) =>
+          Number(message.id || 0) > floatingMessengerLastSeenId &&
+          String(message.user_id) !== String(currentUser.id)
+        ).length;
+        floatingMessengerUnread += incoming;
+        floatingMessengerLastSeenId = latestId;
+      }
+      updateFloatingMessengerBadge();
+    }
+
+    function startFloatingMessengerPolling() {
+      if (floatingMessengerPollTimer || !floatingMessenger) return;
+      floatingMessengerPollTimer = window.setInterval(() => {
+        loadFloatingMessengerMessages({ silent: true }).catch(() => {});
+      }, 30000);
+    }
+
+    async function refreshFloatingMessenger({ loadUsers = false, silent = false } = {}) {
+      if (loadUsers) await loadInternalChatUsers();
+      await loadFloatingMessengerMessages({ silent });
+    }
+
+    async function openFloatingMessenger() {
+      if (!floatingMessenger || !floatingMessengerPanel || !floatingMessengerToggle) return;
+      floatingMessengerOpen = true;
+      floatingMessenger.classList.add("open");
+      floatingMessengerPanel.setAttribute("aria-hidden", "false");
+      floatingMessengerToggle.setAttribute("aria-expanded", "true");
+      floatingMessengerUnread = 0;
+      updateFloatingMessengerBadge();
+      await refreshFloatingMessenger({ loadUsers: !internalChatUsers.length, silent: false }).catch((error) => {
+        if (floatingMessengerList) floatingMessengerList.innerHTML = `<div class="floating-messenger-empty">${escapeHtml(error.message || "메신저를 불러오지 못했습니다.")}</div>`;
+      });
+      startFloatingMessengerPolling();
+      if (floatingMessengerActiveTab === "chat" && floatingMessengerChatMode === "thread") setTimeout(() => floatingMessengerBody?.focus(), 0);
+    }
+
+    function closeFloatingMessenger() {
+      if (!floatingMessenger || !floatingMessengerPanel || !floatingMessengerToggle) return;
+      floatingMessengerOpen = false;
+      floatingMessenger.classList.remove("open");
+      floatingMessengerPanel.setAttribute("aria-hidden", "true");
+      floatingMessengerToggle.setAttribute("aria-expanded", "false");
+    }
+
+    async function toggleFloatingMessenger() {
+      if (floatingMessengerOpen) {
+        closeFloatingMessenger();
+      } else {
+        await openFloatingMessenger();
+      }
+    }
+
+    async function setFloatingMessengerRoom(type, userId = "") {
+      floatingMessengerRoom = { type: type === "dm" ? "dm" : "global", userId: type === "dm" ? String(userId || "") : "" };
+      floatingMessengerUnread = 0;
+      updateFloatingMessengerBadge();
+      setFloatingMessengerTab("chat", { focusInput: true });
+      await loadFloatingMessengerMessages({ silent: false });
+      floatingMessengerBody?.focus();
+    }
+
+    async function sendFloatingMessengerMessage(event) {
+      event.preventDefault();
+      if (!floatingMessengerBody || floatingMessengerSending) return;
+      const body = floatingMessengerBody.value.trim();
+      if (!body) {
+        floatingMessengerBody.focus();
+        return;
+      }
+      setFloatingMessengerTab("chat", { focusInput: true });
+      floatingMessengerSending = true;
+      if (floatingMessengerSend) floatingMessengerSend.disabled = true;
+      try {
+        await crmFetchJson("/api/internal-message-save", {
+          method: "POST",
+          body: JSON.stringify({
+            body,
+            room_type: floatingMessengerRoom.type,
+            recipient_user_id: floatingMessengerRoom.type === "dm" ? floatingMessengerRoom.userId : "",
+          }),
+        });
+        floatingMessengerBody.value = "";
+        await loadFloatingMessengerMessages({ silent: true });
+        if (internalChatList) {
+          internalChatRoom = { ...floatingMessengerRoom };
+          await loadInternalMessages().catch(() => {});
+        }
+        if (body.startsWith("/업무")) {
+          await Promise.all([
+            loadCrmTasks().catch(() => {}),
+            loadCrmMineTasks().catch(() => {}),
+            loadCrmStaffDashboard().catch(() => {}),
+            loadCompanyStaffDashboard().catch(() => {}),
+            loadCompanyCalendar().catch(() => {}),
+            loadCrmDashboard().catch(() => {}),
+          ]);
+        }
+      } catch (error) {
+        if (floatingMessengerList) {
+          floatingMessengerList.insertAdjacentHTML("beforeend", `<div class="floating-messenger-empty">${escapeHtml(error.message || "메시지를 저장하지 못했습니다.")}</div>`);
+          floatingMessengerList.scrollTop = floatingMessengerList.scrollHeight;
+        }
+      } finally {
+        floatingMessengerSending = false;
+        if (floatingMessengerSend) floatingMessengerSend.disabled = false;
+        floatingMessengerBody?.focus();
+      }
+    }
+
+    async function openFloatingMessengerFull() {
+      closeFloatingMessenger();
+      if (showWorkspace("dashboard") === false) return;
+      setCompanyTab("chat");
+      document.querySelector("#companyNavGroup")?.classList.add("open");
+      internalChatRoom = { ...floatingMessengerRoom };
+      await loadInternalChatUsers().catch(() => {});
+      await loadInternalMessages().catch(() => {});
     }
 
     function setCrmTab(tabName) {
@@ -12214,7 +14110,6 @@ HTML = r"""<!doctype html>
       const payload = latestNoticeRecord() || { date: todayString(), title: "", owner: "", body: "" };
       focusWidgetTaskId = "";
       focusWidgetEmployeeId = "";
-      closeNoticePopup();
       const meta = [shortKoreanDate(payload.date), payload.owner ? `담당 ${payload.owner}` : ""].filter(Boolean).join(" / ");
       openFocusWidget({
         kicker: "공지사항",
@@ -12944,7 +14839,7 @@ HTML = r"""<!doctype html>
         };
         const handleClose = () => finish(null);
         const handleBackdrop = (event) => {
-          keepDialogOpenOnBackdropClick(event, searchResultDialog);
+          if (event.target === searchResultDialog) finish(null);
         };
         searchResultList.addEventListener("click", handleClick);
         searchResultClose?.addEventListener("click", handleClose);
@@ -13093,7 +14988,7 @@ HTML = r"""<!doctype html>
       const className = `editable-cell ${align}`.trim();
       const dataAttr = scope === "management" ? "data-management-field" : "data-field";
       const optionData = options.length ? ` data-options="${escapeHtml(JSON.stringify(options))}"` : "";
-      return `<td class="${className}" tabindex="-1" ${dataAttr}="${escapeHtml(field)}" data-label="${escapeHtml(label)}" data-value="${escapeHtml(value)}" data-input="${escapeHtml(input)}"${date ? ` data-raw-date="${escapeHtml(value)}" data-full-date="${escapeHtml(value)}" data-date="1"` : ""}${optionData}>${escapeHtml(displayValue)}</td>`;
+      return `<td class="${className}" ${dataAttr}="${escapeHtml(field)}" data-label="${escapeHtml(label)}" data-value="${escapeHtml(value)}" data-input="${escapeHtml(input)}" title="${escapeHtml(displayValue)}"${date ? ` data-raw-date="${escapeHtml(value)}" data-full-date="${escapeHtml(value)}" data-date="1"` : ""}${optionData}>${escapeHtml(displayValue)}</td>`;
     }
 
     function selectedEditorParts(scope) {
@@ -13126,60 +15021,6 @@ HTML = r"""<!doctype html>
       const selected = activeCellEditors[scope];
       if (!selected?.cell || !selected.control) return false;
       return String(selected.control.value || "") !== fieldValue(selected.cell);
-    }
-
-    function selectEditableCell(scope, cell, options = {}) {
-      if (!cell || cell.dataset.readonly === "1") return;
-      closeCellEditor(scope);
-      closeLedgerFilter();
-      cell.classList.add("selected-cell");
-      activeCellEditors[scope] = { cell, control: null };
-      cell.focus({ preventScroll: true });
-      if (options.scroll) {
-        cell.scrollIntoView({ block: "nearest", inline: "nearest" });
-      }
-    }
-
-    function beginSelectedCellEdit(scope) {
-      const selected = activeCellEditors[scope];
-      if (!selected?.cell || selected.control) return false;
-      openCellEditor(scope, selected.cell);
-      return true;
-    }
-
-    function editableCellsForRow(scope, row) {
-      if (!row) return [];
-      const selector = scope === "management"
-        ? ".editable-cell[data-management-field]:not([data-readonly='1'])"
-        : ".editable-cell[data-field]:not([data-readonly='1'])";
-      return Array.from(row.querySelectorAll(selector));
-    }
-
-    function moveSelectedEditableCell(scope, direction) {
-      const selected = activeCellEditors[scope];
-      if (!selected?.cell || selected.control) return false;
-      const body = scope === "management" ? managementBody : ledgerBody;
-      const rowSelector = scope === "management" ? "tr[data-record-id]" : "tr[data-case-id]";
-      const currentRow = selected.cell.closest(rowSelector);
-      const rows = Array.from(body.querySelectorAll(rowSelector));
-      const rowIndex = rows.indexOf(currentRow);
-      const currentCells = editableCellsForRow(scope, currentRow);
-      const cellIndex = currentCells.indexOf(selected.cell);
-      if (rowIndex < 0 || cellIndex < 0) return false;
-
-      let targetCell = null;
-      if (direction === "ArrowLeft" || direction === "ArrowRight") {
-        const nextIndex = cellIndex + (direction === "ArrowLeft" ? -1 : 1);
-        targetCell = currentCells[nextIndex] || null;
-      } else {
-        const nextRowIndex = rowIndex + (direction === "ArrowUp" ? -1 : 1);
-        const nextRow = rows[nextRowIndex];
-        const nextCells = editableCellsForRow(scope, nextRow);
-        targetCell = nextCells[Math.min(cellIndex, nextCells.length - 1)] || null;
-      }
-      if (!targetCell) return false;
-      selectEditableCell(scope, targetCell, { scroll: true });
-      return true;
     }
 
     function hasPendingWorkspaceChanges(mode = currentMode) {
@@ -13402,50 +15243,9 @@ HTML = r"""<!doctype html>
       setTimeout(() => vendorNameInput?.focus(), 0);
     }
 
-    function openLedgerCsIntakeModal() {
-      if (!confirmSaveBeforeLeaving("cs-intake", openLedgerCsIntakeModal)) return false;
-      currentMode = "cs-intake";
-      closeLedgerFilter();
-      modal.classList.add("open");
-      const modalPanel = modal.querySelector(".workhub-modal");
-      modal.style.visibility = "visible";
-      modalPanel.style.visibility = "visible";
-      modalPanel.style.color = "#1a2230";
-      modalPanel.classList.remove("ledger-modal", "ledger-view", "management-view");
-      modalPanel.classList.add("cs-intake-modal");
-      result.classList.remove("open");
-      resultText.value = "";
-      fileInput.value = "";
-      templateInput.value = "";
-      notice.textContent = "";
-      deliveryOptions.style.display = "none";
-      templateUpload.style.display = "none";
-      vehicleFields.style.display = "none";
-      ledgerFields.style.display = "none";
-      managementFields.style.display = "none";
-      messagePlaceholder.style.display = "none";
-      if (stockNoticeFields) stockNoticeFields.style.display = "none";
-      if (vendorContactManageFields) vendorContactManageFields.style.display = "none";
-      const fileDrop = document.querySelector("label[for='fileInput']");
-      if (fileDrop) fileDrop.style.display = "none";
-      fileLabel.style.display = "none";
-      submitButton.textContent = "닫기";
-      submitButton.className = "btn";
-      activeCsCaseId = "";
-      openLedgerCsPopup();
-      return true;
-    }
-
     function closeLedgerCsPopup() {
       csFields.classList.remove("ledger-cs-popup");
-      if (currentMode === "ledger" || currentMode === "cs-intake") csFields.style.display = "none";
-    }
-
-    function closeLedgerCsIntakeModal() {
-      closeLedgerCsPopup();
-      modal.querySelector(".workhub-modal")?.classList.remove("cs-intake-modal");
-      modal.classList.remove("open");
-      if (ledgerWorkspace?.classList.contains("active")) currentMode = "ledger";
+      if (currentMode === "ledger") csFields.style.display = "none";
     }
 
     function syncLedgerSelectAll() {
@@ -13481,9 +15281,9 @@ HTML = r"""<!doctype html>
         row.innerHTML = `
           <td><input class="ledger-check" type="checkbox" data-row-check /></td>
           <td data-full-date="${escapeHtml(csCase.occurred_at || csCase.created_at)}">${escapeHtml(shortKoreanDate(csCase.occurred_at || csCase.created_at))}</td>
-          <td>${escapeHtml(csCase.sales_vendor)}</td>
-          <td>${escapeHtml(csCase.purchase_vendor || csCase.vendor_name)}</td>
-          <td class="editable-cell" tabindex="-1" data-field="status" data-label="처리진행상태" data-value="${escapeHtml(statusValue)}" data-input="select" data-options="${escapeHtml(JSON.stringify(statusSelectOptions))}">
+          <td title="${escapeHtml(csCase.sales_vendor)}">${escapeHtml(csCase.sales_vendor)}</td>
+          <td title="${escapeHtml(csCase.purchase_vendor || csCase.vendor_name)}">${escapeHtml(csCase.purchase_vendor || csCase.vendor_name)}</td>
+          <td class="editable-cell" data-field="status" data-label="처리진행상태" data-value="${escapeHtml(statusValue)}" data-input="select" data-options="${escapeHtml(JSON.stringify(statusSelectOptions))}">
             <span class="ledger-status-cell">
               <span class="ledger-cell-value">${escapeHtml(cellDisplayValue(statusValue))}</span>
               ${returnCheckButtonHtml}
@@ -13496,15 +15296,15 @@ HTML = r"""<!doctype html>
           ${editableCell({ scope: "ledger", field: "return_invoice", label: "회수운송장번호", value: csCase.return_invoice, align: "invoice-cell return-cell" })}
           <td data-full-date="${escapeHtml(csCase.order_date)}">${escapeHtml(shortKoreanDate(csCase.order_date))}</td>
           <td data-full-date="${escapeHtml(csCase.ship_date)}">${escapeHtml(shortKoreanDate(csCase.ship_date))}</td>
-          <td>${escapeHtml(csCase.orderer_name)}</td>
-          <td>${escapeHtml(csCase.orderer_phone)}</td>
-          <td>${escapeHtml(csCase.receiver_name)}</td>
-          <td>${escapeHtml(csCase.receiver_phone)}</td>
-          <td class="left">${escapeHtml(csCase.product_name)}</td>
+          <td title="${escapeHtml(csCase.orderer_name)}">${escapeHtml(csCase.orderer_name)}</td>
+          <td title="${escapeHtml(csCase.orderer_phone)}">${escapeHtml(csCase.orderer_phone)}</td>
+          <td title="${escapeHtml(csCase.receiver_name)}">${escapeHtml(csCase.receiver_name)}</td>
+          <td title="${escapeHtml(csCase.receiver_phone)}">${escapeHtml(csCase.receiver_phone)}</td>
+          <td class="left" title="${escapeHtml(csCase.product_name)}">${escapeHtml(csCase.product_name)}</td>
           <td class="${escapeHtml(quantityLevelClass(csCase.quantity))}">${escapeHtml(csCase.quantity)}</td>
-          <td class="left">${escapeHtml(csCase.receiver_address)}</td>
-          <td>${escapeHtml(csCase.courier)}</td>
-          <td>${escapeHtml(csCase.original_invoice || csCase.original_info)}</td>
+          <td class="left" title="${escapeHtml(csCase.receiver_address)}">${escapeHtml(csCase.receiver_address)}</td>
+          <td title="${escapeHtml(csCase.courier)}">${escapeHtml(csCase.courier)}</td>
+          <td title="${escapeHtml(csCase.original_invoice || csCase.original_info)}">${escapeHtml(csCase.original_invoice || csCase.original_info)}</td>
         `;
         applyRowPermissions(row);
         ledgerBody.appendChild(row);
@@ -13635,7 +15435,7 @@ HTML = r"""<!doctype html>
         const cancel = () => finish(false);
         const proceed = () => finish(true);
         const backdropCancel = (event) => {
-          keepDialogOpenOnBackdropClick(event, importWarningDialog);
+          if (event.target === importWarningDialog) finish(false);
         };
         importWarningCancel.addEventListener("click", cancel);
         importWarningProceed.addEventListener("click", proceed);
@@ -13673,7 +15473,7 @@ HTML = r"""<!doctype html>
         const daily = () => finish("daily");
         const replace = () => finish("replace");
         const backdropCancel = (event) => {
-          keepDialogOpenOnBackdropClick(event, importModeDialog);
+          if (event.target === importModeDialog) finish("");
         };
         importModeCancel.addEventListener("click", cancel);
         importModeDaily.addEventListener("click", daily);
@@ -13807,7 +15607,7 @@ HTML = r"""<!doctype html>
           finish(corrections);
         };
         const backdropCancel = (event) => {
-          keepDialogOpenOnBackdropClick(event, importCorrectionDialog);
+          if (event.target === importCorrectionDialog) finish(null);
         };
         importCorrectionCancel.addEventListener("click", cancel);
         importCorrectionApply.addEventListener("click", apply);
@@ -13938,7 +15738,7 @@ HTML = r"""<!doctype html>
         courier: { min: 70, max: 112, header: "택배사" },
         invoice_number: { min: 104, max: 170, header: "운송장번호" },
         memo: { min: 120, max: 210, header: "특이사항" },
-        cs_action: { min: 46, max: 56, header: "CS" },
+        cs_action: { min: 74, max: 86, header: "CS접수" },
       };
       const sample = (records || []).slice(0, 500);
       document.querySelectorAll('.management-wrap col[data-management-col]').forEach((col) => {
@@ -14005,7 +15805,6 @@ HTML = r"""<!doctype html>
         if (csReceived) row.classList.add("management-cs-received");
         row.innerHTML = `
           <td><input class="ledger-check" type="checkbox" data-row-check /></td>
-          <td><button class="management-cs-button compact" type="button" ${csReceived ? "disabled" : ""}>${csReceived ? "완료" : "CS"}</button></td>
           ${editableCell({ scope: "management", field: "order_date", label: "주문일자", value: record.order_date, date: true, input: "date" })}
           ${editableCell({ scope: "management", field: "ship_date", label: "출고일", value: record.ship_date, date: true, input: "date" })}
           ${editableCell({ scope: "management", field: "purchase_vendor", label: "매입거래처", value: record.purchase_vendor })}
@@ -14022,6 +15821,7 @@ HTML = r"""<!doctype html>
           ${editableCell({ scope: "management", field: "courier", label: "택배사", value: record.courier })}
           ${editableCell({ scope: "management", field: "invoice_number", label: "운송장번호", value: record.invoice_number })}
           ${editableCell({ scope: "management", field: "memo", label: "특이사항", value: record.memo, align: "left", input: "textarea" })}
+          <td><button class="management-cs-button" type="button" ${csReceived ? "disabled" : ""}>${csReceived ? "접수완료" : "CS접수"}</button></td>
         `;
         applyRowPermissions(row);
         managementBody.appendChild(row);
@@ -14188,7 +15988,7 @@ HTML = r"""<!doctype html>
       openModal("cs");
       await loadVendorContacts();
       activeCsCaseId = String(prompt.case_id || payload.case_id || "");
-      vendorTypeSelect.value = "purchase";
+      vendorTypeSelect.value = payload.vendor_type || "purchase";
       vendorNameInput.value = payload.vendor_name || prompt.vendor_name || "";
       recipientEmailInput.value = payload.recipient_email || prompt.recipient_email || "";
       csOriginInput.value = payload.cs_origin || "";
@@ -14200,10 +16000,7 @@ HTML = r"""<!doctype html>
       csContentInput.value = payload.cs_content || "";
       csSubjectInput.value = payload.subject || defaultCsSubject(vendorNameInput.value.trim());
       csBodyInput.value = payload.body || defaultCsBody();
-      vendorContactSelect.value = vendorContactDisplayValue({
-        vendor_name: vendorNameInput.value,
-        email: recipientEmailInput.value,
-      });
+      vendorContactSelect.value = `${vendorTypeSelect.value}::${vendorNameInput.value}`;
       if (!recipientEmailInput.value.trim()) {
         notice.textContent = "매입처 메일 주소가 없습니다. 주소록 업로드 또는 직접 입력 후 발송해주세요.";
       } else {
@@ -14784,7 +16581,7 @@ HTML = r"""<!doctype html>
         const approve = () => finish(true);
         const reject = () => finish(false);
         const backdropReject = (event) => {
-          keepDialogOpenOnBackdropClick(event, safeNumberPackageDialog);
+          if (event.target === safeNumberPackageDialog) finish(false);
         };
         const escapeReject = (event) => {
           if (event.key === "Escape") finish(false);
@@ -14968,7 +16765,6 @@ HTML = r"""<!doctype html>
       modal.style.visibility = "visible";
       modalPanel.style.visibility = "visible";
       modalPanel.style.color = "#1a2230";
-      modalPanel.classList.remove("cs-intake-modal");
       modalPanel.classList.toggle("ledger-modal", mode === "ledger" || mode === "management");
       modalPanel.classList.toggle("ledger-view", mode === "ledger");
       modalPanel.classList.toggle("management-view", mode === "management");
@@ -15200,7 +16996,6 @@ HTML = r"""<!doctype html>
     function closeModal() {
       closeLedgerCsPopup();
       closeLedgerFilter();
-      modal.querySelector(".workhub-modal")?.classList.remove("cs-intake-modal");
       modal.classList.remove("open");
     }
 
@@ -15232,6 +17027,7 @@ HTML = r"""<!doctype html>
       }
       if (mode === "dashboard") {
         document.querySelector("#companyNavToggle")?.classList.add("active");
+        document.querySelector("#companyNavGroup")?.classList.add("open");
         syncCompanyNavState();
         return;
       }
@@ -15502,9 +17298,10 @@ HTML = r"""<!doctype html>
         if (group.classList.contains("permission-hidden")) return;
         const toggle = group.querySelector(".nav-item");
         const groupText = (toggle?.innerText || "").toLowerCase();
-        let hasMatch = groupText.includes(query);
+        const groupMatched = groupText.includes(query);
+        let hasMatch = groupMatched;
         group.querySelectorAll(".nav-subitem").forEach((subitem) => {
-          const matched = subitem.innerText.toLowerCase().includes(query) || hasMatch;
+          const matched = subitem.innerText.toLowerCase().includes(query) || groupMatched;
           subitem.style.display = matched ? "" : "none";
           hasMatch = hasMatch || matched;
         });
@@ -15762,9 +17559,6 @@ HTML = r"""<!doctype html>
     companyCalendarRefresh?.addEventListener("click", () => loadCompanyCalendar().catch(() => {
       if (companyCalendarGrid) companyCalendarGrid.innerHTML = `<div class="calendar-empty">캘린더를 새로고침하지 못했습니다.</div>`;
     }));
-    document.querySelectorAll("[data-calendar-summary]").forEach((button) => {
-      button.addEventListener("click", () => openCalendarSummaryWidget(button.dataset.calendarSummary));
-    });
     companyCalendarGrid?.addEventListener("click", (event) => {
       const eventButton = event.target.closest("[data-calendar-event-id]");
       if (eventButton) {
@@ -15808,112 +17602,29 @@ HTML = r"""<!doctype html>
         if (companyOrgBody) companyOrgBody.innerHTML = `<div class="company-org-empty">${escapeHtml(error.message)}</div>`;
       }));
     }
-    function openImportShipmentDetailWidget(record) {
-      if (!record) return;
-      const baseDate = record.warehouse_due_date || record.arrival_date || "";
-      const arrivalPortText = String(record.arrival_port || "").trim();
-      const showArrivalPort = Boolean(arrivalPortText && !/^\d{1,2}([./-]\d{1,2})?$/.test(arrivalPortText));
-      openFocusWidget({
-        kicker: "컨테이너 일정",
-        title: record.item || "수입제품 입고 일정",
-        subtitle: [shortKoreanDate(baseDate), record.shipper, record.progress_status || "진행중"].filter(Boolean).join(" · "),
-        body: `
-          <div class="focus-widget-grid">
-            ${focusWidgetMetric("입고예정일", shortKoreanDate(record.warehouse_due_date || ""))}
-            ${focusWidgetMetric("출항일", shortKoreanDate(record.departure_date || ""))}
-            ${focusWidgetMetric("입항일", shortKoreanDate(record.arrival_date || ""))}
-            ${focusWidgetMetric("진행상황", record.progress_status || "진행중")}
-            ${focusWidgetMetric("선적항", record.loading_port || "-")}
-            ${showArrivalPort ? focusWidgetMetric("도착항", arrivalPortText) : ""}
-            ${focusWidgetMetric("제품명", record.item || "-")}
-            ${focusWidgetMetric("수량", record.quantity || "-")}
-            ${focusWidgetMetric("선명", record.vessel_name || "-")}
-            ${focusWidgetMetric("HBL NO.", record.hbl_no || "-")}
-          </div>
-          <section class="focus-widget-section">
-            <div class="focus-widget-section-title">입고 상세</div>
-            <p class="focus-widget-text">${escapeHtml([
-              record.loading_port ? `선적항: ${record.loading_port}` : "",
-              showArrivalPort ? `도착항: ${arrivalPortText}` : "",
-              record.shipper ? `거래처/선적처: ${record.shipper}` : "",
-              record.hbl_no ? `HBL NO.: ${record.hbl_no}` : "",
-              record.size ? `SIZE: ${record.size}` : "",
-              record.free_time ? `프리타임: ${record.free_time}` : "",
-            ].filter(Boolean).join("\n") || "상세 내용이 없습니다.")}</p>
-          </section>
-        `,
-      });
-    }
-
-    function openCargoShipmentDetailWidget(record) {
-      if (!record) return;
-      const isInbound = record.cargo_type === "inbound";
-      openFocusWidget({
-        kicker: isInbound ? "화물 입고 일정" : "화물 출고 일정",
-        title: `${isInbound ? "화물 입고" : "화물 출고"} ${record.customer || "거래처 미정"}`,
-        subtitle: [shortKoreanDate(record.ship_date), record.item, record.status || (isInbound ? "입고 예정" : "출고 예정")].filter(Boolean).join(" · "),
-        body: `
-          <div class="focus-widget-grid">
-            ${focusWidgetMetric(isInbound ? "입고예정일" : "출고일", shortKoreanDate(record.ship_date || ""))}
-            ${focusWidgetMetric("거래처/현장", record.customer || "-")}
-            ${focusWidgetMetric("품목", record.item || "-")}
-            ${focusWidgetMetric("수량", record.quantity || "-")}
-            ${focusWidgetMetric(isInbound ? "입고장소" : "도착지", record.destination || "-")}
-            ${focusWidgetMetric("상태", record.status || (isInbound ? "입고 예정" : "출고 예정"))}
-          </div>
-          <section class="focus-widget-section">
-            <div class="focus-widget-section-title">업무 상세</div>
-            <p class="focus-widget-text">${escapeHtml([
-              `${isInbound ? "입고" : "출고"}일정: ${shortKoreanDate(record.ship_date || "") || "-"}`,
-              `거래처/현장: ${record.customer || "-"}`,
-              `품목/수량: ${[record.item, record.quantity].filter(Boolean).join(" / ") || "-"}`,
-              `${isInbound ? "입고장소" : "도착지"}: ${record.destination || "-"}`,
-              `진행상태: ${record.status || (isInbound ? "입고 예정" : "출고 예정")}`,
-              record.memo ? `메모: ${record.memo}` : "",
-            ].filter(Boolean).join("\n"))}</p>
-          </section>
-        `,
-      });
-    }
-
     function openNoticeAutoItem(element) {
       const type = element?.dataset.noticeAutoType || "";
       const id = element?.dataset.noticeAutoId || "";
-      const eventId = element?.dataset.noticeAutoEventId || "";
       if (type === "import" && id) {
+        if (!can("import_shipment_manage")) {
+          notice.textContent = "수입제품 진행 관리 권한이 없습니다.";
+          return;
+        }
         const record = importShipments.find((item) => String(item.id) === String(id));
-        if (record) openImportShipmentDetailWidget(record);
-        else if (eventId) openCalendarEventWidget(eventId);
+        if (record) openImportShipmentPopup(record);
         return;
       }
       if ((type === "cargo" || type === "cargo-inbound") && id) {
+        if (!canManageCargoShipments()) {
+          notice.textContent = "화물 입출고건 입력 권한이 없습니다.";
+          return;
+        }
         const record = cargoShipments.find((item) => String(item.id) === String(id));
-        if (record) openCargoShipmentDetailWidget(record);
-        else if (eventId) openCalendarEventWidget(eventId);
-        return;
-      }
-      if (eventId && companyCalendarEvents.some((item) => String(item.id) === String(eventId))) {
-        openCalendarEventWidget(eventId);
+        if (record) openCargoShipmentPopup(record);
         return;
       }
       openNoticeWidget();
     }
-    document.addEventListener("click", (event) => {
-      const autoItem = event.target.closest("#sidebarNoticePreview [data-notice-auto-type]");
-      if (!autoItem) return;
-      event.preventDefault();
-      event.stopPropagation();
-      openNoticeAutoItem(autoItem);
-    }, true);
-
-    document.addEventListener("keydown", (event) => {
-      if (!isCardActivationKey(event)) return;
-      const autoItem = event.target.closest("#sidebarNoticePreview [data-notice-auto-type]");
-      if (!autoItem) return;
-      event.preventDefault();
-      event.stopPropagation();
-      openNoticeAutoItem(autoItem);
-    }, true);
 
     sidebarNoticePreview?.addEventListener("click", (event) => {
       const autoItem = event.target.closest("[data-notice-auto-type]");
@@ -15994,6 +17705,87 @@ HTML = r"""<!doctype html>
       internalChatRefresh.addEventListener("click", () => loadInternalChatUsers().then(() => loadInternalMessages()).catch(() => {
         if (internalChatList) internalChatList.innerHTML = `<div class="internal-chat-empty">메시지를 불러오지 못했습니다.</div>`;
       }));
+    }
+    floatingMessengerTabButtons.forEach((button) => {
+      button.addEventListener("click", () => {
+        setFloatingMessengerTab(button.dataset.floatingMessengerTab);
+      });
+    });
+    [floatingMessengerHomeCta, floatingMessengerNoticeCta].forEach((button) => {
+      button?.addEventListener("click", () => {
+        setFloatingMessengerTab("chat", { focusInput: true });
+      });
+    });
+    if (floatingMessengerThreadBack) {
+      floatingMessengerThreadBack.addEventListener("click", () => {
+        setFloatingMessengerChatMode("list");
+      });
+    }
+    [floatingMessengerReadAll, floatingMessengerChatReadAll].forEach((button) => {
+      button?.addEventListener("click", () => {
+        floatingMessengerUnread = 0;
+        updateFloatingMessengerBadge();
+      });
+    });
+    if (floatingMessengerToggle) {
+      floatingMessengerToggle.addEventListener("click", () => {
+        toggleFloatingMessenger().catch((error) => {
+          if (floatingMessengerList) floatingMessengerList.innerHTML = `<div class="floating-messenger-empty">${escapeHtml(error.message || "메신저를 불러오지 못했습니다.")}</div>`;
+        });
+      });
+    }
+    if (floatingMessengerClose) {
+      floatingMessengerClose.addEventListener("click", closeFloatingMessenger);
+    }
+    if (floatingMessengerRefresh) {
+      floatingMessengerRefresh.addEventListener("click", () => {
+        refreshFloatingMessenger({ loadUsers: true, silent: false }).catch((error) => {
+          if (floatingMessengerList) floatingMessengerList.innerHTML = `<div class="floating-messenger-empty">${escapeHtml(error.message || "메신저를 불러오지 못했습니다.")}</div>`;
+        });
+      });
+    }
+    if (floatingMessengerOpenFull) {
+      floatingMessengerOpenFull.addEventListener("click", () => {
+        openFloatingMessengerFull().catch((error) => {
+          if (floatingMessengerList) floatingMessengerList.innerHTML = `<div class="floating-messenger-empty">${escapeHtml(error.message || "사내 메신저 화면을 열지 못했습니다.")}</div>`;
+        });
+      });
+    }
+    if (floatingMessengerRoomList) {
+      floatingMessengerRoomList.addEventListener("click", (event) => {
+        const button = event.target.closest("[data-floating-chat-room]");
+        if (!button) return;
+        setFloatingMessengerRoom(button.dataset.floatingChatRoom, button.dataset.floatingChatUserId || "").catch((error) => {
+          if (floatingMessengerList) floatingMessengerList.innerHTML = `<div class="floating-messenger-empty">${escapeHtml(error.message || "메시지를 불러오지 못했습니다.")}</div>`;
+        });
+      });
+    }
+    if (floatingMessengerForm) {
+      floatingMessengerForm.addEventListener("submit", (event) => {
+        sendFloatingMessengerMessage(event).catch(() => {
+          if (floatingMessengerList) floatingMessengerList.innerHTML = `<div class="floating-messenger-empty">메시지를 저장하지 못했습니다.</div>`;
+        });
+      });
+    }
+    if (floatingMessengerBody) {
+      floatingMessengerBody.addEventListener("keydown", (event) => {
+        if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
+          event.preventDefault();
+          floatingMessengerForm?.requestSubmit();
+        }
+      });
+    }
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape" && floatingMessengerOpen) closeFloatingMessenger();
+    });
+    if (floatingMessenger) {
+      renderFloatingMessengerRooms();
+      updateFloatingMessengerBadge();
+      setFloatingMessengerTab("home");
+      window.setTimeout(() => {
+        refreshFloatingMessenger({ loadUsers: true, silent: true }).catch(() => {});
+      }, 1200);
+      startFloatingMessengerPolling();
     }
     if (sidebarSearchInput) {
       sidebarSearchInput.addEventListener("keydown", () => {
@@ -16195,7 +17987,7 @@ HTML = r"""<!doctype html>
     });
     focusWidgetClose?.addEventListener("click", closeFocusWidget);
     focusWidget?.addEventListener("click", (event) => {
-      keepDialogOpenOnBackdropClick(event, focusWidget);
+      if (event.target === focusWidget) closeFocusWidget();
     });
     focusWidgetBody?.addEventListener("click", (event) => {
       const topbarOpenButton = event.target.closest("[data-topbar-open]");
@@ -16207,11 +17999,6 @@ HTML = r"""<!doctype html>
       const openTaskButton = event.target.closest("[data-focus-open-task]");
       if (openTaskButton) {
         openCrmTaskWidget(openTaskButton.dataset.focusOpenTask).catch((error) => setCrmMessage(error.message, true));
-        return;
-      }
-      const openCalendarEventButton = event.target.closest("[data-calendar-event-id]");
-      if (openCalendarEventButton) {
-        openCalendarEventWidget(openCalendarEventButton.dataset.calendarEventId);
         return;
       }
       const filterProjectButton = event.target.closest("[data-focus-filter-project]");
@@ -16334,7 +18121,7 @@ HTML = r"""<!doctype html>
     });
     noticePopupClose.addEventListener("click", closeNoticePopup);
     noticePopup.addEventListener("click", (event) => {
-      keepDialogOpenOnBackdropClick(event, noticePopup);
+      if (event.target === noticePopup) closeNoticePopup();
     });
     cargoInboundInputOpen?.addEventListener("click", () => openCargoShipmentPopup(null, "inbound"));
     cargoShipmentInputOpen?.addEventListener("click", () => openCargoShipmentPopup(null, "outbound"));
@@ -16347,7 +18134,7 @@ HTML = r"""<!doctype html>
       });
     });
     cargoShipmentPopup?.addEventListener("click", (event) => {
-      keepDialogOpenOnBackdropClick(event, cargoShipmentPopup);
+      if (event.target === cargoShipmentPopup) closeCargoShipmentPopup();
     });
     document.addEventListener("keydown", (event) => {
       if (event.key === "Escape" && focusWidget?.classList.contains("open")) {
@@ -16371,7 +18158,7 @@ HTML = r"""<!doctype html>
       });
     });
     importShipmentPopup.addEventListener("click", (event) => {
-      keepDialogOpenOnBackdropClick(event, importShipmentPopup);
+      if (event.target === importShipmentPopup) closeImportShipmentPopup();
     });
     importShipmentBody.addEventListener("click", (event) => {
       const editButton = event.target.closest("[data-import-edit]");
@@ -16392,7 +18179,7 @@ HTML = r"""<!doctype html>
     document.querySelector("#closeModal").addEventListener("click", requestCloseModal);
     document.querySelector("#cancel").addEventListener("click", requestCloseModal);
     modal.addEventListener("click", (event) => {
-      keepDialogOpenOnBackdropClick(event, modal);
+      if (event.target === modal) requestCloseModal();
     });
     fileInput.addEventListener("change", () => {
       dropMain.textContent = fileInput.files[0] ? fileInput.files[0].name : "파일을 선택하거나 여기에 올려주세요.";
@@ -16467,7 +18254,6 @@ HTML = r"""<!doctype html>
     [noticeDateInput, noticeTitleInput, noticeOwnerInput, noticeBodyInput]
       .forEach((input) => input.addEventListener("input", renderNoticePreview));
     receiptTypeSelect.addEventListener("change", resetProductRows);
-    vendorContactSelect.addEventListener("input", applySelectedVendor);
     vendorContactSelect.addEventListener("change", applySelectedVendor);
     saveVendorContactButton.addEventListener("click", saveCurrentVendorContact);
     if (vendorContactsFileInput) vendorContactsFileInput.addEventListener("change", uploadVendorContactsWorkbook);
@@ -16522,15 +18308,8 @@ HTML = r"""<!doctype html>
         closeLedgerFilter();
       }
     });
-    ledgerAddCs.addEventListener("click", (event) => {
-      event.preventDefault();
-      event.stopPropagation();
-      openLedgerCsIntakeModal();
-    });
-    ledgerCsPopupClose.addEventListener("click", () => {
-      if (currentMode === "cs-intake") closeLedgerCsIntakeModal();
-      else closeLedgerCsPopup();
-    });
+    ledgerAddCs.addEventListener("click", openLedgerCsPopup);
+    ledgerCsPopupClose.addEventListener("click", closeLedgerCsPopup);
     ledgerImportInput.addEventListener("change", uploadLedgerWorkbook);
     managementRefresh.addEventListener("click", () => loadManagementRecords({ showPicker: true }));
     managementImportInput.addEventListener("change", uploadManagementWorkbook);
@@ -16667,7 +18446,7 @@ HTML = r"""<!doctype html>
     managementBody.addEventListener("click", (event) => {
       const editableCell = event.target.closest(".editable-cell[data-management-field]");
       if (editableCell) {
-        selectEditableCell("management", editableCell);
+        openCellEditor("management", editableCell);
         return;
       }
       if (event.target.closest("[data-row-check]") && managementSelectAll) {
@@ -16676,12 +18455,6 @@ HTML = r"""<!doctype html>
       }
       const csButton = event.target.closest(".management-cs-button");
       if (csButton) receiveManagementCs(csButton);
-    });
-    managementBody.addEventListener("dblclick", (event) => {
-      const editableCell = event.target.closest(".editable-cell[data-management-field]");
-      if (!editableCell) return;
-      event.preventDefault();
-      openCellEditor("management", editableCell);
     });
     ledgerBody.addEventListener("click", (event) => {
       if (event.target.closest("[data-row-check]")) {
@@ -16697,14 +18470,8 @@ HTML = r"""<!doctype html>
       }
       const editableCell = event.target.closest(".editable-cell[data-field]");
       if (editableCell) {
-        selectEditableCell("ledger", editableCell);
+        openCellEditor("ledger", editableCell);
       }
-    });
-    ledgerBody.addEventListener("dblclick", (event) => {
-      const editableCell = event.target.closest(".editable-cell[data-field]");
-      if (!editableCell) return;
-      event.preventDefault();
-      openCellEditor("ledger", editableCell);
     });
     [ledgerCellApply, managementCellApply].forEach((button) => {
       button?.addEventListener("click", () => {
@@ -16718,12 +18485,12 @@ HTML = r"""<!doctype html>
     returnCheckCancel?.addEventListener("click", closeReturnCheckPopup);
     returnCheckSave?.addEventListener("click", applyReturnCheckPopup);
     returnCheckPopup?.addEventListener("click", (event) => {
-      keepDialogOpenOnBackdropClick(event, returnCheckPopup);
+      if (event.target === returnCheckPopup) closeReturnCheckPopup();
     });
     appConfirmOk?.addEventListener("click", () => closeAppConfirmDialog(true));
     appConfirmCancel?.addEventListener("click", () => closeAppConfirmDialog(false));
     appConfirmDialog?.addEventListener("click", (event) => {
-      keepDialogOpenOnBackdropClick(event, appConfirmDialog);
+      if (event.target === appConfirmDialog) closeAppConfirmDialog(false);
     });
     document.addEventListener("keydown", (event) => {
       if (event.key === "Escape" && appConfirmDialog?.classList.contains("open")) {
@@ -16731,20 +18498,6 @@ HTML = r"""<!doctype html>
       }
       if (event.key === "Escape" && searchResultDialog?.classList.contains("open")) {
         closeSearchResultDialog();
-      }
-      if (currentMode !== "management" && currentMode !== "ledger") return;
-      if (isInteractiveTarget(event.target)) return;
-      if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(event.key)) {
-        const moved = currentMode === "management"
-          ? moveSelectedEditableCell("management", event.key)
-          : moveSelectedEditableCell("ledger", event.key);
-        if (moved) event.preventDefault();
-      }
-      if (event.key === "F2" || event.key === "Enter") {
-        const editing = currentMode === "management"
-          ? beginSelectedCellEdit("management")
-          : beginSelectedCellEdit("ledger");
-        if (editing) event.preventDefault();
       }
     });
     [ledgerCellCancel, managementCellCancel].forEach((button) => {
@@ -16813,7 +18566,7 @@ HTML = r"""<!doctype html>
       notice.textContent = "처리 중입니다.";
       submitButton.disabled = true;
       try {
-        if (currentMode === "ledger" || currentMode === "management" || currentMode === "vendor-contacts" || currentMode === "cs-intake") {
+        if (currentMode === "ledger" || currentMode === "management" || currentMode === "vendor-contacts") {
           closeModal();
         } else if (currentMode === "cs") {
           refreshCsBody();
@@ -17137,7 +18890,7 @@ LOGIN_HTML = r"""<!doctype html>
 
 ADMIN_TOOLS_NAV_HTML = r"""
       <div class="nav-group" id="adminNavGroup">
-        <button class="nav-item" id="adminNavToggle" type="button" data-nav-tone="admin">
+        <button class="nav-item" id="adminNavToggle" type="button">
           <span class="nav-label"><i data-lucide="settings"></i> <span>관리자</span></span>
           <i class="nav-chevron" data-lucide="chevron-right"></i>
         </button>
@@ -17153,7 +18906,7 @@ ADMIN_TOOLS_NAV_HTML = r"""
 
 SALES_REPORT_NAV_HTML = r"""
       <div class="nav-group" id="salesReportNavGroup">
-        <button class="nav-item" id="salesReportNavToggle" type="button" data-nav-tone="sales">
+        <button class="nav-item" id="salesReportNavToggle" type="button">
           <span class="nav-label"><i data-lucide="bar-chart-3"></i> <span>매출현황 및 관리</span></span>
           <i class="nav-chevron" data-lucide="chevron-right"></i>
         </button>
@@ -17164,7 +18917,7 @@ SALES_REPORT_NAV_HTML = r"""
 """
 
 LEAVE_NAV_HTML = r"""
-      <button class="nav-item" type="button" data-nav-tone="leave" data-open="leave"><i data-lucide="calendar-days"></i> <span>__LEAVE_TITLE__</span></button>
+      <button class="nav-item" type="button" data-open="leave"><i data-lucide="calendar-days"></i> <span>__LEAVE_TITLE__</span></button>
 """
 
 LEAVE_WORKSPACE_HTML = r"""
@@ -19450,6 +21203,8 @@ def validate_password_policy(password: str, username: str, display_name: str = "
         raise ValueError(f"비밀번호는 {PASSWORD_MAX_LENGTH}자 이내로 입력해주세요.")
     lowered = password.lower()
     blocked = {
+        "admin1234",
+        "user1234",
         "password",
         "password123",
         "qwer1234",
@@ -19470,67 +21225,6 @@ def validate_password_policy(password: str, username: str, display_name: str = "
 
 def login_attempt_key(username: str, ip_address: str) -> str:
     return f"{normalize_username(username).lower()}|{ip_address or 'local'}"
-
-
-def configured_initial_admin() -> tuple[str, str, str] | None:
-    password = os.environ.get("WORKHUB_INITIAL_ADMIN_PASSWORD", "").strip()
-    if not password:
-        return None
-    username = normalize_username(os.environ.get("WORKHUB_INITIAL_ADMIN_USERNAME", "admin"))
-    display_name = str(os.environ.get("WORKHUB_INITIAL_ADMIN_NAME", "관리자")).strip() or username
-    validate_username(username)
-    validate_password_policy(password, username, display_name)
-    return username, display_name, password
-
-
-def create_bootstrap_user(
-    connection: sqlite3.Connection,
-    username: str,
-    display_name: str,
-    role: str,
-    password: str,
-    timestamp: str,
-) -> None:
-    connection.execute(
-        """
-        INSERT INTO users (username, display_name, role, permissions, password_hash, active, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, 1, ?, ?)
-        """,
-        (
-            username,
-            display_name,
-            role,
-            json.dumps(default_permissions_for_role(role), ensure_ascii=False),
-            password_hash(password),
-            timestamp,
-            timestamp,
-        ),
-    )
-
-
-def bootstrap_initial_users(connection: sqlite3.Connection, timestamp: str) -> None:
-    user_count = int(connection.execute("SELECT COUNT(*) FROM users").fetchone()[0])
-    if user_count:
-        return
-
-    initial_admin = configured_initial_admin()
-    if initial_admin:
-        username, display_name, password = initial_admin
-        create_bootstrap_user(connection, username, display_name, "admin", password, timestamp)
-        return
-
-    if WORKHUB_PRODUCTION:
-        return
-
-    for username, display_name, role in DEFAULT_LOCAL_BOOTSTRAP_USERS:
-        create_bootstrap_user(
-            connection,
-            username,
-            display_name,
-            role,
-            secrets.token_urlsafe(32),
-            timestamp,
-        )
 
 
 def render_app_html(user: dict[str, str]) -> str:
@@ -19986,7 +21680,29 @@ def init_db() -> None:
             """
         )
         now = now_text()
-        bootstrap_initial_users(connection, now)
+        for username, display_name, role, default_password in DEFAULT_USERS:
+            exists = connection.execute("SELECT id, permissions FROM users WHERE username = ?", (username,)).fetchone()
+            if not exists:
+                connection.execute(
+                    """
+                    INSERT INTO users (username, display_name, role, permissions, password_hash, active, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, 1, ?, ?)
+                    """,
+                    (
+                        username,
+                        display_name,
+                        role,
+                        json.dumps(default_permissions_for_role(role), ensure_ascii=False),
+                        password_hash(default_password),
+                        now,
+                        now,
+                    ),
+                )
+            elif not exists["permissions"]:
+                connection.execute(
+                    "UPDATE users SET permissions = ?, updated_at = ? WHERE username = ?",
+                    (json.dumps(default_permissions_for_role(role), ensure_ascii=False), now, username),
+                )
         for row in connection.execute("SELECT username, role FROM users WHERE permissions IS NULL OR permissions = ''").fetchall():
             connection.execute(
                 "UPDATE users SET permissions = ?, updated_at = ? WHERE username = ?",
@@ -20668,9 +22384,7 @@ def company_calendar_payload(user: dict[str, str], month_text: str) -> dict:
             ).fetchall()
         import_rows = connection.execute(
             """
-            SELECT id, departure_date, arrival_date, loading_port, arrival_port, shipper,
-                   item, quantity, vessel_name, hbl_no, size, progress_status,
-                   free_time, warehouse_due_date, completed_at
+            SELECT id, warehouse_due_date, arrival_date, shipper, item, quantity, progress_status, completed_at
               FROM import_shipments
              WHERE completed_at IS NULL OR completed_at = ''
             """
@@ -20748,18 +22462,6 @@ def company_calendar_payload(user: dict[str, str], month_text: str) -> dict:
             "title": f"컨테이너 입고 {row['item'] or '수입제품'}",
             "subtitle": " · ".join(str(value) for value in [row["quantity"], row["progress_status"] or "진행중"] if value),
             "shipment_id": row["id"],
-            "departure_date": row["departure_date"] or "",
-            "arrival_date": row["arrival_date"] or "",
-            "loading_port": row["loading_port"] or "",
-            "arrival_port": row["arrival_port"] or "",
-            "shipper": row["shipper"] or "",
-            "item": row["item"] or "",
-            "quantity": row["quantity"] or "",
-            "vessel_name": row["vessel_name"] or "",
-            "hbl_no": row["hbl_no"] or "",
-            "size": row["size"] or "",
-            "free_time": row["free_time"] or "",
-            "warehouse_due_date": row["warehouse_due_date"] or "",
             "status": row["progress_status"] or "진행중",
         })
     for row in cargo_rows:
@@ -20774,9 +22476,6 @@ def company_calendar_payload(user: dict[str, str], month_text: str) -> dict:
             "title": f"{'화물 입고' if is_inbound else '화물 출고'} {row['customer'] or '거래처 미정'}",
             "subtitle": " · ".join(str(value) for value in [row["item"], row["quantity"], row["destination"], row["status"] or ("입고 예정" if is_inbound else "출고 예정")] if value),
             "cargo_id": row["id"],
-            "item": row["item"] or "",
-            "quantity": row["quantity"] or "",
-            "destination": row["destination"] or "",
             "status": row["status"] or ("입고 예정" if is_inbound else "출고 예정"),
             "memo": row["memo"] or "",
         })
@@ -23078,7 +24777,7 @@ def create_cs_case_from_management(record_id: int) -> int:
                 source_file,
                 source_sheet,
                 source_row,
-                timestamp,
+                record.get("order_date", "") or record.get("ship_date", ""),
                 record.get("order_date", ""),
                 record.get("ship_date", ""),
                 record.get("sales_vendor", ""),
@@ -25170,11 +26869,7 @@ class WorkhubHandler(BaseHTTPRequestHandler):
         return forwarded or str(self.client_address[0] if self.client_address else "local")
 
     def is_secure_request(self) -> bool:
-        return (
-            WORKHUB_COOKIE_SECURE
-            or isinstance(self.request, ssl.SSLSocket)
-            or self.headers.get("X-Forwarded-Proto", "").lower() == "https"
-        )
+        return isinstance(self.request, ssl.SSLSocket) or self.headers.get("X-Forwarded-Proto", "").lower() == "https"
 
     def send_redirect(self, location: str, status: int = 303) -> None:
         self.send_response(status)
@@ -25189,14 +26884,14 @@ class WorkhubHandler(BaseHTTPRequestHandler):
         secure = "; Secure" if self.is_secure_request() else ""
         self.send_header(
             "Set-Cookie",
-            f"{SESSION_COOKIE_NAME}={quote(token)}; Path=/; Max-Age={SESSION_SECONDS}; HttpOnly; SameSite={WORKHUB_COOKIE_SAMESITE}{secure}",
+            f"{SESSION_COOKIE_NAME}={quote(token)}; Path=/; Max-Age={SESSION_SECONDS}; HttpOnly; SameSite=Lax{secure}",
         )
 
     def clear_session_cookie(self) -> None:
         secure = "; Secure" if self.is_secure_request() else ""
         self.send_header(
             "Set-Cookie",
-            f"{SESSION_COOKIE_NAME}=; Path=/; Max-Age=0; HttpOnly; SameSite={WORKHUB_COOKIE_SAMESITE}{secure}",
+            f"{SESSION_COOKIE_NAME}=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax{secure}",
         )
 
     def require_permission(self, user: dict[str, str], permission: str, label: str) -> bool:

@@ -92,10 +92,7 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
             sales_panel_start = html_source.index('id="dashboardSalesPanel"')
             sales_panel_end = html_source.index('</aside>', sales_panel_start)
             sales_panel_html = html_source[sales_panel_start:sales_panel_end]
-            self.assertTrue(
-                'id="dashboardSalesWeeklyChart"' in sales_panel_html
-                or "매출현황 및 관리 데이터 연결 대기 중" in sales_panel_html
-            )
+            self.assertIn("매출현황 및 관리 데이터 연결 대기 중", sales_panel_html)
             self.assertNotIn("선택한 날짜", sales_panel_html)
             self.assertNotIn("이번 달 요약", sales_panel_html)
             self.assertIn(".dashboard-calendar-panel", html_source)
@@ -104,16 +101,6 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
             self.assertIn("renderDashboardImportSchedule();", html_source)
             self.assertIn('companyActiveTab === "notice" && panel.dataset.companyPanel === "calendar"', html_source)
             self.assertIn("loadDashboardEntryData().catch", html_source)
-
-    def test_company_portal_sidebar_tree_starts_collapsed(self) -> None:
-        html_source = (ROOT / "scripts" / "workhub_delivery_app.py").read_text(encoding="utf-8")
-
-        self.assertIn('<div class="nav-group" id="companyNavGroup">', html_source)
-        self.assertNotIn('<div class="nav-group open" id="companyNavGroup">', html_source)
-        dashboard_nav_start = html_source.index('if (mode === "dashboard")')
-        dashboard_nav_end = html_source.index('if (mode === "import")', dashboard_nav_start)
-        dashboard_nav_source = html_source[dashboard_nav_start:dashboard_nav_end]
-        self.assertNotIn('document.querySelector("#companyNavGroup")?.classList.add("open")', dashboard_nav_source)
 
     def test_sidebar_navigation_uses_hierarchical_text_colors(self) -> None:
         html_source = (ROOT / "scripts" / "workhub_delivery_app.py").read_text(encoding="utf-8")
@@ -142,7 +129,7 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         self.assertNotIn('companyGroup?.classList.toggle("open"', html_source)
         self.assertNotIn('document.querySelector("#companyNavGroup").classList.toggle("open");', html_source)
 
-    def test_ledger_sidebar_groups_open_directly_without_upload_subtrees(self) -> None:
+    def test_daily_ledger_uploads_live_under_each_ledger_sidebar_group(self) -> None:
         html_source = (ROOT / "scripts" / "workhub_delivery_app.py").read_text(encoding="utf-8")
 
         management_group_start = html_source.index('id="managementNavGroup"')
@@ -155,18 +142,14 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         admin_group = html_source[admin_group_start:admin_group_end]
 
         self.assertIn('data-open="management"', management_group)
-        self.assertNotIn('id="managementImportOpen"', management_group)
-        self.assertNotIn('data-management-import-mode="daily"', management_group)
-        self.assertNotIn("통합관리대장 업로드", management_group)
-        self.assertNotIn('class="nav-submenu"', management_group)
+        self.assertIn('id="managementImportOpen"', management_group)
+        self.assertIn('data-management-import-mode="daily"', management_group)
+        self.assertIn("통합관리대장 업로드", management_group)
 
         self.assertIn('data-open="ledger"', ledger_group)
-        self.assertNotIn('id="ledgerImportOpen"', ledger_group)
-        self.assertNotIn('data-ledger-import-mode="daily"', ledger_group)
-        self.assertNotIn("CS처리대장 업로드", ledger_group)
-        self.assertNotIn('data-mail-popup="cs"', ledger_group)
-        self.assertNotIn("CS처리 요청", ledger_group)
-        self.assertNotIn('class="nav-submenu"', ledger_group)
+        self.assertIn('id="ledgerImportOpen"', ledger_group)
+        self.assertIn('data-ledger-import-mode="daily"', ledger_group)
+        self.assertIn("CS처리대장 업로드", ledger_group)
 
         self.assertIn('data-management-import-mode="replace"', admin_group)
         self.assertIn('data-ledger-import-mode="replace"', admin_group)
@@ -175,107 +158,15 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         self.assertIn('#managementNavToggle', html_source)
         self.assertIn('#ledgerNavToggle', html_source)
 
-    def test_ledger_cells_select_on_click_and_edit_on_double_click_or_keyboard(self) -> None:
-        html_source = (ROOT / "scripts" / "workhub_delivery_app.py").read_text(encoding="utf-8")
-
-        self.assertIn("function selectEditableCell(scope, cell", html_source)
-        self.assertIn("function beginSelectedCellEdit(scope)", html_source)
-        self.assertIn("function moveSelectedEditableCell(scope, direction)", html_source)
-        self.assertIn('managementBody.addEventListener("dblclick"', html_source)
-        self.assertIn('ledgerBody.addEventListener("dblclick"', html_source)
-        self.assertIn('selectEditableCell("management", editableCell)', html_source)
-        self.assertIn('selectEditableCell("ledger", editableCell)', html_source)
-        self.assertIn('beginSelectedCellEdit("management")', html_source)
-        self.assertIn('beginSelectedCellEdit("ledger")', html_source)
-        self.assertIn('class="${className}" tabindex="-1"', html_source)
-        self.assertIn('<td class="editable-cell" tabindex="-1" data-field="status"', html_source)
-        self.assertIn('["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"]', html_source)
-        self.assertIn('event.key === "F2" || event.key === "Enter"', html_source)
-
-        management_click_start = html_source.index('managementBody.addEventListener("click"')
-        management_click_end = html_source.index('managementBody.addEventListener("dblclick"', management_click_start)
-        ledger_click_start = html_source.index('ledgerBody.addEventListener("click"')
-        ledger_click_end = html_source.index('ledgerBody.addEventListener("dblclick"', ledger_click_start)
-        self.assertNotIn('openCellEditor("management", editableCell)', html_source[management_click_start:management_click_end])
-        self.assertNotIn('openCellEditor("ledger", editableCell)', html_source[ledger_click_start:ledger_click_end])
-
-    def test_management_cs_button_sits_next_to_row_selector_as_compact_action(self) -> None:
-        html_source = (ROOT / "scripts" / "workhub_delivery_app.py").read_text(encoding="utf-8")
-
-        colgroup_start = html_source.index('<col class="select-col" data-management-col="select"')
-        order_date_col = html_source.index('data-management-col="order_date"', colgroup_start)
-        cs_action_col = html_source.index('data-management-col="cs_action"', colgroup_start)
-        self.assertLess(cs_action_col, order_date_col)
-        self.assertIn('<col class="action-col compact-cs-col" data-management-col="cs_action" />', html_source)
-        self.assertNotIn('<col class="action-col" data-management-col="cs_action" />', html_source)
-
-        row_template_start = html_source.index('row.innerHTML = `', html_source.index('function renderManagement(records)'))
-        first_checkbox = html_source.index('data-row-check', row_template_start)
-        first_editable_cell = html_source.index('field: "order_date"', row_template_start)
-        cs_button = html_source.index('class="management-cs-button compact"', row_template_start)
-        self.assertLess(first_checkbox, cs_button)
-        self.assertLess(cs_button, first_editable_cell)
-
-        self.assertIn('cs_action: { min: 46, max: 56', html_source)
-        self.assertIn('.management-cs-button.compact', html_source)
-
-    def test_notice_preview_click_opens_read_only_focus_widget_not_input_popup(self) -> None:
-        html_source = (ROOT / "scripts" / "workhub_delivery_app.py").read_text(encoding="utf-8")
-
-        open_notice_start = html_source.index("function openNoticeWidget()")
-        open_notice_end = html_source.index("function openCompanyCardWidget", open_notice_start)
-        open_notice_source = html_source[open_notice_start:open_notice_end]
-        self.assertIn("closeNoticePopup();", open_notice_source)
-        self.assertIn("openFocusWidget({", open_notice_source)
-        self.assertNotIn("openNoticePopup(", open_notice_source)
-
-        preview_click_start = html_source.index('sidebarNoticePreview?.addEventListener("click"')
-        preview_click_end = html_source.index('sidebarNoticePreview?.addEventListener("keydown"', preview_click_start)
-        preview_click_source = html_source[preview_click_start:preview_click_end]
-        self.assertIn("openNoticeWidget();", preview_click_source)
-        self.assertNotIn("openNoticePopup", preview_click_source)
-
-    def test_dashboard_calendar_summary_chips_open_event_lists(self) -> None:
-        html_source = (ROOT / "scripts" / "workhub_delivery_app.py").read_text(encoding="utf-8")
-
-        for view in ("month", "today", "pending"):
-            self.assertIn(f'data-calendar-summary="{view}"', html_source)
-        self.assertIn("function calendarSummaryEvents(view)", html_source)
-        self.assertIn("function openCalendarSummaryWidget(view)", html_source)
-        self.assertIn('document.querySelectorAll("[data-calendar-summary]")', html_source)
-        self.assertIn("openCalendarSummaryWidget(button.dataset.calendarSummary)", html_source)
-        self.assertIn("calendar-summary-list", html_source)
-
-    def test_notice_auto_events_only_include_today_items(self) -> None:
-        html_source = (ROOT / "scripts" / "workhub_delivery_app.py").read_text(encoding="utf-8")
-
-        self.assertIn("function isTodayNoticeDate(value)", html_source)
-        notice_auto_start = html_source.index("function noticeAutoEvents()")
-        notice_auto_end = html_source.index("function noticeAutoHtml()", notice_auto_start)
-        notice_auto_source = html_source[notice_auto_start:notice_auto_end]
-        self.assertIn('["leave", "pending"].includes(event.type) && isTodayNoticeDate(event.date)', notice_auto_source)
-        self.assertIn("!record.completed_at && isTodayNoticeDate(record.warehouse_due_date || record.arrival_date)", notice_auto_source)
-        self.assertIn('!record.completed_at && isTodayNoticeDate(record.ship_date)', notice_auto_source)
-
-    def test_dashboard_sales_message_is_replaced_by_weekly_sales_chart(self) -> None:
-        html_source = (ROOT / "scripts" / "workhub_delivery_app.py").read_text(encoding="utf-8")
-
-        self.assertIn('id="dashboardSalesWeeklyChart"', html_source)
-        self.assertNotIn('id="dashboardSalesMessage"', html_source)
-        self.assertIn("function renderDashboardSalesWeeklyChart", html_source)
-        self.assertIn("dashboard-sales-weekly-chart", html_source)
-        self.assertIn("최근 7일 매출", html_source)
-        self.assertIn("slice(-7)", html_source)
-
-    def test_cs_mail_flow_supports_mail_attachments_without_ledger_sidebar_entry(self) -> None:
+    def test_cs_request_from_ledger_menu_supports_mail_attachments(self) -> None:
         html_source = (ROOT / "scripts" / "workhub_delivery_app.py").read_text(encoding="utf-8")
 
         ledger_group_start = html_source.index('id="ledgerNavGroup"')
         crm_group_start = html_source.index('id="crmNavGroup"')
         ledger_group = html_source[ledger_group_start:crm_group_start]
 
-        self.assertNotIn('data-mail-popup="cs"', ledger_group)
-        self.assertNotIn("CS처리 요청", ledger_group)
+        self.assertIn('data-mail-popup="cs"', ledger_group)
+        self.assertIn("CS처리 요청", ledger_group)
         self.assertIn('id="csAttachmentInput"', html_source)
         self.assertIn('id="csAttachmentSummary"', html_source)
         self.assertIn('accept="image/*,video/*"', html_source)
@@ -427,104 +318,6 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
             self.assertNotIn(".modal-backdrop.open .modal *", html_source)
             self.assertNotIn(".workhub-modal-backdrop.open .workhub-modal *", html_source)
 
-    def test_modal_close_buttons_have_visible_contrast(self) -> None:
-        html_source = (ROOT / "scripts" / "workhub_delivery_app.py").read_text(encoding="utf-8")
-
-        self.assertIn(".close {", html_source)
-        self.assertIn("background: #f8fafc;", html_source)
-        self.assertIn("color: #1f2937;", html_source)
-        self.assertIn('content: "X";', html_source)
-        self.assertIn(".close i,", html_source)
-        self.assertIn(".close:hover::before { color: #b42318; }", html_source)
-        self.assertIn(".ledger-cs-popup-close:hover { background: #b42318;", html_source)
-
-    def test_modal_backdrop_click_does_not_close_dialog(self) -> None:
-        html_source = (ROOT / "scripts" / "workhub_delivery_app.py").read_text(encoding="utf-8")
-
-        self.assertNotIn("if (event.target === modal) requestCloseModal();", html_source)
-        self.assertIn("function keepDialogOpenOnBackdropClick", html_source)
-        self.assertIn("function nudgeOpenDialog", html_source)
-        for backdrop_name in (
-            "modal",
-            "searchResultDialog",
-            "importWarningDialog",
-            "importModeDialog",
-            "importCorrectionDialog",
-            "safeNumberPackageDialog",
-            "focusWidget",
-            "noticePopup",
-            "cargoShipmentPopup",
-            "importShipmentPopup",
-            "returnCheckPopup",
-            "appConfirmDialog",
-        ):
-            self.assertIn(f"keepDialogOpenOnBackdropClick(event, {backdrop_name})", html_source)
-        for close_pattern in (
-            "if (event.target === searchResultDialog) finish(null);",
-            "if (event.target === importWarningDialog) finish(false);",
-            "if (event.target === importModeDialog) finish(\"\");",
-            "if (event.target === importCorrectionDialog) finish(null);",
-            "if (event.target === safeNumberPackageDialog) finish(false);",
-            "if (event.target === focusWidget) closeFocusWidget();",
-            "if (event.target === noticePopup) closeNoticePopup();",
-            "if (event.target === cargoShipmentPopup) closeCargoShipmentPopup();",
-            "if (event.target === importShipmentPopup) closeImportShipmentPopup();",
-            "if (event.target === returnCheckPopup) closeReturnCheckPopup();",
-            "if (event.target === appConfirmDialog) closeAppConfirmDialog(false);",
-        ):
-            self.assertNotIn(close_pattern, html_source)
-        self.assertIn(".workhub-modal.attention,", html_source)
-        self.assertIn(".app-confirm-dialog.attention", html_source)
-
-    def test_ledger_cs_add_button_opens_visible_cs_intake_modal(self) -> None:
-        html_source = (ROOT / "scripts" / "workhub_delivery_app.py").read_text(encoding="utf-8")
-
-        self.assertIn("function openLedgerCsIntakeModal()", html_source)
-        self.assertNotIn('if (openModal("ledger") === false) return;', html_source)
-        self.assertIn('currentMode = "cs-intake";', html_source)
-        self.assertIn('modalPanel.classList.add("cs-intake-modal");', html_source)
-        self.assertIn("function closeLedgerCsIntakeModal()", html_source)
-        self.assertIn(".workhub-modal.cs-intake-modal", html_source)
-        self.assertIn("openLedgerCsPopup();", html_source)
-        self.assertIn('ledgerAddCs.addEventListener("click", (event) => {', html_source)
-        self.assertIn("event.stopPropagation();", html_source)
-        self.assertIn("openLedgerCsIntakeModal();", html_source)
-        self.assertIn('if (currentMode === "cs-intake") closeLedgerCsIntakeModal();', html_source)
-        self.assertNotIn('ledgerAddCs.addEventListener("click", openLedgerCsPopup)', html_source)
-
-    def test_lucide_fallback_renders_sidebar_icons_without_node_modules(self) -> None:
-        html_source = (ROOT / "scripts" / "workhub_delivery_app.py").read_text(encoding="utf-8")
-
-        self.assertNotIn("export function createIcons() {}", html_source)
-        self.assertIn('document.querySelectorAll("[data-lucide]")', html_source)
-        self.assertIn("node.replaceWith(svg)", html_source)
-        for icon_name in ("home", "truck", "clipboard-list", "database", "clipboard-check", "message-circle", "settings"):
-            self.assertIn(f'"{icon_name}":', html_source)
-
-    def test_sidebar_nav_uses_colored_menu_icon_tones(self) -> None:
-        html_source = (ROOT / "scripts" / "workhub_delivery_app.py").read_text(encoding="utf-8")
-
-        for tone in ("home", "import", "order", "management", "cs", "crm", "mail", "leave", "sales", "admin", "files"):
-            self.assertIn(f'.nav-item[data-nav-tone="{tone}"]', html_source)
-            self.assertIn(f'data-nav-tone="{tone}"', html_source)
-        self.assertIn('id="ledgerNavToggle" type="button" data-nav-tone="cs"', html_source)
-        self.assertIn('<i data-lucide="headphones"></i> <span>CS', html_source)
-
-    def test_cs_vendor_picker_is_purchase_search_input(self) -> None:
-        html_source = (ROOT / "scripts" / "workhub_delivery_app.py").read_text(encoding="utf-8")
-        cs_fields_start = html_source.index('class="cs-fields" id="csFields"')
-        recipient_field = html_source.index('id="recipientEmailInput"', cs_fields_start)
-        cs_contact_slice = html_source[cs_fields_start:recipient_field]
-
-        self.assertIn('id="vendorContactSelect" type="text" list="vendorContactOptions"', cs_contact_slice)
-        self.assertIn('id="vendorContactOptions"', cs_contact_slice)
-        self.assertIn('id="vendorTypeSelect" name="vendor_type" type="hidden" value="purchase"', cs_contact_slice)
-        self.assertNotIn('<select id="vendorTypeSelect"', cs_contact_slice)
-        self.assertIn("function findPurchaseVendorContact(value)", html_source)
-        self.assertIn('(contact.vendor_type || "purchase") === "purchase"', html_source)
-        self.assertIn('vendorContactSelect.addEventListener("input", applySelectedVendor)', html_source)
-        self.assertIn('vendor_type: "purchase"', html_source)
-
     def test_naver_mail_defaults_are_managed_from_admin_workspace(self) -> None:
         for app_file in (
             ROOT / "scripts" / "workhub_delivery_app.py",
@@ -603,7 +396,7 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
 
             self.assertNotIn('data-mail-popup="supplier"', html_source)
             self.assertNotIn('data-mail-popup="seller"', html_source)
-            self.assertNotIn('data-mail-popup="cs"', html_source)
+            self.assertIn('data-mail-popup="cs"', html_source)
             self.assertIn('data-mail-popup="stock"', html_source)
             self.assertIn("입고 및 품절 공지", html_source)
             self.assertIn('openModal(type === "stock" ? "mail-stock" : "cs")', html_source)
@@ -709,19 +502,6 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         admin_slice = html_source[admin_start:admin_end]
         self.assertIn('id="salesReportFileInput"', admin_slice)
         self.assertIn('>매출현황</div>', admin_slice)
-
-    def test_user_admin_workspace_scrolls_in_regular_admin_mode(self) -> None:
-        html_source = (ROOT / "scripts" / "workhub_delivery_app.py").read_text(encoding="utf-8")
-
-        self.assertIn("#userAdminWorkspace:not(.sales-report-only) {", html_source)
-        self.assertIn("#userAdminWorkspace:not(.sales-report-only) .workspace-mount", html_source)
-        self.assertIn("#userAdminWorkspace:not(.sales-report-only) .admin-panel", html_source)
-
-        admin_scroll_start = html_source.index("#userAdminWorkspace:not(.sales-report-only) {")
-        admin_scroll_end = html_source.index("}", admin_scroll_start)
-        admin_scroll_slice = html_source[admin_scroll_start:admin_scroll_end]
-        self.assertIn("overflow-y: auto;", admin_scroll_slice)
-        self.assertIn("scrollbar-gutter: stable;", admin_scroll_slice)
 
     def test_sales_report_dashboard_layout_uses_three_report_types(self) -> None:
         html_source = (ROOT / "scripts" / "workhub_delivery_app.py").read_text(encoding="utf-8")
