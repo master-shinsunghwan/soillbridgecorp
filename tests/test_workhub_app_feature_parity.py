@@ -318,6 +318,15 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
             self.assertNotIn(".modal-backdrop.open .modal *", html_source)
             self.assertNotIn(".workhub-modal-backdrop.open .workhub-modal *", html_source)
 
+    def test_modal_close_buttons_have_visible_contrast(self) -> None:
+        html_source = (ROOT / "scripts" / "workhub_delivery_app.py").read_text(encoding="utf-8")
+
+        self.assertIn(".close {", html_source)
+        self.assertIn("background: #111827;", html_source)
+        self.assertIn("color: #ffffff;", html_source)
+        self.assertIn(".close:hover { background: #b42318;", html_source)
+        self.assertIn(".ledger-cs-popup-close:hover { background: #b42318;", html_source)
+
     def test_naver_mail_defaults_are_managed_from_admin_workspace(self) -> None:
         for app_file in (
             ROOT / "scripts" / "workhub_delivery_app.py",

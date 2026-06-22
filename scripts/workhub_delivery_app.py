@@ -1647,9 +1647,29 @@ HTML = r"""<!doctype html>
       flex-direction: column;
       min-height: 0;
     }
-    .workhub-modal-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; }
+    .workhub-modal-head { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-bottom: 24px; }
     .modal-title { font-size: 25px; font-weight: 850; color: #1a2230; }
-    .close { border: 0; background: transparent; color: #3f4650; cursor: pointer; padding: 4px; }
+    .close {
+      width: 38px;
+      height: 38px;
+      flex: 0 0 38px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border: 1px solid #111827;
+      border-radius: 8px;
+      background: #111827;
+      color: #ffffff;
+      cursor: pointer;
+      padding: 0;
+      box-shadow: 0 8px 18px rgba(15, 23, 42, .16);
+    }
+    .close svg { width: 19px; height: 19px; stroke-width: 2.4; }
+    .close:hover { background: #b42318; border-color: #b42318; }
+    .close:focus-visible {
+      outline: 3px solid rgba(180, 35, 24, .28);
+      outline-offset: 2px;
+    }
     .field-label { display: block; font-size: 18px; font-weight: 750; margin-bottom: 10px; color: #1a2230; }
     .dropzone {
       border: 1px dashed #9aa4b2; border-radius: 8px; background: #fbfcff;
@@ -2532,13 +2552,20 @@ HTML = r"""<!doctype html>
     }
     .ledger-cs-popup-close {
       height: 34px;
-      min-width: 64px;
-      border: 1px solid #aab2bf;
-      border-radius: 6px;
-      background: white;
+      min-width: 70px;
+      border: 1px solid #111827;
+      border-radius: 8px;
+      background: #111827;
+      color: #ffffff;
       font-family: inherit;
       font-weight: 800;
       cursor: pointer;
+      box-shadow: 0 8px 18px rgba(15, 23, 42, .12);
+    }
+    .ledger-cs-popup-close:hover { background: #b42318; border-color: #b42318; }
+    .ledger-cs-popup-close:focus-visible {
+      outline: 3px solid rgba(180, 35, 24, .28);
+      outline-offset: 2px;
     }
     .text-field { margin-top: 14px; }
     .text-field input,
