@@ -102,8 +102,30 @@ SECRET_KEY_PATH = CONFIG_DIR / "secret.key"
 TOKEN_PREFIX_DPAPI = "dpapi:"
 TOKEN_PREFIX_KEY = "key1:"
 SESSION_COOKIE_NAME = "workhub_session"
-SESSION_SECONDS = 60 * 60 * 12
-SESSION_IDLE_SECONDS = 60 * 60 * 2
+
+
+def env_bool(name: str, default: bool = False) -> bool:
+    value = os.environ.get(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def env_int(name: str, default: int, minimum: int = 1) -> int:
+    try:
+        return max(minimum, int(str(os.environ.get(name, default)).strip()))
+    except (TypeError, ValueError):
+        return default
+
+
+WORKHUB_ENV = os.environ.get("WORKHUB_ENV", "development").strip().lower()
+WORKHUB_PRODUCTION = WORKHUB_ENV in {"prod", "production"}
+SESSION_SECONDS = env_int("WORKHUB_SESSION_SECONDS", 60 * 60 * 12, minimum=60)
+SESSION_IDLE_SECONDS = env_int("WORKHUB_SESSION_IDLE_SECONDS", 60 * 60 * 2, minimum=60)
+WORKHUB_COOKIE_SECURE = env_bool("WORKHUB_COOKIE_SECURE", WORKHUB_PRODUCTION)
+WORKHUB_COOKIE_SAMESITE = os.environ.get("WORKHUB_COOKIE_SAMESITE", "Lax").strip().capitalize() or "Lax"
+if WORKHUB_COOKIE_SAMESITE not in {"Lax", "Strict", "None"}:
+    WORKHUB_COOKIE_SAMESITE = "Lax"
 LOGIN_MAX_FAILURES = 5
 LOGIN_FAILURE_WINDOW_SECONDS = 15 * 60
 LOGIN_LOCK_SECONDS = 15 * 60
@@ -117,9 +139,9 @@ _SYSTEM_UPDATE_LOCK = threading.Lock()
 _SALES_REPORT_ALERT_SCHEDULER_STARTED = False
 SALES_REPORT_UPLOAD_ALERT_HOUR = 15
 SALES_REPORT_UPLOAD_ALERT_INTERVAL_MINUTES = 30
-DEFAULT_USERS = (
-    ("admin", "관리자", "admin", "admin1234"),
-    ("user", "사용자", "user", "user1234"),
+DEFAULT_LOCAL_BOOTSTRAP_USERS = (
+    ("admin", "관리자", "admin"),
+    ("user", "사용자", "user"),
 )
 PERMISSION_DEFINITIONS = (
     ("ledger_delete", "대장 삭제", "통합관리대장/CS처리대장 선택 삭제"),
@@ -19418,8 +19440,6 @@ def validate_password_policy(password: str, username: str, display_name: str = "
         raise ValueError(f"비밀번호는 {PASSWORD_MAX_LENGTH}자 이내로 입력해주세요.")
     lowered = password.lower()
     blocked = {
-        "admin1234",
-        "user1234",
         "password",
         "password123",
         "qwer1234",
@@ -19440,6 +19460,67 @@ def validate_password_policy(password: str, username: str, display_name: str = "
 
 def login_attempt_key(username: str, ip_address: str) -> str:
     return f"{normalize_username(username).lower()}|{ip_address or 'local'}"
+
+
+def configured_initial_admin() -> tuple[str, str, str] | None:
+    password = os.environ.get("WORKHUB_INITIAL_ADMIN_PASSWORD", "").strip()
+    if not password:
+        return None
+    username = normalize_username(os.environ.get("WORKHUB_INITIAL_ADMIN_USERNAME", "admin"))
+    display_name = str(os.environ.get("WORKHUB_INITIAL_ADMIN_NAME", "관리자")).strip() or username
+    validate_username(username)
+    validate_password_policy(password, username, display_name)
+    return username, display_name, password
+
+
+def create_bootstrap_user(
+    connection: sqlite3.Connection,
+    username: str,
+    display_name: str,
+    role: str,
+    password: str,
+    timestamp: str,
+) -> None:
+    connection.execute(
+        """
+        INSERT INTO users (username, display_name, role, permissions, password_hash, active, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, 1, ?, ?)
+        """,
+        (
+            username,
+            display_name,
+            role,
+            json.dumps(default_permissions_for_role(role), ensure_ascii=False),
+            password_hash(password),
+            timestamp,
+            timestamp,
+        ),
+    )
+
+
+def bootstrap_initial_users(connection: sqlite3.Connection, timestamp: str) -> None:
+    user_count = int(connection.execute("SELECT COUNT(*) FROM users").fetchone()[0])
+    if user_count:
+        return
+
+    initial_admin = configured_initial_admin()
+    if initial_admin:
+        username, display_name, password = initial_admin
+        create_bootstrap_user(connection, username, display_name, "admin", password, timestamp)
+        return
+
+    if WORKHUB_PRODUCTION:
+        return
+
+    for username, display_name, role in DEFAULT_LOCAL_BOOTSTRAP_USERS:
+        create_bootstrap_user(
+            connection,
+            username,
+            display_name,
+            role,
+            secrets.token_urlsafe(32),
+            timestamp,
+        )
 
 
 def render_app_html(user: dict[str, str]) -> str:
@@ -19895,29 +19976,7 @@ def init_db() -> None:
             """
         )
         now = now_text()
-        for username, display_name, role, default_password in DEFAULT_USERS:
-            exists = connection.execute("SELECT id, permissions FROM users WHERE username = ?", (username,)).fetchone()
-            if not exists:
-                connection.execute(
-                    """
-                    INSERT INTO users (username, display_name, role, permissions, password_hash, active, created_at, updated_at)
-                    VALUES (?, ?, ?, ?, ?, 1, ?, ?)
-                    """,
-                    (
-                        username,
-                        display_name,
-                        role,
-                        json.dumps(default_permissions_for_role(role), ensure_ascii=False),
-                        password_hash(default_password),
-                        now,
-                        now,
-                    ),
-                )
-            elif not exists["permissions"]:
-                connection.execute(
-                    "UPDATE users SET permissions = ?, updated_at = ? WHERE username = ?",
-                    (json.dumps(default_permissions_for_role(role), ensure_ascii=False), now, username),
-                )
+        bootstrap_initial_users(connection, now)
         for row in connection.execute("SELECT username, role FROM users WHERE permissions IS NULL OR permissions = ''").fetchall():
             connection.execute(
                 "UPDATE users SET permissions = ?, updated_at = ? WHERE username = ?",
@@ -25101,7 +25160,11 @@ class WorkhubHandler(BaseHTTPRequestHandler):
         return forwarded or str(self.client_address[0] if self.client_address else "local")
 
     def is_secure_request(self) -> bool:
-        return isinstance(self.request, ssl.SSLSocket) or self.headers.get("X-Forwarded-Proto", "").lower() == "https"
+        return (
+            WORKHUB_COOKIE_SECURE
+            or isinstance(self.request, ssl.SSLSocket)
+            or self.headers.get("X-Forwarded-Proto", "").lower() == "https"
+        )
 
     def send_redirect(self, location: str, status: int = 303) -> None:
         self.send_response(status)
@@ -25116,14 +25179,14 @@ class WorkhubHandler(BaseHTTPRequestHandler):
         secure = "; Secure" if self.is_secure_request() else ""
         self.send_header(
             "Set-Cookie",
-            f"{SESSION_COOKIE_NAME}={quote(token)}; Path=/; Max-Age={SESSION_SECONDS}; HttpOnly; SameSite=Lax{secure}",
+            f"{SESSION_COOKIE_NAME}={quote(token)}; Path=/; Max-Age={SESSION_SECONDS}; HttpOnly; SameSite={WORKHUB_COOKIE_SAMESITE}{secure}",
         )
 
     def clear_session_cookie(self) -> None:
         secure = "; Secure" if self.is_secure_request() else ""
         self.send_header(
             "Set-Cookie",
-            f"{SESSION_COOKIE_NAME}=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax{secure}",
+            f"{SESSION_COOKIE_NAME}=; Path=/; Max-Age=0; HttpOnly; SameSite={WORKHUB_COOKIE_SAMESITE}{secure}",
         )
 
     def require_permission(self, user: dict[str, str], permission: str, label: str) -> bool:

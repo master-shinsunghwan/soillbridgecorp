@@ -1,0 +1,19 @@
+[Unit]
+Description=Soillbridge Workhub ERP
+After=network.target
+
+[Service]
+Type=simple
+User=workhub
+Group=workhub
+WorkingDirectory=/opt/soillbridgecorp
+EnvironmentFile=/opt/workhub/.env
+ExecStart=/opt/soillbridgecorp/.venv/bin/python /opt/soillbridgecorp/scripts/workhub_delivery_app.py
+Restart=always
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ReadWritePaths=/opt/workhub
+
+[Install]
+WantedBy=multi-user.target
