@@ -710,6 +710,19 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         self.assertIn('id="salesReportFileInput"', admin_slice)
         self.assertIn('>매출현황</div>', admin_slice)
 
+    def test_user_admin_workspace_scrolls_in_regular_admin_mode(self) -> None:
+        html_source = (ROOT / "scripts" / "workhub_delivery_app.py").read_text(encoding="utf-8")
+
+        self.assertIn("#userAdminWorkspace:not(.sales-report-only) {", html_source)
+        self.assertIn("#userAdminWorkspace:not(.sales-report-only) .workspace-mount", html_source)
+        self.assertIn("#userAdminWorkspace:not(.sales-report-only) .admin-panel", html_source)
+
+        admin_scroll_start = html_source.index("#userAdminWorkspace:not(.sales-report-only) {")
+        admin_scroll_end = html_source.index("}", admin_scroll_start)
+        admin_scroll_slice = html_source[admin_scroll_start:admin_scroll_end]
+        self.assertIn("overflow-y: auto;", admin_scroll_slice)
+        self.assertIn("scrollbar-gutter: stable;", admin_scroll_slice)
+
     def test_sales_report_dashboard_layout_uses_three_report_types(self) -> None:
         html_source = (ROOT / "scripts" / "workhub_delivery_app.py").read_text(encoding="utf-8")
 

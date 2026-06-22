@@ -1879,6 +1879,16 @@ HTML = r"""<!doctype html>
     #userAdminWorkspace:not(.sales-report-only) #salesReportUploadCard {
       display: none;
     }
+    #userAdminWorkspace:not(.sales-report-only) {
+      overflow-y: auto;
+      overflow-x: hidden;
+      scrollbar-gutter: stable;
+    }
+    #userAdminWorkspace:not(.sales-report-only) .workspace-mount,
+    #userAdminWorkspace:not(.sales-report-only) .admin-panel {
+      flex: 0 0 auto;
+      min-height: auto;
+    }
     #userAdminWorkspace.sales-report-only {
       overflow-y: auto;
       overflow-x: hidden;
