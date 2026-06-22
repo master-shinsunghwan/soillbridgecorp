@@ -112,5 +112,14 @@ class VpsDeploymentTests(unittest.TestCase):
                 sys.modules.pop("workhub_delivery_app", None)
 
 
+    def test_session_cookie_uses_vps_security_environment(self) -> None:
+        source = self.read("scripts/workhub_delivery_app.py")
+
+        self.assertIn("WORKHUB_COOKIE_SECURE", source)
+        self.assertIn("WORKHUB_COOKIE_SAMESITE", source)
+        self.assertIn("WORKHUB_COOKIE_SECURE\n            or isinstance", source)
+        self.assertIn("SameSite={WORKHUB_COOKIE_SAMESITE}", source)
+
+
 if __name__ == "__main__":
     unittest.main()

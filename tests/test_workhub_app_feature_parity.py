@@ -115,6 +115,13 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
             self.assertIn(color_token, html_source)
         self.assertIn(".nav-item .nav-label span", html_source)
         self.assertIn(".nav-item svg", html_source)
+        self.assertIn('.nav-item[data-nav-tone="home"]', html_source)
+        self.assertIn('.nav-item[data-nav-tone="management"]', html_source)
+        self.assertIn('.nav-item[data-nav-tone="cs"]', html_source)
+        self.assertIn('.nav-item[data-nav-tone="admin"]', html_source)
+        self.assertIn('data-nav-tone="home"', html_source)
+        self.assertIn('data-nav-tone="management"', html_source)
+        self.assertIn('data-nav-tone="cs"', html_source)
         self.assertIn(".nav-subitem.active", html_source)
         self.assertIn("color: var(--sidebar-text-primary)", html_source)
         self.assertIn("color: var(--sidebar-text-secondary)", html_source)
@@ -129,7 +136,7 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         self.assertNotIn('companyGroup?.classList.toggle("open"', html_source)
         self.assertNotIn('document.querySelector("#companyNavGroup").classList.toggle("open");', html_source)
 
-    def test_daily_ledger_uploads_live_under_each_ledger_sidebar_group(self) -> None:
+    def test_ledger_sidebar_groups_open_directly_without_upload_subtrees(self) -> None:
         html_source = (ROOT / "scripts" / "workhub_delivery_app.py").read_text(encoding="utf-8")
 
         management_group_start = html_source.index('id="managementNavGroup"')
@@ -142,14 +149,18 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         admin_group = html_source[admin_group_start:admin_group_end]
 
         self.assertIn('data-open="management"', management_group)
-        self.assertIn('id="managementImportOpen"', management_group)
-        self.assertIn('data-management-import-mode="daily"', management_group)
-        self.assertIn("통합관리대장 업로드", management_group)
+        self.assertNotIn('id="managementImportOpen"', management_group)
+        self.assertNotIn('data-management-import-mode="daily"', management_group)
+        self.assertNotIn("통합관리대장 업로드", management_group)
+        self.assertNotIn('class="nav-submenu"', management_group)
 
         self.assertIn('data-open="ledger"', ledger_group)
-        self.assertIn('id="ledgerImportOpen"', ledger_group)
-        self.assertIn('data-ledger-import-mode="daily"', ledger_group)
-        self.assertIn("CS처리대장 업로드", ledger_group)
+        self.assertNotIn('id="ledgerImportOpen"', ledger_group)
+        self.assertNotIn('data-ledger-import-mode="daily"', ledger_group)
+        self.assertNotIn("CS처리대장 업로드", ledger_group)
+        self.assertNotIn('data-mail-popup="cs"', ledger_group)
+        self.assertNotIn("CS처리 요청", ledger_group)
+        self.assertNotIn('class="nav-submenu"', ledger_group)
 
         self.assertIn('data-management-import-mode="replace"', admin_group)
         self.assertIn('data-ledger-import-mode="replace"', admin_group)
@@ -165,15 +176,14 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         crm_group_start = html_source.index('id="crmNavGroup"')
         ledger_group = html_source[ledger_group_start:crm_group_start]
 
-        self.assertIn('data-mail-popup="cs"', ledger_group)
-        self.assertIn("CS처리 요청", ledger_group)
+        self.assertNotIn('data-mail-popup="cs"', ledger_group)
+        self.assertNotIn("CS처리 요청", ledger_group)
         self.assertIn('id="csAttachmentInput"', html_source)
         self.assertIn('id="csAttachmentSummary"', html_source)
         self.assertIn('accept="image/*,video/*"', html_source)
         self.assertIn("appendCsMailPayload", html_source)
         self.assertIn("collect_mail_attachments", html_source)
         self.assertIn("attachments=attachments", html_source)
-        self.assertIn('document.querySelectorAll("[data-mail-popup]")', html_source)
 
     def test_crm_task_board_uses_collapsible_advanced_filters_from_branch(self) -> None:
         html_source = (ROOT / "scripts" / "workhub_delivery_app.py").read_text(encoding="utf-8")

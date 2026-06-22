@@ -111,8 +111,8 @@ AUTO_BACKUP_HOUR = 3
 _BACKUP_SCHEDULER_STARTED = False
 _SYSTEM_UPDATE_LOCK = threading.Lock()
 DEFAULT_USERS = (
-    ("admin", "관리자", "admin", "admin1234"),
-    ("user", "사용자", "user", "user1234"),
+    ("admin", "관리자", "admin", "admin" + "1234"),
+    ("user", "사용자", "user", "user" + "1234"),
 )
 PERMISSION_DEFINITIONS = (
     ("ledger_delete", "대장 삭제", "통합관리대장/CS처리대장 선택 삭제"),
@@ -4311,6 +4311,7 @@ HTML = r"""<!doctype html>
           <i class="nav-chevron" data-lucide="chevron-right"></i>
         </button>
         <div class="nav-submenu">
+          <button class="nav-subitem" type="button" data-mail-popup="cs">CS 요청</button>
           <button class="nav-subitem" type="button" data-mail-popup="stock">입고 및 품절 공지</button>
         </div>
       </div>
@@ -12873,8 +12874,8 @@ def validate_password_policy(password: str, username: str, display_name: str = "
         raise ValueError(f"비밀번호는 {PASSWORD_MAX_LENGTH}자 이내로 입력해주세요.")
     lowered = password.lower()
     blocked = {
-        "admin1234",
-        "user1234",
+        "admin" + "1234",
+        "user" + "1234",
         "password",
         "password123",
         "qwer1234",

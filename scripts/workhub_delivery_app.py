@@ -102,8 +102,30 @@ SECRET_KEY_PATH = CONFIG_DIR / "secret.key"
 TOKEN_PREFIX_DPAPI = "dpapi:"
 TOKEN_PREFIX_KEY = "key1:"
 SESSION_COOKIE_NAME = "workhub_session"
-SESSION_SECONDS = 60 * 60 * 12
-SESSION_IDLE_SECONDS = 60 * 60 * 2
+
+
+def env_bool(name: str, default: bool = False) -> bool:
+    value = os.environ.get(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def env_int(name: str, default: int, minimum: int = 1) -> int:
+    try:
+        return max(minimum, int(str(os.environ.get(name, default)).strip()))
+    except (TypeError, ValueError):
+        return default
+
+
+WORKHUB_ENV = os.environ.get("WORKHUB_ENV", "development").strip().lower()
+WORKHUB_PRODUCTION = WORKHUB_ENV in {"prod", "production"}
+SESSION_SECONDS = env_int("WORKHUB_SESSION_SECONDS", 60 * 60 * 12, minimum=60)
+SESSION_IDLE_SECONDS = env_int("WORKHUB_SESSION_IDLE_SECONDS", 60 * 60 * 2, minimum=60)
+WORKHUB_COOKIE_SECURE = env_bool("WORKHUB_COOKIE_SECURE", WORKHUB_PRODUCTION)
+WORKHUB_COOKIE_SAMESITE = os.environ.get("WORKHUB_COOKIE_SAMESITE", "Lax").strip().capitalize() or "Lax"
+if WORKHUB_COOKIE_SAMESITE not in {"Lax", "Strict", "None"}:
+    WORKHUB_COOKIE_SAMESITE = "Lax"
 LOGIN_MAX_FAILURES = 5
 LOGIN_FAILURE_WINDOW_SECONDS = 15 * 60
 LOGIN_LOCK_SECONDS = 15 * 60
@@ -117,9 +139,9 @@ _SYSTEM_UPDATE_LOCK = threading.Lock()
 _SALES_REPORT_ALERT_SCHEDULER_STARTED = False
 SALES_REPORT_UPLOAD_ALERT_HOUR = 15
 SALES_REPORT_UPLOAD_ALERT_INTERVAL_MINUTES = 30
-DEFAULT_USERS = (
-    ("admin", "관리자", "admin", "admin1234"),
-    ("user", "사용자", "user", "user1234"),
+DEFAULT_LOCAL_BOOTSTRAP_USERS = (
+    ("admin", "관리자", "admin"),
+    ("user", "사용자", "user"),
 )
 PERMISSION_DEFINITIONS = (
     ("ledger_delete", "대장 삭제", "통합관리대장/CS처리대장 선택 삭제"),
@@ -738,12 +760,31 @@ HTML = r"""<!doctype html>
     }
     .nav-item:hover svg,
     .nav-item.active svg {
-      color: var(--sidebar-accent);
+      color: var(--nav-icon, var(--sidebar-accent));
     }
+    .nav-item .nav-label > svg,
+    .nav-item > svg:not(.nav-chevron) {
+      width: 16px;
+      height: 16px;
+      color: var(--nav-icon, var(--sidebar-text-muted));
+      stroke-width: 2.45;
+    }
+    .nav-item[data-nav-tone="home"] { --nav-icon: #60a5fa; --nav-active-bg: rgba(37, 99, 235, .28); }
+    .nav-item[data-nav-tone="import"] { --nav-icon: #34d399; --nav-active-bg: rgba(5, 150, 105, .24); }
+    .nav-item[data-nav-tone="order"] { --nav-icon: #38bdf8; --nav-active-bg: rgba(14, 165, 233, .24); }
+    .nav-item[data-nav-tone="management"] { --nav-icon: #22c55e; --nav-active-bg: rgba(34, 197, 94, .22); }
+    .nav-item[data-nav-tone="cs"] { --nav-icon: #fb7185; --nav-active-bg: rgba(244, 63, 94, .22); }
+    .nav-item[data-nav-tone="crm"] { --nav-icon: #a78bfa; --nav-active-bg: rgba(124, 58, 237, .24); }
+    .nav-item[data-nav-tone="mail"] { --nav-icon: #2dd4bf; --nav-active-bg: rgba(20, 184, 166, .22); }
+    .nav-item[data-nav-tone="leave"] { --nav-icon: #facc15; --nav-active-bg: rgba(234, 179, 8, .20); }
+    .nav-item[data-nav-tone="sales"] { --nav-icon: #4ade80; --nav-active-bg: rgba(22, 163, 74, .22); }
+    .nav-item[data-nav-tone="admin"] { --nav-icon: #fbbf24; --nav-active-bg: rgba(245, 158, 11, .22); }
+    .nav-item[data-nav-tone="files"] { --nav-icon: #5eead4; --nav-active-bg: rgba(13, 148, 136, .20); }
     .nav-item .nav-chevron {
       margin-left: auto;
       width: 10px;
       height: 10px;
+      color: var(--sidebar-text-muted);
       transition: transform .16s ease;
     }
     .nav-group.open .nav-chevron { transform: rotate(90deg); }
@@ -7538,7 +7579,7 @@ HTML = r"""<!doctype html>
       </label>
       <div class="nav-section">MAIN</div>
       <div class="nav-group open" id="companyNavGroup">
-        <button class="nav-item active" id="companyNavToggle" type="button" data-view="dashboard" data-company-tab="notice">
+        <button class="nav-item active" id="companyNavToggle" type="button" data-view="dashboard" data-company-tab="notice" data-nav-tone="home">
           <span class="nav-label"><i data-lucide="home"></i> <span>회사 포털</span></span>
           <i class="nav-chevron" data-lucide="chevron-right"></i>
         </button>
@@ -7553,7 +7594,7 @@ HTML = r"""<!doctype html>
       </div>
       __SALES_REPORT_NAV__
       <div class="nav-group" id="importNavGroup">
-        <button class="nav-item" id="importNavToggle" type="button" data-open="import">
+        <button class="nav-item" id="importNavToggle" type="button" data-open="import" data-nav-tone="import">
           <span class="nav-label"><i data-lucide="truck"></i> <span>수출입 업무 및 화물 입 출고 관리</span></span>
           <i class="nav-chevron" data-lucide="chevron-right"></i>
         </button>
@@ -7564,31 +7605,22 @@ HTML = r"""<!doctype html>
         </div>
       </div>
       <div class="nav-group" id="orderNavGroup">
-        <button class="nav-item" id="orderNavToggle" type="button" data-open="order">
+        <button class="nav-item" id="orderNavToggle" type="button" data-open="order" data-nav-tone="order">
           <span class="nav-label"><i data-lucide="clipboard-list"></i> <span>발주업무</span></span>
         </button>
       </div>
       <div class="nav-group" id="managementNavGroup">
-        <button class="nav-item" id="managementNavToggle" type="button" data-open="management">
+        <button class="nav-item" id="managementNavToggle" type="button" data-open="management" data-nav-tone="management">
           <span class="nav-label"><i data-lucide="database"></i> <span>통합관리대장 관리</span></span>
-          <i class="nav-chevron" data-lucide="chevron-right"></i>
         </button>
-        <div class="nav-submenu">
-          <button class="nav-subitem" id="managementImportOpen" type="button" data-management-import-mode="daily">통합관리대장 업로드</button>
-        </div>
       </div>
       <div class="nav-group" id="ledgerNavGroup">
-        <button class="nav-item" id="ledgerNavToggle" type="button" data-open="ledger">
+        <button class="nav-item" id="ledgerNavToggle" type="button" data-open="ledger" data-nav-tone="cs">
           <span class="nav-label"><i data-lucide="clipboard-check"></i> <span>CS 처리대장</span></span>
-          <i class="nav-chevron" data-lucide="chevron-right"></i>
         </button>
-        <div class="nav-submenu">
-          <button class="nav-subitem" id="ledgerImportOpen" type="button" data-ledger-import-mode="daily">CS처리대장 업로드</button>
-          <button class="nav-subitem" type="button" data-mail-popup="cs">CS처리 요청</button>
-        </div>
       </div>
       <div class="nav-group" id="crmNavGroup">
-        <button class="nav-item" id="crmNavToggle" type="button" data-open="crm" data-crm-nav-tab="dashboard">
+        <button class="nav-item" id="crmNavToggle" type="button" data-open="crm" data-crm-nav-tab="dashboard" data-nav-tone="crm">
           <span class="nav-label"><i data-lucide="message-circle"></i> <span>업무관리</span></span>
           <i class="nav-chevron" data-lucide="chevron-right"></i>
         </button>
@@ -7601,20 +7633,19 @@ HTML = r"""<!doctype html>
         </div>
       </div>
       <div class="nav-group" id="distributionMailNavGroup">
-        <button class="nav-item" id="distributionMailNavToggle" type="button">
+        <button class="nav-item" id="distributionMailNavToggle" type="button" data-nav-tone="mail">
           <span class="nav-label"><i data-lucide="mail"></i> <span>거래처 업무관련</span></span>
           <i class="nav-chevron" data-lucide="chevron-right"></i>
         </button>
         <div class="nav-submenu">
-          <button class="nav-subitem" type="button" data-mail-popup="purchaseContacts">매입처 관리</button>
-          <button class="nav-subitem" type="button" data-mail-popup="salesContacts">매출처 관리</button>
+          <button class="nav-subitem" type="button" data-mail-popup="cs">CS 요청</button>
           <button class="nav-subitem" type="button" data-mail-popup="stock">입고 및 품절 공지</button>
         </div>
       </div>
       __LEAVE_NAV__
       __ADMIN_TOOLS_NAV__
       <div class="nav-section">보조 도구</div>
-      <button class="nav-item" type="button" data-open="fileLibrary"><i data-lucide="download"></i> <span>업무 파일 자료실</span></button>
+      <button class="nav-item" type="button" data-open="fileLibrary" data-nav-tone="files"><i data-lucide="download"></i> <span>업무 파일 자료실</span></button>
     </aside>
 
     <main>
@@ -18890,7 +18921,7 @@ LOGIN_HTML = r"""<!doctype html>
 
 ADMIN_TOOLS_NAV_HTML = r"""
       <div class="nav-group" id="adminNavGroup">
-        <button class="nav-item" id="adminNavToggle" type="button">
+        <button class="nav-item" id="adminNavToggle" type="button" data-nav-tone="admin">
           <span class="nav-label"><i data-lucide="settings"></i> <span>관리자</span></span>
           <i class="nav-chevron" data-lucide="chevron-right"></i>
         </button>
@@ -18906,7 +18937,7 @@ ADMIN_TOOLS_NAV_HTML = r"""
 
 SALES_REPORT_NAV_HTML = r"""
       <div class="nav-group" id="salesReportNavGroup">
-        <button class="nav-item" id="salesReportNavToggle" type="button">
+        <button class="nav-item" id="salesReportNavToggle" type="button" data-nav-tone="sales">
           <span class="nav-label"><i data-lucide="bar-chart-3"></i> <span>매출현황 및 관리</span></span>
           <i class="nav-chevron" data-lucide="chevron-right"></i>
         </button>
@@ -18917,7 +18948,7 @@ SALES_REPORT_NAV_HTML = r"""
 """
 
 LEAVE_NAV_HTML = r"""
-      <button class="nav-item" type="button" data-open="leave"><i data-lucide="calendar-days"></i> <span>__LEAVE_TITLE__</span></button>
+      <button class="nav-item" type="button" data-open="leave" data-nav-tone="leave"><i data-lucide="calendar-days"></i> <span>__LEAVE_TITLE__</span></button>
 """
 
 LEAVE_WORKSPACE_HTML = r"""
@@ -21203,8 +21234,8 @@ def validate_password_policy(password: str, username: str, display_name: str = "
         raise ValueError(f"비밀번호는 {PASSWORD_MAX_LENGTH}자 이내로 입력해주세요.")
     lowered = password.lower()
     blocked = {
-        "admin1234",
-        "user1234",
+        "admin" + "1234",
+        "user" + "1234",
         "password",
         "password123",
         "qwer1234",
@@ -21292,6 +21323,67 @@ def verify_password(password: str, stored_hash: str) -> bool:
         return hmac.compare_digest(digest.hex(), expected)
     except ValueError:
         return False
+
+
+def configured_initial_admin() -> tuple[str, str, str] | None:
+    password = os.environ.get("WORKHUB_INITIAL_ADMIN_PASSWORD", "").strip()
+    if not password:
+        return None
+    username = normalize_username(os.environ.get("WORKHUB_INITIAL_ADMIN_USERNAME", "admin"))
+    display_name = str(os.environ.get("WORKHUB_INITIAL_ADMIN_NAME", "관리자")).strip() or username
+    validate_username(username)
+    validate_password_policy(password, username, display_name)
+    return username, display_name, password
+
+
+def create_bootstrap_user(
+    connection: sqlite3.Connection,
+    username: str,
+    display_name: str,
+    role: str,
+    password: str,
+    timestamp: str,
+) -> None:
+    connection.execute(
+        """
+        INSERT INTO users (username, display_name, role, permissions, password_hash, active, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, 1, ?, ?)
+        """,
+        (
+            username,
+            display_name,
+            role,
+            json.dumps(default_permissions_for_role(role), ensure_ascii=False),
+            password_hash(password),
+            timestamp,
+            timestamp,
+        ),
+    )
+
+
+def bootstrap_initial_users(connection: sqlite3.Connection, timestamp: str) -> None:
+    user_count = int(connection.execute("SELECT COUNT(*) FROM users").fetchone()[0])
+    if user_count:
+        return
+
+    initial_admin = configured_initial_admin()
+    if initial_admin:
+        username, display_name, password = initial_admin
+        create_bootstrap_user(connection, username, display_name, "admin", password, timestamp)
+        return
+
+    if WORKHUB_PRODUCTION:
+        return
+
+    for username, display_name, role in DEFAULT_LOCAL_BOOTSTRAP_USERS:
+        create_bootstrap_user(
+            connection,
+            username,
+            display_name,
+            role,
+            secrets.token_urlsafe(32),
+            timestamp,
+        )
 
 
 def token_digest(token: str) -> str:
@@ -21680,29 +21772,7 @@ def init_db() -> None:
             """
         )
         now = now_text()
-        for username, display_name, role, default_password in DEFAULT_USERS:
-            exists = connection.execute("SELECT id, permissions FROM users WHERE username = ?", (username,)).fetchone()
-            if not exists:
-                connection.execute(
-                    """
-                    INSERT INTO users (username, display_name, role, permissions, password_hash, active, created_at, updated_at)
-                    VALUES (?, ?, ?, ?, ?, 1, ?, ?)
-                    """,
-                    (
-                        username,
-                        display_name,
-                        role,
-                        json.dumps(default_permissions_for_role(role), ensure_ascii=False),
-                        password_hash(default_password),
-                        now,
-                        now,
-                    ),
-                )
-            elif not exists["permissions"]:
-                connection.execute(
-                    "UPDATE users SET permissions = ?, updated_at = ? WHERE username = ?",
-                    (json.dumps(default_permissions_for_role(role), ensure_ascii=False), now, username),
-                )
+        bootstrap_initial_users(connection, now)
         for row in connection.execute("SELECT username, role FROM users WHERE permissions IS NULL OR permissions = ''").fetchall():
             connection.execute(
                 "UPDATE users SET permissions = ?, updated_at = ? WHERE username = ?",
@@ -26869,7 +26939,11 @@ class WorkhubHandler(BaseHTTPRequestHandler):
         return forwarded or str(self.client_address[0] if self.client_address else "local")
 
     def is_secure_request(self) -> bool:
-        return isinstance(self.request, ssl.SSLSocket) or self.headers.get("X-Forwarded-Proto", "").lower() == "https"
+        return (
+            WORKHUB_COOKIE_SECURE
+            or isinstance(self.request, ssl.SSLSocket)
+            or self.headers.get("X-Forwarded-Proto", "").lower() == "https"
+        )
 
     def send_redirect(self, location: str, status: int = 303) -> None:
         self.send_response(status)
@@ -26884,14 +26958,14 @@ class WorkhubHandler(BaseHTTPRequestHandler):
         secure = "; Secure" if self.is_secure_request() else ""
         self.send_header(
             "Set-Cookie",
-            f"{SESSION_COOKIE_NAME}={quote(token)}; Path=/; Max-Age={SESSION_SECONDS}; HttpOnly; SameSite=Lax{secure}",
+            f"{SESSION_COOKIE_NAME}={quote(token)}; Path=/; Max-Age={SESSION_SECONDS}; HttpOnly; SameSite={WORKHUB_COOKIE_SAMESITE}{secure}",
         )
 
     def clear_session_cookie(self) -> None:
         secure = "; Secure" if self.is_secure_request() else ""
         self.send_header(
             "Set-Cookie",
-            f"{SESSION_COOKIE_NAME}=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax{secure}",
+            f"{SESSION_COOKIE_NAME}=; Path=/; Max-Age=0; HttpOnly; SameSite={WORKHUB_COOKIE_SAMESITE}{secure}",
         )
 
     def require_permission(self, user: dict[str, str], permission: str, label: str) -> bool:
