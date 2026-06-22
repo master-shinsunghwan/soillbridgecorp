@@ -324,6 +324,8 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         self.assertIn(".close {", html_source)
         self.assertIn("background: #111827;", html_source)
         self.assertIn("color: #ffffff;", html_source)
+        self.assertIn('content: "X";', html_source)
+        self.assertIn(".close i,", html_source)
         self.assertIn(".close:hover { background: #b42318;", html_source)
         self.assertIn(".ledger-cs-popup-close:hover { background: #b42318;", html_source)
 

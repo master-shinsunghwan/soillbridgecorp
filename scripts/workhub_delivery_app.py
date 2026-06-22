@@ -1665,6 +1665,17 @@ HTML = r"""<!doctype html>
       box-shadow: 0 8px 18px rgba(15, 23, 42, .16);
     }
     .close svg { width: 19px; height: 19px; stroke-width: 2.4; }
+    .close::before {
+      content: "X";
+      color: #ffffff;
+      font-size: 20px;
+      font-weight: 950;
+      line-height: 1;
+    }
+    .close i,
+    .close svg {
+      display: none;
+    }
     .close:hover { background: #b42318; border-color: #b42318; }
     .close:focus-visible {
       outline: 3px solid rgba(180, 35, 24, .28);
