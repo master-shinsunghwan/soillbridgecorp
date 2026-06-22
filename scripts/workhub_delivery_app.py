@@ -1685,7 +1685,15 @@ HTML = r"""<!doctype html>
       outline: 3px solid rgba(180, 35, 24, .28);
       outline-offset: 2px;
     }
-    .workhub-modal.attention {
+    .workhub-modal.attention,
+    .search-result-dialog.attention,
+    .safe-number-dialog.attention,
+    .focus-widget-panel.attention,
+    .notice-popup.attention,
+    .cargo-shipment-popup.attention,
+    .import-shipment-popup.attention,
+    .return-check-popup.attention,
+    .app-confirm-dialog.attention {
       animation: modal-attention .18s ease-out;
       box-shadow: 0 0 0 3px rgba(21, 91, 200, .16), var(--shadow);
     }
@@ -7511,6 +7519,27 @@ HTML = r"""<!doctype html>
     const searchResultDescription = document.querySelector("#searchResultDescription");
     const searchResultList = document.querySelector("#searchResultList");
     const searchResultClose = document.querySelector("#searchResultClose");
+
+    function nudgeOpenDialog(backdrop) {
+      if (!backdrop) return;
+      const panel = backdrop.querySelector(
+        ".workhub-modal, .search-result-dialog, .safe-number-dialog, .focus-widget-panel, .notice-popup, .cargo-shipment-popup, .import-shipment-popup, .return-check-popup, .app-confirm-dialog"
+      ) || backdrop.firstElementChild;
+      if (!panel) return;
+      panel.classList.remove("attention");
+      void panel.offsetWidth;
+      panel.classList.add("attention");
+      setTimeout(() => panel.classList.remove("attention"), 220);
+    }
+
+    function keepDialogOpenOnBackdropClick(event, backdrop) {
+      if (event.target !== backdrop) return false;
+      event.preventDefault();
+      event.stopPropagation();
+      nudgeOpenDialog(backdrop);
+      return true;
+    }
+
     const productTable = document.querySelector("#productTable");
     const receiptTypeSelect = document.querySelector("#receiptTypeSelect");
     const supplierInput = document.querySelector("#supplierInput");
@@ -12502,7 +12531,7 @@ HTML = r"""<!doctype html>
         };
         const handleClose = () => finish(null);
         const handleBackdrop = (event) => {
-          if (event.target === searchResultDialog) finish(null);
+          keepDialogOpenOnBackdropClick(event, searchResultDialog);
         };
         searchResultList.addEventListener("click", handleClick);
         searchResultClose?.addEventListener("click", handleClose);
@@ -13098,7 +13127,7 @@ HTML = r"""<!doctype html>
         const cancel = () => finish(false);
         const proceed = () => finish(true);
         const backdropCancel = (event) => {
-          if (event.target === importWarningDialog) finish(false);
+          keepDialogOpenOnBackdropClick(event, importWarningDialog);
         };
         importWarningCancel.addEventListener("click", cancel);
         importWarningProceed.addEventListener("click", proceed);
@@ -13136,7 +13165,7 @@ HTML = r"""<!doctype html>
         const daily = () => finish("daily");
         const replace = () => finish("replace");
         const backdropCancel = (event) => {
-          if (event.target === importModeDialog) finish("");
+          keepDialogOpenOnBackdropClick(event, importModeDialog);
         };
         importModeCancel.addEventListener("click", cancel);
         importModeDaily.addEventListener("click", daily);
@@ -13270,7 +13299,7 @@ HTML = r"""<!doctype html>
           finish(corrections);
         };
         const backdropCancel = (event) => {
-          if (event.target === importCorrectionDialog) finish(null);
+          keepDialogOpenOnBackdropClick(event, importCorrectionDialog);
         };
         importCorrectionCancel.addEventListener("click", cancel);
         importCorrectionApply.addEventListener("click", apply);
@@ -14244,7 +14273,7 @@ HTML = r"""<!doctype html>
         const approve = () => finish(true);
         const reject = () => finish(false);
         const backdropReject = (event) => {
-          if (event.target === safeNumberPackageDialog) finish(false);
+          keepDialogOpenOnBackdropClick(event, safeNumberPackageDialog);
         };
         const escapeReject = (event) => {
           if (event.key === "Escape") finish(false);
@@ -15568,7 +15597,7 @@ HTML = r"""<!doctype html>
     });
     focusWidgetClose?.addEventListener("click", closeFocusWidget);
     focusWidget?.addEventListener("click", (event) => {
-      if (event.target === focusWidget) closeFocusWidget();
+      keepDialogOpenOnBackdropClick(event, focusWidget);
     });
     focusWidgetBody?.addEventListener("click", (event) => {
       const topbarOpenButton = event.target.closest("[data-topbar-open]");
@@ -15702,7 +15731,7 @@ HTML = r"""<!doctype html>
     });
     noticePopupClose.addEventListener("click", closeNoticePopup);
     noticePopup.addEventListener("click", (event) => {
-      if (event.target === noticePopup) closeNoticePopup();
+      keepDialogOpenOnBackdropClick(event, noticePopup);
     });
     cargoInboundInputOpen?.addEventListener("click", () => openCargoShipmentPopup(null, "inbound"));
     cargoShipmentInputOpen?.addEventListener("click", () => openCargoShipmentPopup(null, "outbound"));
@@ -15715,7 +15744,7 @@ HTML = r"""<!doctype html>
       });
     });
     cargoShipmentPopup?.addEventListener("click", (event) => {
-      if (event.target === cargoShipmentPopup) closeCargoShipmentPopup();
+      keepDialogOpenOnBackdropClick(event, cargoShipmentPopup);
     });
     document.addEventListener("keydown", (event) => {
       if (event.key === "Escape" && focusWidget?.classList.contains("open")) {
@@ -15739,7 +15768,7 @@ HTML = r"""<!doctype html>
       });
     });
     importShipmentPopup.addEventListener("click", (event) => {
-      if (event.target === importShipmentPopup) closeImportShipmentPopup();
+      keepDialogOpenOnBackdropClick(event, importShipmentPopup);
     });
     importShipmentBody.addEventListener("click", (event) => {
       const editButton = event.target.closest("[data-import-edit]");
@@ -15760,13 +15789,7 @@ HTML = r"""<!doctype html>
     document.querySelector("#closeModal").addEventListener("click", requestCloseModal);
     document.querySelector("#cancel").addEventListener("click", requestCloseModal);
     modal.addEventListener("click", (event) => {
-      if (event.target !== modal) return;
-      event.preventDefault();
-      event.stopPropagation();
-      modalPanel.classList.remove("attention");
-      void modalPanel.offsetWidth;
-      modalPanel.classList.add("attention");
-      setTimeout(() => modalPanel.classList.remove("attention"), 220);
+      keepDialogOpenOnBackdropClick(event, modal);
     });
     fileInput.addEventListener("change", () => {
       dropMain.textContent = fileInput.files[0] ? fileInput.files[0].name : "파일을 선택하거나 여기에 올려주세요.";
@@ -16072,12 +16095,12 @@ HTML = r"""<!doctype html>
     returnCheckCancel?.addEventListener("click", closeReturnCheckPopup);
     returnCheckSave?.addEventListener("click", applyReturnCheckPopup);
     returnCheckPopup?.addEventListener("click", (event) => {
-      if (event.target === returnCheckPopup) closeReturnCheckPopup();
+      keepDialogOpenOnBackdropClick(event, returnCheckPopup);
     });
     appConfirmOk?.addEventListener("click", () => closeAppConfirmDialog(true));
     appConfirmCancel?.addEventListener("click", () => closeAppConfirmDialog(false));
     appConfirmDialog?.addEventListener("click", (event) => {
-      if (event.target === appConfirmDialog) closeAppConfirmDialog(false);
+      keepDialogOpenOnBackdropClick(event, appConfirmDialog);
     });
     document.addEventListener("keydown", (event) => {
       if (event.key === "Escape" && appConfirmDialog?.classList.contains("open")) {

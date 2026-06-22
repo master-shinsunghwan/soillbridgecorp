@@ -333,9 +333,39 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         html_source = (ROOT / "scripts" / "workhub_delivery_app.py").read_text(encoding="utf-8")
 
         self.assertNotIn("if (event.target === modal) requestCloseModal();", html_source)
-        self.assertIn('if (event.target !== modal) return;', html_source)
-        self.assertIn('modalPanel.classList.add("attention");', html_source)
-        self.assertIn(".workhub-modal.attention", html_source)
+        self.assertIn("function keepDialogOpenOnBackdropClick", html_source)
+        self.assertIn("function nudgeOpenDialog", html_source)
+        for backdrop_name in (
+            "modal",
+            "searchResultDialog",
+            "importWarningDialog",
+            "importModeDialog",
+            "importCorrectionDialog",
+            "safeNumberPackageDialog",
+            "focusWidget",
+            "noticePopup",
+            "cargoShipmentPopup",
+            "importShipmentPopup",
+            "returnCheckPopup",
+            "appConfirmDialog",
+        ):
+            self.assertIn(f"keepDialogOpenOnBackdropClick(event, {backdrop_name})", html_source)
+        for close_pattern in (
+            "if (event.target === searchResultDialog) finish(null);",
+            "if (event.target === importWarningDialog) finish(false);",
+            "if (event.target === importModeDialog) finish(\"\");",
+            "if (event.target === importCorrectionDialog) finish(null);",
+            "if (event.target === safeNumberPackageDialog) finish(false);",
+            "if (event.target === focusWidget) closeFocusWidget();",
+            "if (event.target === noticePopup) closeNoticePopup();",
+            "if (event.target === cargoShipmentPopup) closeCargoShipmentPopup();",
+            "if (event.target === importShipmentPopup) closeImportShipmentPopup();",
+            "if (event.target === returnCheckPopup) closeReturnCheckPopup();",
+            "if (event.target === appConfirmDialog) closeAppConfirmDialog(false);",
+        ):
+            self.assertNotIn(close_pattern, html_source)
+        self.assertIn(".workhub-modal.attention,", html_source)
+        self.assertIn(".app-confirm-dialog.attention", html_source)
 
     def test_naver_mail_defaults_are_managed_from_admin_workspace(self) -> None:
         for app_file in (
