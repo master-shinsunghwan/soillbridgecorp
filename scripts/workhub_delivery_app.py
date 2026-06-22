@@ -9056,10 +9056,14 @@ HTML = r"""<!doctype html>
       return importDateSortKey(value || "");
     }
 
+    function isTodayNoticeDate(value) {
+      if (!value) return false;
+      return importDateSortKey(value) === todayString();
+    }
+
     function noticeAutoEvents() {
-      const todayKey = todayString();
       const calendarItems = (companyCalendarEvents || [])
-        .filter((event) => ["leave", "pending"].includes(event.type) && event.date >= todayKey)
+        .filter((event) => ["leave", "pending"].includes(event.type) && isTodayNoticeDate(event.date))
         .map((event) => ({
           type: event.type === "pending" ? "pending" : "leave",
           eventId: event.id,
@@ -9068,7 +9072,7 @@ HTML = r"""<!doctype html>
           title: `${shortKoreanDate(event.date)} ${event.title || ""}`,
           detail: event.subtitle || "",
         }));
-      const importItems = sortImportShipmentsByWarehouseDate((importShipments || []).filter((record) => !record.completed_at))
+      const importItems = sortImportShipmentsByWarehouseDate((importShipments || []).filter((record) => !record.completed_at && isTodayNoticeDate(record.warehouse_due_date || record.arrival_date)))
         .slice(0, 4)
         .map((record) => ({
           type: "import",
@@ -9079,7 +9083,7 @@ HTML = r"""<!doctype html>
           title: `${shortKoreanDate(record.warehouse_due_date || record.arrival_date)} ${record.item || "수입제품"}`,
           detail: [record.shipper, record.progress_status || "진행중"].filter(Boolean).join(" · "),
         }));
-      const cargoItems = sortCargoShipments((cargoShipments || []).filter((record) => !record.completed_at && !["출고 완료", "입고 완료"].includes(record.status)))
+      const cargoItems = sortCargoShipments((cargoShipments || []).filter((record) => !record.completed_at && isTodayNoticeDate(record.ship_date) && !["출고 완료", "입고 완료"].includes(record.status)))
         .slice(0, 4)
         .map((record) => ({
           type: record.cargo_type === "inbound" ? "cargo-inbound" : "cargo",

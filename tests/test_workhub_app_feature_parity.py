@@ -236,6 +236,17 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         self.assertIn("openCalendarSummaryWidget(button.dataset.calendarSummary)", html_source)
         self.assertIn("calendar-summary-list", html_source)
 
+    def test_notice_auto_events_only_include_today_items(self) -> None:
+        html_source = (ROOT / "scripts" / "workhub_delivery_app.py").read_text(encoding="utf-8")
+
+        self.assertIn("function isTodayNoticeDate(value)", html_source)
+        notice_auto_start = html_source.index("function noticeAutoEvents()")
+        notice_auto_end = html_source.index("function noticeAutoHtml()", notice_auto_start)
+        notice_auto_source = html_source[notice_auto_start:notice_auto_end]
+        self.assertIn('["leave", "pending"].includes(event.type) && isTodayNoticeDate(event.date)', notice_auto_source)
+        self.assertIn("!record.completed_at && isTodayNoticeDate(record.warehouse_due_date || record.arrival_date)", notice_auto_source)
+        self.assertIn('!record.completed_at && isTodayNoticeDate(record.ship_date)', notice_auto_source)
+
     def test_dashboard_sales_message_is_replaced_by_weekly_sales_chart(self) -> None:
         html_source = (ROOT / "scripts" / "workhub_delivery_app.py").read_text(encoding="utf-8")
 
