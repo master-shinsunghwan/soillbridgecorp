@@ -22387,7 +22387,7 @@ def create_cs_case_from_management(record_id: int) -> int:
                 source_file,
                 source_sheet,
                 source_row,
-                record.get("order_date", "") or record.get("ship_date", ""),
+                timestamp,
                 record.get("order_date", ""),
                 record.get("ship_date", ""),
                 record.get("sales_vendor", ""),
