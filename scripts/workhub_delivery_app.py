@@ -6082,21 +6082,12 @@ HTML = r"""<!doctype html>
       <div class="nav-group" id="managementNavGroup">
         <button class="nav-item" id="managementNavToggle" type="button" data-nav-tone="management" data-open="management">
           <span class="nav-label"><i data-lucide="database"></i> <span>통합관리대장 관리</span></span>
-          <i class="nav-chevron" data-lucide="chevron-right"></i>
         </button>
-        <div class="nav-submenu">
-          <button class="nav-subitem" id="managementImportOpen" type="button" data-management-import-mode="daily">통합관리대장 업로드</button>
-        </div>
       </div>
       <div class="nav-group" id="ledgerNavGroup">
         <button class="nav-item" id="ledgerNavToggle" type="button" data-nav-tone="cs" data-open="ledger">
           <span class="nav-label"><i data-lucide="headphones"></i> <span>CS 처리대장</span></span>
-          <i class="nav-chevron" data-lucide="chevron-right"></i>
         </button>
-        <div class="nav-submenu">
-          <button class="nav-subitem" id="ledgerImportOpen" type="button" data-ledger-import-mode="daily">CS처리대장 업로드</button>
-          <button class="nav-subitem" type="button" data-mail-popup="cs">CS처리 요청</button>
-        </div>
       </div>
       <div class="nav-group" id="crmNavGroup">
         <button class="nav-item" id="crmNavToggle" type="button" data-nav-tone="crm" data-open="crm" data-crm-nav-tab="dashboard">

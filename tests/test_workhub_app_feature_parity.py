@@ -129,7 +129,7 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         self.assertNotIn('companyGroup?.classList.toggle("open"', html_source)
         self.assertNotIn('document.querySelector("#companyNavGroup").classList.toggle("open");', html_source)
 
-    def test_daily_ledger_uploads_live_under_each_ledger_sidebar_group(self) -> None:
+    def test_ledger_sidebar_groups_open_directly_without_upload_subtrees(self) -> None:
         html_source = (ROOT / "scripts" / "workhub_delivery_app.py").read_text(encoding="utf-8")
 
         management_group_start = html_source.index('id="managementNavGroup"')
@@ -142,14 +142,18 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         admin_group = html_source[admin_group_start:admin_group_end]
 
         self.assertIn('data-open="management"', management_group)
-        self.assertIn('id="managementImportOpen"', management_group)
-        self.assertIn('data-management-import-mode="daily"', management_group)
-        self.assertIn("통합관리대장 업로드", management_group)
+        self.assertNotIn('id="managementImportOpen"', management_group)
+        self.assertNotIn('data-management-import-mode="daily"', management_group)
+        self.assertNotIn("통합관리대장 업로드", management_group)
+        self.assertNotIn('class="nav-submenu"', management_group)
 
         self.assertIn('data-open="ledger"', ledger_group)
-        self.assertIn('id="ledgerImportOpen"', ledger_group)
-        self.assertIn('data-ledger-import-mode="daily"', ledger_group)
-        self.assertIn("CS처리대장 업로드", ledger_group)
+        self.assertNotIn('id="ledgerImportOpen"', ledger_group)
+        self.assertNotIn('data-ledger-import-mode="daily"', ledger_group)
+        self.assertNotIn("CS처리대장 업로드", ledger_group)
+        self.assertNotIn('data-mail-popup="cs"', ledger_group)
+        self.assertNotIn("CS처리 요청", ledger_group)
+        self.assertNotIn('class="nav-submenu"', ledger_group)
 
         self.assertIn('data-management-import-mode="replace"', admin_group)
         self.assertIn('data-ledger-import-mode="replace"', admin_group)
@@ -158,15 +162,15 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         self.assertIn('#managementNavToggle', html_source)
         self.assertIn('#ledgerNavToggle', html_source)
 
-    def test_cs_request_from_ledger_menu_supports_mail_attachments(self) -> None:
+    def test_cs_mail_flow_supports_mail_attachments_without_ledger_sidebar_entry(self) -> None:
         html_source = (ROOT / "scripts" / "workhub_delivery_app.py").read_text(encoding="utf-8")
 
         ledger_group_start = html_source.index('id="ledgerNavGroup"')
         crm_group_start = html_source.index('id="crmNavGroup"')
         ledger_group = html_source[ledger_group_start:crm_group_start]
 
-        self.assertIn('data-mail-popup="cs"', ledger_group)
-        self.assertIn("CS처리 요청", ledger_group)
+        self.assertNotIn('data-mail-popup="cs"', ledger_group)
+        self.assertNotIn("CS처리 요청", ledger_group)
         self.assertIn('id="csAttachmentInput"', html_source)
         self.assertIn('id="csAttachmentSummary"', html_source)
         self.assertIn('accept="image/*,video/*"', html_source)
@@ -494,7 +498,7 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
 
             self.assertNotIn('data-mail-popup="supplier"', html_source)
             self.assertNotIn('data-mail-popup="seller"', html_source)
-            self.assertIn('data-mail-popup="cs"', html_source)
+            self.assertNotIn('data-mail-popup="cs"', html_source)
             self.assertIn('data-mail-popup="stock"', html_source)
             self.assertIn("입고 및 품절 공지", html_source)
             self.assertIn('openModal(type === "stock" ? "mail-stock" : "cs")', html_source)
