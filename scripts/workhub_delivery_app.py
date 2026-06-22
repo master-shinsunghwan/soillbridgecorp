@@ -1656,19 +1656,19 @@ HTML = r"""<!doctype html>
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      border: 1px solid #111827;
+      border: 1px solid #cbd5e1;
       border-radius: 8px;
-      background: #111827;
-      color: #ffffff;
+      background: #f8fafc;
+      color: #1f2937;
       cursor: pointer;
       padding: 0;
-      box-shadow: 0 8px 18px rgba(15, 23, 42, .16);
+      box-shadow: 0 3px 8px rgba(15, 23, 42, .06);
     }
     .close svg { width: 19px; height: 19px; stroke-width: 2.4; }
     .close::before {
       content: "X";
-      color: #ffffff;
-      font-size: 20px;
+      color: #1f2937;
+      font-size: 18px;
       font-weight: 950;
       line-height: 1;
     }
@@ -1676,10 +1676,23 @@ HTML = r"""<!doctype html>
     .close svg {
       display: none;
     }
-    .close:hover { background: #b42318; border-color: #b42318; }
+    .close:hover {
+      background: #fff1f1;
+      border-color: #f1a7a7;
+    }
+    .close:hover::before { color: #b42318; }
     .close:focus-visible {
       outline: 3px solid rgba(180, 35, 24, .28);
       outline-offset: 2px;
+    }
+    .workhub-modal.attention {
+      animation: modal-attention .18s ease-out;
+      box-shadow: 0 0 0 3px rgba(21, 91, 200, .16), var(--shadow);
+    }
+    @keyframes modal-attention {
+      0% { transform: scale(1); }
+      50% { transform: scale(1.006); }
+      100% { transform: scale(1); }
     }
     .field-label { display: block; font-size: 18px; font-weight: 750; margin-bottom: 10px; color: #1a2230; }
     .dropzone {
@@ -15747,7 +15760,13 @@ HTML = r"""<!doctype html>
     document.querySelector("#closeModal").addEventListener("click", requestCloseModal);
     document.querySelector("#cancel").addEventListener("click", requestCloseModal);
     modal.addEventListener("click", (event) => {
-      if (event.target === modal) requestCloseModal();
+      if (event.target !== modal) return;
+      event.preventDefault();
+      event.stopPropagation();
+      modalPanel.classList.remove("attention");
+      void modalPanel.offsetWidth;
+      modalPanel.classList.add("attention");
+      setTimeout(() => modalPanel.classList.remove("attention"), 220);
     });
     fileInput.addEventListener("change", () => {
       dropMain.textContent = fileInput.files[0] ? fileInput.files[0].name : "파일을 선택하거나 여기에 올려주세요.";

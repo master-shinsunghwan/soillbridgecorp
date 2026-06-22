@@ -322,12 +322,20 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         html_source = (ROOT / "scripts" / "workhub_delivery_app.py").read_text(encoding="utf-8")
 
         self.assertIn(".close {", html_source)
-        self.assertIn("background: #111827;", html_source)
-        self.assertIn("color: #ffffff;", html_source)
+        self.assertIn("background: #f8fafc;", html_source)
+        self.assertIn("color: #1f2937;", html_source)
         self.assertIn('content: "X";', html_source)
         self.assertIn(".close i,", html_source)
-        self.assertIn(".close:hover { background: #b42318;", html_source)
+        self.assertIn(".close:hover::before { color: #b42318; }", html_source)
         self.assertIn(".ledger-cs-popup-close:hover { background: #b42318;", html_source)
+
+    def test_modal_backdrop_click_does_not_close_dialog(self) -> None:
+        html_source = (ROOT / "scripts" / "workhub_delivery_app.py").read_text(encoding="utf-8")
+
+        self.assertNotIn("if (event.target === modal) requestCloseModal();", html_source)
+        self.assertIn('if (event.target !== modal) return;', html_source)
+        self.assertIn('modalPanel.classList.add("attention");', html_source)
+        self.assertIn(".workhub-modal.attention", html_source)
 
     def test_naver_mail_defaults_are_managed_from_admin_workspace(self) -> None:
         for app_file in (
