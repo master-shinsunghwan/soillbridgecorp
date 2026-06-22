@@ -653,13 +653,13 @@ HTML = r"""<!doctype html>
     .dashboard-import-card .import-table th:nth-child(3),
     .dashboard-import-card .import-table td:nth-child(3) { width: 72px; }
     .dashboard-import-card .import-table th:nth-child(4),
-    .dashboard-import-card .import-table td:nth-child(4),
+    .dashboard-import-card .import-table td:nth-child(4) { width: 78px; }
     .dashboard-import-card .import-table th:nth-child(5),
-    .dashboard-import-card .import-table td:nth-child(5) { width: 78px; }
+    .dashboard-import-card .import-table td:nth-child(5) { width: 138px; }
     .dashboard-import-card .import-table th:nth-child(6),
-    .dashboard-import-card .import-table td:nth-child(6) { width: 138px; }
+    .dashboard-import-card .import-table td:nth-child(6) { width: 64px; }
     .dashboard-import-card .import-table th:nth-child(7),
-    .dashboard-import-card .import-table td:nth-child(7) { width: 150px; }
+    .dashboard-import-card .import-table td:nth-child(7) { width: 164px; }
     .dashboard-import-card .import-table th:nth-child(8),
     .dashboard-import-card .import-table td:nth-child(8) { width: 142px; }
     .dashboard-import-card .import-table th:nth-child(9),
@@ -4317,9 +4317,9 @@ HTML = r"""<!doctype html>
     .dashboard-sales-weekly-chart {
       margin-top: 12px;
       padding: 13px 14px;
-      border: 1px dashed #cbd5e1;
+      border: 1px solid #d8dee8;
       border-radius: 8px;
-      background: #fbfcff;
+      background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
       color: #667085;
       font-size: 12px;
       font-weight: 850;
@@ -4328,7 +4328,7 @@ HTML = r"""<!doctype html>
     }
     .dashboard-sales-weekly-chart svg {
       width: 100%;
-      height: 132px;
+      height: 158px;
       display: block;
     }
     .dashboard-sales-weekly-chart .chart-title {
@@ -6246,7 +6246,7 @@ HTML = r"""<!doctype html>
                 </tr>
               </thead>
               <tbody id="dashboardImportScheduleBody">
-                <tr><td colspan="10"><div class="import-empty">수입제품 입고 일정을 불러오는 중입니다.</div></td></tr>
+                <tr><td colspan="11"><div class="import-empty">수입제품 입고 일정을 불러오는 중입니다.</div></td></tr>
               </tbody>
             </table>
           </div>
@@ -9045,6 +9045,7 @@ HTML = r"""<!doctype html>
         .filter((event) => ["leave", "pending"].includes(event.type) && event.date >= todayKey)
         .map((event) => ({
           type: event.type === "pending" ? "pending" : "leave",
+          eventId: event.id,
           badge: event.type === "pending" ? "승인대기" : "연차",
           date: event.date,
           title: `${shortKoreanDate(event.date)} ${event.title || ""}`,
@@ -9055,6 +9056,7 @@ HTML = r"""<!doctype html>
         .map((record) => ({
           type: "import",
           sourceId: record.id,
+          eventId: `import:${record.id}`,
           badge: "컨테이너",
           date: record.warehouse_due_date || record.arrival_date || "",
           title: `${shortKoreanDate(record.warehouse_due_date || record.arrival_date)} ${record.item || "수입제품"}`,
@@ -9065,6 +9067,7 @@ HTML = r"""<!doctype html>
         .map((record) => ({
           type: record.cargo_type === "inbound" ? "cargo-inbound" : "cargo",
           sourceId: record.id,
+          eventId: `cargo:${record.id}`,
           badge: record.cargo_type === "inbound" ? "화물입고" : "화물출고",
           date: record.ship_date || "",
           title: `${shortKoreanDate(record.ship_date)} ${record.customer || "거래처 미정"} · ${record.item || "품목 미정"}`,
@@ -9090,7 +9093,7 @@ HTML = r"""<!doctype html>
           <div class="notice-auto-head"><span>오늘 확인할 회사 일정</span><span class="notice-auto-count">${items.length}</span></div>
           <div class="notice-auto-list">
             ${items.map((item) => `
-              <div class="notice-auto-item" role="button" tabindex="0" data-notice-auto-type="${escapeHtml(item.type)}" data-notice-auto-id="${escapeHtml(item.sourceId || "")}" title="${escapeHtml([item.title, item.detail].filter(Boolean).join(" / "))}">
+              <div class="notice-auto-item" role="button" tabindex="0" data-notice-auto-type="${escapeHtml(item.type)}" data-notice-auto-id="${escapeHtml(item.sourceId || "")}" data-notice-auto-event-id="${escapeHtml(item.eventId || "")}" onclick="window.openWorkhubNoticeAutoItem?.(this)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();window.openWorkhubNoticeAutoItem?.(this)}" title="${escapeHtml([item.title, item.detail].filter(Boolean).join(" / "))}">
                 <span class="notice-auto-badge ${escapeHtml(item.type)}">${escapeHtml(item.badge)}</span>
                 <span class="notice-auto-text">${escapeHtml(item.title)}${item.detail ? ` · ${escapeHtml(item.detail)}` : ""}</span>
               </div>
@@ -9395,7 +9398,7 @@ HTML = r"""<!doctype html>
       const activeRecords = sortImportShipmentsByWarehouseDate(importShipments.filter((record) => !record.completed_at));
       dashboardImportScheduleSummary.textContent = `진행 ${activeRecords.length}건`;
       if (!activeRecords.length) {
-        dashboardImportScheduleBody.innerHTML = `<tr><td colspan="10"><div class="import-empty">등록된 수입제품 입고 일정이 없습니다.</div></td></tr>`;
+        dashboardImportScheduleBody.innerHTML = `<tr><td colspan="11"><div class="import-empty">등록된 수입제품 입고 일정이 없습니다.</div></td></tr>`;
         return;
       }
       dashboardImportScheduleBody.innerHTML = activeRecords.slice(0, 6).map((record) => `
@@ -10763,27 +10766,74 @@ HTML = r"""<!doctype html>
         dashboardSalesWeeklyChart.textContent = message || "최근 7일 매출 데이터가 없습니다.";
         return;
       }
-      const maxValue = Math.max(...weeklyRows.map((row) => Number(row.profit_sales_amount || 0)), 1);
-      const bars = weeklyRows.map((row, index) => {
-        const value = Number(row.profit_sales_amount || 0);
-        const height = Math.max(4, Math.round((value / maxValue) * 74));
-        const x = 20 + index * 46;
-        const y = 92 - height;
-        const label = shortKoreanDate(row.report_date || row.label || "").replace("월 ", "/").replace("일", "");
+      const series = [
+        { key: "profit_supply_amount", label: "매입가", color: "#3b82f6", width: 1.7, radius: 2.8, opacity: 0.58, dash: "" },
+        { key: "profit_margin", label: "손익마진", color: "#10b981", width: 2.2, radius: 3.4, opacity: 0.9, dash: "6 4" },
+        { key: "profit_sales_amount", label: "매출가", color: "#ef4444", width: 3.6, radius: 4.8, opacity: 1, dash: "" },
+      ];
+      const chart = { left: 42, right: 420, top: 14, bottom: 118, width: 378, height: 104 };
+      const values = weeklyRows.flatMap((row) => series.map((item) => Number(row[item.key] || 0)));
+      const maxValue = Math.max(0, ...values, 1);
+      const minValue = Math.min(0, ...values);
+      const rangeValue = Math.max(maxValue - minValue, 1);
+      const tickCount = 4;
+      const yForValue = (value) => chart.bottom - ((Number(value || 0) - minValue) / rangeValue) * chart.height;
+      const xForIndex = (index) => chart.left + (weeklyRows.length <= 1 ? chart.width / 2 : (index / (weeklyRows.length - 1)) * chart.width);
+      const formatAxisValue = (value) => {
+        const number = Math.round(Number(value || 0));
+        const sign = number < 0 ? "-" : "";
+        const absNumber = Math.abs(number);
+        if (absNumber >= 100000000) return `${sign}${formatSalesNumber(Math.round(absNumber / 1000000))}백만`;
+        if (absNumber >= 10000) return `${sign}${formatSalesNumber(Math.round(absNumber / 10000))}`;
+        return formatSalesNumber(number);
+      };
+      const gridLines = Array.from({ length: tickCount + 1 }, (_, index) => {
+        const value = maxValue - (rangeValue / tickCount) * index;
+        const y = chart.top + (index / tickCount) * chart.height;
         return `
           <g>
-            <rect x="${x}" y="${y}" width="24" height="${height}" rx="5" fill="#2563eb"></rect>
-            <text x="${x + 12}" y="112" text-anchor="middle" font-size="9" fill="#64748b">${escapeHtml(label)}</text>
-            <text x="${x + 12}" y="${Math.max(12, y - 6)}" text-anchor="middle" font-size="9" font-weight="800" fill="#111827">${escapeHtml(formatSalesNumber(value))}</text>
+            <line x1="${chart.left}" y1="${y}" x2="${chart.right}" y2="${y}" stroke="#d7dde7" stroke-width="1"></line>
+            <text x="${chart.left - 8}" y="${y + 3}" text-anchor="end" font-size="9" fill="#475467">${escapeHtml(formatAxisValue(value))}</text>
+          </g>
+        `;
+      }).join("");
+      const zeroY = yForValue(0);
+      const xLabels = weeklyRows.map((row, index) => {
+        const x = xForIndex(index);
+        const label = shortKoreanDate(row.report_date || row.label || "").replace("월 ", "-").replace("일", "");
+        return `<text x="${x}" y="136" text-anchor="middle" font-size="9" fill="#111827">${escapeHtml(label)}</text>`;
+      }).join("");
+      const seriesLines = series.map((item) => {
+        const points = weeklyRows.map((row, index) => `${xForIndex(index)},${yForValue(row[item.key])}`).join(" ");
+        const dots = weeklyRows.map((row, index) => `
+          <circle cx="${xForIndex(index)}" cy="${yForValue(row[item.key])}" r="${item.radius}" fill="${item.color}" fill-opacity="${item.opacity}" stroke="white" stroke-width="${item.key === "profit_sales_amount" ? "1.6" : "1"}"></circle>
+        `).join("");
+        return `
+          <polyline points="${points}" fill="none" stroke="${item.color}" stroke-opacity="${item.opacity}" stroke-width="${item.width}" ${item.dash ? `stroke-dasharray="${item.dash}"` : ""} stroke-linecap="round" stroke-linejoin="round"></polyline>
+          ${dots}
+        `;
+      }).join("");
+      const legendSeries = [series[2], series[0], series[1]];
+      const legend = legendSeries.map((item, index) => {
+        const y = 22 + index * 18;
+        return `
+          <g>
+            <line x1="442" y1="${y}" x2="462" y2="${y}" stroke="${item.color}" stroke-opacity="${item.opacity}" stroke-width="${item.width}" ${item.dash ? `stroke-dasharray="${item.dash}"` : ""}></line>
+            <circle cx="452" cy="${y}" r="${item.key === "profit_sales_amount" ? "4" : "3"}" fill="${item.color}" fill-opacity="${item.opacity}"></circle>
+            <text x="468" y="${y + 4}" font-size="10" font-weight="${item.key === "profit_sales_amount" ? "950" : "750"}" fill="${item.key === "profit_sales_amount" ? "#111827" : "#667085"}">${escapeHtml(item.label)}</text>
           </g>
         `;
       }).join("");
       const total = weeklyRows.reduce((sum, row) => sum + Number(row.profit_sales_amount || 0), 0);
       dashboardSalesWeeklyChart.innerHTML = `
         <div class="chart-title"><span>최근 7일 매출</span><span>합계 ${escapeHtml(formatSalesNumber(total))}</span></div>
-        <svg viewBox="0 0 352 128" role="img" aria-label="최근 7일 매출 현황">
-          <line x1="10" y1="96" x2="342" y2="96" stroke="#e5e7eb" stroke-width="1"></line>
-          ${bars}
+        <svg viewBox="0 0 520 148" role="img" aria-label="최근 7일 매출 현황">
+          <rect x="0" y="0" width="520" height="148" fill="#ffffff" rx="6"></rect>
+          ${gridLines}
+          <line x1="${chart.left}" y1="${zeroY}" x2="${chart.right}" y2="${zeroY}" stroke="#111827" stroke-width="1.2"></line>
+          ${seriesLines}
+          ${xLabels}
+          ${legend}
         </svg>
       `;
     }
@@ -15675,29 +15725,95 @@ HTML = r"""<!doctype html>
         if (companyOrgBody) companyOrgBody.innerHTML = `<div class="company-org-empty">${escapeHtml(error.message)}</div>`;
       }));
     }
+    function openImportShipmentDetailWidget(record) {
+      if (!record) return;
+      const baseDate = record.warehouse_due_date || record.arrival_date || "";
+      openFocusWidget({
+        kicker: "컨테이너 일정",
+        title: record.item || "수입제품 입고 일정",
+        subtitle: [shortKoreanDate(baseDate), record.shipper, record.progress_status || "진행중"].filter(Boolean).join(" · "),
+        body: `
+          <div class="focus-widget-grid">
+            ${focusWidgetMetric("입고예정일", shortKoreanDate(record.warehouse_due_date || ""))}
+            ${focusWidgetMetric("입항일", shortKoreanDate(record.arrival_date || ""))}
+            ${focusWidgetMetric("진행상황", record.progress_status || "진행중")}
+            ${focusWidgetMetric("수량", record.quantity || "-")}
+          </div>
+          <section class="focus-widget-section">
+            <div class="focus-widget-section-title">상세</div>
+            <p class="focus-widget-text">${escapeHtml([
+              record.shipper ? `선적항/거래처: ${record.shipper}` : "",
+              record.hbl_no ? `HBL NO.: ${record.hbl_no}` : "",
+              record.size ? `SIZE: ${record.size}` : "",
+              record.free_time ? `프리타임: ${record.free_time}` : "",
+            ].filter(Boolean).join("\n") || "상세 내용이 없습니다.")}</p>
+          </section>
+        `,
+      });
+    }
+
+    function openCargoShipmentDetailWidget(record) {
+      if (!record) return;
+      const isInbound = record.cargo_type === "inbound";
+      openFocusWidget({
+        kicker: isInbound ? "화물 입고 일정" : "화물 출고 일정",
+        title: `${isInbound ? "화물 입고" : "화물 출고"} ${record.customer || "거래처 미정"}`,
+        subtitle: [shortKoreanDate(record.ship_date), record.item, record.status || (isInbound ? "입고 예정" : "출고 예정")].filter(Boolean).join(" · "),
+        body: `
+          <div class="focus-widget-grid">
+            ${focusWidgetMetric(isInbound ? "입고예정일" : "출고일", shortKoreanDate(record.ship_date || ""))}
+            ${focusWidgetMetric("거래처/현장", record.customer || "-")}
+            ${focusWidgetMetric("품목", record.item || "-")}
+            ${focusWidgetMetric("수량", record.quantity || "-")}
+            ${focusWidgetMetric(isInbound ? "입고장소" : "도착지", record.destination || "-")}
+            ${focusWidgetMetric("상태", record.status || (isInbound ? "입고 예정" : "출고 예정"))}
+          </div>
+          <section class="focus-widget-section">
+            <div class="focus-widget-section-title">메모</div>
+            <p class="focus-widget-text">${escapeHtml(record.memo || "메모가 없습니다.")}</p>
+          </section>
+        `,
+      });
+    }
+
     function openNoticeAutoItem(element) {
       const type = element?.dataset.noticeAutoType || "";
       const id = element?.dataset.noticeAutoId || "";
+      const eventId = element?.dataset.noticeAutoEventId || "";
+      if (eventId && companyCalendarEvents.some((item) => String(item.id) === String(eventId))) {
+        openCalendarEventWidget(eventId);
+        return;
+      }
       if (type === "import" && id) {
-        if (!can("import_shipment_manage")) {
-          notice.textContent = "수입제품 진행 관리 권한이 없습니다.";
-          return;
-        }
         const record = importShipments.find((item) => String(item.id) === String(id));
-        if (record) openImportShipmentPopup(record);
+        if (record) openImportShipmentDetailWidget(record);
         return;
       }
       if ((type === "cargo" || type === "cargo-inbound") && id) {
-        if (!canManageCargoShipments()) {
-          notice.textContent = "화물 입출고건 입력 권한이 없습니다.";
-          return;
-        }
         const record = cargoShipments.find((item) => String(item.id) === String(id));
-        if (record) openCargoShipmentPopup(record);
+        if (record) openCargoShipmentDetailWidget(record);
         return;
       }
       openNoticeWidget();
     }
+    window.openWorkhubNoticeAutoItem = openNoticeAutoItem;
+
+    document.addEventListener("click", (event) => {
+      const autoItem = event.target.closest("#sidebarNoticePreview [data-notice-auto-type]");
+      if (!autoItem) return;
+      event.preventDefault();
+      event.stopPropagation();
+      openNoticeAutoItem(autoItem);
+    }, true);
+
+    document.addEventListener("keydown", (event) => {
+      if (!isCardActivationKey(event)) return;
+      const autoItem = event.target.closest("#sidebarNoticePreview [data-notice-auto-type]");
+      if (!autoItem) return;
+      event.preventDefault();
+      event.stopPropagation();
+      openNoticeAutoItem(autoItem);
+    }, true);
 
     sidebarNoticePreview?.addEventListener("click", (event) => {
       const autoItem = event.target.closest("[data-notice-auto-type]");
