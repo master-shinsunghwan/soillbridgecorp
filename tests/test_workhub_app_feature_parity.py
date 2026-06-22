@@ -162,6 +162,30 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         self.assertIn('#managementNavToggle', html_source)
         self.assertIn('#ledgerNavToggle', html_source)
 
+    def test_ledger_cells_select_on_click_and_edit_on_double_click_or_keyboard(self) -> None:
+        html_source = (ROOT / "scripts" / "workhub_delivery_app.py").read_text(encoding="utf-8")
+
+        self.assertIn("function selectEditableCell(scope, cell", html_source)
+        self.assertIn("function beginSelectedCellEdit(scope)", html_source)
+        self.assertIn("function moveSelectedEditableCell(scope, direction)", html_source)
+        self.assertIn('managementBody.addEventListener("dblclick"', html_source)
+        self.assertIn('ledgerBody.addEventListener("dblclick"', html_source)
+        self.assertIn('selectEditableCell("management", editableCell)', html_source)
+        self.assertIn('selectEditableCell("ledger", editableCell)', html_source)
+        self.assertIn('beginSelectedCellEdit("management")', html_source)
+        self.assertIn('beginSelectedCellEdit("ledger")', html_source)
+        self.assertIn('class="${className}" tabindex="-1"', html_source)
+        self.assertIn('<td class="editable-cell" tabindex="-1" data-field="status"', html_source)
+        self.assertIn('["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"]', html_source)
+        self.assertIn('event.key === "F2" || event.key === "Enter"', html_source)
+
+        management_click_start = html_source.index('managementBody.addEventListener("click"')
+        management_click_end = html_source.index('managementBody.addEventListener("dblclick"', management_click_start)
+        ledger_click_start = html_source.index('ledgerBody.addEventListener("click"')
+        ledger_click_end = html_source.index('ledgerBody.addEventListener("dblclick"', ledger_click_start)
+        self.assertNotIn('openCellEditor("management", editableCell)', html_source[management_click_start:management_click_end])
+        self.assertNotIn('openCellEditor("ledger", editableCell)', html_source[ledger_click_start:ledger_click_end])
+
     def test_cs_mail_flow_supports_mail_attachments_without_ledger_sidebar_entry(self) -> None:
         html_source = (ROOT / "scripts" / "workhub_delivery_app.py").read_text(encoding="utf-8")
 

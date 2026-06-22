@@ -12820,7 +12820,7 @@ HTML = r"""<!doctype html>
       const className = `editable-cell ${align}`.trim();
       const dataAttr = scope === "management" ? "data-management-field" : "data-field";
       const optionData = options.length ? ` data-options="${escapeHtml(JSON.stringify(options))}"` : "";
-      return `<td class="${className}" ${dataAttr}="${escapeHtml(field)}" data-label="${escapeHtml(label)}" data-value="${escapeHtml(value)}" data-input="${escapeHtml(input)}"${date ? ` data-raw-date="${escapeHtml(value)}" data-full-date="${escapeHtml(value)}" data-date="1"` : ""}${optionData}>${escapeHtml(displayValue)}</td>`;
+      return `<td class="${className}" tabindex="-1" ${dataAttr}="${escapeHtml(field)}" data-label="${escapeHtml(label)}" data-value="${escapeHtml(value)}" data-input="${escapeHtml(input)}"${date ? ` data-raw-date="${escapeHtml(value)}" data-full-date="${escapeHtml(value)}" data-date="1"` : ""}${optionData}>${escapeHtml(displayValue)}</td>`;
     }
 
     function selectedEditorParts(scope) {
@@ -12853,6 +12853,60 @@ HTML = r"""<!doctype html>
       const selected = activeCellEditors[scope];
       if (!selected?.cell || !selected.control) return false;
       return String(selected.control.value || "") !== fieldValue(selected.cell);
+    }
+
+    function selectEditableCell(scope, cell, options = {}) {
+      if (!cell || cell.dataset.readonly === "1") return;
+      closeCellEditor(scope);
+      closeLedgerFilter();
+      cell.classList.add("selected-cell");
+      activeCellEditors[scope] = { cell, control: null };
+      cell.focus({ preventScroll: true });
+      if (options.scroll) {
+        cell.scrollIntoView({ block: "nearest", inline: "nearest" });
+      }
+    }
+
+    function beginSelectedCellEdit(scope) {
+      const selected = activeCellEditors[scope];
+      if (!selected?.cell || selected.control) return false;
+      openCellEditor(scope, selected.cell);
+      return true;
+    }
+
+    function editableCellsForRow(scope, row) {
+      if (!row) return [];
+      const selector = scope === "management"
+        ? ".editable-cell[data-management-field]:not([data-readonly='1'])"
+        : ".editable-cell[data-field]:not([data-readonly='1'])";
+      return Array.from(row.querySelectorAll(selector));
+    }
+
+    function moveSelectedEditableCell(scope, direction) {
+      const selected = activeCellEditors[scope];
+      if (!selected?.cell || selected.control) return false;
+      const body = scope === "management" ? managementBody : ledgerBody;
+      const rowSelector = scope === "management" ? "tr[data-record-id]" : "tr[data-case-id]";
+      const currentRow = selected.cell.closest(rowSelector);
+      const rows = Array.from(body.querySelectorAll(rowSelector));
+      const rowIndex = rows.indexOf(currentRow);
+      const currentCells = editableCellsForRow(scope, currentRow);
+      const cellIndex = currentCells.indexOf(selected.cell);
+      if (rowIndex < 0 || cellIndex < 0) return false;
+
+      let targetCell = null;
+      if (direction === "ArrowLeft" || direction === "ArrowRight") {
+        const nextIndex = cellIndex + (direction === "ArrowLeft" ? -1 : 1);
+        targetCell = currentCells[nextIndex] || null;
+      } else {
+        const nextRowIndex = rowIndex + (direction === "ArrowUp" ? -1 : 1);
+        const nextRow = rows[nextRowIndex];
+        const nextCells = editableCellsForRow(scope, nextRow);
+        targetCell = nextCells[Math.min(cellIndex, nextCells.length - 1)] || null;
+      }
+      if (!targetCell) return false;
+      selectEditableCell(scope, targetCell, { scroll: true });
+      return true;
     }
 
     function hasPendingWorkspaceChanges(mode = currentMode) {
@@ -13156,7 +13210,7 @@ HTML = r"""<!doctype html>
           <td data-full-date="${escapeHtml(csCase.occurred_at || csCase.created_at)}">${escapeHtml(shortKoreanDate(csCase.occurred_at || csCase.created_at))}</td>
           <td>${escapeHtml(csCase.sales_vendor)}</td>
           <td>${escapeHtml(csCase.purchase_vendor || csCase.vendor_name)}</td>
-          <td class="editable-cell" data-field="status" data-label="처리진행상태" data-value="${escapeHtml(statusValue)}" data-input="select" data-options="${escapeHtml(JSON.stringify(statusSelectOptions))}">
+          <td class="editable-cell" tabindex="-1" data-field="status" data-label="처리진행상태" data-value="${escapeHtml(statusValue)}" data-input="select" data-options="${escapeHtml(JSON.stringify(statusSelectOptions))}">
             <span class="ledger-status-cell">
               <span class="ledger-cell-value">${escapeHtml(cellDisplayValue(statusValue))}</span>
               ${returnCheckButtonHtml}
@@ -16250,7 +16304,7 @@ HTML = r"""<!doctype html>
     managementBody.addEventListener("click", (event) => {
       const editableCell = event.target.closest(".editable-cell[data-management-field]");
       if (editableCell) {
-        openCellEditor("management", editableCell);
+        selectEditableCell("management", editableCell);
         return;
       }
       if (event.target.closest("[data-row-check]") && managementSelectAll) {
@@ -16259,6 +16313,12 @@ HTML = r"""<!doctype html>
       }
       const csButton = event.target.closest(".management-cs-button");
       if (csButton) receiveManagementCs(csButton);
+    });
+    managementBody.addEventListener("dblclick", (event) => {
+      const editableCell = event.target.closest(".editable-cell[data-management-field]");
+      if (!editableCell) return;
+      event.preventDefault();
+      openCellEditor("management", editableCell);
     });
     ledgerBody.addEventListener("click", (event) => {
       if (event.target.closest("[data-row-check]")) {
@@ -16274,8 +16334,14 @@ HTML = r"""<!doctype html>
       }
       const editableCell = event.target.closest(".editable-cell[data-field]");
       if (editableCell) {
-        openCellEditor("ledger", editableCell);
+        selectEditableCell("ledger", editableCell);
       }
+    });
+    ledgerBody.addEventListener("dblclick", (event) => {
+      const editableCell = event.target.closest(".editable-cell[data-field]");
+      if (!editableCell) return;
+      event.preventDefault();
+      openCellEditor("ledger", editableCell);
     });
     [ledgerCellApply, managementCellApply].forEach((button) => {
       button?.addEventListener("click", () => {
@@ -16302,6 +16368,20 @@ HTML = r"""<!doctype html>
       }
       if (event.key === "Escape" && searchResultDialog?.classList.contains("open")) {
         closeSearchResultDialog();
+      }
+      if (currentMode !== "management" && currentMode !== "ledger") return;
+      if (isInteractiveTarget(event.target)) return;
+      if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(event.key)) {
+        const moved = currentMode === "management"
+          ? moveSelectedEditableCell("management", event.key)
+          : moveSelectedEditableCell("ledger", event.key);
+        if (moved) event.preventDefault();
+      }
+      if (event.key === "F2" || event.key === "Enter") {
+        const editing = currentMode === "management"
+          ? beginSelectedCellEdit("management")
+          : beginSelectedCellEdit("ledger");
+        if (editing) event.preventDefault();
       }
     });
     [ledgerCellCancel, managementCellCancel].forEach((button) => {
