@@ -8195,6 +8195,23 @@ HTML = r"""<!doctype html>
     let companyCalendarEvents = [];
     let companyCalendarSummary = {};
     let cargoShipments = [];
+
+    function handleDashboardScheduleShortcut(event) {
+      const autoItem = event.target.closest("#sidebarNoticePreview [data-notice-auto-type]");
+      const calendarItem = event.target.closest("#companyCalendarGrid [data-calendar-event-id], #companyCalendarSelectedList [data-calendar-event-id]");
+      if (!autoItem && !calendarItem) return;
+      if (event.type === "keydown" && !isCardActivationKey(event)) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      if (autoItem) {
+        openNoticeAutoItem(autoItem);
+        return;
+      }
+      openCalendarEventWidget(calendarItem.dataset.calendarEventId);
+    }
+
+    document.addEventListener("click", handleDashboardScheduleShortcut, true);
+    document.addEventListener("keydown", handleDashboardScheduleShortcut, true);
     let crmActiveTab = "dashboard";
     let crmSelectedTaskId = "";
     const CRM_TASK_STATUSES = ["대기", "진행중", "보류", "완료"];
@@ -9093,7 +9110,7 @@ HTML = r"""<!doctype html>
           <div class="notice-auto-head"><span>오늘 확인할 회사 일정</span><span class="notice-auto-count">${items.length}</span></div>
           <div class="notice-auto-list">
             ${items.map((item) => `
-              <div class="notice-auto-item" role="button" tabindex="0" data-notice-auto-type="${escapeHtml(item.type)}" data-notice-auto-id="${escapeHtml(item.sourceId || "")}" data-notice-auto-event-id="${escapeHtml(item.eventId || "")}" onclick="window.openWorkhubNoticeAutoItem?.(this)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();window.openWorkhubNoticeAutoItem?.(this)}" title="${escapeHtml([item.title, item.detail].filter(Boolean).join(" / "))}">
+              <div class="notice-auto-item" role="button" tabindex="0" data-notice-auto-type="${escapeHtml(item.type)}" data-notice-auto-id="${escapeHtml(item.sourceId || "")}" data-notice-auto-event-id="${escapeHtml(item.eventId || "")}" title="${escapeHtml([item.title, item.detail].filter(Boolean).join(" / "))}">
                 <span class="notice-auto-badge ${escapeHtml(item.type)}">${escapeHtml(item.badge)}</span>
                 <span class="notice-auto-text">${escapeHtml(item.title)}${item.detail ? ` · ${escapeHtml(item.detail)}` : ""}</span>
               </div>
@@ -10971,6 +10988,33 @@ HTML = r"""<!doctype html>
       if (!event) return;
       if (event.type === "task" && event.task_id) {
         openCrmTaskWidget(event.task_id).catch((error) => setCrmMessage(error.message, true));
+        return;
+      }
+      if (event.type === "import" && event.shipment_id) {
+        const record = importShipments.find((item) => String(item.id) === String(event.shipment_id));
+        if (record) {
+          openImportShipmentDetailWidget(record);
+          return;
+        }
+        openImportShipmentDetailWidget(event);
+        return;
+      }
+      if ((event.type === "cargo" || event.type === "cargo-inbound") && event.cargo_id) {
+        const record = cargoShipments.find((item) => String(item.id) === String(event.cargo_id));
+        if (record) {
+          openCargoShipmentDetailWidget(record);
+          return;
+        }
+        openCargoShipmentDetailWidget({
+          cargo_type: event.type === "cargo-inbound" ? "inbound" : "outbound",
+          ship_date: event.date,
+          customer: String(event.title || "").replace(/^화물\s*(입고|출고)\s*/, ""),
+          item: event.item || "",
+          quantity: event.quantity || "",
+          destination: event.destination || "",
+          status: event.status || "",
+          memo: event.memo || event.subtitle || "",
+        });
         return;
       }
       const stateText = event.type === "project"
@@ -15732,6 +15776,8 @@ HTML = r"""<!doctype html>
     function openImportShipmentDetailWidget(record) {
       if (!record) return;
       const baseDate = record.warehouse_due_date || record.arrival_date || "";
+      const arrivalPortText = String(record.arrival_port || "").trim();
+      const showArrivalPort = Boolean(arrivalPortText && !/^\d{1,2}([./-]\d{1,2})?$/.test(arrivalPortText));
       openFocusWidget({
         kicker: "컨테이너 일정",
         title: record.item || "수입제품 입고 일정",
@@ -15739,14 +15785,22 @@ HTML = r"""<!doctype html>
         body: `
           <div class="focus-widget-grid">
             ${focusWidgetMetric("입고예정일", shortKoreanDate(record.warehouse_due_date || ""))}
+            ${focusWidgetMetric("출항일", shortKoreanDate(record.departure_date || ""))}
             ${focusWidgetMetric("입항일", shortKoreanDate(record.arrival_date || ""))}
             ${focusWidgetMetric("진행상황", record.progress_status || "진행중")}
+            ${focusWidgetMetric("선적항", record.loading_port || "-")}
+            ${showArrivalPort ? focusWidgetMetric("도착항", arrivalPortText) : ""}
+            ${focusWidgetMetric("제품명", record.item || "-")}
             ${focusWidgetMetric("수량", record.quantity || "-")}
+            ${focusWidgetMetric("선명", record.vessel_name || "-")}
+            ${focusWidgetMetric("HBL NO.", record.hbl_no || "-")}
           </div>
           <section class="focus-widget-section">
-            <div class="focus-widget-section-title">상세</div>
+            <div class="focus-widget-section-title">입고 상세</div>
             <p class="focus-widget-text">${escapeHtml([
-              record.shipper ? `선적항/거래처: ${record.shipper}` : "",
+              record.loading_port ? `선적항: ${record.loading_port}` : "",
+              showArrivalPort ? `도착항: ${arrivalPortText}` : "",
+              record.shipper ? `거래처/선적처: ${record.shipper}` : "",
               record.hbl_no ? `HBL NO.: ${record.hbl_no}` : "",
               record.size ? `SIZE: ${record.size}` : "",
               record.free_time ? `프리타임: ${record.free_time}` : "",
@@ -15773,8 +15827,15 @@ HTML = r"""<!doctype html>
             ${focusWidgetMetric("상태", record.status || (isInbound ? "입고 예정" : "출고 예정"))}
           </div>
           <section class="focus-widget-section">
-            <div class="focus-widget-section-title">메모</div>
-            <p class="focus-widget-text">${escapeHtml(record.memo || "메모가 없습니다.")}</p>
+            <div class="focus-widget-section-title">업무 상세</div>
+            <p class="focus-widget-text">${escapeHtml([
+              `${isInbound ? "입고" : "출고"}일정: ${shortKoreanDate(record.ship_date || "") || "-"}`,
+              `거래처/현장: ${record.customer || "-"}`,
+              `품목/수량: ${[record.item, record.quantity].filter(Boolean).join(" / ") || "-"}`,
+              `${isInbound ? "입고장소" : "도착지"}: ${record.destination || "-"}`,
+              `진행상태: ${record.status || (isInbound ? "입고 예정" : "출고 예정")}`,
+              record.memo ? `메모: ${record.memo}` : "",
+            ].filter(Boolean).join("\n"))}</p>
           </section>
         `,
       });
@@ -15784,24 +15845,24 @@ HTML = r"""<!doctype html>
       const type = element?.dataset.noticeAutoType || "";
       const id = element?.dataset.noticeAutoId || "";
       const eventId = element?.dataset.noticeAutoEventId || "";
-      if (eventId && companyCalendarEvents.some((item) => String(item.id) === String(eventId))) {
-        openCalendarEventWidget(eventId);
-        return;
-      }
       if (type === "import" && id) {
         const record = importShipments.find((item) => String(item.id) === String(id));
         if (record) openImportShipmentDetailWidget(record);
+        else if (eventId) openCalendarEventWidget(eventId);
         return;
       }
       if ((type === "cargo" || type === "cargo-inbound") && id) {
         const record = cargoShipments.find((item) => String(item.id) === String(id));
         if (record) openCargoShipmentDetailWidget(record);
+        else if (eventId) openCalendarEventWidget(eventId);
+        return;
+      }
+      if (eventId && companyCalendarEvents.some((item) => String(item.id) === String(eventId))) {
+        openCalendarEventWidget(eventId);
         return;
       }
       openNoticeWidget();
     }
-    window.openWorkhubNoticeAutoItem = openNoticeAutoItem;
-
     document.addEventListener("click", (event) => {
       const autoItem = event.target.closest("#sidebarNoticePreview [data-notice-auto-type]");
       if (!autoItem) return;
@@ -20535,7 +20596,9 @@ def company_calendar_payload(user: dict[str, str], month_text: str) -> dict:
             ).fetchall()
         import_rows = connection.execute(
             """
-            SELECT id, warehouse_due_date, arrival_date, shipper, item, quantity, progress_status, completed_at
+            SELECT id, departure_date, arrival_date, loading_port, arrival_port, shipper,
+                   item, quantity, vessel_name, hbl_no, size, progress_status,
+                   free_time, warehouse_due_date, completed_at
               FROM import_shipments
              WHERE completed_at IS NULL OR completed_at = ''
             """
@@ -20613,6 +20676,18 @@ def company_calendar_payload(user: dict[str, str], month_text: str) -> dict:
             "title": f"컨테이너 입고 {row['item'] or '수입제품'}",
             "subtitle": " · ".join(str(value) for value in [row["quantity"], row["progress_status"] or "진행중"] if value),
             "shipment_id": row["id"],
+            "departure_date": row["departure_date"] or "",
+            "arrival_date": row["arrival_date"] or "",
+            "loading_port": row["loading_port"] or "",
+            "arrival_port": row["arrival_port"] or "",
+            "shipper": row["shipper"] or "",
+            "item": row["item"] or "",
+            "quantity": row["quantity"] or "",
+            "vessel_name": row["vessel_name"] or "",
+            "hbl_no": row["hbl_no"] or "",
+            "size": row["size"] or "",
+            "free_time": row["free_time"] or "",
+            "warehouse_due_date": row["warehouse_due_date"] or "",
             "status": row["progress_status"] or "진행중",
         })
     for row in cargo_rows:
@@ -20627,6 +20702,9 @@ def company_calendar_payload(user: dict[str, str], month_text: str) -> dict:
             "title": f"{'화물 입고' if is_inbound else '화물 출고'} {row['customer'] or '거래처 미정'}",
             "subtitle": " · ".join(str(value) for value in [row["item"], row["quantity"], row["destination"], row["status"] or ("입고 예정" if is_inbound else "출고 예정")] if value),
             "cargo_id": row["id"],
+            "item": row["item"] or "",
+            "quantity": row["quantity"] or "",
+            "destination": row["destination"] or "",
             "status": row["status"] or ("입고 예정" if is_inbound else "출고 예정"),
             "memo": row["memo"] or "",
         })
