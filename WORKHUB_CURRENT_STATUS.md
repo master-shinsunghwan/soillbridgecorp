@@ -22,6 +22,12 @@
 또는:
 
 ```powershell
+.\RUN_WORKHUB.cmd
+```
+
+또는:
+
+```powershell
 python -m pip install -r requirements.txt
 python scripts\workhub_delivery_app.py 8770
 ```

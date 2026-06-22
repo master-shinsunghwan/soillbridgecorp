@@ -85,7 +85,7 @@ if (-not (Test-Workhub)) {
   }
 
   $Ready = $false
-  for ($i = 0; $i -lt 20; $i++) {
+  for ($i = 0; $i -lt 180; $i++) {
     Start-Sleep -Milliseconds 500
     if (Test-Workhub) {
       $Ready = $true
