@@ -12483,7 +12483,7 @@ HTML = r"""<!doctype html>
       }
     }
 
-    function renderHermesHistory(items = []) {
+    function renderHermesHistoryLegacy(items = []) {
       if (!hermesHistoryList) return;
       hermesHistoryList.innerHTML = items.length ? items.map((item) => `
         <div class="hermes-history-item">

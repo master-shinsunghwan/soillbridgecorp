@@ -243,6 +243,7 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         self.assertIn("renderHermesSummaries", html_source)
         self.assertIn("createHermesSummary", html_source)
         self.assertIn('kind: "summary"', html_source)
+        self.assertEqual(html_source.count("function renderHermesHistory(items = [])"), 1)
 
     def test_ledger_arrow_keys_move_between_cells_before_editing(self) -> None:
         html_source = (ROOT / "scripts" / "workhub_delivery_app.py").read_text(encoding="utf-8")
