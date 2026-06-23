@@ -22212,6 +22212,27 @@ def start_sales_report_alert_scheduler() -> None:
     thread.start()
 
 
+def latest_sales_report_context(connection: sqlite3.Connection, fallback_today: bool = True) -> tuple[str, str]:
+    row = connection.execute(
+        """
+        SELECT report_date, period
+          FROM sales_report_daily_rows
+         WHERE report_date != ''
+         ORDER BY report_date DESC
+         LIMIT 1
+        """
+    ).fetchone()
+    if row:
+        report_date = str(row["report_date"] or "")
+        period = str(row["period"] or report_date[:7] or "")
+        if report_date or period:
+            return report_date, period
+    if not fallback_today:
+        return "", ""
+    today = date.today().isoformat()
+    return today, today[:7]
+
+
 def save_sales_report_file(source_path: str | Path, original_name: str, uploaded_by: str = "") -> dict[str, str | int]:
     source = Path(source_path)
     if not source.is_file():
@@ -22236,6 +22257,14 @@ def save_sales_report_file(source_path: str | Path, original_name: str, uploaded
 
     connection = connect_db()
     try:
+        if parsed_report and report_type in {"seller", "supplier", "product"} and (not report_date or not period):
+            inferred_date, inferred_period = latest_sales_report_context(connection, fallback_today=not period)
+            if not period:
+                period = inferred_period or report_date[:7]
+            if not report_date and inferred_date and (not inferred_period or inferred_period == period):
+                report_date = inferred_date
+            parsed_report["report_date"] = report_date
+            parsed_report["period"] = period
         cursor = connection.execute(
             """
             INSERT INTO sales_report_uploads (

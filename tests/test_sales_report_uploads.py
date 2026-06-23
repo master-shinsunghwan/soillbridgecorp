@@ -281,6 +281,68 @@ class SalesReportUploadTests(unittest.TestCase):
         self.assertEqual(dashboard["seller_top"][0]["profit_sales_amount"], 900)
         self.assertEqual(dashboard["product_top"][0]["profit_sales_amount"], 700)
 
+    def test_sales_dimension_reports_without_date_inherit_latest_daily_context(self) -> None:
+        base = Path(self.tempdir.name)
+        daily = base / "daily.xlsx"
+        product = base / "product.xlsx"
+        supplier = base / "supplier.xlsx"
+        self.write_daily_report(daily)
+        product.write_text("product placeholder", encoding="utf-8")
+        supplier.write_text("supplier placeholder", encoding="utf-8")
+
+        self.app.save_sales_report_file(daily, daily.name, "admin")
+
+        original_detect = self.app.detect_sales_report_type
+        original_parse = self.app.parse_sales_report_file
+
+        def fake_detect(path: Path, original_name: str = "") -> str:
+            return "supplier" if "supplier" in original_name else "product"
+
+        def fake_parse(path: Path, original_name: str = "") -> dict[str, object]:
+            if "supplier" in original_name:
+                return {
+                    "report_type": "supplier",
+                    "report_date": "",
+                    "period": "",
+                    "rows": [{"name": "테스트 공급사", "quantity": 3, "supply_total": 1500}],
+                }
+            return {
+                "report_type": "product",
+                "report_date": "",
+                "period": "",
+                "rows": [{"code": "P001", "name": "테스트 상품", "quantity": 2, "profit_sales_amount": 1000}],
+            }
+
+        try:
+            self.app.detect_sales_report_type = fake_detect
+            self.app.parse_sales_report_file = fake_parse
+            product_saved = self.app.save_sales_report_file(product, product.name, "admin")
+            supplier_saved = self.app.save_sales_report_file(supplier, supplier.name, "admin")
+        finally:
+            self.app.detect_sales_report_type = original_detect
+            self.app.parse_sales_report_file = original_parse
+
+        self.assertEqual(product_saved["report_date"], "2026-06-19")
+        self.assertEqual(product_saved["period"], "2026-06")
+        self.assertEqual(supplier_saved["report_date"], "2026-06-19")
+        self.assertEqual(supplier_saved["period"], "2026-06")
+
+        connection = self.app.connect_db()
+        try:
+            product_row = connection.execute(
+                "SELECT report_date, period FROM sales_report_product_rows WHERE product_name = ?",
+                ("테스트 상품",),
+            ).fetchone()
+            supplier_row = connection.execute(
+                "SELECT report_date, period FROM sales_report_supplier_rows WHERE supplier_name = ?",
+                ("테스트 공급사",),
+            ).fetchone()
+        finally:
+            connection.close()
+
+        self.assertEqual(dict(product_row), {"report_date": "2026-06-19", "period": "2026-06"})
+        self.assertEqual(dict(supplier_row), {"report_date": "2026-06-19", "period": "2026-06"})
+
     def test_sales_supplier_report_feeds_purchase_total_panel(self) -> None:
         base = Path(self.tempdir.name)
         supplier = base / "Statistics_Sales_Suppler_2026-06-19.xls"
