@@ -230,6 +230,7 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         self.assertIn("hermes_automation", html_source)
         self.assertIn("hermes_admin", html_source)
         self.assertIn("hermes-mark", html_source)
+        self.assertIn("/static/hermes-icon.png", html_source)
 
     def test_ledger_arrow_keys_move_between_cells_before_editing(self) -> None:
         html_source = (ROOT / "scripts" / "workhub_delivery_app.py").read_text(encoding="utf-8")

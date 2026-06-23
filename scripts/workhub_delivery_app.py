@@ -793,20 +793,20 @@ HTML = r"""<!doctype html>
     .nav-item[data-nav-tone="admin"] { --nav-icon: #fbbf24; --nav-active-bg: rgba(245, 158, 11, .22); }
     .nav-item[data-nav-tone="files"] { --nav-icon: #5eead4; --nav-active-bg: rgba(13, 148, 136, .20); }
     .hermes-mark {
-      width: 15px;
-      height: 15px;
+      width: 18px;
+      height: 18px;
       flex: 0 0 auto;
-      color: var(--nav-icon, #60a5fa);
+      border-radius: 50%;
+      overflow: hidden;
+      background: #ffffff;
+      box-shadow: 0 0 0 1px rgba(148, 163, 184, .35);
     }
-    .hermes-mark svg {
-      width: 15px;
-      height: 15px;
+    .hermes-mark img {
+      width: 100%;
+      height: 100%;
       display: block;
-      fill: none;
-      stroke: currentColor;
-      stroke-width: 1.9;
-      stroke-linecap: round;
-      stroke-linejoin: round;
+      object-fit: cover;
+      object-position: 44% 36%;
     }
     .nav-item .nav-chevron {
       margin-left: auto;
@@ -2427,9 +2427,13 @@ HTML = r"""<!doctype html>
       border: 1px solid #bfdbfe;
     }
     .hermes-hero-icon .hermes-mark,
-    .hermes-hero-icon .hermes-mark svg {
-      width: 26px;
-      height: 26px;
+    .hermes-hero-icon .hermes-mark img {
+      width: 100%;
+      height: 100%;
+    }
+    .hermes-hero-icon .hermes-mark {
+      width: 34px;
+      height: 34px;
     }
     .hermes-status-pill {
       min-width: 92px;
@@ -19544,7 +19548,7 @@ SALES_REPORT_NAV_HTML = r"""
       </div>
 """
 
-HERMES_ICON_HTML = r"""<span class="hermes-mark" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 4.4c-2.4 0-4.4 1.8-4.4 4.1v2.8c0 2.3 2 4.1 4.4 4.1s4.4-1.8 4.4-4.1V8.5c0-2.3-2-4.1-4.4-4.1Z"/><path d="M9.1 8.5c1.8.7 4 .7 5.8 0"/><path d="M8.1 6.2 3.5 3.5c.3 2.7 1.8 4.6 4.1 5.5"/><path d="m15.9 6.2 4.6-2.7c-.3 2.7-1.8 4.6-4.1 5.5"/><path d="M9 15.2 7.2 20"/><path d="m15 15.2 1.8 4.8"/><path d="M9.2 20h5.6"/></svg></span>"""
+HERMES_ICON_HTML = r"""<span class="hermes-mark" aria-hidden="true"><img src="/static/hermes-icon.png" alt="" loading="lazy" /></span>"""
 
 HERMES_NAV_HTML = rf"""
       <div class="nav-group" id="hermesNavGroup">
