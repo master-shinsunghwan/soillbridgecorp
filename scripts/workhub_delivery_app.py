@@ -26598,7 +26598,8 @@ def normalize_management_import_records(records: list[dict[str, object]]) -> Non
                 record[field] = normalized
         if not clean_cell(record.get("ship_date")) and parse_import_date_value(record.get("order_date"), default_year):
             record["ship_date"] = clean_cell(record.get("order_date"))
-        record["ledger_checked"] = "입력 완료"
+        if not clean_cell(record.get("ledger_checked")):
+            record["ledger_checked"] = "입력 완료"
 
 
 def normalize_cs_import_records(records: list[dict[str, object]]) -> None:

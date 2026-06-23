@@ -99,16 +99,43 @@ def test_management_import_accepts_supply_header_on_first_row(tmp_path: Path) ->
     workbook_path = tmp_path / "supply.xlsx"
     create_supply_workbook(workbook_path)
 
-    inserted, skipped = app.import_management_workbook(workbook_path)
+    result = app.import_management_workbook(workbook_path)
     rows = app.list_management_records(limit=None)
 
-    assert (inserted, skipped) == (1, 0)
+    assert result["inserted"] == 1
+    assert result["skipped"] == 0
     assert rows[0]["receiver_name"] == "이수령"
     assert rows[0]["invoice_number"] == "1234567890"
     assert rows[0]["order_item_id"] == "111385084"
     assert rows[0]["product_code"] == "SOSO27788588"
     assert rows[0]["order_number"] == "WSO260615-000000021"
+    assert rows[0]["ship_date"] == "2026-06-15"
+    assert rows[0]["ledger_checked"] == "\uc785\ub825 \uc644\ub8cc"
     assert rows[0]["customer_option"] == "기본"
+
+
+def test_management_import_defaults_blank_ship_date_and_ledger_check_only(tmp_path: Path) -> None:
+    app = load_app(tmp_path)
+    records = [
+        {
+            "order_date": "2026-06-15 09:30:46",
+            "ship_date": "",
+            "ledger_checked": "",
+        },
+        {
+            "order_date": "2026-06-16",
+            "ship_date": "",
+            "ledger_checked": "\ud655\uc778 \ubcf4\ub958",
+        },
+    ]
+
+    app.normalize_management_import_records(records)
+
+    assert records[0]["order_date"] == "2026-06-15"
+    assert records[0]["ship_date"] == "2026-06-15"
+    assert records[0]["ledger_checked"] == "\uc785\ub825 \uc644\ub8cc"
+    assert records[1]["ship_date"] == "2026-06-16"
+    assert records[1]["ledger_checked"] == "\ud655\uc778 \ubcf4\ub958"
 
 
 def test_management_template_export_uses_supply_columns_and_filename(tmp_path: Path) -> None:
@@ -151,6 +178,8 @@ def main() -> None:
         test_delivery_summary_accepts_supply_format(Path(directory) / "summary")
     with tempfile.TemporaryDirectory() as directory:
         test_management_import_accepts_supply_header_on_first_row(Path(directory) / "import")
+    with tempfile.TemporaryDirectory() as directory:
+        test_management_import_defaults_blank_ship_date_and_ledger_check_only(Path(directory) / "normalize")
     with tempfile.TemporaryDirectory() as directory:
         test_management_template_export_uses_supply_columns_and_filename(Path(directory) / "export")
 

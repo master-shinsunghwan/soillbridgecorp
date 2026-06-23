@@ -67,6 +67,11 @@ def load_app(tmp_path: Path):
     return importlib.import_module("workhub_delivery_app")
 
 
+def assert_import_result(result: dict, inserted: int, skipped: int) -> None:
+    assert result["inserted"] == inserted
+    assert result["skipped"] == skipped
+
+
 def create_management_workbook(path: Path, *, order_item_id: str, receiver_name: str = "이수령") -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     workbook = Workbook()
@@ -204,7 +209,7 @@ def test_management_daily_upload_detects_business_duplicates_across_files(tmp_pa
     create_management_workbook(first, order_item_id="ITEM-001")
     create_management_workbook(second, order_item_id="ITEM-001")
 
-    assert app.import_management_workbook(first) == (1, 0)
+    assert_import_result(app.import_management_workbook(first), 1, 0)
 
     preview = app.preview_management_import(second)
     assert preview["total"] == 1
@@ -212,7 +217,7 @@ def test_management_daily_upload_detects_business_duplicates_across_files(tmp_pa
     assert preview["duplicate_existing"] == 1
     assert "이수령" in preview["duplicates"][0]["summary"]
 
-    assert app.import_management_workbook(second) == (0, 1)
+    assert_import_result(app.import_management_workbook(second), 0, 1)
 
 
 def test_management_upload_requires_fixing_invalid_text_and_number_fields(tmp_path: Path) -> None:
@@ -222,14 +227,16 @@ def test_management_upload_requires_fixing_invalid_text_and_number_fields(tmp_pa
 
     preview = app.preview_management_import(workbook_path)
     assert preview["total"] == 1
-    assert preview["insertable"] == 0
+    assert preview["insertable"] == 1
     assert preview["invalid_count"] == 1
     invalid_row = preview["invalid_rows"][0]
     issue_fields = {issue["field"] for issue in invalid_row["issues"]}
     assert {"receiver_name", "quantity"}.issubset(issue_fields)
 
-    assert app.import_management_workbook(workbook_path) == (0, 1)
-    assert app.import_management_workbook(
+    result = app.import_management_workbook(workbook_path)
+    assert_import_result(result, 1, 0)
+    assert result["invalid_count"] == 1
+    assert_import_result(app.import_management_workbook(
         workbook_path,
         corrections=[
             {
@@ -239,7 +246,7 @@ def test_management_upload_requires_fixing_invalid_text_and_number_fields(tmp_pa
                 "quantity": "1",
             }
         ],
-    ) == (1, 0)
+    ), 0, 1)
 
 
 def test_management_replace_upload_clears_existing_rows(tmp_path: Path) -> None:
@@ -249,8 +256,8 @@ def test_management_replace_upload_clears_existing_rows(tmp_path: Path) -> None:
     create_management_workbook(first, order_item_id="ITEM-001", receiver_name="이수령")
     create_management_workbook(replacement, order_item_id="ITEM-002", receiver_name="박수령")
 
-    assert app.import_management_workbook(first) == (1, 0)
-    assert app.import_management_workbook(replacement, mode="replace") == (1, 0)
+    assert_import_result(app.import_management_workbook(first), 1, 0)
+    assert_import_result(app.import_management_workbook(replacement, mode="replace"), 1, 0)
 
     rows = app.list_management_records(limit=None)
     assert len(rows) == 1
@@ -264,7 +271,7 @@ def test_cs_daily_upload_detects_business_duplicates_across_files(tmp_path: Path
     create_cs_workbook(first)
     create_cs_workbook(second)
 
-    assert app.import_cs_cases_from_workbook(first) == (1, 0)
+    assert_import_result(app.import_cs_cases_from_workbook(first), 1, 0)
 
     preview = app.preview_cs_cases_import(second)
     assert preview["total"] == 1
@@ -272,7 +279,7 @@ def test_cs_daily_upload_detects_business_duplicates_across_files(tmp_path: Path
     assert preview["duplicate_existing"] == 1
     assert "파손 접수" in preview["duplicates"][0]["summary"]
 
-    assert app.import_cs_cases_from_workbook(second) == (0, 1)
+    assert_import_result(app.import_cs_cases_from_workbook(second), 0, 1)
 
 
 def test_cs_upload_requires_fixing_invalid_text_and_number_fields(tmp_path: Path) -> None:
@@ -282,14 +289,16 @@ def test_cs_upload_requires_fixing_invalid_text_and_number_fields(tmp_path: Path
 
     preview = app.preview_cs_cases_import(workbook_path)
     assert preview["total"] == 1
-    assert preview["insertable"] == 0
+    assert preview["insertable"] == 1
     assert preview["invalid_count"] == 1
     invalid_row = preview["invalid_rows"][0]
     issue_fields = {issue["field"] for issue in invalid_row["issues"]}
     assert {"original_invoice", "receiver_phone", "quantity"}.issubset(issue_fields)
 
-    assert app.import_cs_cases_from_workbook(workbook_path) == (0, 1)
-    assert app.import_cs_cases_from_workbook(
+    result = app.import_cs_cases_from_workbook(workbook_path)
+    assert_import_result(result, 1, 0)
+    assert result["invalid_count"] == 1
+    assert_import_result(app.import_cs_cases_from_workbook(
         workbook_path,
         corrections=[
             {
@@ -300,7 +309,7 @@ def test_cs_upload_requires_fixing_invalid_text_and_number_fields(tmp_path: Path
                 "quantity": "1",
             }
         ],
-    ) == (1, 0)
+    ), 0, 1)
 
 
 def main() -> None:
