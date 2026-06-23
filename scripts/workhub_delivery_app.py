@@ -2616,7 +2616,8 @@ HTML = r"""<!doctype html>
     .ledger-fields { display: none; }
     .management-fields { display: none; }
     .ledger-cs-popup-head { display: none; }
-    .workhub-modal.ledger-modal .cs-fields.ledger-cs-popup {
+    .workhub-modal.ledger-modal .cs-fields.ledger-cs-popup,
+    #ledgerWorkspace .cs-fields.ledger-cs-popup {
       position: absolute;
       z-index: 35;
       top: 70px;
@@ -2631,7 +2632,13 @@ HTML = r"""<!doctype html>
       background: white;
       box-shadow: 0 18px 44px rgba(15, 23, 42, .28);
     }
-    .workhub-modal.ledger-modal .cs-fields.ledger-cs-popup .ledger-cs-popup-head {
+    #ledgerWorkspace .cs-fields.ledger-cs-popup {
+      top: 18px;
+      right: 22px;
+      bottom: 24px;
+    }
+    .workhub-modal.ledger-modal .cs-fields.ledger-cs-popup .ledger-cs-popup-head,
+    #ledgerWorkspace .cs-fields.ledger-cs-popup .ledger-cs-popup-head {
       position: sticky;
       top: -18px;
       z-index: 2;
@@ -15033,7 +15040,7 @@ HTML = r"""<!doctype html>
       const className = `editable-cell ${align}`.trim();
       const dataAttr = scope === "management" ? "data-management-field" : "data-field";
       const optionData = options.length ? ` data-options="${escapeHtml(JSON.stringify(options))}"` : "";
-      return `<td class="${className}" ${dataAttr}="${escapeHtml(field)}" data-label="${escapeHtml(label)}" data-value="${escapeHtml(value)}" data-input="${escapeHtml(input)}" title="${escapeHtml(displayValue)}"${date ? ` data-raw-date="${escapeHtml(value)}" data-full-date="${escapeHtml(value)}" data-date="1"` : ""}${optionData}>${escapeHtml(displayValue)}</td>`;
+      return `<td class="${className}" tabindex="0" ${dataAttr}="${escapeHtml(field)}" data-label="${escapeHtml(label)}" data-value="${escapeHtml(value)}" data-input="${escapeHtml(input)}" title="${escapeHtml(displayValue)}"${date ? ` data-raw-date="${escapeHtml(value)}" data-full-date="${escapeHtml(value)}" data-date="1"` : ""}${optionData}>${escapeHtml(displayValue)}</td>`;
     }
 
     function selectedEditorParts(scope) {
@@ -15059,6 +15066,24 @@ HTML = r"""<!doctype html>
       parts.bar?.classList.remove("open");
       if (parts.mount) parts.mount.innerHTML = "";
       if (parts.label) parts.label.textContent = "셀 선택";
+      if (scope === "ledger" && ledgerReturnCheckButton) ledgerReturnCheckButton.hidden = true;
+    }
+
+    function selectEditableCell(scope, cell) {
+      if (!cell || cell.dataset.readonly === "1") return;
+      const previous = activeCellEditors[scope];
+      if (previous?.cell && previous.cell !== cell) previous.cell.classList.remove("selected-cell");
+      const parts = selectedEditorParts(scope);
+      const label = cell.dataset.label || cell.dataset.field || cell.dataset.managementField || "선택 셀";
+      const row = cell.closest("tr");
+      const rowHint = row && scope === "management"
+        ? [row.querySelector('[data-management-field="order_date"]')?.textContent.trim(), row.querySelector('[data-management-field="receiver_name"]')?.textContent.trim(), row.querySelector('[data-management-field="product_name"]')?.textContent.trim()].filter(Boolean).join(" / ")
+        : row ? [textFromCell(row, 1), textFromCell(row, 14), textFromCell(row, 16)].filter(Boolean).join(" / ") : "";
+      cell.classList.add("selected-cell");
+      activeCellEditors[scope] = { cell, control: null };
+      if (parts.label) parts.label.textContent = rowHint ? `${label} · ${rowHint}` : label;
+      if (parts.mount) parts.mount.innerHTML = "";
+      parts.bar?.classList.remove("open");
       if (scope === "ledger" && ledgerReturnCheckButton) ledgerReturnCheckButton.hidden = true;
     }
 
@@ -15277,9 +15302,24 @@ HTML = r"""<!doctype html>
       activeCsCaseId = "";
     }
 
+    function restoreCsFieldsToModal() {
+      if (!uploadForm || !csFields || csFields.parentElement === uploadForm) return;
+      uploadForm.insertBefore(
+        csFields,
+        stockNoticeFields || vendorContactManageFields || uploadForm.querySelector(".modal-actions")
+      );
+    }
+
+    function mountCsFieldsInLedgerWorkspace() {
+      if (!ledgerWorkspaceMount || !csFields || csFields.parentElement === ledgerWorkspaceMount) return;
+      ledgerWorkspaceMount.appendChild(csFields);
+    }
+
     function openLedgerCsPopup() {
       closeLedgerFilter();
       resetCsFormInputs();
+      if (ledgerWorkspace?.classList.contains("active")) mountCsFieldsInLedgerWorkspace();
+      else restoreCsFieldsToModal();
       csFields.classList.add("ledger-cs-popup");
       csFields.style.display = "block";
       loadVendorContacts();
@@ -16803,6 +16843,7 @@ HTML = r"""<!doctype html>
 
     function openModal(mode) {
       if (!confirmSaveBeforeLeaving(mode, () => openModal(mode))) return false;
+      restoreCsFieldsToModal();
       currentMode = mode;
       closeLedgerCsPopup();
       modal.classList.add("open");
@@ -18490,7 +18531,8 @@ HTML = r"""<!doctype html>
     managementBody.addEventListener("click", (event) => {
       const editableCell = event.target.closest(".editable-cell[data-management-field]");
       if (editableCell) {
-        openCellEditor("management", editableCell);
+        selectEditableCell("management", editableCell);
+        editableCell.focus({ preventScroll: true });
         return;
       }
       if (event.target.closest("[data-row-check]") && managementSelectAll) {
@@ -18499,6 +18541,17 @@ HTML = r"""<!doctype html>
       }
       const csButton = event.target.closest(".management-cs-button");
       if (csButton) receiveManagementCs(csButton);
+    });
+    managementBody.addEventListener("dblclick", (event) => {
+      const editableCell = event.target.closest(".editable-cell[data-management-field]");
+      if (editableCell) openCellEditor("management", editableCell);
+    });
+    managementBody.addEventListener("keydown", (event) => {
+      if (event.key !== "F2") return;
+      const editableCell = event.target.closest(".editable-cell[data-management-field]");
+      if (!editableCell) return;
+      event.preventDefault();
+      openCellEditor("management", editableCell);
     });
     ledgerBody.addEventListener("click", (event) => {
       if (event.target.closest("[data-row-check]")) {
@@ -18514,8 +18567,20 @@ HTML = r"""<!doctype html>
       }
       const editableCell = event.target.closest(".editable-cell[data-field]");
       if (editableCell) {
-        openCellEditor("ledger", editableCell);
+        selectEditableCell("ledger", editableCell);
+        editableCell.focus({ preventScroll: true });
       }
+    });
+    ledgerBody.addEventListener("dblclick", (event) => {
+      const editableCell = event.target.closest(".editable-cell[data-field]");
+      if (editableCell) openCellEditor("ledger", editableCell);
+    });
+    ledgerBody.addEventListener("keydown", (event) => {
+      if (event.key !== "F2") return;
+      const editableCell = event.target.closest(".editable-cell[data-field]");
+      if (!editableCell) return;
+      event.preventDefault();
+      openCellEditor("ledger", editableCell);
     });
     [ledgerCellApply, managementCellApply].forEach((button) => {
       button?.addEventListener("click", () => {

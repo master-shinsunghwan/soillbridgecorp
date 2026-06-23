@@ -185,6 +185,26 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         self.assertIn("collect_mail_attachments", html_source)
         self.assertIn("attachments=attachments", html_source)
 
+    def test_ledger_cs_popup_and_cell_edit_activation_are_workspace_safe(self) -> None:
+        html_source = (ROOT / "scripts" / "workhub_delivery_app.py").read_text(encoding="utf-8")
+
+        self.assertIn("function mountCsFieldsInLedgerWorkspace()", html_source)
+        self.assertIn("ledgerWorkspaceMount.appendChild(csFields)", html_source)
+        self.assertIn("#ledgerWorkspace .cs-fields.ledger-cs-popup", html_source)
+        self.assertIn("restoreCsFieldsToModal();", html_source)
+
+        self.assertIn('tabindex="0"', html_source)
+        self.assertIn("function selectEditableCell(scope, cell)", html_source)
+        self.assertIn('managementBody.addEventListener("dblclick"', html_source)
+        self.assertIn('ledgerBody.addEventListener("dblclick"', html_source)
+        self.assertIn('event.key !== "F2"', html_source)
+        management_click_start = html_source.index('managementBody.addEventListener("click"')
+        management_click_end = html_source.index('managementBody.addEventListener("dblclick"', management_click_start)
+        ledger_click_start = html_source.index('ledgerBody.addEventListener("click"')
+        ledger_click_end = html_source.index('ledgerBody.addEventListener("dblclick"', ledger_click_start)
+        self.assertNotIn('openCellEditor("management"', html_source[management_click_start:management_click_end])
+        self.assertNotIn('openCellEditor("ledger"', html_source[ledger_click_start:ledger_click_end])
+
     def test_crm_task_board_uses_collapsible_advanced_filters_from_branch(self) -> None:
         html_source = (ROOT / "scripts" / "workhub_delivery_app.py").read_text(encoding="utf-8")
 
