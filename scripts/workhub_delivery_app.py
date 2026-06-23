@@ -9086,7 +9086,8 @@ HTML = r"""<!doctype html>
               <option value="불량반품">불량반품</option>
               <option value="불량교환">불량교환</option>
               <option value="불량재출고(미회수)">불량재출고(미회수)</option>
-              <option value="오출고(오배송)">오출고(오배송)</option>
+              <option value="오출고(오배송)/회수진행">오출고(오배송)/회수진행</option>
+              <option value="오출고(오배송)/회수없음">오출고(오배송)/회수없음</option>
             </select>
           </div>
           <div class="text-field cs-wide">
@@ -15346,7 +15347,7 @@ HTML = r"""<!doctype html>
       return statuses.includes(normalizedCurrent) ? statuses : [normalizedCurrent, ...statuses];
     }
 
-    const csTypeOptions = ["변심반품", "불량반품", "불량교환", "불량재출고(미회수)", "오출고(오배송)"];
+    const csTypeOptions = ["변심반품", "불량반품", "불량교환", "불량재출고(미회수)", "오출고(오배송)/회수진행", "오출고(오배송)/회수없음"];
 
     function selectOptions(options, currentValue = "") {
       const normalizedCurrent = currentValue || "";
@@ -15363,8 +15364,8 @@ HTML = r"""<!doctype html>
       const status = String(statusValue || "").replaceAll(" ", "").trim();
       if (status.includes("전체처리완료")) return true;
       if ((type === "변심반품" || type === "변신반품" || type === "불량반품") && status.includes("회수완료")) return true;
-      if ((type === "불량교환" || type === "오출고(오배송)") && status.includes("전체처리완료")) return true;
-      if (type === "불량재출고(미회수)" && status.includes("재발송완료")) return true;
+      if ((type === "불량교환" || type === "오출고(오배송)" || type === "오출고(오배송)/회수진행") && status.includes("전체처리완료")) return true;
+      if ((type === "불량재출고(미회수)" || type === "오출고(오배송)/회수없음") && status.includes("재발송완료")) return true;
       return false;
     }
 
@@ -15432,8 +15433,8 @@ HTML = r"""<!doctype html>
     function ledgerTypeCategory(row) {
       const type = normalizedLedgerText(fieldValue(row?.querySelector('[data-field="cs_type"]')));
       if (["변심반품", "변신반품", "불량반품"].includes(type)) return "returnOnly";
-      if (["불량교환", "오출고(오배송)"].includes(type)) return "exchange";
-      if (type === "불량재출고(미회수)") return "reshipOnly";
+      if (["불량교환", "오출고(오배송)", "오출고(오배송)/회수진행"].includes(type)) return "exchange";
+      if (["불량재출고(미회수)", "오출고(오배송)/회수없음"].includes(type)) return "reshipOnly";
       return "unknown";
     }
 
@@ -25271,17 +25272,32 @@ def status_date_text(*values: object) -> str:
 
 def normalize_cs_type_value(cs_type: str, cs_content: str, status: str = "") -> str:
     existing = clean_cell(cs_type)
-    if existing in {"변심반품", "변신반품", "불량반품", "불량교환", "불량재출고(미회수)", "오출고(오배송)"}:
-        return "변심반품" if existing == "변신반품" else existing
+    if existing in {
+        "변심반품",
+        "변신반품",
+        "불량반품",
+        "불량교환",
+        "불량재출고(미회수)",
+        "오출고(오배송)",
+        "오출고(오배송)/회수진행",
+        "오출고(오배송)/회수없음",
+    }:
+        if existing == "변신반품":
+            return "변심반품"
+        if existing == "오출고(오배송)":
+            return "오출고(오배송)/회수진행"
+        return existing
 
     text = normalize_compact(f"{existing} {cs_content} {status}")
     if not text:
         return ""
 
     if any(keyword in text for keyword in ["오배송", "오출고", "오발주", "착오", "중복발주", "중복출고", "이중발주", "이중출고", "주소오류", "주소오기재"]):
-        return "오출고(오배송)"
+        if any(keyword in text for keyword in ["회수없음", "회수없이", "미회수", "회수안함", "회수불필요", "회수X", "회수x"]):
+            return "오출고(오배송)/회수없음"
+        return "오출고(오배송)/회수진행"
     if any(keyword in text for keyword in ["출고취소", "출고전취소", "출소취소"]):
-        return "오출고(오배송)"
+        return "오출고(오배송)/회수없음"
     if any(keyword in text for keyword in ["변심", "단순변심"]):
         return "변심반품"
     if any(keyword in text for keyword in ["맞교환", "맞효관", "불량교환", "제품불량교환", "교환요청", "교환원", "교환진행", "교환"]):
@@ -25472,7 +25488,10 @@ def list_cs_cases(query: str = "", status: str = "", limit: int = 20, year: str 
 
 
 def normalized_cs_type(value: str) -> str:
-    return re.sub(r"\s+", "", value or "")
+    normalized = re.sub(r"\s+", "", value or "")
+    if normalized == "오출고(오배송)":
+        return "오출고(오배송)/회수진행"
+    return normalized
 
 
 def should_mark_cs_case_complete(cs_type: str, cs_content: str, return_invoice: str, reship_invoice: str) -> bool:
@@ -25482,9 +25501,9 @@ def should_mark_cs_case_complete(cs_type: str, cs_content: str, return_invoice: 
     has_return_check = "[회수검수" in (cs_content or "")
     if normalized_type in {"변심반품", "변신반품", "불량반품"}:
         return has_return and has_return_check
-    if normalized_type in {"불량교환", "오출고(오배송)"}:
+    if normalized_type in {"불량교환", "오출고(오배송)/회수진행"}:
         return has_return and has_reship and has_return_check
-    if normalized_type == "불량재출고(미회수)":
+    if normalized_type in {"불량재출고(미회수)", "오출고(오배송)/회수없음"}:
         return has_reship
     return False
 
@@ -26781,7 +26800,14 @@ def cs_import_issues(record: dict[str, object]) -> list[dict[str, str]]:
         issue = optional_date_issue(record, field, label)
         if issue:
             issues.append(issue)
-    valid_cs_types = ["변심반품", "불량반품", "불량교환", "불량재출고(미회수)", "오출고(오배송)"]
+    valid_cs_types = [
+        "변심반품",
+        "불량반품",
+        "불량교환",
+        "불량재출고(미회수)",
+        "오출고(오배송)/회수진행",
+        "오출고(오배송)/회수없음",
+    ]
     if clean_cell(record.get("cs_type")) not in valid_cs_types:
         issues.append(import_select_issue("cs_type", "처리내용", "처리내용은 기존 CS 유형 중 하나로 선택해주세요.", valid_cs_types))
     valid_statuses = [

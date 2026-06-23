@@ -282,6 +282,21 @@ def test_cs_daily_upload_detects_business_duplicates_across_files(tmp_path: Path
     assert_import_result(app.import_cs_cases_from_workbook(second), 0, 1)
 
 
+def test_cs_misdelivery_types_have_separate_completion_rules(tmp_path: Path) -> None:
+    app = load_app(tmp_path)
+
+    assert app.normalize_cs_type_value("오출고(오배송)", "", "") == "오출고(오배송)/회수진행"
+    assert app.normalize_cs_type_value("오출고(오배송)/회수진행", "", "") == "오출고(오배송)/회수진행"
+    assert app.normalize_cs_type_value("오출고(오배송)/회수없음", "", "") == "오출고(오배송)/회수없음"
+    assert app.normalize_cs_type_value("", "오배송 회수 없이 재발송", "") == "오출고(오배송)/회수없음"
+
+    assert not app.should_mark_cs_case_complete("오출고(오배송)/회수진행", "[회수검수] 정상", "", "1234567890")
+    assert app.should_mark_cs_case_complete("오출고(오배송)/회수진행", "[회수검수] 정상", "2234567890", "1234567890")
+    assert app.should_mark_cs_case_complete("오출고(오배송)", "[회수검수] 정상", "2234567890", "1234567890")
+    assert app.should_mark_cs_case_complete("오출고(오배송)/회수없음", "", "", "1234567890")
+    assert not app.should_mark_cs_case_complete("오출고(오배송)/회수없음", "", "", "")
+
+
 def test_cs_upload_requires_fixing_invalid_text_and_number_fields(tmp_path: Path) -> None:
     app = load_app(tmp_path)
     workbook_path = tmp_path / "invalid-cs.xlsx"
@@ -321,6 +336,8 @@ def main() -> None:
         test_management_replace_upload_clears_existing_rows(Path(directory) / "management-replace")
     with tempfile.TemporaryDirectory() as directory:
         test_cs_daily_upload_detects_business_duplicates_across_files(Path(directory) / "cs-daily")
+    with tempfile.TemporaryDirectory() as directory:
+        test_cs_misdelivery_types_have_separate_completion_rules(Path(directory) / "cs-misdelivery")
     with tempfile.TemporaryDirectory() as directory:
         test_cs_upload_requires_fixing_invalid_text_and_number_fields(Path(directory) / "cs-invalid")
 
