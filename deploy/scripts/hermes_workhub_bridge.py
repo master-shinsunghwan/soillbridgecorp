@@ -120,8 +120,12 @@ class WorkhubHermesBridgeHandler(BaseHTTPRequestHandler):
             self.send_json(500, {"ok": False, "error": str(exc)})
 
 
+class ReusableThreadingHTTPServer(ThreadingHTTPServer):
+    allow_reuse_address = True
+
+
 def main() -> None:
-    httpd = ThreadingHTTPServer((BRIDGE_HOST, BRIDGE_PORT), WorkhubHermesBridgeHandler)
+    httpd = ReusableThreadingHTTPServer((BRIDGE_HOST, BRIDGE_PORT), WorkhubHermesBridgeHandler)
     print(f"Workhub Hermes bridge listening on {BRIDGE_HOST}:{BRIDGE_PORT}", flush=True)
     httpd.serve_forever()
 

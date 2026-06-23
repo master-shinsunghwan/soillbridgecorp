@@ -21,7 +21,17 @@ done
 
 docker cp "$BRIDGE_SOURCE" "$HERMES_CONTAINER:/tmp/workhub-hermes-bridge.py" >/dev/null
 docker cp "$TOKEN_FILE" "$HERMES_CONTAINER:/tmp/workhub-hermes-bridge.token" >/dev/null
-docker exec "$HERMES_CONTAINER" sh -lc 'pkill -f /tmp/workhub-hermes-bridge.py 2>/dev/null || true' >/dev/null
+docker exec "$HERMES_CONTAINER" python3 -c 'import os, signal
+for pid in os.listdir("/proc"):
+    if not pid.isdigit():
+        continue
+    try:
+        raw = open(f"/proc/{pid}/cmdline", "rb").read().replace(b"\0", b" ").decode("utf-8", "replace").strip()
+    except OSError:
+        continue
+    if raw.startswith("python3 /tmp/workhub-hermes-bridge.py"):
+        os.kill(int(pid), signal.SIGTERM)
+' >/dev/null
 
 exec docker exec \
   -e "HERMES_BRIDGE_PORT=$PORT" \
