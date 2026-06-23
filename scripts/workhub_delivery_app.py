@@ -28099,7 +28099,10 @@ def hermes_request(path_key: str, payload: dict | None = None) -> dict[str, obje
         headers["Content-Type"] = "application/json; charset=utf-8"
     api_key = str(settings.get("api_key") or "").strip()
     if api_key:
-        headers["Authorization"] = f"Bearer {api_key}"
+        if api_key.lower().startswith(("basic ", "bearer ")):
+            headers["Authorization"] = api_key
+        else:
+            headers["Authorization"] = f"Bearer {api_key}"
         headers["X-Hermes-Api-Key"] = api_key
     request = urllib.request.Request(url, data=data, headers=headers, method="POST" if payload is not None else "GET")
     try:
