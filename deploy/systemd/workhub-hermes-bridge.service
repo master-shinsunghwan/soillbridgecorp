@@ -1,0 +1,13 @@
+[Unit]
+Description=Workhub Hermes internal bridge
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=simple
+ExecStart=/opt/soilbridgecorp/deploy/scripts/start-hermes-workhub-bridge.sh
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
