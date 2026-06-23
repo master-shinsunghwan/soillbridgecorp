@@ -618,7 +618,7 @@ HTML = r"""<!doctype html>
       color: #667085;
     }
     .dashboard-import-card .import-table {
-      min-width: 1180px;
+      min-width: 1040px;
       table-layout: fixed;
       font-size: 12px;
     }
@@ -658,19 +658,19 @@ HTML = r"""<!doctype html>
     .dashboard-import-card .import-table th:nth-child(3),
     .dashboard-import-card .import-table td:nth-child(3) { width: 72px; }
     .dashboard-import-card .import-table th:nth-child(4),
-    .dashboard-import-card .import-table td:nth-child(4),
+    .dashboard-import-card .import-table td:nth-child(4) { width: 64px; }
     .dashboard-import-card .import-table th:nth-child(5),
-    .dashboard-import-card .import-table td:nth-child(5) { width: 78px; }
+    .dashboard-import-card .import-table td:nth-child(5) { width: 180px; }
     .dashboard-import-card .import-table th:nth-child(6),
-    .dashboard-import-card .import-table td:nth-child(6) { width: 138px; }
+    .dashboard-import-card .import-table td:nth-child(6) { width: 70px; }
     .dashboard-import-card .import-table th:nth-child(7),
-    .dashboard-import-card .import-table td:nth-child(7) { width: 150px; }
+    .dashboard-import-card .import-table td:nth-child(7) { width: 126px; }
     .dashboard-import-card .import-table th:nth-child(8),
-    .dashboard-import-card .import-table td:nth-child(8) { width: 142px; }
+    .dashboard-import-card .import-table td:nth-child(8) { width: 116px; }
     .dashboard-import-card .import-table th:nth-child(9),
-    .dashboard-import-card .import-table td:nth-child(9) { width: 116px; }
+    .dashboard-import-card .import-table td:nth-child(9) { width: 74px; }
     .dashboard-import-card .import-table th:nth-child(10),
-    .dashboard-import-card .import-table td:nth-child(10) { width: 62px; }
+    .dashboard-import-card .import-table td:nth-child(10) { width: 72px; }
     .dashboard-import-card .import-table th:nth-child(11),
     .dashboard-import-card .import-table td:nth-child(11) { width: 72px; }
     .dashboard-import-card .import-table th:nth-child(12),
@@ -684,6 +684,8 @@ HTML = r"""<!doctype html>
     }
     .dashboard-import-card .import-table td.left {
       font-weight: 850;
+      white-space: normal;
+      line-height: 1.25;
     }
     .import-empty {
       padding: 18px;
@@ -3911,7 +3913,7 @@ HTML = r"""<!doctype html>
     }
     .dashboard-import-card .import-table {
       width: 100%;
-      min-width: 1180px;
+      min-width: 1040px;
     }
     .company-grid {
       display: grid;
@@ -7578,7 +7580,7 @@ HTML = r"""<!doctype html>
         <input id="sidebarSearchInput" name="workhub-menu-search" type="search" placeholder="메뉴 검색" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" />
       </label>
       <div class="nav-section">MAIN</div>
-      <div class="nav-group open" id="companyNavGroup">
+      <div class="nav-group" id="companyNavGroup">
         <button class="nav-item active" id="companyNavToggle" type="button" data-view="dashboard" data-company-tab="notice" data-nav-tone="home">
           <span class="nav-label"><i data-lucide="home"></i> <span>회사 포털</span></span>
           <i class="nav-chevron" data-lucide="chevron-right"></i>
@@ -7774,7 +7776,7 @@ HTML = r"""<!doctype html>
                 </tr>
               </thead>
               <tbody id="dashboardImportScheduleBody">
-                <tr><td colspan="10"><div class="import-empty">수입제품 입고 일정을 불러오는 중입니다.</div></td></tr>
+                <tr><td colspan="11"><div class="import-empty">수입제품 입고 일정을 불러오는 중입니다.</div></td></tr>
               </tbody>
             </table>
           </div>
@@ -9889,6 +9891,12 @@ HTML = r"""<!doctype html>
       return new Date(now.getTime() - offset).toISOString().slice(0, 10);
     }
 
+    function localDatePlusDays(dateText, days) {
+      const base = parseLocalDate(dateText || todayString()) || new Date();
+      base.setDate(base.getDate() + Number(days || 0));
+      return localDateString(base);
+    }
+
     function fillPeriodSelects(yearSelect, monthSelect) {
       const currentYear = new Date().getFullYear();
       const startYear = 2023;
@@ -10660,8 +10668,10 @@ HTML = r"""<!doctype html>
 
     function noticeAutoEvents() {
       const todayKey = todayString();
+      const tomorrowKey = localDatePlusDays(todayKey, 1);
+      const visibleDates = new Set([todayKey, tomorrowKey]);
       const calendarItems = (companyCalendarEvents || [])
-        .filter((event) => ["leave", "pending"].includes(event.type) && event.date >= todayKey)
+        .filter((event) => ["leave", "pending"].includes(event.type) && visibleDates.has(event.date))
         .map((event) => ({
           type: event.type === "pending" ? "pending" : "leave",
           badge: event.type === "pending" ? "승인대기" : "연차",
@@ -10670,6 +10680,7 @@ HTML = r"""<!doctype html>
           detail: event.subtitle || "",
         }));
       const importItems = sortImportShipmentsByWarehouseDate((importShipments || []).filter((record) => !record.completed_at))
+        .filter((record) => visibleDates.has(record.warehouse_due_date || record.arrival_date || ""))
         .slice(0, 4)
         .map((record) => ({
           type: "import",
@@ -10680,6 +10691,7 @@ HTML = r"""<!doctype html>
           detail: [record.shipper, record.progress_status || "진행중"].filter(Boolean).join(" · "),
         }));
       const cargoItems = sortCargoShipments((cargoShipments || []).filter((record) => !record.completed_at && !["출고 완료", "입고 완료"].includes(record.status)))
+        .filter((record) => visibleDates.has(record.ship_date || ""))
         .slice(0, 4)
         .map((record) => ({
           type: record.cargo_type === "inbound" ? "cargo-inbound" : "cargo",
@@ -10690,32 +10702,34 @@ HTML = r"""<!doctype html>
           detail: [record.quantity, record.destination, record.status].filter(Boolean).join(" · "),
         }));
       return [...calendarItems, ...importItems, ...cargoItems]
-        .sort((a, b) => eventUpcomingScore(a.date).localeCompare(eventUpcomingScore(b.date)) || a.badge.localeCompare(b.badge))
-        .slice(0, 6);
+        .sort((a, b) => eventUpcomingScore(a.date).localeCompare(eventUpcomingScore(b.date)) || a.badge.localeCompare(b.badge));
     }
 
     function noticeAutoHtml() {
       const items = noticeAutoEvents();
-      if (!items.length) {
+      const todayKey = todayString();
+      const tomorrowKey = localDatePlusDays(todayKey, 1);
+      const renderGroup = (title, dateText, emptyText) => {
+        const groupItems = items.filter((item) => item.date === dateText).slice(0, 6);
         return `
           <div class="notice-auto-panel">
-            <div class="notice-auto-head"><span>오늘 확인할 회사 일정</span><span class="notice-auto-count">0</span></div>
-            <div class="notice-auto-empty">표시할 연차, 컨테이너 일정, 화물 입출고건이 없습니다.</div>
-          </div>
-        `;
-      }
-      return `
-        <div class="notice-auto-panel">
-          <div class="notice-auto-head"><span>오늘 확인할 회사 일정</span><span class="notice-auto-count">${items.length}</span></div>
-          <div class="notice-auto-list">
-            ${items.map((item) => `
+            <div class="notice-auto-head"><span>${escapeHtml(title)}</span><span class="notice-auto-count">${groupItems.length}</span></div>
+            ${groupItems.length ? `
+              <div class="notice-auto-list">
+                ${groupItems.map((item) => `
               <div class="notice-auto-item" role="button" tabindex="0" data-notice-auto-type="${escapeHtml(item.type)}" data-notice-auto-id="${escapeHtml(item.sourceId || "")}" title="${escapeHtml([item.title, item.detail].filter(Boolean).join(" / "))}">
                 <span class="notice-auto-badge ${escapeHtml(item.type)}">${escapeHtml(item.badge)}</span>
                 <span class="notice-auto-text">${escapeHtml(item.title)}${item.detail ? ` · ${escapeHtml(item.detail)}` : ""}</span>
               </div>
-            `).join("")}
+                `).join("")}
+              </div>
+            ` : `<div class="notice-auto-empty">${escapeHtml(emptyText)}</div>`}
           </div>
-        </div>
+        `;
+      };
+      return `
+        ${renderGroup("오늘 확인할 회사 일정", todayKey, "오늘 표시할 연차, 컨테이너 일정, 화물 입출고건이 없습니다.")}
+        ${renderGroup("내일 확인할 회사 일정", tomorrowKey, "내일 표시할 연차, 컨테이너 일정, 화물 입출고건이 없습니다.")}
       `;
     }
 
@@ -11014,7 +11028,7 @@ HTML = r"""<!doctype html>
       const activeRecords = sortImportShipmentsByWarehouseDate(importShipments.filter((record) => !record.completed_at));
       dashboardImportScheduleSummary.textContent = `진행 ${activeRecords.length}건`;
       if (!activeRecords.length) {
-        dashboardImportScheduleBody.innerHTML = `<tr><td colspan="10"><div class="import-empty">등록된 수입제품 입고 일정이 없습니다.</div></td></tr>`;
+        dashboardImportScheduleBody.innerHTML = `<tr><td colspan="11"><div class="import-empty">등록된 수입제품 입고 일정이 없습니다.</div></td></tr>`;
         return;
       }
       dashboardImportScheduleBody.innerHTML = activeRecords.slice(0, 6).map((record) => `
@@ -11023,7 +11037,7 @@ HTML = r"""<!doctype html>
           <td>${escapeHtml(shortKoreanDate(record.departure_date) || "-")}</td>
           <td>${escapeHtml(shortKoreanDate(record.arrival_date) || "-")}</td>
           <td>${escapeHtml(record.loading_port || "-")}</td>
-          <td class="left" title="${escapeHtml(record.item || "-")}">${escapeHtml(compactImportItemName(record.item, 18))}</td>
+          <td class="left" title="${escapeHtml(record.item || "-")}">${escapeHtml(compactImportItemName(record.item, 28))}</td>
           <td class="${escapeHtml(quantityLevelClass(record.quantity))}">${escapeHtml(record.quantity || "-")}</td>
           <td title="${escapeHtml(record.vessel_name || "-")}">${escapeHtml(compactImportItemName(record.vessel_name, 16))}</td>
           <td title="${escapeHtml(record.hbl_no || "-")}">${escapeHtml(compactImportItemName(record.hbl_no, 14))}</td>
@@ -17058,7 +17072,6 @@ HTML = r"""<!doctype html>
       }
       if (mode === "dashboard") {
         document.querySelector("#companyNavToggle")?.classList.add("active");
-        document.querySelector("#companyNavGroup")?.classList.add("open");
         syncCompanyNavState();
         return;
       }
