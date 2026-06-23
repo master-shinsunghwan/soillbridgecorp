@@ -180,7 +180,10 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         self.assertNotIn("CS처리 요청", ledger_group)
         self.assertIn('id="csAttachmentInput"', html_source)
         self.assertIn('id="csAttachmentSummary"', html_source)
-        self.assertIn('accept="image/*,video/*"', html_source)
+        self.assertIn('accept="image/*,video/*,.pdf,.xlsx,.xls,.doc,.docx,.zip"', html_source)
+        self.assertIn('id="sendCsMailButton"', html_source)
+        self.assertIn("async function sendCurrentCsMail()", html_source)
+        self.assertIn('sendCsMailButton?.addEventListener("click"', html_source)
         self.assertIn("appendCsMailPayload", html_source)
         self.assertIn("collect_mail_attachments", html_source)
         self.assertIn("attachments=attachments", html_source)
@@ -208,6 +211,15 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         ledger_click_end = html_source.index('ledgerBody.addEventListener("dblclick"', ledger_click_start)
         self.assertNotIn('openCellEditor("management"', html_source[management_click_start:management_click_end])
         self.assertNotIn('openCellEditor("ledger"', html_source[ledger_click_start:ledger_click_end])
+
+    def test_ledger_completed_rows_ignore_whitespace_variants_for_yellow_highlight(self) -> None:
+        html_source = (ROOT / "scripts" / "workhub_delivery_app.py").read_text(encoding="utf-8")
+
+        self.assertIn('return String(value || "").replace(/\\s+/g, "").trim();', html_source)
+        self.assertIn("const type = normalizedLedgerText(typeValue);", html_source)
+        self.assertIn("const status = normalizedLedgerText(statusValue);", html_source)
+        self.assertIn('row.classList.add("completed-cs")', html_source)
+        self.assertIn('row.classList.toggle("completed-cs", isCompletedByValues(csType, status));', html_source)
 
     def test_hermes_workspace_menu_and_configurable_agent_bridge_exist(self) -> None:
         html_source = (ROOT / "scripts" / "workhub_delivery_app.py").read_text(encoding="utf-8")
@@ -249,6 +261,20 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         self.assertIn('kind: "summary"', html_source)
         self.assertEqual(html_source.count("function renderHermesHistory(items = [])"), 1)
 
+    def test_hermes_chat_uses_half_width_answer_and_quick_actions(self) -> None:
+        html_source = (ROOT / "scripts" / "workhub_delivery_app.py").read_text(encoding="utf-8")
+
+        self.assertIn("hermes-chat-layout", html_source)
+        self.assertIn("hermes-side-grid", html_source)
+        self.assertIn("hermes-quick-actions", html_source)
+        self.assertIn('data-hermes-quick="summary"', html_source)
+        self.assertIn('data-hermes-quick="history"', html_source)
+        self.assertIn('data-hermes-quick="automation"', html_source)
+        self.assertIn('data-hermes-quick="settings"', html_source)
+        self.assertIn('setHermesTab("history")', html_source)
+        self.assertIn('setHermesTab("automation")', html_source)
+        self.assertIn('setHermesTab("settings")', html_source)
+
     def test_admin_navigation_and_admin_pages_can_scroll(self) -> None:
         html_source = (ROOT / "scripts" / "workhub_delivery_app.py").read_text(encoding="utf-8")
 
@@ -269,6 +295,19 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         self.assertIn("#userAdminWorkspace .admin-table-wrap", html_source)
         self.assertIn("max-height: min(44vh, 460px);", html_source)
         self.assertIn("position: sticky;", html_source)
+
+    def test_user_admin_can_delete_edit_and_review_deleted_history(self) -> None:
+        html_source = (ROOT / "scripts" / "workhub_delivery_app.py").read_text(encoding="utf-8")
+
+        self.assertIn("/api/users-delete", html_source)
+        self.assertIn("delete_user_account", html_source)
+        self.assertIn("deleted_user_accounts", html_source)
+        self.assertIn("list_deleted_user_accounts", html_source)
+        self.assertIn('id="userAdminDeletedBody"', html_source)
+        self.assertIn('data-user-edit="${user.id}"', html_source)
+        self.assertIn('data-user-delete="${user.id}"', html_source)
+        self.assertIn("비밀번호는 보안상 확인할 수 없으며", html_source)
+        self.assertNotIn("password_hash TEXT", html_source[html_source.index("CREATE TABLE IF NOT EXISTS deleted_user_accounts"):html_source.index("CREATE TABLE IF NOT EXISTS shared_files")])
 
     def test_ledger_arrow_keys_move_between_cells_before_editing(self) -> None:
         html_source = (ROOT / "scripts" / "workhub_delivery_app.py").read_text(encoding="utf-8")

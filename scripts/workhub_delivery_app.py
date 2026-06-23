@@ -1865,6 +1865,30 @@ HTML = r"""<!doctype html>
     .workhub-modal-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; }
     .modal-title { font-size: 25px; font-weight: 850; color: #1a2230; }
     .close { border: 0; background: transparent; color: #3f4650; cursor: pointer; padding: 4px; }
+    .popup-close-button {
+      width: 28px;
+      height: 28px;
+      min-width: 28px;
+      border: 1px solid #d8dee9;
+      border-radius: 7px;
+      display: inline-grid;
+      place-items: center;
+      padding: 0;
+      background: #ffffff;
+      color: #334155;
+      box-shadow: 0 2px 8px rgba(15, 23, 42, .06);
+      font-size: 0;
+      line-height: 1;
+      cursor: pointer;
+    }
+    .popup-close-button:hover {
+      border-color: #b8c2d3;
+      background: #f8fafc;
+    }
+    .popup-close-button svg {
+      width: 14px;
+      height: 14px;
+    }
     .field-label { display: block; font-size: 18px; font-weight: 750; margin-bottom: 10px; color: #1a2230; }
     .dropzone {
       border: 1px dashed #9aa4b2; border-radius: 8px; background: #fbfcff;
@@ -2501,6 +2525,15 @@ HTML = r"""<!doctype html>
       font-weight: 850;
       cursor: pointer;
     }
+    .admin-action.danger {
+      border-color: #fecaca;
+      color: #b42318;
+      background: #fff7f7;
+    }
+    .admin-action:disabled {
+      opacity: .45;
+      cursor: not-allowed;
+    }
     .admin-message { min-height: 20px; color: var(--muted); font-size: 13px; font-weight: 750; }
     .permission-hidden { display: none !important; }
     .hermes-panel {
@@ -2607,6 +2640,12 @@ HTML = r"""<!doctype html>
       gap: 12px;
       padding: 16px;
     }
+    .hermes-chat-layout {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      gap: 14px;
+      align-items: stretch;
+    }
     .hermes-input,
     .hermes-settings-grid input {
       width: 100%;
@@ -2640,6 +2679,42 @@ HTML = r"""<!doctype html>
       font-weight: 750;
       line-height: 1.55;
       white-space: pre-wrap;
+    }
+    .hermes-side-grid {
+      display: grid;
+      gap: 12px;
+    }
+    .hermes-side-card {
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      background: #ffffff;
+      padding: 12px;
+    }
+    .hermes-side-card strong {
+      display: block;
+      margin-bottom: 8px;
+      font-size: 13px;
+      font-weight: 950;
+      color: #111827;
+    }
+    .hermes-side-card .hermes-response {
+      min-height: 210px;
+    }
+    .hermes-quick-actions {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+    }
+    .hermes-quick-actions button {
+      min-height: 34px;
+      border: 1px solid #d8dee9;
+      border-radius: 7px;
+      background: #f8fafc;
+      color: #1f2937;
+      font-family: inherit;
+      font-size: 12px;
+      font-weight: 850;
+      cursor: pointer;
     }
     .hermes-settings-grid {
       display: grid;
@@ -2743,6 +2818,7 @@ HTML = r"""<!doctype html>
       .hermes-settings-grid { grid-template-columns: 1fr; }
       .hermes-hero { grid-template-columns: auto minmax(0, 1fr); }
       .hermes-status-pill { grid-column: 1 / -1; justify-self: start; }
+      .hermes-chat-layout { grid-template-columns: 1fr; }
     }
     .leave-panel { display: grid; gap: 14px; }
     .leave-summary-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
@@ -3064,14 +3140,9 @@ HTML = r"""<!doctype html>
       font-weight: 850;
     }
     .ledger-cs-popup-close {
-      height: 34px;
-      min-width: 64px;
-      border: 1px solid #aab2bf;
-      border-radius: 6px;
-      background: white;
-      font-family: inherit;
-      font-weight: 800;
-      cursor: pointer;
+      width: 28px;
+      height: 28px;
+      min-width: 28px;
     }
     .text-field { margin-top: 14px; }
     .text-field input,
@@ -7678,6 +7749,14 @@ HTML = r"""<!doctype html>
       place-items: center;
       cursor: pointer;
     }
+    .focus-widget-close.popup-close-button,
+    .search-result-close.popup-close-button,
+    .ledger-cs-popup-close.popup-close-button {
+      width: 28px;
+      height: 28px;
+      min-width: 28px;
+      padding: 0;
+    }
     .focus-widget-body {
       min-height: 0;
       overflow: auto;
@@ -8786,7 +8865,7 @@ HTML = r"""<!doctype html>
     <div class="notice-popup" role="dialog" aria-modal="true">
       <div class="notice-popup-head">
         <span>공지사항 입력</span>
-        <button class="close" id="noticePopupClose" type="button" aria-label="닫기"><i data-lucide="x"></i></button>
+        <button class="close popup-close-button" id="noticePopupClose" type="button" aria-label="닫기"><i data-lucide="x"></i></button>
       </div>
       <div class="notice-template">
         <div class="notice-template-grid">
@@ -8818,7 +8897,7 @@ HTML = r"""<!doctype html>
     <div class="notice-popup" role="dialog" aria-modal="true">
       <div class="notice-popup-head">
         <span>회수 확인 및 검수</span>
-        <button class="close" id="returnCheckClose" type="button" aria-label="닫기"><i data-lucide="x"></i></button>
+        <button class="close popup-close-button" id="returnCheckClose" type="button" aria-label="닫기"><i data-lucide="x"></i></button>
       </div>
       <div class="notice-template">
         <input id="returnCheckCaseId" type="hidden" />
@@ -8869,7 +8948,7 @@ HTML = r"""<!doctype html>
           <strong id="searchResultTitle">검색 결과 선택</strong>
           <p id="searchResultDescription">여러 건이 검색되었습니다. 확인할 데이터를 선택해주세요.</p>
         </div>
-        <button class="search-result-close" id="searchResultClose" type="button" aria-label="닫기"><i data-lucide="x"></i></button>
+        <button class="search-result-close popup-close-button" id="searchResultClose" type="button" aria-label="닫기"><i data-lucide="x"></i></button>
       </div>
       <div class="search-result-list" id="searchResultList"></div>
     </section>
@@ -8883,7 +8962,7 @@ HTML = r"""<!doctype html>
           <div class="focus-widget-title" id="focusWidgetTitle">상세 보기</div>
           <div class="focus-widget-subtitle" id="focusWidgetSubtitle"></div>
         </div>
-        <button class="focus-widget-close" id="focusWidgetClose" type="button" aria-label="닫기"><i data-lucide="x"></i></button>
+        <button class="focus-widget-close popup-close-button" id="focusWidgetClose" type="button" aria-label="닫기"><i data-lucide="x"></i></button>
       </div>
       <div class="focus-widget-body" id="focusWidgetBody"></div>
     </section>
@@ -8893,7 +8972,7 @@ HTML = r"""<!doctype html>
     <div class="notice-popup" role="dialog" aria-modal="true">
       <div class="notice-popup-head">
         <span id="cargoShipmentPopupTitle">화물 출고건 입력</span>
-        <button class="close" id="cargoShipmentClose" type="button" aria-label="닫기"><i data-lucide="x"></i></button>
+        <button class="close popup-close-button" id="cargoShipmentClose" type="button" aria-label="닫기"><i data-lucide="x"></i></button>
       </div>
       <div class="notice-template">
         <input id="cargoShipmentId" type="hidden" />
@@ -8926,7 +9005,7 @@ HTML = r"""<!doctype html>
     <div class="notice-popup" role="dialog" aria-modal="true">
       <div class="notice-popup-head">
         <span>수입제품 입고 진행 입력</span>
-        <button class="close" id="importShipmentClose" type="button" aria-label="닫기"><i data-lucide="x"></i></button>
+        <button class="close popup-close-button" id="importShipmentClose" type="button" aria-label="닫기"><i data-lucide="x"></i></button>
       </div>
       <div class="notice-template">
         <input id="importShipmentId" type="hidden" />
@@ -8963,7 +9042,7 @@ HTML = r"""<!doctype html>
     <div class="workhub-modal" role="dialog" aria-modal="true">
       <div class="workhub-modal-head">
         <div class="modal-title" id="modalTitle">파일 업로드</div>
-        <button class="close" id="closeModal" aria-label="닫기"><i data-lucide="x"></i></button>
+        <button class="close popup-close-button" id="closeModal" aria-label="닫기"><i data-lucide="x"></i></button>
       </div>
       <form id="uploadForm">
         <label class="field-label" id="fileLabel">엑셀 파일 선택</label>
@@ -9034,7 +9113,7 @@ HTML = r"""<!doctype html>
         <div class="cs-fields" id="csFields">
           <div class="ledger-cs-popup-head">
             <strong class="ledger-cs-popup-title">CS 추가</strong>
-            <button class="ledger-cs-popup-close" id="ledgerCsPopupClose" type="button">닫기</button>
+            <button class="ledger-cs-popup-close popup-close-button" id="ledgerCsPopupClose" type="button" aria-label="닫기"><i data-lucide="x"></i></button>
           </div>
           <div class="text-field">
             <label class="field-label" for="vendorContactSelect">거래처 선택</label>
@@ -9096,7 +9175,7 @@ HTML = r"""<!doctype html>
           </div>
           <div class="text-field cs-wide">
             <label class="field-label" for="csAttachmentInput">첨부파일(이미지/영상)</label>
-            <input id="csAttachmentInput" name="cs_attachments" type="file" accept="image/*,video/*" multiple />
+            <input id="csAttachmentInput" name="cs_attachments" type="file" accept="image/*,video/*,.pdf,.xlsx,.xls,.doc,.docx,.zip" multiple />
             <div class="hint-line" id="csAttachmentSummary">첨부파일 없음</div>
           </div>
           <div class="text-field cs-wide">
@@ -9109,6 +9188,7 @@ HTML = r"""<!doctype html>
           </div>
           <div class="cs-toolbar">
             <button class="cs-save-button" id="saveCsCase" type="button">CS건 DB 저장</button>
+            <button class="cs-save-button" id="sendCsMailButton" type="button">CS요청 메일 발송</button>
           </div>
         <div class="cs-case-list">
             <div class="cs-case-head">최근 저장 CS</div>
@@ -9663,6 +9743,7 @@ HTML = r"""<!doctype html>
       setHidden(ledgerSaveAll, !can("ledger_edit"));
       setHidden(ledgerAddCs, !can("ledger_edit"));
       setHidden(saveCsCaseButton, !can("ledger_edit"));
+      setHidden(sendCsMailButton, !can("mail_send"));
       setHidden(ledgerDownloadMenuButton, !can("excel_download"));
       setHidden(managementDownloadMenuButton, !can("excel_download"));
       document.querySelectorAll('[data-ledger-import-mode="daily"], [data-management-import-mode="daily"]').forEach((button) => {
@@ -9827,6 +9908,7 @@ HTML = r"""<!doctype html>
     const csSubjectInput = document.querySelector("#csSubjectInput");
     const csBodyInput = document.querySelector("#csBodyInput");
     const saveCsCaseButton = document.querySelector("#saveCsCase");
+    const sendCsMailButton = document.querySelector("#sendCsMailButton");
     const csCaseList = document.querySelector("#csCaseList");
     const stockNoticeFields = document.querySelector("#stockNoticeFields");
     const stockVendorPickerButton = document.querySelector("#stockVendorPickerButton");
@@ -10116,6 +10198,7 @@ HTML = r"""<!doctype html>
     const userAdminActive = document.querySelector("#userAdminActive");
     const userAdminSave = document.querySelector("#userAdminSave");
     const userAdminBody = document.querySelector("#userAdminBody");
+    const userAdminDeletedBody = document.querySelector("#userAdminDeletedBody");
     const userAdminMessage = document.querySelector("#userAdminMessage");
     const adminNaverEmailInput = document.querySelector("#adminNaverEmailInput");
     const adminNaverPasswordInput = document.querySelector("#adminNaverPasswordInput");
@@ -10286,6 +10369,7 @@ HTML = r"""<!doctype html>
     let managementPeriods = [];
     let importShipments = [];
     let userAccounts = [];
+    let deletedUserAccounts = [];
     let crmAccounts = [];
     let crmTasks = [];
     let crmMineTasks = [];
@@ -10540,7 +10624,8 @@ HTML = r"""<!doctype html>
     function renderUserAccounts() {
       if (!userAdminBody) return;
       if (!userAccounts.length) {
-        userAdminBody.innerHTML = `<tr><td colspan="8">등록된 사용자가 없습니다.</td></tr>`;
+        userAdminBody.innerHTML = `<tr><td colspan="9">등록된 사용자가 없습니다.</td></tr>`;
+        renderDeletedUserAccounts();
         return;
       }
       userAdminBody.innerHTML = userAccounts.map((user) => `
@@ -10552,7 +10637,29 @@ HTML = r"""<!doctype html>
           <td>${user.active ? "사용" : (user.approved_at ? "중지" : "승인대기")}</td>
           <td>${escapeHtml(user.created_at || "")}</td>
           <td>${escapeHtml(user.last_login_at || "없음")}</td>
-          <td><button class="admin-action" type="button" data-user-edit="${user.id}">${user.active ? "수정" : "승인/수정"}</button></td>
+          <td><button class="admin-action" type="button" data-user-edit="${user.id}">${user.active ? "권한 수정" : "승인/권한 수정"}</button></td>
+          <td>
+            <button class="admin-action danger" type="button" data-user-delete="${user.id}" ${String(user.id) === String(currentUser.id) ? "disabled" : ""}>삭제</button>
+          </td>
+        </tr>
+      `).join("");
+      renderDeletedUserAccounts();
+    }
+
+    function renderDeletedUserAccounts() {
+      if (!userAdminDeletedBody) return;
+      if (!deletedUserAccounts.length) {
+        userAdminDeletedBody.innerHTML = `<tr><td colspan="6">삭제된 계정 기록이 없습니다.</td></tr>`;
+        return;
+      }
+      userAdminDeletedBody.innerHTML = deletedUserAccounts.map((user) => `
+        <tr>
+          <td>${escapeHtml(user.username)}</td>
+          <td>${escapeHtml(user.display_name)}</td>
+          <td>${roleText(user.role)}</td>
+          <td>${user.active ? "삭제 전 사용" : "삭제 전 중지"}</td>
+          <td>${escapeHtml(user.deleted_at || "")}</td>
+          <td>${escapeHtml(user.deleted_by_username || "")}</td>
         </tr>
       `).join("");
     }
@@ -10572,6 +10679,7 @@ HTML = r"""<!doctype html>
         checkbox.checked = permissions.has(checkbox.value);
       });
       userAdminMessage.textContent = `${user.username} 계정 수정 중입니다. ${user.active ? "비밀번호는 변경할 때만 입력하세요." : "사용을 체크하고 저장하면 승인됩니다."}`;
+      userAdminWorkspace?.scrollTo({ top: 0, behavior: "smooth" });
       userAdminUsername?.focus();
     }
 
@@ -10583,6 +10691,7 @@ HTML = r"""<!doctype html>
         const data = await response.json();
         if (!response.ok) throw new Error(data.error || "사용자 목록을 불러오지 못했습니다.");
         userAccounts = data.users || [];
+        deletedUserAccounts = data.deleted_users || [];
         renderUserAccounts();
         if (!userAdminId.value) resetUserAdminForm();
       } catch (error) {
@@ -10612,6 +10721,7 @@ HTML = r"""<!doctype html>
         const data = await response.json();
         if (!response.ok) throw new Error(data.error || "사용자 계정을 저장하지 못했습니다.");
         userAccounts = data.users || [];
+        deletedUserAccounts = data.deleted_users || [];
         renderUserAccounts();
         resetUserAdminForm();
         userAdminMessage.textContent = data.message || "사용자 계정을 저장했습니다.";
@@ -12540,6 +12650,30 @@ HTML = r"""<!doctype html>
       return formData;
     }
 
+    async function sendCurrentCsMail() {
+      refreshCsBody();
+      const payload = collectCsPayload();
+      if (!payload.recipient_email || !payload.subject || !payload.body) {
+        throw new Error("받는 업체 메일, 제목, 요청 내용을 입력해주세요.");
+      }
+      const response = await fetch("/api/cs-mail", {
+        method: "POST",
+        body: appendCsMailPayload(new FormData(), payload),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "메일 전송에 실패했습니다.");
+      notice.textContent = data.message || "메일 전송이 완료되었습니다.";
+      activeCsCaseId = "";
+      if (csAttachmentInput) csAttachmentInput.value = "";
+      updateCsAttachmentSummary();
+      if (currentMode === "ledger") {
+        closeLedgerCsPopup();
+        await loadLedgerCases();
+      } else {
+        await loadCsCases();
+      }
+    }
+
     function collectStockNoticePayload() {
       return {
         vendor_type: stockVendorTypeSelect?.value || "purchase",
@@ -12699,6 +12833,34 @@ HTML = r"""<!doctype html>
       if (hermesApiKey) {
         hermesApiKey.value = "";
         hermesApiKey.placeholder = settings.has_api_key ? "저장된 API 키 사용" : "API 키가 없으면 비워두세요";
+      }
+    }
+
+    async function deleteUserAccount(userId) {
+      const user = userAccounts.find((item) => String(item.id) === String(userId));
+      if (!user) return;
+      if (String(user.id) === String(currentUser.id)) {
+        userAdminMessage.textContent = "현재 로그인한 본인 계정은 삭제할 수 없습니다.";
+        return;
+      }
+      const label = user.display_name || user.username || "선택한 사용자";
+      if (!window.confirm(`${label} 계정을 삭제할까요?\n삭제 후 해당 아이디는 로그인할 수 없습니다.`)) return;
+      userAdminMessage.textContent = "사용자 계정을 삭제하는 중입니다.";
+      try {
+        const response = await fetch("/api/users-delete", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: user.id }),
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "사용자 계정을 삭제하지 못했습니다.");
+        userAccounts = data.users || [];
+        deletedUserAccounts = data.deleted_users || [];
+        renderUserAccounts();
+        resetUserAdminForm();
+        userAdminMessage.textContent = data.message || "사용자 계정을 삭제했습니다.";
+      } catch (error) {
+        userAdminMessage.textContent = error.message;
       }
     }
 
@@ -15360,8 +15522,8 @@ HTML = r"""<!doctype html>
     }
 
     function isCompletedByValues(typeValue, statusValue) {
-      const type = String(typeValue || "").replaceAll(" ", "").trim();
-      const status = String(statusValue || "").replaceAll(" ", "").trim();
+      const type = normalizedLedgerText(typeValue);
+      const status = normalizedLedgerText(statusValue);
       if (status.includes("전체처리완료")) return true;
       if ((type === "변심반품" || type === "변신반품" || type === "불량반품") && status.includes("회수완료")) return true;
       if ((type === "불량교환" || type === "오출고(오배송)" || type === "오출고(오배송)/회수진행") && status.includes("전체처리완료")) return true;
@@ -15427,7 +15589,7 @@ HTML = r"""<!doctype html>
     }
 
     function normalizedLedgerText(value) {
-      return String(value || "").replaceAll(" ", "").trim();
+      return String(value || "").replace(/\s+/g, "").trim();
     }
 
     function ledgerTypeCategory(row) {
@@ -18516,6 +18678,22 @@ HTML = r"""<!doctype html>
       button.addEventListener("click", () => setHermesTab(button.dataset.hermesTabButton || "chat"));
     });
     hermesChatSend?.addEventListener("click", sendHermesChat);
+    document.querySelectorAll("[data-hermes-quick]").forEach((button) => {
+      button.addEventListener("click", () => {
+        const action = button.dataset.hermesQuick || "";
+        if (action === "summary") {
+          createHermesSummary().catch((error) => {
+            if (hermesChatResponse) hermesChatResponse.textContent = error.message;
+          });
+        } else if (action === "history") {
+          setHermesTab("history");
+        } else if (action === "automation") {
+          setHermesTab("automation");
+        } else if (action === "settings") {
+          setHermesTab("settings");
+        }
+      });
+    });
     hermesHistoryFilter?.addEventListener("change", () => renderHermesHistory(hermesHistoryItems));
     hermesSummaryCreate?.addEventListener("click", createHermesSummary);
     hermesAutomationSend?.addEventListener("click", sendHermesAutomation);
@@ -19305,6 +19483,18 @@ HTML = r"""<!doctype html>
     }
     if (salesReportFileInput) salesReportFileInput.addEventListener("change", uploadSalesReportWorkbook);
     saveCsCaseButton.addEventListener("click", saveCurrentCsCase);
+    sendCsMailButton?.addEventListener("click", async () => {
+      if (!can("mail_send")) return;
+      sendCsMailButton.disabled = true;
+      notice.textContent = "CS요청 메일을 발송하는 중입니다.";
+      try {
+        await sendCurrentCsMail();
+      } catch (error) {
+        notice.textContent = error.message;
+      } finally {
+        sendCsMailButton.disabled = false;
+      }
+    });
     ledgerRefresh.addEventListener("click", () => loadLedgerCases({ showPicker: true }));
     ledgerStatusFilter.addEventListener("change", applyLedgerFilters);
     ledgerFilterButtons.forEach((button) => {
@@ -19383,7 +19573,9 @@ HTML = r"""<!doctype html>
     if (userAdminBody) {
       userAdminBody.addEventListener("click", (event) => {
         const editButton = event.target.closest("[data-user-edit]");
+        const deleteButton = event.target.closest("[data-user-delete]");
         if (editButton) editUserAccount(editButton.dataset.userEdit);
+        if (deleteButton) deleteUserAccount(deleteButton.dataset.userDelete);
       });
     }
     leaveTabs.forEach((button) => {
@@ -19619,23 +19811,7 @@ HTML = r"""<!doctype html>
         if (currentMode === "ledger" || currentMode === "management" || currentMode === "vendor-contacts") {
           closeModal();
         } else if (currentMode === "cs") {
-          refreshCsBody();
-          const payload = collectCsPayload();
-          if (!payload.recipient_email || !payload.subject || !payload.body) {
-            throw new Error("받는 업체 메일, 제목, 요청 내용을 입력해주세요.");
-          }
-          const csMailFormData = appendCsMailPayload(new FormData(), payload);
-          const response = await fetch("/api/cs-mail", {
-            method: "POST",
-            body: csMailFormData,
-          });
-          const data = await response.json();
-          if (!response.ok) throw new Error(data.error || "메일 전송에 실패했습니다.");
-          notice.textContent = data.message || "메일 전송이 완료되었습니다.";
-          activeCsCaseId = "";
-          if (csAttachmentInput) csAttachmentInput.value = "";
-          updateCsAttachmentSummary();
-          await loadCsCases();
+          await sendCurrentCsMail();
         } else if (currentMode === "mail-stock") {
           refreshStockNoticeBody();
           const payload = collectStockNoticePayload();
@@ -20010,13 +20186,29 @@ HERMES_WORKSPACE_HTML = r"""
             <button class="hermes-tab" type="button" data-hermes-tab-button="settings">관리자 설정</button>
           </div>
           <section class="hermes-tab-panel active" data-hermes-panel="chat">
-            <div class="hermes-card">
-              <div class="admin-section-title">AI 업무채팅</div>
-              <textarea class="hermes-textarea" id="hermesChatInput" placeholder="예) 오늘 미처리 CS를 요약하고 우선순위를 추천해줘."></textarea>
-              <div class="hermes-actions">
-                <button class="workspace-button" type="button" id="hermesChatSend">헤르메스에 보내기</button>
+            <div class="hermes-chat-layout">
+              <div class="hermes-card">
+                <div class="admin-section-title">AI 업무채팅</div>
+                <textarea class="hermes-textarea" id="hermesChatInput" placeholder="예) 오늘 미처리 CS를 요약하고 우선순위를 추천해줘."></textarea>
+                <div class="hermes-actions">
+                  <button class="workspace-button" type="button" id="hermesChatSend">헤르메스에 보내기</button>
+                </div>
               </div>
-              <div class="hermes-response" id="hermesChatResponse">헤르메스 연결 후 답변이 여기에 표시됩니다.</div>
+              <div class="hermes-side-grid">
+                <div class="hermes-side-card">
+                  <strong>답변 내용</strong>
+                  <div class="hermes-response" id="hermesChatResponse">헤르메스 연결 후 답변이 여기에 표시됩니다.</div>
+                </div>
+                <div class="hermes-side-card">
+                  <strong>필요한 기능</strong>
+                  <div class="hermes-quick-actions">
+                    <button type="button" data-hermes-quick="summary">채팅 요약</button>
+                    <button type="button" data-hermes-quick="history">작업내역 보기</button>
+                    <button type="button" data-hermes-quick="automation">자동화 요청</button>
+                    <button type="button" data-hermes-quick="settings">연결 설정</button>
+                  </div>
+                </div>
+              </div>
             </div>
           </section>
           <section class="hermes-tab-panel" data-hermes-panel="automation">
@@ -20404,10 +20596,27 @@ ADMIN_WORKSPACE_HTML = r"""
                     <th>상태</th>
                     <th>생성일</th>
                     <th>마지막 로그인</th>
-                    <th>수정</th>
+                    <th>권한 수정</th>
+                    <th>삭제</th>
                   </tr>
                 </thead>
                 <tbody id="userAdminBody"></tbody>
+              </table>
+            </div>
+            <div class="admin-message">삭제된 아이디 기록입니다. 비밀번호는 보안상 확인할 수 없으며, 다시 사용할 계정은 새 비밀번호로 재등록 또는 재설정하세요.</div>
+            <div class="admin-table-wrap">
+              <table class="admin-table">
+                <thead>
+                  <tr>
+                    <th>아이디</th>
+                    <th>표시 이름</th>
+                    <th>권한</th>
+                    <th>삭제 전 상태</th>
+                    <th>삭제일</th>
+                    <th>삭제자</th>
+                  </tr>
+                </thead>
+                <tbody id="userAdminDeletedBody"></tbody>
               </table>
             </div>
           </div>
@@ -22708,6 +22917,27 @@ def init_db() -> None:
                 connection.execute(f"ALTER TABLE users ADD COLUMN {column} {column_type}")
         connection.execute(
             """
+            CREATE TABLE IF NOT EXISTS deleted_user_accounts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                original_user_id INTEGER NOT NULL,
+                username TEXT NOT NULL,
+                display_name TEXT NOT NULL,
+                role TEXT NOT NULL,
+                permissions TEXT,
+                active INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT,
+                updated_at TEXT,
+                last_login_at TEXT,
+                password_changed_at TEXT,
+                approved_at TEXT,
+                deleted_by INTEGER,
+                deleted_by_username TEXT,
+                deleted_at TEXT NOT NULL
+            )
+            """
+        )
+        connection.execute(
+            """
             CREATE TABLE IF NOT EXISTS shared_files (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 stored_name TEXT NOT NULL UNIQUE,
@@ -23500,6 +23730,32 @@ def list_users() -> list[dict[str, str | int]]:
         connection.close()
 
 
+def list_deleted_user_accounts(limit: int = 100) -> list[dict[str, str | int]]:
+    init_db()
+    safe_limit = max(1, min(int(limit or 100), 500))
+    connection = connect_db()
+    try:
+        rows = connection.execute(
+            """
+            SELECT id, original_user_id, username, display_name, role, permissions, active,
+                   created_at, updated_at, last_login_at, password_changed_at, approved_at,
+                   deleted_by, deleted_by_username, deleted_at
+              FROM deleted_user_accounts
+             ORDER BY id DESC
+             LIMIT ?
+            """,
+            (safe_limit,),
+        ).fetchall()
+        deleted_users = []
+        for row in rows:
+            item = dict(row)
+            item["permissions"] = normalize_permissions(item.get("permissions"), str(item.get("role", "user")))
+            deleted_users.append(item)
+        return deleted_users
+    finally:
+        connection.close()
+
+
 def company_staff_dashboard_payload(current_user: dict[str, str]) -> dict:
     init_db()
     connection = connect_db()
@@ -23975,6 +24231,71 @@ def save_user_account(payload: dict, actor: dict[str, str]) -> int:
         return saved_id
     except sqlite3.IntegrityError as exc:
         raise ValueError("이미 사용 중인 아이디입니다.") from exc
+    finally:
+        connection.close()
+
+
+def delete_user_account(user_id: int | str, actor: dict[str, str]) -> int:
+    init_db()
+    target_id = int(user_id or 0)
+    actor_id = int(actor.get("id") or 0)
+    if not target_id:
+        raise ValueError("삭제할 사용자를 선택해주세요.")
+    if target_id == actor_id:
+        raise ValueError("현재 로그인한 본인 계정은 삭제할 수 없습니다.")
+    connection = connect_db()
+    try:
+        target = connection.execute(
+            """
+            SELECT id, username, display_name, role, permissions, active, created_at, updated_at,
+                   last_login_at, password_changed_at, approved_at
+              FROM users
+             WHERE id = ?
+            """,
+            (target_id,),
+        ).fetchone()
+        if not target:
+            raise ValueError("삭제할 사용자를 찾지 못했습니다.")
+        if str(target["role"] or "") == "admin" and int(target["active"] or 0):
+            remaining_admins = int(
+                connection.execute(
+                    "SELECT COUNT(*) FROM users WHERE role = 'admin' AND active = 1 AND id != ?",
+                    (target_id,),
+                ).fetchone()[0]
+                or 0
+            )
+            if remaining_admins < 1:
+                raise ValueError("마지막 활성 관리자 계정은 삭제할 수 없습니다.")
+        now = now_text()
+        connection.execute(
+            """
+            INSERT INTO deleted_user_accounts
+                (original_user_id, username, display_name, role, permissions, active,
+                 created_at, updated_at, last_login_at, password_changed_at, approved_at,
+                 deleted_by, deleted_by_username, deleted_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                int(target["id"]),
+                target["username"],
+                target["display_name"],
+                target["role"],
+                target["permissions"],
+                int(target["active"] or 0),
+                target["created_at"],
+                target["updated_at"],
+                target["last_login_at"],
+                target["password_changed_at"],
+                target["approved_at"],
+                actor_id or None,
+                actor.get("username", ""),
+                now,
+            ),
+        )
+        connection.execute("DELETE FROM login_sessions WHERE username = ?", (target["username"],))
+        connection.execute("DELETE FROM users WHERE id = ?", (target_id,))
+        connection.commit()
+        return target_id
     finally:
         connection.close()
 
@@ -28463,7 +28784,7 @@ class WorkhubHandler(BaseHTTPRequestHandler):
         if self.path == "/api/users":
             if not self.require_permission(user, "user_admin", "사용자 관리"):
                 return
-            self.send_json({"users": list_users()})
+            self.send_json({"users": list_users(), "deleted_users": list_deleted_user_accounts()})
             return
 
         if self.path == "/api/backups":
@@ -28989,7 +29310,26 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                 length = int(self.headers.get("Content-Length", "0"))
                 payload = json.loads(self.rfile.read(length).decode("utf-8"))
                 user_id = save_user_account(payload, user)
-                self.send_json({"message": "사용자 계정을 저장했습니다.", "user_id": user_id, "users": list_users()})
+                self.send_json({
+                    "message": "사용자 계정을 저장했습니다.",
+                    "user_id": user_id,
+                    "users": list_users(),
+                    "deleted_users": list_deleted_user_accounts(),
+                })
+                return
+
+            if self.path == "/api/users-delete":
+                if not self.require_permission(user, "user_admin", "사용자 관리"):
+                    return
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(length).decode("utf-8") or "{}")
+                deleted_id = delete_user_account(payload.get("id"), user)
+                self.send_json({
+                    "message": "사용자 계정을 삭제했습니다.",
+                    "deleted_id": deleted_id,
+                    "users": list_users(),
+                    "deleted_users": list_deleted_user_accounts(),
+                })
                 return
 
             if self.path == "/api/hermes-settings":
