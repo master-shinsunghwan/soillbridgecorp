@@ -2528,6 +2528,28 @@ HTML = r"""<!doctype html>
       gap: 10px;
       align-items: end;
     }
+    .hermes-preset-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin: 8px 0 12px;
+    }
+    .hermes-preset-button {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+      color: var(--text);
+      cursor: pointer;
+      font-weight: 800;
+      padding: 8px 12px;
+    }
+    .hermes-preset-button:hover {
+      border-color: var(--blue);
+      color: var(--blue);
+    }
+    .hermes-help {
+      margin-bottom: 12px;
+    }
     .hermes-settings-grid label {
       display: grid;
       gap: 6px;
@@ -9916,6 +9938,8 @@ HTML = r"""<!doctype html>
     const hermesSettingsSave = document.querySelector("#hermesSettingsSave");
     const hermesConnectionTest = document.querySelector("#hermesConnectionTest");
     const hermesSettingsMessage = document.querySelector("#hermesSettingsMessage");
+    const hermesPresetHelp = document.querySelector("#hermesPresetHelp");
+    const hermesPresetButtons = Array.from(document.querySelectorAll("[data-hermes-preset]"));
     const leaveWorkspace = document.querySelector("#leaveWorkspace");
     const userAdminWorkspace = document.querySelector("#userAdminWorkspace");
     const backupWorkspace = document.querySelector("#backupWorkspace");
@@ -12470,6 +12494,35 @@ HTML = r"""<!doctype html>
       hermesStatusPill.title = message || "";
     }
 
+    const HERMES_PRESETS = {
+      vps: {
+        base_url: "http://hermes-agent:4860",
+        health_path: "/health",
+        chat_path: "/api/chat",
+        automation_path: "/api/automation",
+        help: "VPS 배포 후 같은 Docker 네트워크 안에서 사용하는 운영 권장 주소입니다.",
+      },
+      local: {
+        base_url: "http://127.0.0.1:4860",
+        health_path: "/health",
+        chat_path: "/api/chat",
+        automation_path: "/api/automation",
+        help: "로컬 PC 또는 임시 테스트용 Hermes Agent 주소입니다. 실제 포트가 다르면 주소만 바꿔 저장하세요.",
+      },
+    };
+
+    function applyHermesPreset(name) {
+      const preset = HERMES_PRESETS[name];
+      if (!preset) return;
+      if (hermesEnabled) hermesEnabled.checked = true;
+      if (hermesBaseUrl) hermesBaseUrl.value = preset.base_url;
+      if (hermesHealthPath) hermesHealthPath.value = preset.health_path;
+      if (hermesChatPath) hermesChatPath.value = preset.chat_path;
+      if (hermesAutomationPath) hermesAutomationPath.value = preset.automation_path;
+      if (hermesPresetHelp) hermesPresetHelp.textContent = preset.help;
+      if (hermesSettingsMessage) hermesSettingsMessage.textContent = "프리셋을 적용했습니다. 저장 후 연결 테스트를 진행하세요.";
+    }
+
     function renderHermesSettings(settings = {}) {
       if (hermesEnabled) hermesEnabled.checked = settings.enabled === true;
       if (hermesBaseUrl) hermesBaseUrl.value = settings.base_url || "";
@@ -12477,6 +12530,10 @@ HTML = r"""<!doctype html>
       if (hermesChatPath) hermesChatPath.value = settings.chat_path || "/api/chat";
       if (hermesAutomationPath) hermesAutomationPath.value = settings.automation_path || "/api/automation";
       if (hermesTimeoutSeconds) hermesTimeoutSeconds.value = String(settings.timeout_seconds || 20);
+      if (hermesPresetHelp) {
+        const profile = settings.profile || (String(settings.base_url || "").includes("hermes-agent") ? "vps" : "local");
+        hermesPresetHelp.textContent = HERMES_PRESETS[profile]?.help || "Hermes Agent 연결 설정을 확인하세요.";
+      }
       if (hermesApiKey) {
         hermesApiKey.value = "";
         hermesApiKey.placeholder = settings.has_api_key ? "저장된 API 키 사용" : "API 키가 없으면 비워두세요";
@@ -12577,6 +12634,7 @@ HTML = r"""<!doctype html>
         automation_path: hermesAutomationPath?.value.trim() || "/api/automation",
         api_key: hermesApiKey?.value || "",
         timeout_seconds: hermesTimeoutSeconds?.value || "20",
+        profile: String(hermesBaseUrl?.value || "").includes("hermes-agent") ? "vps" : "local",
       };
       if (hermesSettingsMessage) hermesSettingsMessage.textContent = "헤르메스 설정을 저장하는 중입니다.";
       const data = await hermesFetchJson("/api/hermes-settings", {
@@ -18209,6 +18267,9 @@ HTML = r"""<!doctype html>
     hermesHistoryFilter?.addEventListener("change", () => renderHermesHistory(hermesHistoryItems));
     hermesSummaryCreate?.addEventListener("click", createHermesSummary);
     hermesAutomationSend?.addEventListener("click", sendHermesAutomation);
+    hermesPresetButtons.forEach((button) => {
+      button.addEventListener("click", () => applyHermesPreset(button.dataset.hermesPreset || "vps"));
+    });
     hermesSettingsSave?.addEventListener("click", () => {
       saveHermesSettings().catch((error) => {
         if (hermesSettingsMessage) hermesSettingsMessage.textContent = error.message;
@@ -19737,6 +19798,11 @@ HERMES_WORKSPACE_HTML = r"""
           <section class="hermes-tab-panel" data-hermes-panel="settings">
             <div class="hermes-card">
               <div class="admin-section-title">관리자 설정</div>
+              <div class="hermes-preset-row">
+                <button class="hermes-preset-button" type="button" data-hermes-preset="vps">VPS 내부 주소 적용</button>
+                <button class="hermes-preset-button" type="button" data-hermes-preset="local">로컬 테스트 주소 적용</button>
+              </div>
+              <div class="admin-message hermes-help" id="hermesPresetHelp">운영 배포 후에는 VPS 내부 Docker 주소를 사용하고, 로컬 개발 중에는 테스트 주소로 바꿔 확인할 수 있습니다.</div>
               <div class="hermes-settings-grid">
                 <label class="admin-check"><input id="hermesEnabled" type="checkbox" /> Hermes Agent 사용</label>
                 <label>Agent 기본 주소<input id="hermesBaseUrl" type="url" placeholder="http://hermes-agent:4860" /></label>
@@ -27306,6 +27372,7 @@ def save_mail_settings(
 
 DEFAULT_HERMES_SETTINGS = {
     "enabled": env_bool("HERMES_ENABLED", False),
+    "profile": os.environ.get("HERMES_PROFILE", "vps"),
     "base_url": os.environ.get("HERMES_BASE_URL", "http://hermes-agent:4860"),
     "health_path": os.environ.get("HERMES_HEALTH_PATH", "/health"),
     "chat_path": os.environ.get("HERMES_CHAT_PATH", "/api/chat"),
@@ -27327,6 +27394,7 @@ def normalize_hermes_settings(payload: dict | None = None) -> dict[str, object]:
 
     return {
         "enabled": bool(source.get("enabled")),
+        "profile": str(source.get("profile") or "vps").strip() or "vps",
         "base_url": base_url,
         "health_path": clean_path("health_path", "/health"),
         "chat_path": clean_path("chat_path", "/api/chat"),
@@ -27361,6 +27429,24 @@ def save_hermes_settings(payload: dict) -> dict[str, object]:
     return load_hermes_settings(include_secret=False)
 
 
+def describe_hermes_connection_error(exc: Exception, url: str, base_url: str) -> str:
+    if isinstance(exc, urllib.error.HTTPError):
+        if exc.code in (401, 403):
+            return f"Hermes Agent 인증 실패({exc.code})입니다. API 키 설정을 확인해주세요. 요청 주소: {url}"
+        if exc.code == 404:
+            return f"Hermes Agent 경로를 찾지 못했습니다. Health/채팅/자동화 경로를 확인해주세요. 요청 주소: {url}"
+        return f"Hermes Agent 응답 오류({exc.code})입니다. 요청 주소: {url}"
+    reason = getattr(exc, "reason", exc)
+    reason_text = str(reason)
+    if "timed out" in reason_text.lower() or "timeout" in reason_text.lower():
+        return f"Hermes Agent 연결 시간이 초과됐습니다. Agent 실행 상태와 방화벽을 확인해주세요. 요청 주소: {url}"
+    if "refused" in reason_text.lower() or "10061" in reason_text:
+        return f"Hermes Agent가 응답하지 않습니다. Agent 컨테이너/포트가 실행 중인지 확인해주세요. 기본 주소: {base_url}"
+    if "name or service not known" in reason_text.lower() or "nodename" in reason_text.lower() or "11001" in reason_text:
+        return f"Hermes Agent 주소를 찾지 못했습니다. 로컬에서는 테스트 주소를, VPS에서는 같은 Docker 네트워크의 서비스명을 사용해주세요. 기본 주소: {base_url}"
+    return f"Hermes Agent 연결 실패: {reason_text}"
+
+
 def hermes_request(path_key: str, payload: dict | None = None) -> dict[str, object]:
     settings = load_hermes_settings(include_secret=True)
     if not settings.get("enabled"):
@@ -27390,9 +27476,12 @@ def hermes_request(path_key: str, payload: dict | None = None) -> dict[str, obje
             return {"ok": True, "status": response.status, "url": url, "data": parsed}
     except urllib.error.HTTPError as exc:
         body = exc.read().decode("utf-8", errors="replace")
-        raise ValueError(f"Hermes Agent 응답 오류({exc.code}): {body[:500]}") from exc
+        message = describe_hermes_connection_error(exc, url, base_url)
+        if body:
+            message = f"{message} / 응답: {body[:500]}"
+        raise ValueError(message) from exc
     except Exception as exc:
-        raise ValueError(f"Hermes Agent 연결 실패: {exc}") from exc
+        raise ValueError(describe_hermes_connection_error(exc, url, base_url)) from exc
 
 
 def append_hermes_history(kind: str, title: str, status: str, message: str, extra: dict | None = None) -> None:

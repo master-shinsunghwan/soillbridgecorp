@@ -231,6 +231,10 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         self.assertIn("hermes_admin", html_source)
         self.assertIn("hermes-mark", html_source)
         self.assertIn("/static/hermes-icon.png", html_source)
+        self.assertIn('data-hermes-preset="vps"', html_source)
+        self.assertIn('data-hermes-preset="local"', html_source)
+        self.assertIn("HERMES_PROFILE", html_source)
+        self.assertIn("describe_hermes_connection_error", html_source)
 
     def test_hermes_chat_history_can_be_summarized_and_filtered(self) -> None:
         html_source = (ROOT / "scripts" / "workhub_delivery_app.py").read_text(encoding="utf-8")
