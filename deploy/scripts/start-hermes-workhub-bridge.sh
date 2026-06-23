@@ -20,10 +20,10 @@ while true; do
 done
 
 docker cp "$BRIDGE_SOURCE" "$HERMES_CONTAINER:/tmp/workhub-hermes-bridge.py" >/dev/null
+docker cp "$TOKEN_FILE" "$HERMES_CONTAINER:/tmp/workhub-hermes-bridge.token" >/dev/null
 
 exec docker exec \
-  -e "WORKHUB_HERMES_BRIDGE_TOKEN=$(cat "$TOKEN_FILE")" \
   -e "HERMES_BRIDGE_PORT=$PORT" \
   -e "HERMES_BRIDGE_TIMEOUT=${HERMES_BRIDGE_TIMEOUT:-180}" \
   "$HERMES_CONTAINER" \
-  sh -lc 'cd /opt/hermes && python3 /tmp/workhub-hermes-bridge.py'
+  sh -lc 'export WORKHUB_HERMES_BRIDGE_TOKEN="$(cat /tmp/workhub-hermes-bridge.token)"; cd /opt/hermes && exec python3 /tmp/workhub-hermes-bridge.py'
