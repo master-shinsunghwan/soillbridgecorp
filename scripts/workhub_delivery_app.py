@@ -28,6 +28,8 @@ from html.parser import HTMLParser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, quote, unquote, urlsplit
+import urllib.error
+import urllib.request
 
 from openpyxl import Workbook, load_workbook
 from openpyxl.utils import get_column_letter
@@ -82,6 +84,8 @@ MAIL_SETTINGS_PATH = CONFIG_DIR / "mail_settings.json"
 VENDOR_CONTACTS_PATH = CONFIG_DIR / "vendor_contacts.json"
 CRM_WEBHOOK_TOKEN_PATH = CONFIG_DIR / "crm_webhook_token.txt"
 BACKUP_SETTINGS_PATH = CONFIG_DIR / "backup_settings.json"
+HERMES_SETTINGS_PATH = CONFIG_DIR / "hermes_settings.json"
+HERMES_HISTORY_PATH = CONFIG_DIR / "hermes_history.jsonl"
 BACKUP_DIR = Path(os.environ.get("WORKHUB_BACKUP_DIR", str(RUNTIME_ROOT / "backups")))
 LUCIDE_DIR = ROOT / "node_modules" / "lucide"
 STATIC_DIR = ROOT / "static"
@@ -166,6 +170,9 @@ PERMISSION_DEFINITIONS = (
     ("crm_view", "CRM 조회", "CRM 거래처/업무 조회"),
     ("crm_manage", "CRM 관리", "CRM 거래처/업무 등록 및 수정"),
     ("crm_message_manage", "CRM 메신저 연동", "메신저 사용자 매핑 및 연동 로그 관리"),
+    ("hermes_use", "헤르메스 사용", "AI 업무채팅 및 작업내역 조회"),
+    ("hermes_automation", "헤르메스 자동화 요청", "AI 자동화 요청 생성"),
+    ("hermes_admin", "헤르메스 관리자 설정", "Hermes Agent 연결 설정"),
 )
 ALL_PERMISSIONS = tuple(key for key, _, _ in PERMISSION_DEFINITIONS)
 DEFAULT_ROLE_PERMISSIONS = {
@@ -188,8 +195,10 @@ DEFAULT_ROLE_PERMISSIONS = {
         "crm_view",
         "crm_manage",
         "crm_message_manage",
+        "hermes_use",
+        "hermes_automation",
     ),
-    "user": ("ledger_edit", "excel_download", "cs_receive", "leave_view", "crm_view"),
+    "user": ("ledger_edit", "excel_download", "cs_receive", "leave_view", "crm_view", "hermes_use"),
 }
 LUCIDE_FALLBACK_JS = """
 const iconPaths = {
@@ -780,8 +789,25 @@ HTML = r"""<!doctype html>
     .nav-item[data-nav-tone="mail"] { --nav-icon: #2dd4bf; --nav-active-bg: rgba(20, 184, 166, .22); }
     .nav-item[data-nav-tone="leave"] { --nav-icon: #facc15; --nav-active-bg: rgba(234, 179, 8, .20); }
     .nav-item[data-nav-tone="sales"] { --nav-icon: #4ade80; --nav-active-bg: rgba(22, 163, 74, .22); }
+    .nav-item[data-nav-tone="hermes"] { --nav-icon: #60a5fa; --nav-active-bg: rgba(59, 130, 246, .24); }
     .nav-item[data-nav-tone="admin"] { --nav-icon: #fbbf24; --nav-active-bg: rgba(245, 158, 11, .22); }
     .nav-item[data-nav-tone="files"] { --nav-icon: #5eead4; --nav-active-bg: rgba(13, 148, 136, .20); }
+    .hermes-mark {
+      width: 15px;
+      height: 15px;
+      flex: 0 0 auto;
+      color: var(--nav-icon, #60a5fa);
+    }
+    .hermes-mark svg {
+      width: 15px;
+      height: 15px;
+      display: block;
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 1.9;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
     .nav-item .nav-chevron {
       margin-left: auto;
       width: 10px;
@@ -2358,6 +2384,179 @@ HTML = r"""<!doctype html>
     }
     .admin-message { min-height: 20px; color: var(--muted); font-size: 13px; font-weight: 750; }
     .permission-hidden { display: none !important; }
+    .hermes-panel {
+      display: grid;
+      gap: 14px;
+      min-height: 0;
+    }
+    .hermes-hero,
+    .hermes-card {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: white;
+      box-shadow: var(--shadow);
+    }
+    .hermes-hero {
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr) auto;
+      gap: 14px;
+      align-items: center;
+      padding: 16px;
+      border-top: 3px solid #3b82f6;
+    }
+    .hermes-hero h2 {
+      margin: 2px 0 4px;
+      font-size: 22px;
+      line-height: 1.25;
+    }
+    .hermes-hero p {
+      margin: 0;
+      color: #475569;
+      font-size: 13px;
+      font-weight: 750;
+      line-height: 1.55;
+    }
+    .hermes-hero-icon {
+      width: 46px;
+      height: 46px;
+      border-radius: 12px;
+      display: grid;
+      place-items: center;
+      color: #2563eb;
+      background: linear-gradient(135deg, #eff6ff, #eef2ff);
+      border: 1px solid #bfdbfe;
+    }
+    .hermes-hero-icon .hermes-mark,
+    .hermes-hero-icon .hermes-mark svg {
+      width: 26px;
+      height: 26px;
+    }
+    .hermes-status-pill {
+      min-width: 92px;
+      height: 30px;
+      padding: 0 12px;
+      border-radius: 999px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      background: #f8fafc;
+      color: #475569;
+      border: 1px solid #d8e0ec;
+      font-size: 12px;
+      font-weight: 950;
+      white-space: nowrap;
+    }
+    .hermes-status-pill.ok {
+      background: #ecfdf3;
+      border-color: #bbf7d0;
+      color: #047857;
+    }
+    .hermes-status-pill.error {
+      background: #fff1f2;
+      border-color: #fecdd3;
+      color: #be123c;
+    }
+    .hermes-tabs {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .hermes-tab {
+      height: 36px;
+      padding: 0 14px;
+      border: 1px solid #d8e0ec;
+      border-radius: 8px;
+      background: white;
+      color: #475569;
+      font-size: 13px;
+      font-weight: 950;
+      cursor: pointer;
+    }
+    .hermes-tab.active {
+      border-color: #2563eb;
+      color: #1d4ed8;
+      background: #eff6ff;
+    }
+    .hermes-tab-panel { display: none; }
+    .hermes-tab-panel.active { display: block; }
+    .hermes-card {
+      display: grid;
+      gap: 12px;
+      padding: 16px;
+    }
+    .hermes-input,
+    .hermes-settings-grid input {
+      width: 100%;
+      height: 36px;
+      border: 1px solid #cfd6e2;
+      border-radius: 8px;
+      padding: 0 10px;
+      font-family: inherit;
+      font-size: 13px;
+      font-weight: 750;
+      background: white;
+    }
+    .hermes-textarea {
+      min-height: 140px;
+      height: 150px;
+      font-size: 13px;
+    }
+    .hermes-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+    }
+    .hermes-response {
+      min-height: 48px;
+      padding: 12px;
+      border: 1px dashed #cbd5e1;
+      border-radius: 8px;
+      background: #f8fafc;
+      color: #475569;
+      font-size: 13px;
+      font-weight: 750;
+      line-height: 1.55;
+      white-space: pre-wrap;
+    }
+    .hermes-settings-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+      align-items: end;
+    }
+    .hermes-settings-grid label {
+      display: grid;
+      gap: 6px;
+      color: #344054;
+      font-size: 12px;
+      font-weight: 900;
+    }
+    .hermes-history-list {
+      display: grid;
+      gap: 8px;
+    }
+    .hermes-history-item {
+      display: grid;
+      gap: 5px;
+      padding: 11px;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      background: #fbfcff;
+    }
+    .hermes-history-item strong {
+      color: #111827;
+      font-size: 13px;
+    }
+    .hermes-history-item span {
+      color: #64748b;
+      font-size: 12px;
+      font-weight: 750;
+    }
+    @media (max-width: 1100px) {
+      .hermes-settings-grid { grid-template-columns: 1fr; }
+      .hermes-hero { grid-template-columns: auto minmax(0, 1fr); }
+      .hermes-status-pill { grid-column: 1 / -1; justify-self: start; }
+    }
     .leave-panel { display: grid; gap: 14px; }
     .leave-summary-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
     .leave-summary-card {
@@ -7663,6 +7862,7 @@ HTML = r"""<!doctype html>
           <button class="nav-subitem" type="button" data-open="crm" data-crm-nav-tab="messages">메신저 연동</button>
         </div>
       </div>
+      __HERMES_NAV__
       <div class="nav-group" id="distributionMailNavGroup">
         <button class="nav-item" id="distributionMailNavToggle" type="button" data-nav-tone="mail">
           <span class="nav-label"><i data-lucide="mail"></i> <span>거래처 업무관련</span></span>
@@ -8102,6 +8302,7 @@ HTML = r"""<!doctype html>
           </section>
         </div>
       </section>
+      __HERMES_WORKSPACE__
 
       <section class="workspace-view" id="importWorkspace">
         <div class="workspace-head">
@@ -9261,6 +9462,10 @@ HTML = r"""<!doctype html>
       setHidden(dashboardImportScheduleOpen, !can("import_shipment_manage"));
       document.querySelectorAll('[data-open="crm"]').forEach((button) => setHidden(button, !can("crm_view")));
       setHidden(document.querySelector('.nav-subitem[data-crm-nav-tab="messages"]'), !can("crm_message_manage"));
+      setHidden(document.querySelector("#hermesNavGroup"), !can("hermes_use"));
+      document.querySelectorAll('[data-open="hermes"]').forEach((button) => setHidden(button, !can("hermes_use")));
+      document.querySelectorAll('[data-hermes-tab="automation"], [data-hermes-tab-button="automation"]').forEach((button) => setHidden(button, !can("hermes_automation")));
+      document.querySelectorAll('[data-hermes-tab="settings"], [data-hermes-tab-button="settings"]').forEach((button) => setHidden(button, !can("hermes_admin")));
       setHidden(crmAccountQuick, !can("crm_view"));
       setHidden(crmTaskQuick, !can("crm_manage"));
       setHidden(crmAccountForm, !can("crm_manage"));
@@ -9639,6 +9844,29 @@ HTML = r"""<!doctype html>
     const sharedFileRefresh = document.querySelector("#sharedFileRefresh");
     const sharedFileBody = document.querySelector("#sharedFileBody");
     const sharedFileMessage = document.querySelector("#sharedFileMessage");
+    const hermesWorkspace = document.querySelector("#hermesWorkspace");
+    const hermesRefresh = document.querySelector("#hermesRefresh");
+    const hermesStatusPill = document.querySelector("#hermesStatusPill");
+    const hermesTabs = Array.from(document.querySelectorAll("[data-hermes-tab-button]"));
+    const hermesPanels = Array.from(document.querySelectorAll("[data-hermes-panel]"));
+    const hermesChatInput = document.querySelector("#hermesChatInput");
+    const hermesChatSend = document.querySelector("#hermesChatSend");
+    const hermesChatResponse = document.querySelector("#hermesChatResponse");
+    const hermesAutomationTitle = document.querySelector("#hermesAutomationTitle");
+    const hermesAutomationBody = document.querySelector("#hermesAutomationBody");
+    const hermesAutomationSend = document.querySelector("#hermesAutomationSend");
+    const hermesAutomationResponse = document.querySelector("#hermesAutomationResponse");
+    const hermesHistoryList = document.querySelector("#hermesHistoryList");
+    const hermesEnabled = document.querySelector("#hermesEnabled");
+    const hermesBaseUrl = document.querySelector("#hermesBaseUrl");
+    const hermesHealthPath = document.querySelector("#hermesHealthPath");
+    const hermesChatPath = document.querySelector("#hermesChatPath");
+    const hermesAutomationPath = document.querySelector("#hermesAutomationPath");
+    const hermesApiKey = document.querySelector("#hermesApiKey");
+    const hermesTimeoutSeconds = document.querySelector("#hermesTimeoutSeconds");
+    const hermesSettingsSave = document.querySelector("#hermesSettingsSave");
+    const hermesConnectionTest = document.querySelector("#hermesConnectionTest");
+    const hermesSettingsMessage = document.querySelector("#hermesSettingsMessage");
     const leaveWorkspace = document.querySelector("#leaveWorkspace");
     const userAdminWorkspace = document.querySelector("#userAdminWorkspace");
     const backupWorkspace = document.querySelector("#backupWorkspace");
@@ -9846,6 +10074,7 @@ HTML = r"""<!doctype html>
     let companyCalendarSummary = {};
     let cargoShipments = [];
     let crmActiveTab = "dashboard";
+    let hermesActiveTab = "chat";
     let crmSelectedTaskId = "";
     const CRM_TASK_STATUSES = ["대기", "진행중", "보류", "완료"];
     const CRM_TASK_BUILTIN_VIEWS = [
@@ -12161,6 +12390,167 @@ HTML = r"""<!doctype html>
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data.error || "CRM 요청 처리에 실패했습니다.");
       return data;
+    }
+
+    async function hermesFetchJson(url, options = {}) {
+      const response = await fetch(url, {
+        credentials: "same-origin",
+        ...options,
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || "헤르메스 요청 처리에 실패했습니다.");
+      return data;
+    }
+
+    function hermesTextFromResult(data) {
+      const payload = data?.result?.data || data?.data || data?.result || data;
+      if (!payload) return "";
+      if (typeof payload === "string") return payload;
+      for (const key of ["answer", "message", "text", "content", "result", "reply"]) {
+        if (payload[key]) return String(payload[key]);
+      }
+      return JSON.stringify(payload, null, 2);
+    }
+
+    function setHermesStatus(ok, message) {
+      if (!hermesStatusPill) return;
+      hermesStatusPill.textContent = ok ? "연결됨" : (message ? "확인 필요" : "연결 대기");
+      hermesStatusPill.classList.toggle("ok", Boolean(ok));
+      hermesStatusPill.classList.toggle("error", Boolean(message && !ok));
+      hermesStatusPill.title = message || "";
+    }
+
+    function renderHermesSettings(settings = {}) {
+      if (hermesEnabled) hermesEnabled.checked = settings.enabled === true;
+      if (hermesBaseUrl) hermesBaseUrl.value = settings.base_url || "";
+      if (hermesHealthPath) hermesHealthPath.value = settings.health_path || "/health";
+      if (hermesChatPath) hermesChatPath.value = settings.chat_path || "/api/chat";
+      if (hermesAutomationPath) hermesAutomationPath.value = settings.automation_path || "/api/automation";
+      if (hermesTimeoutSeconds) hermesTimeoutSeconds.value = String(settings.timeout_seconds || 20);
+      if (hermesApiKey) {
+        hermesApiKey.value = "";
+        hermesApiKey.placeholder = settings.has_api_key ? "저장된 API 키 사용" : "API 키가 없으면 비워두세요";
+      }
+    }
+
+    function renderHermesHistory(items = []) {
+      if (!hermesHistoryList) return;
+      hermesHistoryList.innerHTML = items.length ? items.map((item) => `
+        <div class="hermes-history-item">
+          <strong>${escapeHtml(item.title || item.kind || "헤르메스 작업")}</strong>
+          <span>${escapeHtml(item.created_at || "")} · ${escapeHtml(item.kind || "")} · ${escapeHtml(item.status || "")}</span>
+          <span>${escapeHtml(item.message || "")}</span>
+        </div>
+      `).join("") : `<div class="admin-message">아직 헤르메스 작업내역이 없습니다.</div>`;
+    }
+
+    async function loadHermesStatus() {
+      if (!can("hermes_use")) return;
+      const data = await hermesFetchJson("/api/hermes-status");
+      setHermesStatus(Boolean(data.ok), data.message || "");
+      renderHermesSettings(data.settings || {});
+      if (hermesSettingsMessage) hermesSettingsMessage.textContent = data.message || "헤르메스 상태를 확인했습니다.";
+    }
+
+    async function loadHermesHistory() {
+      if (!can("hermes_use")) return;
+      const data = await hermesFetchJson("/api/hermes-history");
+      renderHermesHistory(data.history || []);
+    }
+
+    async function loadHermesAll() {
+      await Promise.all([
+        loadHermesStatus().catch((error) => {
+          setHermesStatus(false, error.message);
+          if (hermesSettingsMessage) hermesSettingsMessage.textContent = error.message;
+        }),
+        loadHermesHistory().catch(() => {}),
+      ]);
+    }
+
+    function setHermesTab(tabName) {
+      hermesActiveTab = ["chat", "automation", "history", "settings"].includes(tabName) ? tabName : "chat";
+      if (hermesActiveTab === "automation" && !can("hermes_automation")) hermesActiveTab = "chat";
+      if (hermesActiveTab === "settings" && !can("hermes_admin")) hermesActiveTab = "chat";
+      hermesTabs.forEach((button) => button.classList.toggle("active", button.dataset.hermesTabButton === hermesActiveTab));
+      hermesPanels.forEach((panel) => panel.classList.toggle("active", panel.dataset.hermesPanel === hermesActiveTab));
+      document.querySelectorAll("[data-hermes-tab]").forEach((button) => {
+        button.classList.toggle("active", button.dataset.hermesTab === hermesActiveTab);
+      });
+      if (hermesActiveTab === "history") loadHermesHistory().catch(() => {});
+    }
+
+    async function saveHermesSettings() {
+      if (!can("hermes_admin")) return;
+      const payload = {
+        enabled: Boolean(hermesEnabled?.checked),
+        base_url: hermesBaseUrl?.value.trim() || "",
+        health_path: hermesHealthPath?.value.trim() || "/health",
+        chat_path: hermesChatPath?.value.trim() || "/api/chat",
+        automation_path: hermesAutomationPath?.value.trim() || "/api/automation",
+        api_key: hermesApiKey?.value || "",
+        timeout_seconds: hermesTimeoutSeconds?.value || "20",
+      };
+      if (hermesSettingsMessage) hermesSettingsMessage.textContent = "헤르메스 설정을 저장하는 중입니다.";
+      const data = await hermesFetchJson("/api/hermes-settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      renderHermesSettings(data.settings || {});
+      if (hermesSettingsMessage) hermesSettingsMessage.textContent = data.message || "헤르메스 설정을 저장했습니다.";
+      await loadHermesStatus();
+    }
+
+    async function testHermesConnection() {
+      if (!can("hermes_admin")) return;
+      if (hermesSettingsMessage) hermesSettingsMessage.textContent = "헤르메스 연결을 확인하는 중입니다.";
+      const data = await hermesFetchJson("/api/hermes-test", { method: "POST" });
+      setHermesStatus(Boolean(data.ok), data.message || "");
+      if (hermesSettingsMessage) hermesSettingsMessage.textContent = data.message || "연결 테스트를 완료했습니다.";
+    }
+
+    async function sendHermesChat() {
+      const message = (hermesChatInput?.value || "").trim();
+      if (!message) {
+        if (hermesChatResponse) hermesChatResponse.textContent = "보낼 내용을 입력해주세요.";
+        hermesChatInput?.focus();
+        return;
+      }
+      if (hermesChatResponse) hermesChatResponse.textContent = "헤르메스가 답변을 준비하는 중입니다.";
+      try {
+        const data = await hermesFetchJson("/api/hermes-chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ message }),
+        });
+        if (hermesChatResponse) hermesChatResponse.textContent = hermesTextFromResult(data) || "응답을 받았습니다.";
+        await loadHermesHistory();
+      } catch (error) {
+        if (hermesChatResponse) hermesChatResponse.textContent = error.message;
+      }
+    }
+
+    async function sendHermesAutomation() {
+      const title = (hermesAutomationTitle?.value || "").trim();
+      const body = (hermesAutomationBody?.value || "").trim();
+      if (!title && !body) {
+        if (hermesAutomationResponse) hermesAutomationResponse.textContent = "자동화 요청 내용을 입력해주세요.";
+        hermesAutomationBody?.focus();
+        return;
+      }
+      if (hermesAutomationResponse) hermesAutomationResponse.textContent = "자동화 요청을 보내는 중입니다.";
+      try {
+        const data = await hermesFetchJson("/api/hermes-automation", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ title, body }),
+        });
+        if (hermesAutomationResponse) hermesAutomationResponse.textContent = hermesTextFromResult(data) || "요청을 보냈습니다.";
+        await loadHermesHistory();
+      } catch (error) {
+        if (hermesAutomationResponse) hermesAutomationResponse.textContent = error.message;
+      }
     }
 
     function syncCompanyNavState() {
@@ -15109,6 +15499,69 @@ HTML = r"""<!doctype html>
       if (scope === "ledger" && ledgerReturnCheckButton) ledgerReturnCheckButton.hidden = true;
     }
 
+    function editableSelectorForScope(scope) {
+      return scope === "management"
+        ? ".editable-cell[data-management-field]:not([data-readonly='1'])"
+        : ".editable-cell[data-field]:not([data-readonly='1'])";
+    }
+
+    function editableRowsForScope(scope) {
+      const body = scope === "management" ? managementBody : ledgerBody;
+      const rowSelector = scope === "management" ? "tr[data-record-id]" : "tr[data-case-id]";
+      return Array.from(body?.querySelectorAll(rowSelector) || []);
+    }
+
+    function editableCellsInRow(scope, row) {
+      return Array.from(row?.querySelectorAll(editableSelectorForScope(scope)) || []);
+    }
+
+    function moveEditableCell(scope, cell, rowDelta, colDelta) {
+      if (!cell) return false;
+      const row = cell.closest("tr");
+      const rows = editableRowsForScope(scope);
+      const rowIndex = rows.indexOf(row);
+      if (rowIndex < 0) return false;
+      const currentCells = editableCellsInRow(scope, row);
+      const colIndex = currentCells.indexOf(cell);
+      if (colIndex < 0) return false;
+      let nextCell = null;
+      if (colDelta) {
+        nextCell = currentCells[colIndex + colDelta] || null;
+      } else if (rowDelta) {
+        const nextRow = rows[rowIndex + rowDelta];
+        const nextCells = editableCellsInRow(scope, nextRow);
+        nextCell = nextCells[Math.min(colIndex, nextCells.length - 1)] || null;
+      }
+      if (!nextCell) return false;
+      selectEditableCell(scope, nextCell);
+      nextCell.focus({ preventScroll: false });
+      nextCell.scrollIntoView({ block: "nearest", inline: "nearest" });
+      return true;
+    }
+
+    function handleEditableCellNavigation(scope, event) {
+      if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey) return;
+      const editableCell = event.target.closest(editableSelectorForScope(scope));
+      if (!editableCell) return;
+      if (event.key === "F2") {
+        event.preventDefault();
+        openCellEditor(scope, editableCell);
+        return;
+      }
+      const keyMap = {
+        ArrowUp: [-1, 0],
+        ArrowDown: [1, 0],
+        ArrowLeft: [0, -1],
+        ArrowRight: [0, 1],
+      };
+      const delta = keyMap[event.key];
+      if (!delta) return;
+      event.preventDefault();
+      if (!moveEditableCell(scope, editableCell, delta[0], delta[1])) {
+        selectEditableCell(scope, editableCell);
+      }
+    }
+
     function activeEditorHasChange(scope) {
       const selected = activeCellEditors[scope];
       if (!selected?.cell || !selected.control) return false;
@@ -17133,6 +17586,12 @@ HTML = r"""<!doctype html>
         syncCrmNavState();
         return;
       }
+      if (mode === "hermes") {
+        document.querySelector("#hermesNavToggle")?.classList.add("active");
+        document.querySelector("#hermesNavGroup")?.classList.add("open");
+        document.querySelector(`#hermesNavGroup [data-hermes-tab="${hermesActiveTab}"]`)?.classList.add("active");
+        return;
+      }
       if (mode === "dashboard") {
         document.querySelector("#companyNavToggle")?.classList.add("active");
         syncCompanyNavState();
@@ -17178,12 +17637,14 @@ HTML = r"""<!doctype html>
       if (mode === "systemUpdate" && !systemUpdateWorkspace) mode = "dashboard";
       if (mode === "fileLibrary" && !fileLibraryWorkspace) mode = "dashboard";
       if (mode === "crm" && !can("crm_view")) mode = "dashboard";
+      if (mode === "hermes" && (!hermesWorkspace || !can("hermes_use"))) mode = "dashboard";
       currentMode = mode;
       updateTopbarSearchPlaceholder(mode);
       const showImport = mode === "import";
       const showManagement = mode === "management";
       const showLedger = mode === "ledger";
       const showCrm = mode === "crm";
+      const showHermes = mode === "hermes";
       const showLeave = mode === "leave";
       const showFileLibrary = mode === "fileLibrary" && Boolean(fileLibraryWorkspace);
       const showUserAdmin = mode === "userAdmin" && Boolean(userAdminWorkspace);
@@ -17197,6 +17658,7 @@ HTML = r"""<!doctype html>
       managementWorkspace.classList.toggle("active", showManagement);
       ledgerWorkspace.classList.toggle("active", showLedger);
       crmWorkspace.classList.toggle("active", showCrm);
+      if (hermesWorkspace) hermesWorkspace.classList.toggle("active", showHermes);
       if (leaveWorkspace) leaveWorkspace.classList.toggle("active", showLeave);
       if (userAdminWorkspace) {
         userAdminWorkspace.classList.toggle("active", showUserAdmin || showSalesReport);
@@ -17226,6 +17688,14 @@ HTML = r"""<!doctype html>
         setPageTitle("업무관리");
         closeLedgerFilter();
         loadCrmAll().catch((error) => setCrmMessage(error.message, true));
+      } else if (showHermes) {
+        setPageTitle("헤르메스");
+        closeLedgerFilter();
+        setHermesTab(hermesActiveTab);
+        loadHermesAll().catch((error) => {
+          setHermesStatus(false, error.message);
+          if (hermesSettingsMessage) hermesSettingsMessage.textContent = error.message;
+        });
       } else if (showImport) {
         setPageTitle("수출입 업무 및 화물 입 출고 관리");
         closeLedgerFilter();
@@ -17279,6 +17749,7 @@ HTML = r"""<!doctype html>
       if (mode === "management") topbarSearchInput.placeholder = "통합관리대장 검색";
       else if (mode === "ledger") topbarSearchInput.placeholder = "수령인, 송장번호, CS내용 검색";
       else if (mode === "crm") topbarSearchInput.placeholder = "업무명, 직원, 번호 검색";
+      else if (mode === "hermes") topbarSearchInput.placeholder = "헤르메스 업무채팅 내용 입력";
       else topbarSearchInput.placeholder = "검색어 입력 시 CS 처리대장 조회";
     }
 
@@ -17307,6 +17778,12 @@ HTML = r"""<!doctype html>
         await loadCrmTasks();
         return;
       }
+      if (currentMode === "hermes") {
+        setHermesTab("chat");
+        if (hermesChatInput) hermesChatInput.value = query;
+        await sendHermesChat();
+        return;
+      }
       if (showWorkspace("ledger") === false) return;
       ledgerSearchInput.value = query;
       await loadLedgerCases();
@@ -17319,6 +17796,7 @@ HTML = r"""<!doctype html>
         if (currentMode === "management") await loadManagementWorkspaceData();
         else if (currentMode === "ledger") await loadLedgerCases();
         else if (currentMode === "crm") await loadCrmAll();
+        else if (currentMode === "hermes") await loadHermesAll();
         else if (currentMode === "import") await loadImportShipments();
         else if (currentMode === "fileLibrary") await loadSharedFiles();
         else if (currentMode === "leave") await loadLeaveData();
@@ -17491,6 +17969,7 @@ HTML = r"""<!doctype html>
       managementWorkspace.classList.toggle("active", false);
       ledgerWorkspace.classList.toggle("active", false);
       crmWorkspace.classList.toggle("active", false);
+      if (hermesWorkspace) hermesWorkspace.classList.toggle("active", false);
       if (leaveWorkspace) leaveWorkspace.classList.toggle("active", false);
       if (userAdminWorkspace) userAdminWorkspace.classList.toggle("active", false);
       if (backupWorkspace) backupWorkspace.classList.toggle("active", false);
@@ -17528,6 +18007,7 @@ HTML = r"""<!doctype html>
         management: "#managementNavGroup",
         ledger: "#ledgerNavGroup",
         crm: "#crmNavGroup",
+        hermes: "#hermesNavGroup",
       };
       if (!button.classList.contains("nav-item")) return null;
       const selector = groupByMode[mode];
@@ -17553,12 +18033,20 @@ HTML = r"""<!doctype html>
           crmGroup?.classList.add("open");
           return;
         }
+        if (mode === "hermes") {
+          const hermesGroup = document.querySelector("#hermesNavGroup");
+          if (button.id === "hermesNavToggle" && collapseCurrentPrimaryNav(button, "hermes")) return;
+          if (showWorkspace("hermes") === false) return;
+          if (button.dataset.hermesTab) setHermesTab(button.dataset.hermesTab);
+          hermesGroup?.classList.add("open");
+          return;
+        }
         if (mode === "order") {
           if (!confirmSaveBeforeLeaving("order", () => showOrderWorkspace(currentOrderMode))) return;
           showOrderWorkspace();
           return;
         }
-        if (mode === "management" || mode === "ledger" || mode === "crm" || mode === "import" || mode === "fileLibrary" || mode === "userAdmin" || mode === "salesReport" || mode === "leave" || mode === "backup" || mode === "systemUpdate") {
+        if (mode === "management" || mode === "ledger" || mode === "crm" || mode === "hermes" || mode === "import" || mode === "fileLibrary" || mode === "userAdmin" || mode === "salesReport" || mode === "leave" || mode === "backup" || mode === "systemUpdate") {
           if (collapseCurrentPrimaryNav(button, mode)) return;
           if (showWorkspace(mode) === false) return;
           if (mode === "salesReport" && button.closest("#salesReportNavGroup")) {
@@ -17607,6 +18095,23 @@ HTML = r"""<!doctype html>
     });
     sharedFileRefresh?.addEventListener("click", loadSharedFiles);
     sharedFileUpload?.addEventListener("click", uploadSharedFile);
+    hermesRefresh?.addEventListener("click", loadHermesAll);
+    hermesTabs.forEach((button) => {
+      button.addEventListener("click", () => setHermesTab(button.dataset.hermesTabButton || "chat"));
+    });
+    hermesChatSend?.addEventListener("click", sendHermesChat);
+    hermesAutomationSend?.addEventListener("click", sendHermesAutomation);
+    hermesSettingsSave?.addEventListener("click", () => {
+      saveHermesSettings().catch((error) => {
+        if (hermesSettingsMessage) hermesSettingsMessage.textContent = error.message;
+      });
+    });
+    hermesConnectionTest?.addEventListener("click", () => {
+      testHermesConnection().catch((error) => {
+        setHermesStatus(false, error.message);
+        if (hermesSettingsMessage) hermesSettingsMessage.textContent = error.message;
+      });
+    });
     sharedFileBody?.addEventListener("click", async (event) => {
       const downloadButton = event.target.closest("[data-shared-file-download]");
       const deleteButton = event.target.closest("[data-shared-file-delete]");
@@ -18569,11 +19074,7 @@ HTML = r"""<!doctype html>
       if (editableCell) openCellEditor("management", editableCell);
     });
     managementBody.addEventListener("keydown", (event) => {
-      if (event.key !== "F2") return;
-      const editableCell = event.target.closest(".editable-cell[data-management-field]");
-      if (!editableCell) return;
-      event.preventDefault();
-      openCellEditor("management", editableCell);
+      handleEditableCellNavigation("management", event);
     });
     ledgerBody.addEventListener("click", (event) => {
       if (event.target.closest("[data-row-check]")) {
@@ -18598,11 +19099,7 @@ HTML = r"""<!doctype html>
       if (editableCell) openCellEditor("ledger", editableCell);
     });
     ledgerBody.addEventListener("keydown", (event) => {
-      if (event.key !== "F2") return;
-      const editableCell = event.target.closest(".editable-cell[data-field]");
-      if (!editableCell) return;
-      event.preventDefault();
-      openCellEditor("ledger", editableCell);
+      handleEditableCellNavigation("ledger", event);
     });
     [ledgerCellApply, managementCellApply].forEach((button) => {
       button?.addEventListener("click", () => {
@@ -18820,7 +19317,7 @@ HTML = r"""<!doctype html>
     });
 
     const initialView = new URLSearchParams(window.location.search).get("view");
-    showWorkspace(["management", "ledger", "crm", "import", "fileLibrary", "leave", "userAdmin", "salesReport", "backup", "systemUpdate"].includes(initialView) ? initialView : "dashboard");
+    showWorkspace(["management", "ledger", "crm", "hermes", "import", "fileLibrary", "leave", "userAdmin", "salesReport", "backup", "systemUpdate"].includes(initialView) ? initialView : "dashboard");
   </script>
 </body>
 </html>
@@ -19046,6 +19543,99 @@ SALES_REPORT_NAV_HTML = r"""
         </div>
       </div>
 """
+
+HERMES_ICON_HTML = r"""<span class="hermes-mark" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 4.4c-2.4 0-4.4 1.8-4.4 4.1v2.8c0 2.3 2 4.1 4.4 4.1s4.4-1.8 4.4-4.1V8.5c0-2.3-2-4.1-4.4-4.1Z"/><path d="M9.1 8.5c1.8.7 4 .7 5.8 0"/><path d="M8.1 6.2 3.5 3.5c.3 2.7 1.8 4.6 4.1 5.5"/><path d="m15.9 6.2 4.6-2.7c-.3 2.7-1.8 4.6-4.1 5.5"/><path d="M9 15.2 7.2 20"/><path d="m15 15.2 1.8 4.8"/><path d="M9.2 20h5.6"/></svg></span>"""
+
+HERMES_NAV_HTML = rf"""
+      <div class="nav-group" id="hermesNavGroup">
+        <button class="nav-item" id="hermesNavToggle" type="button" data-open="hermes" data-hermes-tab="chat" data-nav-tone="hermes">
+          <span class="nav-label">{HERMES_ICON_HTML} <span>헤르메스</span></span>
+          <i class="nav-chevron" data-lucide="chevron-right"></i>
+        </button>
+        <div class="nav-submenu">
+          <button class="nav-subitem" type="button" data-open="hermes" data-hermes-tab="chat">AI 업무채팅</button>
+          <button class="nav-subitem" type="button" data-open="hermes" data-hermes-tab="automation">자동화 요청</button>
+          <button class="nav-subitem" type="button" data-open="hermes" data-hermes-tab="history">작업내역</button>
+          <button class="nav-subitem" type="button" data-open="hermes" data-hermes-tab="settings">관리자 설정</button>
+        </div>
+      </div>
+"""
+
+HERMES_WORKSPACE_HTML = r"""
+      <section class="workspace-view" id="hermesWorkspace">
+        <div class="workspace-head">
+          <div class="workspace-title">헤르메스</div>
+          <div class="workspace-actions">
+            <button class="workspace-button" type="button" id="hermesRefresh">새로고침</button>
+          </div>
+        </div>
+        <div class="hermes-panel">
+          <section class="hermes-hero">
+            <div class="hermes-hero-icon">__HERMES_ICON__</div>
+            <div>
+              <div class="order-exec-kicker">Hermes Agent</div>
+              <h2>AI 업무 보조 연결</h2>
+              <p>같은 VPS에서 실행 중인 Hermes Agent와 연결해 업무채팅, 자동화 요청, 처리 이력을 관리합니다.</p>
+            </div>
+            <div class="hermes-status-pill" id="hermesStatusPill">연결 대기</div>
+          </section>
+          <div class="hermes-tabs">
+            <button class="hermes-tab active" type="button" data-hermes-tab-button="chat">AI 업무채팅</button>
+            <button class="hermes-tab" type="button" data-hermes-tab-button="automation">자동화 요청</button>
+            <button class="hermes-tab" type="button" data-hermes-tab-button="history">작업내역</button>
+            <button class="hermes-tab" type="button" data-hermes-tab-button="settings">관리자 설정</button>
+          </div>
+          <section class="hermes-tab-panel active" data-hermes-panel="chat">
+            <div class="hermes-card">
+              <div class="admin-section-title">AI 업무채팅</div>
+              <textarea class="hermes-textarea" id="hermesChatInput" placeholder="예) 오늘 미처리 CS를 요약하고 우선순위를 추천해줘."></textarea>
+              <div class="hermes-actions">
+                <button class="workspace-button" type="button" id="hermesChatSend">헤르메스에 보내기</button>
+              </div>
+              <div class="hermes-response" id="hermesChatResponse">헤르메스 연결 후 답변이 여기에 표시됩니다.</div>
+            </div>
+          </section>
+          <section class="hermes-tab-panel" data-hermes-panel="automation">
+            <div class="hermes-card">
+              <div class="admin-section-title">자동화 요청</div>
+              <input class="hermes-input" id="hermesAutomationTitle" type="text" placeholder="요청 제목" />
+              <textarea class="hermes-textarea" id="hermesAutomationBody" placeholder="자동화하고 싶은 업무 흐름을 적어주세요."></textarea>
+              <div class="hermes-actions">
+                <button class="workspace-button" type="button" id="hermesAutomationSend">자동화 요청 보내기</button>
+              </div>
+              <div class="hermes-response" id="hermesAutomationResponse">요청 결과가 여기에 표시됩니다.</div>
+            </div>
+          </section>
+          <section class="hermes-tab-panel" data-hermes-panel="history">
+            <div class="hermes-card">
+              <div class="admin-section-title">작업내역</div>
+              <div class="hermes-history-list" id="hermesHistoryList">
+                <div class="admin-message">아직 헤르메스 작업내역이 없습니다.</div>
+              </div>
+            </div>
+          </section>
+          <section class="hermes-tab-panel" data-hermes-panel="settings">
+            <div class="hermes-card">
+              <div class="admin-section-title">관리자 설정</div>
+              <div class="hermes-settings-grid">
+                <label class="admin-check"><input id="hermesEnabled" type="checkbox" /> Hermes Agent 사용</label>
+                <label>Agent 기본 주소<input id="hermesBaseUrl" type="url" placeholder="http://hermes-agent:4860" /></label>
+                <label>Health 경로<input id="hermesHealthPath" type="text" placeholder="/health" /></label>
+                <label>채팅 경로<input id="hermesChatPath" type="text" placeholder="/api/chat" /></label>
+                <label>자동화 경로<input id="hermesAutomationPath" type="text" placeholder="/api/automation" /></label>
+                <label>API 키<input id="hermesApiKey" type="password" placeholder="저장된 키를 유지하려면 비워두세요" autocomplete="new-password" /></label>
+                <label>요청 제한 시간(초)<input id="hermesTimeoutSeconds" type="number" min="3" max="120" value="20" /></label>
+              </div>
+              <div class="hermes-actions">
+                <button class="workspace-button" type="button" id="hermesSettingsSave">설정 저장</button>
+                <button class="workspace-button ghost" type="button" id="hermesConnectionTest">연결 테스트</button>
+              </div>
+              <div class="hermes-response" id="hermesSettingsMessage">VPS 내부 Docker 주소를 저장한 뒤 연결 테스트를 진행하세요.</div>
+            </div>
+          </section>
+        </div>
+      </section>
+""".replace("__HERMES_ICON__", HERMES_ICON_HTML)
 
 LEAVE_NAV_HTML = r"""
       <button class="nav-item" type="button" data-open="leave" data-nav-tone="leave"><i data-lucide="calendar-days"></i> <span>__LEAVE_TITLE__</span></button>
@@ -21365,9 +21955,12 @@ def render_app_html(user: dict[str, str]) -> str:
     permissions = normalize_permissions(user.get("permissions", []), user.get("role", "user"))
     is_admin = user.get("role") == "admin"
     leave_enabled = any(permission in permissions for permission in ("leave_view", "leave_approve", "leave_manage"))
+    hermes_enabled = "hermes_use" in permissions
     leave_title = "연차 관리 및 신청" if any(permission in permissions for permission in ("leave_approve", "leave_manage")) else "연차 신청 및 확인"
     leave_nav = LEAVE_NAV_HTML.replace("__LEAVE_TITLE__", leave_title) if leave_enabled else ""
     leave_workspace = LEAVE_WORKSPACE_HTML.replace("__LEAVE_TITLE__", leave_title) if leave_enabled else ""
+    hermes_nav = HERMES_NAV_HTML if hermes_enabled else ""
+    hermes_workspace = HERMES_WORKSPACE_HTML if hermes_enabled else ""
     sales_report_nav = SALES_REPORT_NAV_HTML if is_admin and "sales_report_manage" in permissions else ""
     admin_tools_nav = ADMIN_TOOLS_NAV_HTML if is_admin else ""
     admin_workspace = ADMIN_WORKSPACE_HTML.replace("__PERMISSION_CHECKBOXES__", permissions_html()) if is_admin else ""
@@ -21383,8 +21976,10 @@ def render_app_html(user: dict[str, str]) -> str:
             "role": user.get("role", "user"),
         }, ensure_ascii=False))
         .replace("__LEAVE_NAV__", leave_nav)
+        .replace("__HERMES_NAV__", hermes_nav)
         .replace("__SALES_REPORT_NAV__", sales_report_nav)
         .replace("__LEAVE_WORKSPACE__", leave_workspace)
+        .replace("__HERMES_WORKSPACE__", hermes_workspace)
         .replace("__ADMIN_TOOLS_NAV__", admin_tools_nav)
         .replace("__ADMIN_WORKSPACE__", admin_workspace)
         .replace("__BACKUP_WORKSPACE__", backup_workspace)
@@ -26589,6 +27184,134 @@ def save_mail_settings(
     MAIL_SETTINGS_PATH.write_text(json.dumps(settings, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
+DEFAULT_HERMES_SETTINGS = {
+    "enabled": env_bool("HERMES_ENABLED", False),
+    "base_url": os.environ.get("HERMES_BASE_URL", "http://hermes-agent:4860"),
+    "health_path": os.environ.get("HERMES_HEALTH_PATH", "/health"),
+    "chat_path": os.environ.get("HERMES_CHAT_PATH", "/api/chat"),
+    "automation_path": os.environ.get("HERMES_AUTOMATION_PATH", "/api/automation"),
+    "api_key": os.environ.get("HERMES_API_KEY", ""),
+    "timeout_seconds": env_int("HERMES_TIMEOUT_SECONDS", 20, minimum=3),
+}
+
+
+def normalize_hermes_settings(payload: dict | None = None) -> dict[str, object]:
+    source = {**DEFAULT_HERMES_SETTINGS, **(payload or {})}
+    base_url = str(source.get("base_url") or "").strip().rstrip("/")
+    if base_url and not base_url.startswith(("http://", "https://")):
+        base_url = f"http://{base_url}"
+
+    def clean_path(name: str, default: str) -> str:
+        value = str(source.get(name) or default).strip() or default
+        return value if value.startswith("/") else f"/{value}"
+
+    return {
+        "enabled": bool(source.get("enabled")),
+        "base_url": base_url,
+        "health_path": clean_path("health_path", "/health"),
+        "chat_path": clean_path("chat_path", "/api/chat"),
+        "automation_path": clean_path("automation_path", "/api/automation"),
+        "api_key": str(source.get("api_key") or "").strip(),
+        "timeout_seconds": min(max(int(source.get("timeout_seconds") or 20), 3), 120),
+    }
+
+
+def load_hermes_settings(include_secret: bool = False) -> dict[str, object]:
+    raw: dict[str, object] = {}
+    if HERMES_SETTINGS_PATH.exists():
+        try:
+            raw = json.loads(HERMES_SETTINGS_PATH.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            raw = {}
+    settings = normalize_hermes_settings(raw)
+    if not include_secret:
+        settings["has_api_key"] = bool(settings.get("api_key"))
+        settings["api_key"] = ""
+    return settings
+
+
+def save_hermes_settings(payload: dict) -> dict[str, object]:
+    current = load_hermes_settings(include_secret=True)
+    merged = {**current, **payload}
+    if not str(payload.get("api_key") or "").strip():
+        merged["api_key"] = current.get("api_key", "")
+    settings = normalize_hermes_settings(merged)
+    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+    HERMES_SETTINGS_PATH.write_text(json.dumps(settings, ensure_ascii=False, indent=2), encoding="utf-8")
+    return load_hermes_settings(include_secret=False)
+
+
+def hermes_request(path_key: str, payload: dict | None = None) -> dict[str, object]:
+    settings = load_hermes_settings(include_secret=True)
+    if not settings.get("enabled"):
+        raise ValueError("Hermes Agent 사용 설정이 꺼져 있습니다.")
+    base_url = str(settings.get("base_url") or "").strip().rstrip("/")
+    if not base_url:
+        raise ValueError("Hermes Agent 기본 주소를 먼저 저장해주세요.")
+    path = str(settings.get(path_key) or "").strip()
+    url = f"{base_url}{path if path.startswith('/') else '/' + path}"
+    headers = {"Accept": "application/json"}
+    data = None
+    if payload is not None:
+        data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+        headers["Content-Type"] = "application/json; charset=utf-8"
+    api_key = str(settings.get("api_key") or "").strip()
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
+        headers["X-Hermes-Api-Key"] = api_key
+    request = urllib.request.Request(url, data=data, headers=headers, method="POST" if payload is not None else "GET")
+    try:
+        with urllib.request.urlopen(request, timeout=int(settings.get("timeout_seconds") or 20)) as response:
+            body = response.read().decode("utf-8", errors="replace")
+            try:
+                parsed = json.loads(body) if body else {}
+            except json.JSONDecodeError:
+                parsed = {"text": body}
+            return {"ok": True, "status": response.status, "url": url, "data": parsed}
+    except urllib.error.HTTPError as exc:
+        body = exc.read().decode("utf-8", errors="replace")
+        raise ValueError(f"Hermes Agent 응답 오류({exc.code}): {body[:500]}") from exc
+    except Exception as exc:
+        raise ValueError(f"Hermes Agent 연결 실패: {exc}") from exc
+
+
+def append_hermes_history(kind: str, title: str, status: str, message: str) -> None:
+    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+    item = {
+        "created_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "kind": kind,
+        "title": title[:120],
+        "status": status,
+        "message": message[:1000],
+    }
+    with HERMES_HISTORY_PATH.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(item, ensure_ascii=False) + "\n")
+
+
+def list_hermes_history(limit: int = 80) -> list[dict[str, str]]:
+    if not HERMES_HISTORY_PATH.exists():
+        return []
+    rows: list[dict[str, str]] = []
+    for line in HERMES_HISTORY_PATH.read_text(encoding="utf-8").splitlines()[-limit:]:
+        try:
+            item = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        rows.append({key: str(item.get(key, "")) for key in ("created_at", "kind", "title", "status", "message")})
+    return list(reversed(rows))
+
+
+def hermes_status_payload() -> dict[str, object]:
+    settings = load_hermes_settings(include_secret=False)
+    if not settings.get("enabled"):
+        return {"ok": False, "message": "Hermes Agent 사용 설정이 꺼져 있습니다.", "settings": settings}
+    try:
+        result = hermes_request("health_path")
+        return {"ok": True, "message": "Hermes Agent에 연결됐습니다.", "status": result.get("status"), "settings": settings}
+    except Exception as exc:
+        return {"ok": False, "message": str(exc), "settings": settings}
+
+
 def contact_from_row(row: sqlite3.Row) -> dict[str, str]:
     vendor_type = normalize_vendor_type(row["vendor_type"])
     return {
@@ -27170,6 +27893,24 @@ class WorkhubHandler(BaseHTTPRequestHandler):
             self.send_json({"files": list_shared_files()})
             return
 
+        if self.path == "/api/hermes-status":
+            if not self.require_permission(user, "hermes_use", "헤르메스"):
+                return
+            self.send_json(hermes_status_payload())
+            return
+
+        if self.path == "/api/hermes-history":
+            if not self.require_permission(user, "hermes_use", "헤르메스"):
+                return
+            self.send_json({"history": list_hermes_history()})
+            return
+
+        if self.path == "/api/hermes-settings":
+            if not self.require_permission(user, "hermes_admin", "헤르메스 관리자 설정"):
+                return
+            self.send_json(load_hermes_settings(include_secret=False))
+            return
+
         if self.path == "/api/sales-report-uploads":
             if not self.require_permission(user, "sales_report_manage", "매출표 업로드"):
                 return
@@ -27644,6 +28385,79 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                 payload = json.loads(self.rfile.read(length).decode("utf-8"))
                 user_id = save_user_account(payload, user)
                 self.send_json({"message": "사용자 계정을 저장했습니다.", "user_id": user_id, "users": list_users()})
+                return
+
+            if self.path == "/api/hermes-settings":
+                if not self.require_permission(user, "hermes_admin", "헤르메스 관리자 설정"):
+                    return
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(length).decode("utf-8") or "{}")
+                if not isinstance(payload, dict):
+                    raise ValueError("헤르메스 설정 형식이 올바르지 않습니다.")
+                settings = save_hermes_settings(payload)
+                self.send_json({"message": "헤르메스 설정을 저장했습니다.", "settings": settings})
+                return
+
+            if self.path == "/api/hermes-test":
+                if not self.require_permission(user, "hermes_admin", "헤르메스 관리자 설정"):
+                    return
+                payload = hermes_status_payload()
+                append_hermes_history("연결 테스트", "Hermes Agent 연결 테스트", "성공" if payload.get("ok") else "실패", str(payload.get("message") or ""))
+                self.send_json(payload)
+                return
+
+            if self.path == "/api/hermes-chat":
+                if not self.require_permission(user, "hermes_use", "헤르메스"):
+                    return
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(length).decode("utf-8") or "{}")
+                message = clean_payload_text(payload, "message")
+                if not message:
+                    raise ValueError("헤르메스에 보낼 내용을 입력해주세요.")
+                request_payload = {
+                    "message": message,
+                    "source": "workhub",
+                    "user": {
+                        "id": int(user.get("id") or 0),
+                        "username": user.get("username", ""),
+                        "display_name": user.get("display_name", ""),
+                    },
+                }
+                try:
+                    result = hermes_request("chat_path", request_payload)
+                    append_hermes_history("AI 업무채팅", message, "성공", json.dumps(result.get("data", {}), ensure_ascii=False)[:1000])
+                    self.send_json({"message": "헤르메스 응답을 받았습니다.", "result": result})
+                except Exception as exc:
+                    append_hermes_history("AI 업무채팅", message, "실패", str(exc))
+                    raise
+                return
+
+            if self.path == "/api/hermes-automation":
+                if not self.require_permission(user, "hermes_automation", "헤르메스 자동화 요청"):
+                    return
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(length).decode("utf-8") or "{}")
+                title = clean_payload_text(payload, "title") or "자동화 요청"
+                body = clean_payload_text(payload, "body")
+                if not body and title == "자동화 요청":
+                    raise ValueError("자동화 요청 내용을 입력해주세요.")
+                request_payload = {
+                    "title": title,
+                    "body": body,
+                    "source": "workhub",
+                    "user": {
+                        "id": int(user.get("id") or 0),
+                        "username": user.get("username", ""),
+                        "display_name": user.get("display_name", ""),
+                    },
+                }
+                try:
+                    result = hermes_request("automation_path", request_payload)
+                    append_hermes_history("자동화 요청", title, "성공", json.dumps(result.get("data", {}), ensure_ascii=False)[:1000])
+                    self.send_json({"message": "자동화 요청을 보냈습니다.", "result": result})
+                except Exception as exc:
+                    append_hermes_history("자동화 요청", title, "실패", str(exc))
+                    raise
                 return
 
             if self.path == "/api/backup-create":
