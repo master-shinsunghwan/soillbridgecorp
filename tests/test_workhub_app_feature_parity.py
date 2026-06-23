@@ -232,6 +232,18 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         self.assertIn("hermes-mark", html_source)
         self.assertIn("/static/hermes-icon.png", html_source)
 
+    def test_hermes_chat_history_can_be_summarized_and_filtered(self) -> None:
+        html_source = (ROOT / "scripts" / "workhub_delivery_app.py").read_text(encoding="utf-8")
+
+        self.assertIn('id="hermesSummaryCreate"', html_source)
+        self.assertIn('id="hermesHistoryFilter"', html_source)
+        self.assertIn('id="hermesSummaryList"', html_source)
+        self.assertIn("/api/hermes-summary", html_source)
+        self.assertIn("summarize_hermes_chat_history", html_source)
+        self.assertIn("renderHermesSummaries", html_source)
+        self.assertIn("createHermesSummary", html_source)
+        self.assertIn('kind: "summary"', html_source)
+
     def test_ledger_arrow_keys_move_between_cells_before_editing(self) -> None:
         html_source = (ROOT / "scripts" / "workhub_delivery_app.py").read_text(encoding="utf-8")
 

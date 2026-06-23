@@ -2539,6 +2539,48 @@ HTML = r"""<!doctype html>
       display: grid;
       gap: 8px;
     }
+    .hermes-history-tools {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+      margin: 12px 0;
+    }
+    .hermes-history-filter {
+      min-width: 150px;
+      height: 36px;
+      border: 1px solid #cbd5e1;
+      border-radius: 7px;
+      padding: 0 10px;
+      background: #ffffff;
+      font-family: inherit;
+      font-weight: 800;
+      color: #111827;
+    }
+    .hermes-summary-list {
+      display: grid;
+      gap: 10px;
+      margin: 10px 0 14px;
+    }
+    .hermes-summary-card {
+      border: 1px solid #bfdbfe;
+      border-radius: 8px;
+      background: #eff6ff;
+      padding: 12px;
+      color: #172554;
+    }
+    .hermes-summary-card strong {
+      display: block;
+      font-size: 13px;
+      margin-bottom: 6px;
+    }
+    .hermes-summary-card span {
+      display: block;
+      color: #475569;
+      font-size: 11px;
+      font-weight: 800;
+      margin-top: 7px;
+    }
     .hermes-history-item {
       display: grid;
       gap: 5px;
@@ -9860,6 +9902,9 @@ HTML = r"""<!doctype html>
     const hermesAutomationBody = document.querySelector("#hermesAutomationBody");
     const hermesAutomationSend = document.querySelector("#hermesAutomationSend");
     const hermesAutomationResponse = document.querySelector("#hermesAutomationResponse");
+    const hermesHistoryFilter = document.querySelector("#hermesHistoryFilter");
+    const hermesSummaryCreate = document.querySelector("#hermesSummaryCreate");
+    const hermesSummaryList = document.querySelector("#hermesSummaryList");
     const hermesHistoryList = document.querySelector("#hermesHistoryList");
     const hermesEnabled = document.querySelector("#hermesEnabled");
     const hermesBaseUrl = document.querySelector("#hermesBaseUrl");
@@ -10079,6 +10124,7 @@ HTML = r"""<!doctype html>
     let cargoShipments = [];
     let crmActiveTab = "dashboard";
     let hermesActiveTab = "chat";
+    let hermesHistoryItems = [];
     let crmSelectedTaskId = "";
     const CRM_TASK_STATUSES = ["대기", "진행중", "보류", "완료"];
     const CRM_TASK_BUILTIN_VIEWS = [
@@ -12448,6 +12494,42 @@ HTML = r"""<!doctype html>
       `).join("") : `<div class="admin-message">아직 헤르메스 작업내역이 없습니다.</div>`;
     }
 
+    function hermesHistoryCategory(item = {}) {
+      const category = String(item.category || "").toLowerCase();
+      if (category) return category;
+      const kind = String(item.kind || "").toLowerCase();
+      if (kind.includes("summary") || kind.includes("요약")) return "summary";
+      if (kind.includes("automation") || kind.includes("자동")) return "automation";
+      if (kind.includes("chat") || kind.includes("채팅")) return "chat";
+      return "other";
+    }
+
+    function renderHermesSummaries(items = []) {
+      if (!hermesSummaryList) return;
+      const summaries = items.filter((item) => hermesHistoryCategory(item) === "summary");
+      hermesSummaryList.innerHTML = summaries.length ? summaries.map((item) => `
+        <div class="hermes-summary-card">
+          <strong>${escapeHtml(item.title || "채팅 요약")}</strong>
+          <div>${escapeHtml(item.summary || item.message || "")}</div>
+          <span>${escapeHtml(item.created_at || "")} · ${escapeHtml(item.source_count || "0")}건 기준</span>
+        </div>
+      `).join("") : `<div class="admin-message">&#51200;&#51109;&#46108; &#50836;&#50557;&#51060; &#50630;&#49845;&#45768;&#45796;.</div>`;
+    }
+
+    function renderHermesHistory(items = []) {
+      if (!hermesHistoryList) return;
+      const filter = hermesHistoryFilter?.value || "all";
+      const filteredItems = filter === "all" ? items : items.filter((item) => hermesHistoryCategory(item) === filter);
+      renderHermesSummaries(items);
+      hermesHistoryList.innerHTML = filteredItems.length ? filteredItems.map((item) => `
+        <div class="hermes-history-item">
+          <strong>${escapeHtml(item.title || item.kind || "헤르메스 작업")}</strong>
+          <span>${escapeHtml(item.created_at || "")} · ${escapeHtml(item.kind || "")} · ${escapeHtml(item.status || "")}</span>
+          <span>${escapeHtml(item.message || "")}</span>
+        </div>
+      `).join("") : `<div class="admin-message">표시할 헤르메스 작업내역이 없습니다.</div>`;
+    }
+
     async function loadHermesStatus() {
       if (!can("hermes_use")) return;
       const data = await hermesFetchJson("/api/hermes-status");
@@ -12459,7 +12541,8 @@ HTML = r"""<!doctype html>
     async function loadHermesHistory() {
       if (!can("hermes_use")) return;
       const data = await hermesFetchJson("/api/hermes-history");
-      renderHermesHistory(data.history || []);
+      hermesHistoryItems = data.history || [];
+      renderHermesHistory(hermesHistoryItems);
     }
 
     async function loadHermesAll() {
@@ -12532,6 +12615,25 @@ HTML = r"""<!doctype html>
         await loadHermesHistory();
       } catch (error) {
         if (hermesChatResponse) hermesChatResponse.textContent = error.message;
+      }
+    }
+
+    async function createHermesSummary() {
+      if (!can("hermes_use")) return;
+      if (hermesSummaryCreate) hermesSummaryCreate.disabled = true;
+      if (hermesSummaryList) hermesSummaryList.innerHTML = `<div class="admin-message">채팅내역을 요약하는 중입니다.</div>`;
+      try {
+        const data = await hermesFetchJson("/api/hermes-summary", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ kind: "summary" }),
+        });
+        await loadHermesHistory();
+        if (data.summary && hermesSummaryList) renderHermesSummaries([{ ...data.summary, category: "summary" }, ...hermesHistoryItems]);
+      } catch (error) {
+        if (hermesSummaryList) hermesSummaryList.innerHTML = `<div class="admin-message">${escapeHtml(error.message)}</div>`;
+      } finally {
+        if (hermesSummaryCreate) hermesSummaryCreate.disabled = false;
       }
     }
 
@@ -18104,6 +18206,8 @@ HTML = r"""<!doctype html>
       button.addEventListener("click", () => setHermesTab(button.dataset.hermesTabButton || "chat"));
     });
     hermesChatSend?.addEventListener("click", sendHermesChat);
+    hermesHistoryFilter?.addEventListener("change", () => renderHermesHistory(hermesHistoryItems));
+    hermesSummaryCreate?.addEventListener("click", createHermesSummary);
     hermesAutomationSend?.addEventListener("click", sendHermesAutomation);
     hermesSettingsSave?.addEventListener("click", () => {
       saveHermesSettings().catch((error) => {
@@ -19613,6 +19717,18 @@ HERMES_WORKSPACE_HTML = r"""
           <section class="hermes-tab-panel" data-hermes-panel="history">
             <div class="hermes-card">
               <div class="admin-section-title">작업내역</div>
+              <div class="hermes-history-tools">
+                <select class="hermes-history-filter" id="hermesHistoryFilter">
+                  <option value="all">&#51204;&#52404; &#45236;&#50669;</option>
+                  <option value="chat">&#52292;&#54021; &#45236;&#50669;</option>
+                  <option value="summary">&#50836;&#50557; &#47785;&#47197;</option>
+                  <option value="automation">&#51088;&#46041;&#54868; &#50836;&#52397;</option>
+                </select>
+                <button class="workspace-button" type="button" id="hermesSummaryCreate">&#52292;&#54021; &#50836;&#50557; &#49373;&#49457;</button>
+              </div>
+              <div class="hermes-summary-list" id="hermesSummaryList">
+                <div class="admin-message">&#51200;&#51109;&#46108; &#50836;&#50557;&#51060; &#50630;&#49845;&#45768;&#45796;.</div>
+              </div>
               <div class="hermes-history-list" id="hermesHistoryList">
                 <div class="admin-message">아직 헤르메스 작업내역이 없습니다.</div>
               </div>
@@ -27279,7 +27395,7 @@ def hermes_request(path_key: str, payload: dict | None = None) -> dict[str, obje
         raise ValueError(f"Hermes Agent 연결 실패: {exc}") from exc
 
 
-def append_hermes_history(kind: str, title: str, status: str, message: str) -> None:
+def append_hermes_history(kind: str, title: str, status: str, message: str, extra: dict | None = None) -> None:
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
     item = {
         "created_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
@@ -27288,6 +27404,15 @@ def append_hermes_history(kind: str, title: str, status: str, message: str) -> N
         "status": status,
         "message": message[:1000],
     }
+    if not extra:
+        if kind.startswith("AI "):
+            extra = {"category": "chat"}
+        elif "Hermes Agent" in title:
+            extra = {"category": "system"}
+        else:
+            extra = {"category": "automation"}
+    if extra:
+        item.update(extra)
     with HERMES_HISTORY_PATH.open("a", encoding="utf-8") as handle:
         handle.write(json.dumps(item, ensure_ascii=False) + "\n")
 
@@ -27301,8 +27426,73 @@ def list_hermes_history(limit: int = 80) -> list[dict[str, str]]:
             item = json.loads(line)
         except json.JSONDecodeError:
             continue
-        rows.append({key: str(item.get(key, "")) for key in ("created_at", "kind", "title", "status", "message")})
+        rows.append({key: str(item.get(key, "")) for key in ("created_at", "kind", "title", "status", "message", "category", "summary", "source_count")})
     return list(reversed(rows))
+
+
+def hermes_result_text(result: dict[str, object]) -> str:
+    payload = result.get("data", result)
+    if isinstance(payload, str):
+        return payload
+    if isinstance(payload, dict):
+        for key in ("summary", "answer", "message", "text", "content", "result", "reply"):
+            value = payload.get(key)
+            if value:
+                return str(value)
+        return json.dumps(payload, ensure_ascii=False)
+    return str(payload or "")
+
+
+def summarize_hermes_chat_history(limit: int = 20) -> dict[str, str]:
+    history = list(reversed(list_hermes_history(limit=200)))
+    chat_items = [
+        item for item in history
+        if item.get("category") == "chat" or "채팅" in item.get("kind", "") or "chat" in item.get("kind", "").lower()
+    ]
+    chat_items = chat_items[-limit:]
+    if not chat_items:
+        raise ValueError("요약할 헤르메스 채팅내역이 없습니다.")
+    lines = []
+    for item in chat_items:
+        title = item.get("title", "").strip()
+        message = item.get("message", "").strip()
+        lines.append(f"- {item.get('created_at', '')} / 질문: {title} / 응답: {message[:300]}")
+    prompt = (
+        "다음 Workhub 헤르메스 업무채팅 내역을 업무 인계용으로 요약해주세요.\n"
+        "형식: 핵심요약, 결정사항, 해야 할 일, 확인 필요 항목.\n\n"
+        + "\n".join(lines)
+    )
+    summary_status = "기본요약"
+    try:
+        result = hermes_request("chat_path", {
+            "message": prompt,
+            "source": "workhub",
+            "task": "summarize_chat_history",
+            "history": chat_items,
+        })
+        summary_text = hermes_result_text(result)
+        summary_status = "성공"
+    except Exception:
+        topics = [item.get("title", "").strip() for item in chat_items if item.get("title", "").strip()]
+        summary_text = f"최근 헤르메스 채팅 {len(chat_items)}건 기준 요약 초안입니다.\n"
+        summary_text += "주요 질문: " + " / ".join(topics[:5])
+        if len(topics) > 5:
+            summary_text += f" 외 {len(topics) - 5}건"
+        summary_text += "\n헤르메스 Agent 연결 후 다시 요약하면 더 정교한 업무 요약을 생성할 수 있습니다."
+    summary = {
+        "title": f"헤르메스 채팅 요약 {datetime.now().strftime('%Y-%m-%d %H:%M')}",
+        "summary": summary_text[:2000],
+        "source_count": str(len(chat_items)),
+        "category": "summary",
+    }
+    append_hermes_history(
+        "채팅 요약",
+        summary["title"],
+        summary_status,
+        summary["summary"],
+        {"category": "summary", "summary": summary["summary"], "source_count": summary["source_count"]},
+    )
+    return summary
 
 
 def hermes_status_payload() -> dict[str, object]:
@@ -27909,6 +28099,13 @@ class WorkhubHandler(BaseHTTPRequestHandler):
             self.send_json({"history": list_hermes_history()})
             return
 
+        if self.path == "/api/hermes-summary":
+            if not self.require_permission(user, "hermes_use", "?ㅻⅤ硫붿뒪"):
+                return
+            summaries = [item for item in list_hermes_history(limit=200) if item.get("category") == "summary"]
+            self.send_json({"summaries": summaries})
+            return
+
         if self.path == "/api/hermes-settings":
             if not self.require_permission(user, "hermes_admin", "헤르메스 관리자 설정"):
                 return
@@ -28434,6 +28631,13 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                 except Exception as exc:
                     append_hermes_history("AI 업무채팅", message, "실패", str(exc))
                     raise
+                return
+
+            if self.path == "/api/hermes-summary":
+                if not self.require_permission(user, "hermes_use", "?ㅻⅤ硫붿뒪"):
+                    return
+                summary = summarize_hermes_chat_history()
+                self.send_json({"message": "헤르메스 채팅 요약을 저장했습니다.", "summary": summary})
                 return
 
             if self.path == "/api/hermes-automation":
