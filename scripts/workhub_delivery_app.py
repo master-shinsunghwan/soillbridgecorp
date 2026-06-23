@@ -19965,6 +19965,8 @@ SALES_REPORT_NAV_HTML = r"""
       </div>
 """
 
+SALES_REPORT_PRODUCT_EXCLUDE_PATTERN = "%★사입건★%"
+
 HERMES_ICON_HTML = r"""<span class="hermes-mark" aria-hidden="true"><img src="/static/hermes-icon.png" alt="" loading="lazy" /></span>"""
 
 HERMES_NAV_HTML = rf"""
@@ -21735,9 +21737,9 @@ def sales_report_dashboard_payload(period: str = "", report_date: str = "") -> d
                    COALESCE(SUM(profit_sales_amount), 0) AS profit_sales_amount,
                    COALESCE(SUM(profit_margin), 0) AS profit_margin
               FROM sales_report_product_rows
-             WHERE period = ?
+             WHERE period = ? AND product_name NOT LIKE ?
             """,
-            (selected_period,),
+            (selected_period, SALES_REPORT_PRODUCT_EXCLUDE_PATTERN),
         ).fetchone()
         previous_product_total = connection.execute(
             """
@@ -21745,9 +21747,9 @@ def sales_report_dashboard_payload(period: str = "", report_date: str = "") -> d
                    COALESCE(SUM(profit_sales_amount), 0) AS profit_sales_amount,
                    COALESCE(SUM(profit_margin), 0) AS profit_margin
               FROM sales_report_product_rows
-             WHERE period = ?
+             WHERE period = ? AND product_name NOT LIKE ?
             """,
-            (previous_period,),
+            (previous_period, SALES_REPORT_PRODUCT_EXCLUDE_PATTERN),
         ).fetchone()
         daily_rows = connection.execute(
             """
@@ -21780,11 +21782,11 @@ def sales_report_dashboard_payload(period: str = "", report_date: str = "") -> d
                    COALESCE(SUM(cs_amount), 0) AS cs_amount,
                    COALESCE(SUM(cs_margin), 0) AS cs_margin
               FROM sales_report_product_rows
-             WHERE period = ?
+             WHERE period = ? AND product_name NOT LIKE ?
              GROUP BY product_name
              ORDER BY profit_sales_amount DESC, quantity DESC, product_name COLLATE NOCASE
             """,
-            (selected_period,),
+            (selected_period, SALES_REPORT_PRODUCT_EXCLUDE_PATTERN),
         ).fetchall()
         supplier_purchase_rows = connection.execute(
             """
@@ -21840,7 +21842,7 @@ def sales_report_dashboard_payload(period: str = "", report_date: str = "") -> d
                        COALESCE(SUM(quantity), 0) AS current_quantity,
                        COALESCE(SUM(profit_sales_amount), 0) AS current
                   FROM sales_report_product_rows
-                 WHERE period = ?
+                 WHERE period = ? AND product_name NOT LIKE ?
                  GROUP BY product_name
             ),
             previous_rows AS (
@@ -21848,7 +21850,7 @@ def sales_report_dashboard_payload(period: str = "", report_date: str = "") -> d
                        COALESCE(SUM(quantity), 0) AS previous_quantity,
                        COALESCE(SUM(profit_sales_amount), 0) AS previous
                   FROM sales_report_product_rows
-                 WHERE period = ?
+                 WHERE period = ? AND product_name NOT LIKE ?
                  GROUP BY product_name
             ),
             keys AS (
@@ -21863,10 +21865,15 @@ def sales_report_dashboard_payload(period: str = "", report_date: str = "") -> d
                    COALESCE(previous_rows.previous, 0) AS previous
               FROM keys
               LEFT JOIN current_rows ON current_rows.label = keys.label
-              LEFT JOIN previous_rows ON previous_rows.label = keys.label
+             LEFT JOIN previous_rows ON previous_rows.label = keys.label
              ORDER BY current DESC, previous DESC, keys.label COLLATE NOCASE
             """,
-            (selected_period, previous_period),
+            (
+                selected_period,
+                SALES_REPORT_PRODUCT_EXCLUDE_PATTERN,
+                previous_period,
+                SALES_REPORT_PRODUCT_EXCLUDE_PATTERN,
+            ),
         ).fetchall()
         seller_compare_rows = connection.execute(
             """

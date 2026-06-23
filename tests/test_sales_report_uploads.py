@@ -281,6 +281,40 @@ class SalesReportUploadTests(unittest.TestCase):
         self.assertEqual(dashboard["seller_top"][0]["profit_sales_amount"], 900)
         self.assertEqual(dashboard["product_top"][0]["profit_sales_amount"], 700)
 
+    def test_sales_report_dashboard_excludes_purchase_marked_products(self) -> None:
+        connection = self.app.connect_db()
+        try:
+            cursor = connection.execute(
+                """
+                INSERT INTO sales_report_uploads
+                    (stored_name, original_name, report_type, report_date, period, size, uploaded_by, uploaded_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                ("product.xlsx", "product.xlsx", "product", "2026-06-19", "2026-06", 1, "admin", "2026-06-19"),
+            )
+            file_id = int(cursor.lastrowid)
+            connection.executemany(
+                """
+                INSERT INTO sales_report_product_rows
+                    (period, report_date, file_id, product_code, product_name, quantity, profit_sales_amount, profit_margin)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                [
+                    ("2026-06", "2026-06-19", file_id, "P001", "정상 상품", 2, 1000, 300),
+                    ("2026-06", "2026-06-19", file_id, "P002", "★사입건★ 제외 상품", 5, 9000, -500),
+                ],
+            )
+            connection.commit()
+        finally:
+            connection.close()
+
+        dashboard = self.app.sales_report_dashboard_payload("2026-06", "2026-06-19")
+
+        self.assertEqual([row["name"] for row in dashboard["product_top"]], ["정상 상품"])
+        self.assertEqual(dashboard["product_total"]["quantity"], 2)
+        self.assertEqual(dashboard["product_total"]["profit_sales_amount"], 1000)
+        self.assertEqual([row["label"] for row in dashboard["monthly_comparison_details"]["product"]], ["정상 상품"])
+
     def test_sales_dimension_reports_without_date_inherit_latest_daily_context(self) -> None:
         base = Path(self.tempdir.name)
         daily = base / "daily.xlsx"
