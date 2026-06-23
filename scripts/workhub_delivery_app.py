@@ -878,6 +878,18 @@ HTML = r"""<!doctype html>
       flex-direction: column;
       overflow: hidden;
     }
+    main.workspace-scroll-mode {
+      overflow-y: auto;
+      overflow-x: hidden;
+      scrollbar-gutter: stable;
+    }
+    main:has(#userAdminWorkspace.active),
+    main:has(#backupWorkspace.active),
+    main:has(#systemUpdateWorkspace.active) {
+      overflow-y: auto;
+      overflow-x: hidden;
+      scrollbar-gutter: stable;
+    }
     .topbar {
       height: 62px;
       flex: 0 0 62px;
@@ -3853,6 +3865,8 @@ HTML = r"""<!doctype html>
     #userAdminWorkspace.active,
     #backupWorkspace.active,
     #systemUpdateWorkspace.active {
+      flex: 0 0 auto;
+      min-height: auto;
       overflow: visible;
       padding-bottom: 48px;
     }
@@ -17850,6 +17864,10 @@ HTML = r"""<!doctype html>
       const showSalesReport = mode === "salesReport" && Boolean(userAdminWorkspace);
       const showBackup = mode === "backup" && Boolean(backupWorkspace);
       const showSystemUpdate = mode === "systemUpdate" && Boolean(systemUpdateWorkspace);
+      document.querySelector("main")?.classList.toggle(
+        "workspace-scroll-mode",
+        showUserAdmin || showBackup || showSystemUpdate
+      );
       dashboardContent.style.display = mode === "dashboard" ? "" : "none";
       if (importWorkspace) importWorkspace.classList.toggle("active", showImport);
       if (orderWorkspace) orderWorkspace.classList.toggle("active", false);
