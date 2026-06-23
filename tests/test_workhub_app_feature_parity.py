@@ -249,6 +249,16 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         self.assertIn('kind: "summary"', html_source)
         self.assertEqual(html_source.count("function renderHermesHistory(items = [])"), 1)
 
+    def test_admin_navigation_and_admin_pages_can_scroll(self) -> None:
+        html_source = (ROOT / "scripts" / "workhub_delivery_app.py").read_text(encoding="utf-8")
+
+        self.assertIn("height: 100vh;", html_source)
+        self.assertIn("max-height: 100vh;", html_source)
+        self.assertIn("overscroll-behavior: contain;", html_source)
+        self.assertIn("#userAdminWorkspace.active", html_source)
+        self.assertIn("#backupWorkspace.active", html_source)
+        self.assertIn("#systemUpdateWorkspace.active", html_source)
+
     def test_ledger_arrow_keys_move_between_cells_before_editing(self) -> None:
         html_source = (ROOT / "scripts" / "workhub_delivery_app.py").read_text(encoding="utf-8")
 

@@ -342,10 +342,20 @@ HTML = r"""<!doctype html>
       background: linear-gradient(180deg, var(--navy), #081430);
       color: var(--sidebar-text-primary);
       padding: 22px 16px;
+      min-height: 0;
+      height: 100vh;
+      max-height: 100vh;
       overflow-y: auto;
+      overflow-x: hidden;
+      overscroll-behavior: contain;
       scrollbar-width: thin;
       scrollbar-color: rgba(255,255,255,.28) transparent;
       border-right: 1px solid rgba(255,255,255,.08);
+    }
+    .sidebar::-webkit-scrollbar { width: 8px; }
+    .sidebar::-webkit-scrollbar-thumb {
+      background: rgba(255,255,255,.22);
+      border-radius: 999px;
     }
     .brand-icon {
       width: 38px; height: 38px; border-radius: 9px;
@@ -3821,6 +3831,12 @@ HTML = r"""<!doctype html>
       padding: 0 22px 24px;
     }
     .workspace-view.active { display: flex; }
+    #userAdminWorkspace.active,
+    #backupWorkspace.active,
+    #systemUpdateWorkspace.active {
+      overflow: visible;
+      padding-bottom: 48px;
+    }
     .order-exec-panel {
       display: grid;
       gap: 14px;
