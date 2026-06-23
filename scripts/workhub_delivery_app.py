@@ -2324,6 +2324,12 @@ HTML = r"""<!doctype html>
       color: #344054;
     }
     .admin-check input { width: 16px; height: 16px; }
+    #userAdminWorkspace .workspace-mount,
+    #userAdminWorkspace .admin-panel {
+      flex: 0 0 auto;
+      min-height: auto;
+      overflow: visible;
+    }
     .permission-grid {
       display: grid;
       grid-template-columns: repeat(5, minmax(0, 1fr));
@@ -2332,6 +2338,12 @@ HTML = r"""<!doctype html>
       border: 1px solid var(--line);
       border-radius: 8px;
       background: #f8fafc;
+    }
+    #userAdminPermissions.permission-grid {
+      max-height: min(40vh, 380px);
+      overflow: auto;
+      align-content: start;
+      scrollbar-gutter: stable;
     }
     .permission-item {
       min-height: 42px;
@@ -2362,6 +2374,10 @@ HTML = r"""<!doctype html>
       border-radius: 8px;
       background: white;
     }
+    #userAdminWorkspace .admin-table-wrap {
+      max-height: min(44vh, 460px);
+      scrollbar-gutter: stable;
+    }
     .admin-table {
       width: 100%;
       min-width: 900px;
@@ -2369,6 +2385,9 @@ HTML = r"""<!doctype html>
       font-size: 13px;
     }
     .admin-table th {
+      position: sticky;
+      top: 0;
+      z-index: 1;
       height: 34px;
       padding: 0 10px;
       background: #eef6ff;

@@ -258,6 +258,11 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         self.assertIn("#userAdminWorkspace.active", html_source)
         self.assertIn("#backupWorkspace.active", html_source)
         self.assertIn("#systemUpdateWorkspace.active", html_source)
+        self.assertIn("#userAdminPermissions.permission-grid", html_source)
+        self.assertIn("max-height: min(40vh, 380px);", html_source)
+        self.assertIn("#userAdminWorkspace .admin-table-wrap", html_source)
+        self.assertIn("max-height: min(44vh, 460px);", html_source)
+        self.assertIn("position: sticky;", html_source)
 
     def test_ledger_arrow_keys_move_between_cells_before_editing(self) -> None:
         html_source = (ROOT / "scripts" / "workhub_delivery_app.py").read_text(encoding="utf-8")
