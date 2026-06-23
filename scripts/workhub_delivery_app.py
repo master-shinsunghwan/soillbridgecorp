@@ -2618,38 +2618,60 @@ HTML = r"""<!doctype html>
     .ledger-cs-popup-head { display: none; }
     .workhub-modal.ledger-modal .cs-fields.ledger-cs-popup,
     #ledgerWorkspace .cs-fields.ledger-cs-popup {
-      position: absolute;
+      position: fixed;
       z-index: 35;
-      top: 70px;
-      right: 22px;
-      bottom: 72px;
-      display: block !important;
-      width: min(560px, calc(100vw - 62px));
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      display: grid !important;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px 12px;
+      width: min(920px, calc(100vw - 64px));
+      max-height: min(82vh, 760px);
       overflow: auto;
-      padding: 18px;
+      padding: 16px;
       border: 1px solid #9aa4b2;
       border-radius: 10px;
       background: white;
       box-shadow: 0 18px 44px rgba(15, 23, 42, .28);
     }
-    #ledgerWorkspace .cs-fields.ledger-cs-popup {
-      top: 18px;
-      right: 22px;
-      bottom: 24px;
-    }
     .workhub-modal.ledger-modal .cs-fields.ledger-cs-popup .ledger-cs-popup-head,
     #ledgerWorkspace .cs-fields.ledger-cs-popup .ledger-cs-popup-head {
       position: sticky;
-      top: -18px;
+      top: -16px;
       z-index: 2;
+      grid-column: 1 / -1;
       display: flex;
       align-items: center;
       justify-content: space-between;
       gap: 12px;
-      margin: -18px -18px 14px;
-      padding: 15px 18px;
+      margin: -16px -16px 4px;
+      padding: 13px 16px;
       border-bottom: 1px solid #d7dce5;
       background: white;
+    }
+    .cs-fields.ledger-cs-popup .text-field {
+      margin-top: 0;
+    }
+    .cs-fields.ledger-cs-popup .text-field.cs-wide,
+    .cs-fields.ledger-cs-popup .add-row,
+    .cs-fields.ledger-cs-popup .cs-toolbar,
+    .cs-fields.ledger-cs-popup .cs-case-list {
+      grid-column: 1 / -1;
+    }
+    .cs-fields.ledger-cs-popup textarea {
+      min-height: 72px;
+    }
+    .cs-fields.ledger-cs-popup #csBodyInput {
+      min-height: 118px;
+    }
+    @media (max-width: 840px) {
+      .workhub-modal.ledger-modal .cs-fields.ledger-cs-popup,
+      #ledgerWorkspace .cs-fields.ledger-cs-popup {
+        grid-template-columns: 1fr;
+        width: min(620px, calc(100vw - 28px));
+        max-height: calc(100vh - 36px);
+      }
     }
     .ledger-cs-popup-title {
       font-size: 20px;
@@ -8671,20 +8693,20 @@ HTML = r"""<!doctype html>
               <option value="오출고(오배송)">오출고(오배송)</option>
             </select>
           </div>
-          <div class="text-field">
+          <div class="text-field cs-wide">
             <label class="field-label" for="csContentInput">CS내용</label>
             <textarea id="csContentInput" name="cs_content" placeholder="예) 파손 / 오배송 / 누락 / 반품 접수 요청"></textarea>
           </div>
-          <div class="text-field">
+          <div class="text-field cs-wide">
             <label class="field-label" for="csAttachmentInput">첨부파일(이미지/영상)</label>
             <input id="csAttachmentInput" name="cs_attachments" type="file" accept="image/*,video/*" multiple />
             <div class="hint-line" id="csAttachmentSummary">첨부파일 없음</div>
           </div>
-          <div class="text-field">
+          <div class="text-field cs-wide">
             <label class="field-label" for="csSubjectInput">메일 제목</label>
             <input id="csSubjectInput" name="subject" type="text" />
           </div>
-          <div class="text-field">
+          <div class="text-field cs-wide">
             <label class="field-label" for="csBodyInput">요청 내용</label>
             <textarea id="csBodyInput" name="body"></textarea>
           </div>

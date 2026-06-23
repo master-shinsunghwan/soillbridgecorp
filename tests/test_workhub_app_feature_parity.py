@@ -191,6 +191,10 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         self.assertIn("function mountCsFieldsInLedgerWorkspace()", html_source)
         self.assertIn("ledgerWorkspaceMount.appendChild(csFields)", html_source)
         self.assertIn("#ledgerWorkspace .cs-fields.ledger-cs-popup", html_source)
+        self.assertIn("position: fixed;", html_source)
+        self.assertIn("transform: translate(-50%, -50%);", html_source)
+        self.assertIn("grid-template-columns: repeat(2, minmax(0, 1fr));", html_source)
+        self.assertIn("text-field cs-wide", html_source)
         self.assertIn("restoreCsFieldsToModal();", html_source)
 
         self.assertIn('tabindex="0"', html_source)
