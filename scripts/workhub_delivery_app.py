@@ -1706,6 +1706,84 @@ HTML = r"""<!doctype html>
       gap: 10px;
       margin-top: 18px;
     }
+    .import-progress-dialog {
+      width: min(560px, 100%);
+    }
+    .import-progress-meta {
+      display: grid;
+      gap: 6px;
+      margin: 12px 0 14px;
+      padding: 12px;
+      border: 1px solid #d7dce5;
+      border-radius: 8px;
+      background: #f8fafc;
+      color: #344054;
+      font-size: 13px;
+      font-weight: 800;
+    }
+    .import-progress-bar {
+      height: 9px;
+      overflow: hidden;
+      border-radius: 999px;
+      background: #e5e7eb;
+      margin: 12px 0 14px;
+    }
+    .import-progress-bar span {
+      display: block;
+      width: var(--import-progress-width, 8%);
+      height: 100%;
+      border-radius: inherit;
+      background: linear-gradient(90deg, #2563eb, #08a66c);
+      transition: width .22s ease;
+    }
+    .import-progress-stage {
+      min-height: 22px;
+      color: #155bc8;
+      font-size: 14px;
+      font-weight: 950;
+    }
+    .import-progress-steps {
+      display: grid;
+      gap: 8px;
+      margin: 14px 0 0;
+      padding: 0;
+      list-style: none;
+    }
+    .import-progress-steps li {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      color: #667085;
+      font-size: 13px;
+      font-weight: 850;
+    }
+    .import-progress-steps li::before {
+      content: "";
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: #cbd5e1;
+      box-shadow: inset 0 0 0 2px #fff;
+    }
+    .import-progress-steps li.done {
+      color: #047857;
+    }
+    .import-progress-steps li.done::before {
+      background: #08a66c;
+    }
+    .import-progress-steps li.active {
+      color: #155bc8;
+    }
+    .import-progress-steps li.active::before {
+      background: #2563eb;
+      box-shadow: 0 0 0 4px rgba(37, 99, 235, .14);
+    }
+    .import-progress-dialog.error .import-progress-stage {
+      color: #b42318;
+    }
+    .import-progress-dialog.error .import-progress-bar span {
+      background: #dc2626;
+    }
     .import-correction-dialog {
       width: min(920px, 100%);
     }
@@ -9354,6 +9432,30 @@ HTML = r"""<!doctype html>
     </div>
   </div>
 
+  <div class="safe-number-dialog-backdrop" id="importProgressDialog" aria-hidden="true">
+    <div class="safe-number-dialog import-progress-dialog" role="dialog" aria-modal="true" aria-labelledby="importProgressTitle">
+      <h2 class="safe-number-dialog-title" id="importProgressTitle">업로드 진행상황</h2>
+      <p class="safe-number-dialog-description" id="importProgressDescription">파일 업로드를 준비 중입니다.</p>
+      <div class="import-progress-meta">
+        <span id="importProgressFile">파일명: -</span>
+        <span id="importProgressMode">방식: -</span>
+      </div>
+      <div class="import-progress-bar" aria-hidden="true"><span id="importProgressBar"></span></div>
+      <div class="import-progress-stage" id="importProgressStage">준비 중</div>
+      <ol class="import-progress-steps" id="importProgressSteps">
+        <li data-import-progress-step="prepare">파일 준비</li>
+        <li data-import-progress-step="preview">엑셀 읽기 및 양식 검사</li>
+        <li data-import-progress-step="confirm">업로드 방식 확인</li>
+        <li data-import-progress-step="saving">DB 저장</li>
+        <li data-import-progress-step="correction">수정 필요 데이터 확인</li>
+        <li data-import-progress-step="done">완료</li>
+      </ol>
+      <div class="safe-number-dialog-actions">
+        <button class="btn primary" id="importProgressClose" type="button" hidden>확인</button>
+      </div>
+    </div>
+  </div>
+
   <div class="safe-number-dialog-backdrop" id="importCorrectionDialog" aria-hidden="true">
     <div class="safe-number-dialog import-correction-dialog" role="dialog" aria-modal="true" aria-labelledby="importCorrectionTitle">
       <h2 class="safe-number-dialog-title" id="importCorrectionTitle">업로드 데이터 수정</h2>
@@ -9813,6 +9915,16 @@ HTML = r"""<!doctype html>
     const importModeCancel = document.querySelector("#importModeCancel");
     const importModeDaily = document.querySelector("#importModeDaily");
     const importModeReplace = document.querySelector("#importModeReplace");
+    const importProgressDialog = document.querySelector("#importProgressDialog");
+    const importProgressPanel = importProgressDialog?.querySelector(".import-progress-dialog");
+    const importProgressTitle = document.querySelector("#importProgressTitle");
+    const importProgressDescription = document.querySelector("#importProgressDescription");
+    const importProgressFile = document.querySelector("#importProgressFile");
+    const importProgressMode = document.querySelector("#importProgressMode");
+    const importProgressBar = document.querySelector("#importProgressBar");
+    const importProgressStage = document.querySelector("#importProgressStage");
+    const importProgressSteps = document.querySelector("#importProgressSteps");
+    const importProgressClose = document.querySelector("#importProgressClose");
     const importCorrectionDialog = document.querySelector("#importCorrectionDialog");
     const importCorrectionTitle = document.querySelector("#importCorrectionTitle");
     const importCorrectionDescription = document.querySelector("#importCorrectionDescription");
@@ -16168,6 +16280,72 @@ HTML = r"""<!doctype html>
       return mode === "replace" ? "전체 데이터 교체" : "중복 제외 신규만 업로드";
     }
 
+    const importProgressStepOrder = ["prepare", "preview", "confirm", "saving", "correction", "done"];
+    const importProgressStepPercent = {
+      prepare: 8,
+      preview: 28,
+      confirm: 44,
+      saving: 70,
+      correction: 86,
+      done: 100,
+      error: 100,
+    };
+    const importProgressStepLabel = {
+      prepare: "파일 업로드 준비 중",
+      preview: "엑셀을 읽고 양식을 검사하는 중",
+      confirm: "업로드 방식을 확인하는 중",
+      saving: "DB에 저장하는 중",
+      correction: "수정 필요 데이터를 확인하는 중",
+      done: "업로드 완료",
+      error: "업로드 실패",
+    };
+
+    function setImportProgressOpen(open) {
+      if (!importProgressDialog) return;
+      importProgressDialog.classList.toggle("open", open);
+      importProgressDialog.setAttribute("aria-hidden", open ? "false" : "true");
+    }
+
+    function hideImportProgress() {
+      setImportProgressOpen(false);
+    }
+
+    function showImportProgress({ ledgerName, fileName, mode = "" } = {}) {
+      if (!importProgressDialog) return;
+      if (importProgressPanel) importProgressPanel.classList.remove("error");
+      if (importProgressTitle) importProgressTitle.textContent = `${ledgerName || "대장"} 업로드 진행상황`;
+      if (importProgressDescription) importProgressDescription.textContent = "창을 닫거나 새로고침하지 말고 잠시만 기다려주세요.";
+      if (importProgressFile) importProgressFile.textContent = `파일명: ${fileName || "-"}`;
+      if (importProgressMode) importProgressMode.textContent = `방식: ${mode ? importModeLabel(mode) : "검토 중"}`;
+      if (importProgressClose) importProgressClose.hidden = true;
+      setImportProgressOpen(true);
+      updateImportProgress("prepare");
+    }
+
+    function updateImportProgress(step, message = "", mode = "") {
+      if (!importProgressDialog) return;
+      const stepIndex = importProgressStepOrder.indexOf(step);
+      const activeIndex = stepIndex >= 0 ? stepIndex : importProgressStepOrder.length - 1;
+      if (mode && importProgressMode) importProgressMode.textContent = `방식: ${importModeLabel(mode)}`;
+      if (importProgressBar) importProgressBar.style.setProperty("--import-progress-width", `${importProgressStepPercent[step] || 8}%`);
+      if (importProgressStage) importProgressStage.textContent = message || importProgressStepLabel[step] || "처리 중";
+      importProgressSteps?.querySelectorAll("[data-import-progress-step]").forEach((item) => {
+        const itemIndex = importProgressStepOrder.indexOf(item.dataset.importProgressStep || "");
+        item.classList.toggle("done", itemIndex >= 0 && itemIndex < activeIndex);
+        item.classList.toggle("active", itemIndex === activeIndex);
+      });
+    }
+
+    function finishImportProgress(status, message = "") {
+      if (!importProgressDialog) return;
+      setImportProgressOpen(true);
+      if (importProgressPanel) importProgressPanel.classList.toggle("error", status === "error");
+      if (status === "error") updateImportProgress("error", message);
+      else updateImportProgress("done", message);
+      if (importProgressClose) importProgressClose.hidden = false;
+      importProgressClose?.focus();
+    }
+
     function importPreviewText(preview) {
       const lines = [
         `전체 행: ${preview.total || 0}건`,
@@ -16447,13 +16625,19 @@ HTML = r"""<!doctype html>
       if (!file) return;
       ledgerUploadInProgress = true;
       try {
+        showImportProgress({ ledgerName: "CS 처리대장", fileName: file.name });
+        updateImportProgress("preview", "CS 처리대장 엑셀 파일을 검토하는 중입니다.");
         notice.textContent = "CS 처리대장 업로드 파일 검토 중입니다.";
         const preview = await previewLedgerImport(file, "daily");
+        updateImportProgress("confirm", "업로드 방식과 중복 데이터를 확인해주세요.");
+        hideImportProgress();
         const mode = await requestImportModeSelection({ ledgerName: "CS 처리대장", preview });
         if (!mode) {
           notice.textContent = "CS 처리대장 업로드를 취소했습니다.";
           return;
         }
+        showImportProgress({ ledgerName: "CS 처리대장", fileName: file.name, mode });
+        updateImportProgress("saving", `CS 처리대장 ${importModeLabel(mode)} 처리 중입니다.`, mode);
         const formData = new FormData();
         formData.append("file", file);
         formData.append("mode", mode);
@@ -16464,6 +16648,8 @@ HTML = r"""<!doctype html>
         });
         const data = await response.json();
         if (!response.ok) throw new Error(data.error || "CS 처리대장 업로드에 실패했습니다.");
+        updateImportProgress("correction", "수정이 필요한 데이터가 있는지 확인하는 중입니다.", mode);
+        hideImportProgress();
         const correctionResult = await applyPostImportCorrections({
           ledgerName: "CS 처리대장",
           endpoint: "/api/cs-cases-import-corrections",
@@ -16479,8 +16665,10 @@ HTML = r"""<!doctype html>
         } else {
           await loadLedgerCases();
         }
+        finishImportProgress("done", "CS 처리대장 업로드가 완료되었습니다.");
       } catch (error) {
         notice.textContent = error.message;
+        finishImportProgress("error", error.message || "CS 처리대장 업로드에 실패했습니다.");
       } finally {
         ledgerImportInput.value = "";
         ledgerImportMode = "daily";
@@ -16665,13 +16853,19 @@ HTML = r"""<!doctype html>
       if (!file) return;
       managementUploadInProgress = true;
       try {
+        showImportProgress({ ledgerName: "통합관리대장", fileName: file.name });
+        updateImportProgress("preview", "통합관리대장 엑셀 파일을 검토하는 중입니다.");
         notice.textContent = "통합관리대장 업로드 파일 검토 중입니다.";
         const preview = await previewManagementImport(file, "daily");
+        updateImportProgress("confirm", "업로드 방식과 중복 데이터를 확인해주세요.");
+        hideImportProgress();
         const mode = await requestImportModeSelection({ ledgerName: "통합관리대장", preview });
         if (!mode) {
           notice.textContent = "통합관리대장 업로드를 취소했습니다.";
           return;
         }
+        showImportProgress({ ledgerName: "통합관리대장", fileName: file.name, mode });
+        updateImportProgress("saving", `통합관리대장 ${importModeLabel(mode)} 처리 중입니다.`, mode);
         const formData = new FormData();
         formData.append("file", file);
         formData.append("mode", mode);
@@ -16683,6 +16877,8 @@ HTML = r"""<!doctype html>
         });
         const data = await response.json();
         if (!response.ok) throw new Error(data.error || "통합관리대장 업로드에 실패했습니다.");
+        updateImportProgress("correction", "수정이 필요한 데이터가 있는지 확인하는 중입니다.", mode);
+        hideImportProgress();
         const correctionResult = await applyPostImportCorrections({
           ledgerName: "통합관리대장",
           endpoint: "/api/management-import-corrections",
@@ -16698,8 +16894,10 @@ HTML = r"""<!doctype html>
         } else {
           await loadManagementWorkspaceData();
         }
+        finishImportProgress("done", "통합관리대장 업로드가 완료되었습니다.");
       } catch (error) {
         notice.textContent = error.message;
+        finishImportProgress("error", error.message || "통합관리대장 업로드에 실패했습니다.");
       } finally {
         managementImportInput.value = "";
         managementImportMode = "daily";
@@ -19147,6 +19345,7 @@ HTML = r"""<!doctype html>
     ledgerImportInput.addEventListener("change", uploadLedgerWorkbook);
     managementRefresh.addEventListener("click", () => loadManagementRecords({ showPicker: true }));
     managementImportInput.addEventListener("change", uploadManagementWorkbook);
+    importProgressClose?.addEventListener("click", hideImportProgress);
     managementSaveAll.addEventListener("click", () => saveCurrentWorkspaceRows({ mode: "management", selectedOnly: true }));
     ledgerSaveAll.addEventListener("click", () => saveCurrentWorkspaceRows({ mode: "ledger", selectedOnly: true }));
     managementDeleteSelected.addEventListener("click", () => deleteSelectedRows("management"));

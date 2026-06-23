@@ -375,6 +375,19 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         self.assertIn("preview_management_import", html_source)
         self.assertIn("preview_cs_cases_import", html_source)
 
+    def test_ledger_imports_show_progress_dialog(self) -> None:
+        html_source = (SCRIPTS / "workhub_delivery_app.py").read_text(encoding="utf-8")
+
+        self.assertIn('id="importProgressDialog"', html_source)
+        self.assertIn('id="importProgressStage"', html_source)
+        self.assertIn('id="importProgressSteps"', html_source)
+        self.assertIn("function showImportProgress", html_source)
+        self.assertIn("function updateImportProgress", html_source)
+        self.assertIn("function finishImportProgress", html_source)
+        self.assertIn('updateImportProgress("preview"', html_source)
+        self.assertIn('updateImportProgress("saving"', html_source)
+        self.assertIn('updateImportProgress("done"', html_source)
+
     def test_backup_workspace_supports_auto_and_selected_backup_settings(self) -> None:
         html_source = (SCRIPTS / "workhub_delivery_app.py").read_text(encoding="utf-8")
 
