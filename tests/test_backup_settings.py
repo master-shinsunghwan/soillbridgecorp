@@ -77,6 +77,24 @@ def test_create_backup_includes_runtime_work_files_for_full_restore(tmp_path: Pa
     assert "sales_reports/sales.xlsx" in names
 
 
+def test_offline_backup_can_skip_external_upload(tmp_path: Path) -> None:
+    app = load_app(tmp_path)
+    configured_dir = tmp_path / "backups"
+    app.save_backup_settings(
+        {
+            "backup_dir": str(configured_dir),
+            "external_enabled": True,
+            "rclone_remote": "workhub-gdrive",
+            "rclone_path": "WorkhubBackups",
+        }
+    )
+
+    backup = app.create_workhub_backup("offline-download", upload_external=False)
+
+    assert (configured_dir / backup["name"]).exists()
+    assert backup["external_backup"]["status"] == "disabled"
+
+
 def test_rclone_external_backup_upload_builds_google_drive_copy_command(tmp_path: Path) -> None:
     app = load_app(tmp_path)
     backup_path = tmp_path / "workhub_backup_20260619_120000.zip"
@@ -137,6 +155,8 @@ def main() -> None:
         test_create_backup_can_use_one_time_target_dir_without_changing_settings(Path(directory) / "selected")
     with tempfile.TemporaryDirectory() as directory:
         test_create_backup_includes_runtime_work_files_for_full_restore(Path(directory) / "full")
+    with tempfile.TemporaryDirectory() as directory:
+        test_offline_backup_can_skip_external_upload(Path(directory) / "offline")
     with tempfile.TemporaryDirectory() as directory:
         test_rclone_external_backup_upload_builds_google_drive_copy_command(Path(directory) / "rclone")
     with tempfile.TemporaryDirectory() as directory:

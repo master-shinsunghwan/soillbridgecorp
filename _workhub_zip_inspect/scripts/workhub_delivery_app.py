@@ -10460,6 +10460,7 @@ HTML = r"""<!doctype html>
     const backupRefresh = document.querySelector("#backupRefresh");
     const backupCreate = document.querySelector("#backupCreate");
     const backupCreateSelected = document.querySelector("#backupCreateSelected");
+    const backupOfflineDownload = document.querySelector("#backupOfflineDownload");
     const backupSettingsSave = document.querySelector("#backupSettingsSave");
     const backupAutoEnabled = document.querySelector("#backupAutoEnabled");
     const backupAutoHour = document.querySelector("#backupAutoHour");
@@ -11038,6 +11039,13 @@ HTML = r"""<!doctype html>
     function downloadBackup(name) {
       const url = `/api/backup-download?name=${encodeURIComponent(name)}`;
       window.location.href = url;
+    }
+
+    function downloadOfflineBackup() {
+      if (!backupOfflineDownload) return;
+      backupMessage.textContent = "오프라인 백업 파일을 생성한 뒤 다운로드를 시작합니다.";
+      window.location.href = `/api/backup-offline-download?_=${Date.now()}`;
+      window.setTimeout(loadBackups, 2500);
     }
 
     async function deleteBackup(name) {
@@ -20142,6 +20150,7 @@ HTML = r"""<!doctype html>
     if (backupCreate) backupCreate.addEventListener("click", createBackupNow);
     if (backupSettingsSave) backupSettingsSave.addEventListener("click", saveBackupSettings);
     if (backupCreateSelected) backupCreateSelected.addEventListener("click", createBackupAtSelectedPath);
+    if (backupOfflineDownload) backupOfflineDownload.addEventListener("click", downloadOfflineBackup);
     if (backupRestoreInput) backupRestoreInput.addEventListener("change", restoreBackupFromUpload);
     if (systemUpdateRefresh) systemUpdateRefresh.addEventListener("click", loadSystemUpdateStatus);
     if (systemUpdateCheck) systemUpdateCheck.addEventListener("click", checkSystemUpdate);
@@ -21229,6 +21238,7 @@ BACKUP_WORKSPACE_HTML = r"""
           <div class="workspace-actions">
             <button class="workspace-button" type="button" id="backupRefresh">새로고침</button>
             <button class="workspace-button" type="button" id="backupCreate">지금 백업하기</button>
+            <button class="workspace-button" type="button" id="backupOfflineDownload">오프라인 백업 다운로드</button>
             <label class="workspace-button" for="backupRestoreInput">백업 파일 복원</label>
             <input id="backupRestoreInput" type="file" accept=".zip" />
           </div>
@@ -25222,7 +25232,11 @@ def write_backup_directory(archive: zipfile.ZipFile, root: Path, prefix: str, cu
     return written
 
 
-def create_workhub_backup(reason: str = "manual", backup_dir: str | Path | None = None) -> dict[str, str | int]:
+def create_workhub_backup(
+    reason: str = "manual",
+    backup_dir: str | Path | None = None,
+    upload_external: bool = True,
+) -> dict[str, str | int]:
     settings = load_backup_settings()
     root = backup_dir_path(settings, backup_dir=backup_dir)
     root.mkdir(parents=True, exist_ok=True)
@@ -25262,7 +25276,16 @@ def create_workhub_backup(reason: str = "manual", backup_dir: str | Path | None 
             )
     cleanup_backup_retention(backup_dir=root, retention_days=int(settings["retention_days"]))
     info = backup_file_info(output_path)
-    external_result = upload_backup_to_external_storage(output_path, settings)
+    if upload_external:
+        external_result = upload_backup_to_external_storage(output_path, settings)
+    else:
+        external_result = {
+            "status": "disabled",
+            "message": "오프라인 다운로드용 백업이라 외부 업로드를 건너뛰었습니다.",
+            "backup_name": output_path.name,
+            "target": "",
+            "uploaded_at": "",
+        }
     info["external_backup"] = external_result
     if external_result["status"] != "disabled":
         update_backup_external_status(external_result)
@@ -29668,6 +29691,30 @@ class WorkhubHandler(BaseHTTPRequestHandler):
             if not self.require_permission(user, "system_update", "시스템 업데이트"):
                 return
             self.send_json(system_update_payload(fetch=False))
+            return
+
+        if self.path.startswith("/api/backup-offline-download"):
+            if not self.require_permission(user, "backup_manage", "백업 관리"):
+                return
+            try:
+                backup = create_workhub_backup("offline-download", upload_external=False)
+                path = backup_path_from_name(str(backup["name"]))
+                if not path.exists():
+                    raise FileNotFoundError("백업 파일을 찾지 못했습니다.")
+            except Exception as exc:  # noqa: BLE001
+                self.send_json({"error": str(exc)}, status=400)
+                return
+            data = path.read_bytes()
+            filename = quote(path.name)
+            self.send_response(200)
+            self.send_header("Content-Type", "application/zip")
+            self.send_header("Content-Disposition", f"attachment; filename*=UTF-8''{filename}")
+            self.send_header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
+            self.send_header("Pragma", "no-cache")
+            self.send_header("Content-Length", str(len(data)))
+            self.send_header("X-Backup-Name", path.name)
+            self.end_headers()
+            self.wfile.write(data)
             return
 
         if self.path.startswith("/api/backup-download"):
