@@ -324,6 +324,39 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         self.assertIn('handleEditableCellNavigation("ledger", event);', html_source)
         self.assertIn('event.key === "F2"', html_source)
 
+    def test_cell_editor_apply_saves_and_refreshes_visible_ledgers(self) -> None:
+        html_source = (ROOT / "scripts" / "workhub_delivery_app.py").read_text(encoding="utf-8")
+
+        self.assertIn("async function saveEditedCellRow(scope, row)", html_source)
+        apply_start = html_source.index("async function applyCellEditor(scope)")
+        apply_end = html_source.index("function dirtyRows", apply_start)
+        apply_block = html_source[apply_start:apply_end]
+        self.assertIn("await saveEditedCellRow(scope, row);", apply_block)
+        self.assertIn('notice.textContent = scope === "management"', apply_block)
+
+        save_start = html_source.index("async function saveEditedCellRow(scope, row)")
+        save_end = html_source.index("function dirtyRows", save_start)
+        save_block = html_source[save_start:save_end]
+        self.assertIn("await saveManagementPayload(payload);", save_block)
+        self.assertIn("updateManagementRecordCache(payload);", save_block)
+        self.assertIn("applyManagementFilters();", save_block)
+        self.assertIn("await saveLedgerPayload(payload);", save_block)
+        self.assertIn("updateLedgerCaseCache(payload);", save_block)
+        self.assertIn("applyLedgerFilters();", save_block)
+
+    def test_excel_style_filter_reset_controls_exist_for_ledgers(self) -> None:
+        html_source = (ROOT / "scripts" / "workhub_delivery_app.py").read_text(encoding="utf-8")
+
+        self.assertIn('id="ledgerFilterResetAll"', html_source)
+        self.assertIn("function clearActiveLedgerFilter()", html_source)
+        self.assertIn("function clearAllLedgerFilters()", html_source)
+        self.assertIn("function clearAllManagementFilters()", html_source)
+        self.assertIn("delete ledgerFilters[activeLedgerFilterField];", html_source)
+        self.assertIn("delete managementFilters[activeManagementFilterField];", html_source)
+        self.assertIn("Object.keys(ledgerFilters).forEach", html_source)
+        self.assertIn("Object.keys(managementFilters).forEach", html_source)
+        self.assertIn('ledgerFilterResetAll.addEventListener("click"', html_source)
+
     def test_crm_task_board_uses_collapsible_advanced_filters_from_branch(self) -> None:
         html_source = (ROOT / "scripts" / "workhub_delivery_app.py").read_text(encoding="utf-8")
 

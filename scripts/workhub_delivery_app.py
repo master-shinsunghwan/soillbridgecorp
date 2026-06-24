@@ -3671,7 +3671,7 @@ HTML = r"""<!doctype html>
       position: fixed;
       z-index: 40;
       display: none;
-      width: 260px;
+      width: 320px;
       max-height: 390px;
       padding: 10px;
       border: 1px solid #98a2b3;
@@ -3718,6 +3718,7 @@ HTML = r"""<!doctype html>
     .ledger-filter-actions {
       display: flex;
       justify-content: flex-end;
+      flex-wrap: wrap;
       gap: 7px;
     }
     .ledger-filter-actions button {
@@ -3728,7 +3729,7 @@ HTML = r"""<!doctype html>
       font-family: inherit;
       font-weight: 800;
       cursor: pointer;
-      padding: 0 10px;
+      padding: 0 9px;
     }
     .ledger-filter-actions .apply {
       border-color: #087a46;
@@ -9454,7 +9455,8 @@ HTML = r"""<!doctype html>
           <input class="ledger-filter-search" id="ledgerFilterSearch" type="text" placeholder="검색어 입력" />
           <div class="ledger-filter-option-list" id="ledgerFilterOptions"></div>
           <div class="ledger-filter-actions">
-            <button type="button" id="ledgerFilterClear">전체</button>
+            <button type="button" id="ledgerFilterClear">현재 초기화</button>
+            <button type="button" id="ledgerFilterResetAll">전체 초기화</button>
             <button class="apply" type="button" id="ledgerFilterApply">적용</button>
           </div>
         </div>
@@ -9976,6 +9978,7 @@ HTML = r"""<!doctype html>
     const ledgerFilterSearch = document.querySelector("#ledgerFilterSearch");
     const ledgerFilterOptions = document.querySelector("#ledgerFilterOptions");
     const ledgerFilterClear = document.querySelector("#ledgerFilterClear");
+    const ledgerFilterResetAll = document.querySelector("#ledgerFilterResetAll");
     const ledgerFilterApply = document.querySelector("#ledgerFilterApply");
     const result = document.querySelector("#result");
     const resultText = document.querySelector("#resultText");
@@ -16184,9 +16187,37 @@ HTML = r"""<!doctype html>
         autoStatusApplied = applyLedgerOverallCompletion(row);
       }
       if (activeLedgerFilterField || activeManagementFilterField) refreshActiveFilterOptions();
+      await saveEditedCellRow(scope, row);
       if (!autoStatusApplied) {
-        notice.textContent = `${cell.dataset.label || "선택 셀"} 값을 반영했습니다. 저장하려면 체크된 항목 저장 버튼을 눌러주세요.`;
+        notice.textContent = scope === "management"
+          ? "통합관리대장 셀 수정 내용을 저장했습니다."
+          : "CS 처리대장 셀 수정 내용을 저장했습니다.";
       }
+    }
+
+    async function saveEditedCellRow(scope, row) {
+      if (!row) return;
+      if (scope === "management") {
+        const payload = collectManagementRow(row);
+        await saveManagementPayload(payload);
+        updateManagementRecordCache(payload);
+        markRowDirty(row, false);
+        const checkbox = row.querySelector("[data-row-check]");
+        if (checkbox) checkbox.checked = false;
+        if (managementSelectAll) managementSelectAll.checked = false;
+        applyManagementFilters();
+        return;
+      }
+      applyLedgerOverallCompletion(row, { announce: false });
+      const payload = collectLedgerRow(row);
+      await saveLedgerPayload(payload);
+      updateLedgerCaseCache(payload);
+      updateLedgerRowCompletion(row);
+      markRowDirty(row, false);
+      const checkbox = row.querySelector("[data-row-check]");
+      if (checkbox) checkbox.checked = false;
+      syncLedgerSelectAll();
+      applyLedgerFilters();
     }
 
     function dirtyRows(container, rowSelector) {
@@ -16196,6 +16227,46 @@ HTML = r"""<!doctype html>
     function selectedRows(container, rowSelector) {
       return Array.from(container.querySelectorAll(rowSelector))
         .filter((row) => row.querySelector("[data-row-check]")?.checked);
+    }
+
+    function clearActiveLedgerFilter() {
+      if (activeManagementFilterField) {
+        delete managementFilters[activeManagementFilterField];
+        ledgerFilterSearch.value = "";
+        renderManagementFilterOptions(activeManagementFilterField, "");
+        applyManagementFilters();
+        closeLedgerFilter();
+        return;
+      }
+      if (activeLedgerFilterField) {
+        delete ledgerFilters[activeLedgerFilterField];
+        ledgerFilterSearch.value = "";
+        renderLedgerFilterOptions(activeLedgerFilterField, "");
+        applyLedgerFilters();
+        closeLedgerFilter();
+      }
+    }
+
+    function clearAllLedgerFilters() {
+      Object.keys(ledgerFilters).forEach((field) => delete ledgerFilters[field]);
+      if (ledgerStatusFilter) ledgerStatusFilter.value = "";
+      ledgerFilterSearch.value = "";
+      applyLedgerFilters();
+    }
+
+    function clearAllManagementFilters() {
+      Object.keys(managementFilters).forEach((field) => delete managementFilters[field]);
+      ledgerFilterSearch.value = "";
+      applyManagementFilters();
+    }
+
+    function clearAllActivePopoverFilters() {
+      if (activeManagementFilterField) {
+        clearAllManagementFilters();
+      } else {
+        clearAllLedgerFilters();
+      }
+      closeLedgerFilter();
     }
 
     function setLedgerFilter(value) {
@@ -19517,7 +19588,8 @@ HTML = r"""<!doctype html>
       if (event.key === "Escape") closeLedgerFilter();
     });
     ledgerFilterApply.addEventListener("click", () => setActivePopoverFilter(ledgerFilterSearch.value));
-    ledgerFilterClear.addEventListener("click", () => setActivePopoverFilter(""));
+    ledgerFilterClear.addEventListener("click", clearActiveLedgerFilter);
+    ledgerFilterResetAll.addEventListener("click", clearAllActivePopoverFilters);
     ledgerFilterOptions.addEventListener("click", (event) => {
       const option = event.target.closest("[data-filter-value]");
       if (option) setActivePopoverFilter(option.dataset.filterValue || "");
