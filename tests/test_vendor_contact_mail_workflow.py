@@ -119,12 +119,15 @@ class VendorContactMailWorkflowTests(unittest.TestCase):
                 connection.close()
 
             case_id = app.create_cs_case_from_management(record_id)
-            prompt = app.vendor_cs_mail_prompt(app.get_cs_case(case_id))
+            case = app.get_cs_case(case_id)
+            prompt = app.vendor_cs_mail_prompt(case)
 
             self.assertTrue(prompt["enabled"])
             self.assertEqual(prompt["case_id"], case_id)
             self.assertEqual(prompt["recipient_email"], "purchase@example.com")
             self.assertEqual(prompt["payload"]["cs_product"], "테스트 상품")
+            self.assertEqual(case["occurred_at"], app.date.today().isoformat())
+            self.assertEqual(case["order_date"], "2026-06-18")
 
 
     def test_mail_settings_store_bulk_mail_technical_defaults(self) -> None:

@@ -8624,6 +8624,7 @@ HTML = r"""<!doctype html>
           <div class="workspace-title">통합관리대장 관리</div>
           <div class="workspace-actions">
             <button class="workspace-button" type="button" id="managementSaveAll">해당 내용 저장</button>
+            <button class="workspace-button" type="button" id="managementBulkApply">체크 일괄 적용</button>
             <button class="workspace-button danger" type="button" id="managementDeleteSelected">선택 주문 삭제</button>
             <button class="workspace-button" type="button" data-open-window="management">새창으로 열기</button>
           </div>
@@ -8635,6 +8636,7 @@ HTML = r"""<!doctype html>
           <div class="workspace-title">CS 처리대장</div>
           <div class="workspace-actions">
             <button class="workspace-button" type="button" id="ledgerSaveAll">해당 내용 저장</button>
+            <button class="workspace-button" type="button" id="ledgerBulkApply">체크 일괄 적용</button>
             <button class="workspace-button danger" type="button" id="ledgerDeleteSelected">선택 주문 삭제</button>
             <button class="workspace-button" type="button" data-open-window="ledger">새창으로 열기</button>
           </div>
@@ -9743,6 +9745,8 @@ HTML = r"""<!doctype html>
       setHidden(ledgerDeleteSelected, !can("ledger_delete"));
       setHidden(managementSaveAll, !can("ledger_edit"));
       setHidden(ledgerSaveAll, !can("ledger_edit"));
+      setHidden(managementBulkApply, !can("ledger_edit"));
+      setHidden(ledgerBulkApply, !can("ledger_edit"));
       setHidden(ledgerAddCs, !can("ledger_edit"));
       setHidden(saveCsCaseButton, !can("ledger_edit"));
       setHidden(sendCsMailButton, !can("mail_send"));
@@ -9969,6 +9973,8 @@ HTML = r"""<!doctype html>
     const managementSelectAll = document.querySelector("#managementSelectAll");
     const managementSaveAll = document.querySelector("#managementSaveAll");
     const ledgerSaveAll = document.querySelector("#ledgerSaveAll");
+    const managementBulkApply = document.querySelector("#managementBulkApply");
+    const ledgerBulkApply = document.querySelector("#ledgerBulkApply");
     const managementDeleteSelected = document.querySelector("#managementDeleteSelected");
     const ledgerDeleteSelected = document.querySelector("#ledgerDeleteSelected");
     const ledgerFilterButtons = Array.from(document.querySelectorAll("[data-ledger-filter-button]"));
@@ -16229,6 +16235,57 @@ HTML = r"""<!doctype html>
         .filter((row) => row.querySelector("[data-row-check]")?.checked);
     }
 
+    async function applySelectedCellToCheckedRows(scope) {
+      const selected = activeCellEditors[scope];
+      if (!selected?.cell) {
+        notice.textContent = "일괄 적용할 기준 셀을 먼저 선택해주세요.";
+        return;
+      }
+      const isManagement = scope === "management";
+      const body = isManagement ? managementBody : ledgerBody;
+      const rowSelector = isManagement ? "tr[data-record-id]" : "tr[data-case-id]";
+      const field = isManagement ? selected.cell.dataset.managementField : selected.cell.dataset.field;
+      if (!field) {
+        notice.textContent = "일괄 적용할 컬럼을 확인할 수 없습니다.";
+        return;
+      }
+      const rows = selectedRows(body, rowSelector);
+      if (!rows.length) {
+        notice.textContent = "일괄 적용할 행을 체크해주세요.";
+        return;
+      }
+      const value = selected.control ? selected.control.value || "" : fieldValue(selected.cell);
+      const fieldSelector = scope === "management"
+        ? `.editable-cell[data-management-field="${CSS.escape(field)}"]:not([data-readonly='1'])`
+        : `.editable-cell[data-field="${CSS.escape(field)}"]:not([data-readonly='1'])`;
+      let appliedCount = 0;
+      rows.forEach((row) => {
+        const targetCell = row.querySelector(fieldSelector);
+        if (!targetCell || targetCell.dataset.readonly === "1") return;
+        setEditableCellValue(targetCell, value);
+        markRowDirty(row, true);
+        const checkbox = row.querySelector("[data-row-check]");
+        if (checkbox) checkbox.checked = true;
+        if (scope === "ledger") {
+          updateLedgerRowCompletion(row);
+          if (field !== "status") applyLedgerOverallCompletion(row, { announce: false });
+        }
+        appliedCount += 1;
+      });
+      if (!appliedCount) {
+        notice.textContent = "체크한 행에 적용 가능한 셀이 없습니다.";
+        return;
+      }
+      await saveCurrentWorkspaceRows({ mode: scope, selectedOnly: true });
+      if (scope === "management") {
+        applyManagementFilters();
+      } else {
+        syncLedgerSelectAll();
+        applyLedgerFilters();
+      }
+      notice.textContent = `${appliedCount}건에 선택한 값을 일괄 적용했습니다.`;
+    }
+
     function clearActiveLedgerFilter() {
       if (activeManagementFilterField) {
         delete managementFilters[activeManagementFilterField];
@@ -19611,6 +19668,12 @@ HTML = r"""<!doctype html>
     importProgressClose?.addEventListener("click", hideImportProgress);
     managementSaveAll.addEventListener("click", () => saveCurrentWorkspaceRows({ mode: "management", selectedOnly: true }));
     ledgerSaveAll.addEventListener("click", () => saveCurrentWorkspaceRows({ mode: "ledger", selectedOnly: true }));
+    managementBulkApply.addEventListener("click", () => applySelectedCellToCheckedRows("management").catch((error) => {
+      notice.textContent = error.message || "통합관리대장 일괄 적용에 실패했습니다.";
+    }));
+    ledgerBulkApply.addEventListener("click", () => applySelectedCellToCheckedRows("ledger").catch((error) => {
+      notice.textContent = error.message || "CS 처리대장 일괄 적용에 실패했습니다.";
+    }));
     managementDeleteSelected.addEventListener("click", () => deleteSelectedRows("management"));
     ledgerDeleteSelected.addEventListener("click", () => deleteSelectedRows("ledger"));
     if (userAdminRefresh) userAdminRefresh.addEventListener("click", loadUserAccounts);
@@ -26396,6 +26459,7 @@ def delete_management_records(record_ids: list[int]) -> int:
 def create_cs_case_from_management(record_id: int) -> int:
     record = get_management_record(record_id)
     timestamp = now_text()
+    received_date = timestamp[:10]
     source_file = f"통합관리대장:{record.get('source_file', '')}"
     source_sheet = str(record.get("source_sheet", "") or "")
     source_row = int(record.get("source_row", 0) or 0)
@@ -26428,7 +26492,7 @@ def create_cs_case_from_management(record_id: int) -> int:
                 source_file,
                 source_sheet,
                 source_row,
-                record.get("order_date", "") or record.get("ship_date", ""),
+                received_date,
                 record.get("order_date", ""),
                 record.get("ship_date", ""),
                 record.get("sales_vendor", ""),

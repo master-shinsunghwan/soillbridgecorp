@@ -344,6 +344,19 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         self.assertIn("updateLedgerCaseCache(payload);", save_block)
         self.assertIn("applyLedgerFilters();", save_block)
 
+    def test_checked_rows_can_receive_selected_cell_value_in_bulk(self) -> None:
+        html_source = (ROOT / "scripts" / "workhub_delivery_app.py").read_text(encoding="utf-8")
+
+        self.assertIn('id="managementBulkApply"', html_source)
+        self.assertIn('id="ledgerBulkApply"', html_source)
+        self.assertIn("async function applySelectedCellToCheckedRows(scope)", html_source)
+        self.assertIn("selectedRows(body, rowSelector)", html_source)
+        self.assertIn("const fieldSelector = scope === \"management\"", html_source)
+        self.assertIn("setEditableCellValue(targetCell, value);", html_source)
+        self.assertIn("await saveCurrentWorkspaceRows({ mode: scope, selectedOnly: true });", html_source)
+        self.assertIn('managementBulkApply.addEventListener("click"', html_source)
+        self.assertIn('ledgerBulkApply.addEventListener("click"', html_source)
+
     def test_excel_style_filter_reset_controls_exist_for_ledgers(self) -> None:
         html_source = (ROOT / "scripts" / "workhub_delivery_app.py").read_text(encoding="utf-8")
 
