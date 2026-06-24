@@ -35,6 +35,6 @@ for pid in os.listdir("/proc"):
 
 exec docker exec \
   -e "HERMES_BRIDGE_PORT=$PORT" \
-  -e "HERMES_BRIDGE_TIMEOUT=${HERMES_BRIDGE_TIMEOUT:-180}" \
+  -e "HERMES_BRIDGE_TIMEOUT=${HERMES_BRIDGE_TIMEOUT:-240}" \
   "$HERMES_CONTAINER" \
   sh -lc 'export WORKHUB_HERMES_BRIDGE_TOKEN="$(cat /tmp/workhub-hermes-bridge.token)"; cd /opt/hermes && exec python3 /tmp/workhub-hermes-bridge.py'
