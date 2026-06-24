@@ -884,6 +884,7 @@ HTML = r"""<!doctype html>
       scrollbar-gutter: stable;
     }
     main:has(#userAdminWorkspace.active),
+    main:has(#leaveWorkspace.active),
     main:has(#backupWorkspace.active),
     main:has(#systemUpdateWorkspace.active) {
       overflow-y: auto;
@@ -4110,6 +4111,7 @@ HTML = r"""<!doctype html>
     }
     .workspace-view.active { display: flex; }
     #userAdminWorkspace.active,
+    #leaveWorkspace.active,
     #backupWorkspace.active,
     #systemUpdateWorkspace.active {
       flex: 0 0 auto;

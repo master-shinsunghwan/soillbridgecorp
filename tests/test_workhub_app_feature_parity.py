@@ -463,6 +463,8 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
             self.assertIn('data-leave-tab="history">이력</button>', html_source)
             self.assertIn('id="leaveTabHolidays"', html_source)
             self.assertIn('id="leaveTabHistory"', html_source)
+            self.assertIn("main:has(#leaveWorkspace.active)", html_source)
+            self.assertIn("#leaveWorkspace.active", html_source)
             self.assertIn("can_view_staff", html_source)
             self.assertIn("function renderLeaveAdminUserList", html_source)
             self.assertIn("function selectLeaveAdminUser", html_source)
