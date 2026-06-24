@@ -2419,9 +2419,9 @@ HTML = r"""<!doctype html>
     .sales-detail-popup {
       --detail-color: #2563eb;
       width: clamp(720px, 54vw, 1040px);
-      height: calc(100vh - 40px);
+      height: clamp(260px, 34vh, 360px);
       max-width: calc(100vw - 48px);
-      max-height: calc(100vh - 40px);
+      max-height: clamp(260px, 34vh, 360px);
       overflow: hidden;
       display: grid;
       grid-template-rows: auto minmax(0, 1fr);
@@ -2433,7 +2433,7 @@ HTML = r"""<!doctype html>
     }
     .sales-detail-popup.compact {
       height: auto;
-      max-height: min(460px, calc(100vh - 48px));
+      max-height: min(320px, calc(100vh - 48px));
       grid-template-rows: auto auto;
     }
     .sales-detail-popup .notice-popup-head {
@@ -2473,6 +2473,7 @@ HTML = r"""<!doctype html>
     }
     .sales-detail-body {
       display: grid;
+      align-content: start;
       gap: 10px;
       min-height: 0;
       overflow: auto;
@@ -2480,7 +2481,7 @@ HTML = r"""<!doctype html>
       background: #f8fafc;
     }
     .sales-detail-popup.compact .sales-detail-body {
-      max-height: min(404px, calc(100vh - 102px));
+      max-height: min(264px, calc(100vh - 102px));
       gap: 8px;
     }
     .sales-detail-summary {
@@ -2555,7 +2556,7 @@ HTML = r"""<!doctype html>
       font-weight: 950;
     }
     .sales-detail-table-wrap {
-      height: clamp(360px, calc(100vh - 330px), 680px);
+      height: clamp(96px, calc(34vh - 188px), 160px);
       max-height: none;
       min-height: 0;
       overflow-x: auto;
@@ -2565,12 +2566,12 @@ HTML = r"""<!doctype html>
       scrollbar-color: color-mix(in srgb, var(--detail-color) 55%, #94a3b8) #eef2f7;
     }
     .sales-detail-body.multi-section .sales-detail-table-wrap {
-      height: clamp(220px, calc((100vh - 380px) / 2), 340px);
-      max-height: 340px;
+      height: clamp(86px, calc((34vh - 210px) / 2), 130px);
+      max-height: 130px;
     }
     .sales-detail-popup.compact .sales-detail-table-wrap {
-      height: clamp(140px, 24vh, 220px);
-      max-height: 220px;
+      height: clamp(96px, 18vh, 150px);
+      max-height: 150px;
     }
     .sales-detail-table-wrap::-webkit-scrollbar {
       width: 12px;
