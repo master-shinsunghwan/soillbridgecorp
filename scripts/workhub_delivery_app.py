@@ -11262,10 +11262,12 @@ HTML = r"""<!doctype html>
     }
 
     function setLeaveTab(tabName) {
-      leaveTabs.forEach((button) => button.classList.toggle("active", button.dataset.leaveTab === tabName));
-      ["mine", "request", "approvals", "admin"].forEach((name) => {
+      const targetButton = leaveTabs.find((button) => button.dataset.leaveTab === tabName && !button.classList.contains("permission-hidden"));
+      const activeTab = targetButton ? tabName : "mine";
+      leaveTabs.forEach((button) => button.classList.toggle("active", button.dataset.leaveTab === activeTab));
+      ["mine", "request", "approvals", "admin", "holidays", "history"].forEach((name) => {
         const panel = document.querySelector(`#leaveTab${name[0].toUpperCase()}${name.slice(1)}`);
-        if (panel) panel.classList.toggle("active", name === tabName);
+        if (panel) panel.classList.toggle("active", name === activeTab);
       });
     }
 
@@ -11338,6 +11340,9 @@ HTML = r"""<!doctype html>
         : `<tr><td colspan="5">직원 연차 현황이 없습니다.</td></tr>`;
       document.querySelector('[data-leave-tab="approvals"]')?.classList.toggle("permission-hidden", !data.can_approve);
       document.querySelector('[data-leave-tab="admin"]')?.classList.toggle("permission-hidden", !data.can_manage);
+      document.querySelector('[data-leave-tab="holidays"]')?.classList.toggle("permission-hidden", !data.can_manage);
+      const activeTab = leaveTabs.find((button) => button.classList.contains("active"))?.dataset.leaveTab || "mine";
+      setLeaveTab(activeTab);
     }
 
     async function loadLeaveData() {
@@ -20907,9 +20912,11 @@ LEAVE_WORKSPACE_HTML = r"""
             </div>
             <div class="leave-tabs">
               <button class="leave-tab active" type="button" data-leave-tab="mine">내 연차</button>
-              <button class="leave-tab" type="button" data-leave-tab="request">연차 신청</button>
-              <button class="leave-tab" type="button" data-leave-tab="approvals">승인 대기</button>
-              <button class="leave-tab" type="button" data-leave-tab="admin">직원별 관리</button>
+              <button class="leave-tab" type="button" data-leave-tab="request">신청하기</button>
+              <button class="leave-tab" type="button" data-leave-tab="approvals">승인 관리</button>
+              <button class="leave-tab" type="button" data-leave-tab="admin">직원 기준</button>
+              <button class="leave-tab" type="button" data-leave-tab="holidays">공휴일 설정</button>
+              <button class="leave-tab" type="button" data-leave-tab="history">이력</button>
             </div>
             <div class="leave-message" id="leaveMessage"></div>
             <div class="leave-notification-list" id="leaveNotificationList"></div>
@@ -20918,15 +20925,8 @@ LEAVE_WORKSPACE_HTML = r"""
                 <div class="leave-card">
                   <div class="leave-card-title">연차 잔여 현황</div>
                   <table class="leave-table">
-                    <thead><tr><th>유형</th><th>시작</th><th>사용</th><th>잔여</th></tr></thead>
+                    <thead><tr><th>유형</th><th>부여</th><th>사용</th><th>잔여</th></tr></thead>
                     <tbody id="leaveBalanceBody"></tbody>
-                  </table>
-                </div>
-                <div class="leave-card">
-                  <div class="leave-card-title">연차 사용/신청 이력</div>
-                  <table class="leave-table">
-                    <thead><tr><th>기간</th><th>구분</th><th>수량</th><th>상태</th><th>사유</th></tr></thead>
-                    <tbody id="leaveHistoryBody"></tbody>
                   </table>
                 </div>
               </div>
@@ -20979,7 +20979,17 @@ LEAVE_WORKSPACE_HTML = r"""
                   </div>
                 </div>
               </div>
-                <div class="leave-card">
+
+              <div class="leave-card">
+                <div class="leave-card-title">직원별 연차 현황</div>
+                <table class="leave-table">
+                  <thead><tr><th>직원</th><th>아이디</th><th>시작</th><th>사용</th><th>잔여</th></tr></thead>
+                  <tbody id="leaveAdminBalanceBody"></tbody>
+                </table>
+              </div>
+            </section>
+            <section class="leave-tab-panel" id="leaveTabHolidays">
+              <div class="leave-card">
                   <div class="leave-card-title">&#44277;&#55092;&#51068;/&#45824;&#52404;&#44277;&#55092;&#51068; &#44288;&#47532;</div>
                   <div class="leave-form">
                     <label>&#45216;&#51676;<input id="leaveHolidayDateInput" type="date" /></label>
@@ -20988,11 +20998,13 @@ LEAVE_WORKSPACE_HTML = r"""
                     <button class="workspace-button" type="button" id="leaveHolidaySave">&#55092;&#51068; &#51200;&#51109;</button>
                   </div>
                 </div>
+            </section>
+            <section class="leave-tab-panel" id="leaveTabHistory">
               <div class="leave-card">
-                <div class="leave-card-title">직원별 연차 현황</div>
+                <div class="leave-card-title">연차 이력</div>
                 <table class="leave-table">
-                  <thead><tr><th>직원</th><th>아이디</th><th>시작</th><th>사용</th><th>잔여</th></tr></thead>
-                  <tbody id="leaveAdminBalanceBody"></tbody>
+                  <thead><tr><th>기간</th><th>구분</th><th>수량</th><th>상태</th><th>사유</th></tr></thead>
+                  <tbody id="leaveHistoryBody"></tbody>
                 </table>
               </div>
             </section>
@@ -25649,19 +25661,24 @@ def update_leave_balance_amounts(
     return connection.execute("SELECT * FROM leave_balances WHERE id = ?", (balance_id,)).fetchone()
 
 
-def list_leave_types() -> list[dict[str, str | int]]:
-    connection = connect_db()
+def list_leave_types(connection: sqlite3.Connection | None = None) -> list[dict[str, str | int]]:
+    own_connection = connection is None
+    if own_connection:
+        connection = connect_db()
     try:
         rows = connection.execute(
             "SELECT id, code, name, is_paid, is_active FROM leave_types WHERE is_active = 1 ORDER BY id"
         ).fetchall()
         return [dict(row) for row in rows]
     finally:
-        connection.close()
+        if own_connection and connection is not None:
+            connection.close()
 
 
-def list_active_users_for_leave() -> list[dict[str, str | int]]:
-    connection = connect_db()
+def list_active_users_for_leave(connection: sqlite3.Connection | None = None) -> list[dict[str, str | int]]:
+    own_connection = connection is None
+    if own_connection:
+        connection = connect_db()
     try:
         rows = connection.execute(
             """
@@ -25673,7 +25690,8 @@ def list_active_users_for_leave() -> list[dict[str, str | int]]:
         ).fetchall()
         return [dict(row) for row in rows]
     finally:
-        connection.close()
+        if own_connection and connection is not None:
+            connection.close()
 
 
 def leave_balance_rows(connection: sqlite3.Connection, user_id: int) -> list[dict[str, str | float]]:
@@ -25777,9 +25795,11 @@ def notify_leave_requester(connection: sqlite3.Connection, user_id: int, request
     add_leave_notification(connection, user_id, request_id, "request_update", message)
 
 
-def list_leave_notifications(user: dict[str, str]) -> list[dict[str, str | int]]:
-    init_db()
-    connection = connect_db()
+def list_leave_notifications(user: dict[str, str], connection: sqlite3.Connection | None = None) -> list[dict[str, str | int]]:
+    own_connection = connection is None
+    if own_connection:
+        init_db()
+        connection = connect_db()
     try:
         rows = connection.execute(
             """
@@ -25793,7 +25813,8 @@ def list_leave_notifications(user: dict[str, str]) -> list[dict[str, str | int]]
         ).fetchall()
         return [dict(row) for row in rows]
     finally:
-        connection.close()
+        if own_connection and connection is not None:
+            connection.close()
 
 
 def list_leave_requests_for_user(connection: sqlite3.Connection, user_id: int) -> list[dict[str, str | float | int]]:
@@ -25856,7 +25877,7 @@ def list_pending_leave_requests(connection: sqlite3.Connection) -> list[dict[str
 
 def list_leave_admin_balances(connection: sqlite3.Connection) -> list[dict[str, str | float | int]]:
     annual_type_id = get_leave_type_id("annual")
-    users = list_active_users_for_leave()
+    users = list_active_users_for_leave(connection)
     rows = []
     for user in users:
         balance = ensure_leave_balance(connection, int(user["id"]), annual_type_id)
@@ -25882,6 +25903,8 @@ def leave_payload(user: dict[str, str]) -> dict:
             user_has_permission(user, permission)
             for permission in ("leave_approve", "leave_approve_team", "leave_approve_director", "leave_approve_ceo", "leave_director_override", "leave_manage")
         )
+        can_manage = user_has_permission(user, "leave_manage")
+        can_view_staff = can_approve or can_manage
         payload = {
             "summary": {
                 "total_days": annual.get("total_days", 0),
@@ -25891,19 +25914,21 @@ def leave_payload(user: dict[str, str]) -> dict:
             },
             "balances": balances,
             "requests": list_leave_requests_for_user(connection, user_id),
-            "leave_types": list_leave_types(),
+            "leave_types": list_leave_types(connection),
             "can_approve": can_approve,
             "can_override": actor_can_override_leave(user),
-            "can_manage": user_has_permission(user, "leave_manage"),
+            "can_manage": can_manage,
+            "can_view_staff": can_view_staff,
             "pending_requests": [],
             "users": [],
             "admin_balances": [],
-            "notifications": list_leave_notifications(user),
+            "notifications": list_leave_notifications(user, connection),
         }
         if payload["can_approve"]:
             payload["pending_requests"] = list_pending_leave_requests(connection)
+        if payload["can_view_staff"]:
+            payload["users"] = list_active_users_for_leave(connection)
         if payload["can_manage"]:
-            payload["users"] = list_active_users_for_leave()
             payload["admin_balances"] = list_leave_admin_balances(connection)
         connection.commit()
         return payload

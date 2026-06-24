@@ -264,6 +264,22 @@ class LeaveAdvancedWorkflowTests(unittest.TestCase):
             self.assertEqual(balance["reserved_days"], 0)
             self.assertEqual(balance["remaining_days"], 15.0)
 
+    def test_leave_payload_sends_staff_list_to_approvers_and_managers(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            app = load_app(Path(directory))
+            users = self.make_users(app)
+            admin = get_user(app, "admin")
+
+            team_payload = app.leave_payload(users["team"])
+            admin_payload = app.leave_payload(admin)
+
+            self.assertTrue(team_payload["can_approve"])
+            self.assertFalse(team_payload["can_manage"])
+            self.assertGreaterEqual(len(team_payload["users"]), 1)
+            self.assertTrue(any(row["username"] == "requester" for row in team_payload["users"]))
+            self.assertTrue(admin_payload["can_manage"])
+            self.assertGreaterEqual(len(admin_payload["users"]), len(team_payload["users"]))
+
 
 if __name__ == "__main__":
     unittest.main()
