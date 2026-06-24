@@ -2436,6 +2436,11 @@ HTML = r"""<!doctype html>
       max-height: min(320px, calc(100vh - 48px));
       grid-template-rows: auto auto;
     }
+    .sales-detail-popup.expanded {
+      height: calc(100vh - 40px) !important;
+      max-height: calc(100vh - 40px) !important;
+      grid-template-rows: auto minmax(0, 1fr) !important;
+    }
     .sales-detail-popup .notice-popup-head {
       min-height: 54px;
       padding: 0 14px;
@@ -2572,6 +2577,14 @@ HTML = r"""<!doctype html>
     .sales-detail-popup.compact .sales-detail-table-wrap {
       height: clamp(96px, 18vh, 150px);
       max-height: 150px;
+    }
+    .sales-detail-popup.expanded .sales-detail-table-wrap {
+      height: clamp(360px, calc(100vh - 330px), 680px) !important;
+      max-height: none !important;
+    }
+    .sales-detail-popup.expanded .sales-detail-body.multi-section .sales-detail-table-wrap {
+      height: clamp(220px, calc((100vh - 380px) / 2), 340px) !important;
+      max-height: 340px !important;
     }
     .sales-detail-table-wrap::-webkit-scrollbar {
       width: 12px;
@@ -13106,6 +13119,13 @@ HTML = r"""<!doctype html>
       return String(value ?? "");
     }
 
+    function setSalesDetailPopupMode(kind) {
+      if (!salesDetailPopup) return;
+      const compact = kind === "daily";
+      salesDetailPopup.classList.toggle("compact", compact);
+      salesDetailPopup.classList.toggle("expanded", !compact);
+    }
+
     function renderSalesDetailTable(section = {}) {
       const headers = section.headers || [];
       const rows = section.rows || [];
@@ -13144,7 +13164,7 @@ HTML = r"""<!doctype html>
         supplier: "#f97316",
       };
       salesDetailPopup?.style.setProperty("--detail-color", detailColors[data.kind] || "#2563eb");
-      salesDetailPopup?.classList.toggle("compact", data.kind === "daily");
+      setSalesDetailPopupMode(data.kind);
       if (salesDetailTitle) salesDetailTitle.textContent = data.title || "매출 상세";
       const metrics = data.metrics || [];
       const sections = data.sections || [];
@@ -13171,7 +13191,7 @@ HTML = r"""<!doctype html>
       if (!kind || !key) return;
       if (salesDetailTitle) salesDetailTitle.textContent = "매출 상세";
       if (salesDetailBody) salesDetailBody.innerHTML = `<div class="admin-message">상세 데이터를 불러오는 중입니다.</div>`;
-      salesDetailPopup?.classList.toggle("compact", kind === "daily");
+      setSalesDetailPopupMode(kind);
       salesDetailPopup?.classList.add("open");
       salesDetailPopup?.setAttribute("aria-hidden", "false");
       try {

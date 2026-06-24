@@ -815,11 +815,16 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         html_source = (ROOT / "scripts" / "workhub_delivery_app.py").read_text(encoding="utf-8")
 
         self.assertIn(".sales-detail-popup.compact", html_source)
+        self.assertIn(".sales-detail-popup.expanded", html_source)
         self.assertIn(".sales-detail-popup.compact .sales-detail-table-wrap", html_source)
+        self.assertIn(".sales-detail-popup.expanded .sales-detail-table-wrap", html_source)
         self.assertIn("height: calc(100vh - 40px);", html_source)
         self.assertIn("height: clamp(360px, calc(100vh - 330px), 680px);", html_source)
-        self.assertIn('salesDetailPopup?.classList.toggle("compact", data.kind === "daily");', html_source)
-        self.assertIn('salesDetailPopup?.classList.toggle("compact", kind === "daily");', html_source)
+        self.assertIn("function setSalesDetailPopupMode(kind)", html_source)
+        self.assertIn('salesDetailPopup.classList.toggle("compact", compact);', html_source)
+        self.assertIn('salesDetailPopup.classList.toggle("expanded", !compact);', html_source)
+        self.assertIn("setSalesDetailPopupMode(data.kind);", html_source)
+        self.assertIn("setSalesDetailPopupMode(kind);", html_source)
 
     def test_lucide_imports_do_not_request_missing_arrow_right_export(self) -> None:
         html_source = (ROOT / "scripts" / "workhub_delivery_app.py").read_text(encoding="utf-8")
