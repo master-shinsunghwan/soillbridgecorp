@@ -2432,9 +2432,9 @@ HTML = r"""<!doctype html>
       box-shadow: 0 24px 70px rgba(15, 23, 42, .20);
     }
     .sales-detail-popup.compact {
-      height: auto;
+      height: min(320px, calc(100vh - 48px));
       max-height: min(320px, calc(100vh - 48px));
-      grid-template-rows: auto auto;
+      grid-template-rows: auto minmax(0, 1fr);
     }
     .sales-detail-popup.expanded {
       height: calc(100vh - 40px) !important;
@@ -2488,6 +2488,9 @@ HTML = r"""<!doctype html>
     .sales-detail-popup.compact .sales-detail-body {
       max-height: min(264px, calc(100vh - 102px));
       gap: 8px;
+      align-content: stretch;
+      overflow: hidden;
+      grid-template-rows: auto auto minmax(0, 1fr);
     }
     .sales-detail-popup.expanded .sales-detail-body {
       align-content: stretch !important;
@@ -2572,7 +2575,8 @@ HTML = r"""<!doctype html>
       grid-template-rows: repeat(auto-fit, minmax(0, 1fr));
     }
     .sales-detail-popup.compact .sales-detail-sections {
-      overflow: visible;
+      height: 100%;
+      overflow: hidden;
     }
     .sales-detail-section-title {
       min-height: 40px;
@@ -2600,8 +2604,8 @@ HTML = r"""<!doctype html>
       max-height: 340px;
     }
     .sales-detail-popup.compact .sales-detail-table-wrap {
-      height: clamp(96px, 18vh, 150px);
-      max-height: 150px;
+      height: 100%;
+      max-height: none;
     }
     .sales-detail-popup.expanded .sales-detail-table-wrap {
       height: 100% !important;
