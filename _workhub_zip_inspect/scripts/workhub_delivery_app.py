@@ -16008,9 +16008,14 @@ HTML = r"""<!doctype html>
     }
 
     function matchesLedgerFilters(csCase) {
+      return matchesLedgerFiltersExcept(csCase, "");
+    }
+
+    function matchesLedgerFiltersExcept(csCase, excludedField = "") {
       const toolbarStatus = ledgerStatusFilter.value.trim().toLowerCase();
       if (toolbarStatus && !String(csCase.status || "").toLowerCase().includes(toolbarStatus)) return false;
       return Object.entries(ledgerFilters).every(([field, filterValue]) => {
+        if (field === excludedField) return true;
         const value = String(filterValue || "").trim().toLowerCase();
         if (!value) return true;
         return String(ledgerFieldValue(csCase, field)).toLowerCase().includes(value);
@@ -16032,7 +16037,12 @@ HTML = r"""<!doctype html>
     }
 
     function matchesManagementFilters(record) {
+      return matchesManagementFiltersExcept(record, "");
+    }
+
+    function matchesManagementFiltersExcept(record, excludedField = "") {
       return Object.entries(managementFilters).every(([field, filterValue]) => {
+        if (field === excludedField) return true;
         const value = String(filterValue || "").trim().toLowerCase();
         if (!value) return true;
         return String(managementFieldValue(record, field)).toLowerCase().includes(value);
@@ -16176,6 +16186,7 @@ HTML = r"""<!doctype html>
       const normalizedSearch = searchText.trim().toLowerCase();
       const values = Array.from(new Set(
         ledgerCases
+          .filter((csCase) => matchesLedgerFiltersExcept(csCase, field))
           .map((csCase) => String(ledgerFieldValue(csCase, field) || "").trim())
           .filter(Boolean)
       )).sort((left, right) => left.localeCompare(right, "ko"));
@@ -16193,6 +16204,7 @@ HTML = r"""<!doctype html>
       const normalizedSearch = searchText.trim().toLowerCase();
       const values = Array.from(new Set(
         managementRecords
+          .filter((record) => matchesManagementFiltersExcept(record, field))
           .map((record) => String(managementFieldValue(record, field) || "").trim())
           .filter(Boolean)
       )).sort((left, right) => left.localeCompare(right, "ko"));

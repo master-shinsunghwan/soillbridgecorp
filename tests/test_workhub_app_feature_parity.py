@@ -418,6 +418,15 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         self.assertIn("Object.keys(managementFilters).forEach", html_source)
         self.assertIn('ledgerFilterResetAll.addEventListener("click"', html_source)
 
+    def test_ledger_filter_options_follow_other_active_filters(self) -> None:
+        html_source = (ROOT / "scripts" / "workhub_delivery_app.py").read_text(encoding="utf-8")
+
+        self.assertIn("function matchesLedgerFiltersExcept(csCase, excludedField = \"\")", html_source)
+        self.assertIn("function matchesManagementFiltersExcept(record, excludedField = \"\")", html_source)
+        self.assertIn(".filter((csCase) => matchesLedgerFiltersExcept(csCase, field))", html_source)
+        self.assertIn(".filter((record) => matchesManagementFiltersExcept(record, field))", html_source)
+        self.assertIn("if (field === excludedField) return true;", html_source)
+
     def test_crm_task_board_uses_collapsible_advanced_filters_from_branch(self) -> None:
         html_source = (ROOT / "scripts" / "workhub_delivery_app.py").read_text(encoding="utf-8")
 
