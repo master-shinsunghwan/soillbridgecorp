@@ -95,3 +95,18 @@ class HermesWorkhubBridgeTests(unittest.TestCase):
 
         self.assertIn("Requested tool intent: web_search", prompt)
         self.assertIn("shared Hermes research/search backend", prompt)
+
+    def test_bridge_blocks_unconfigured_shared_image_generation(self) -> None:
+        bridge = load_bridge_module()
+
+        bridge.AI_TOOL_PROVIDER = "hermes"
+        bridge.FAL_KEY = ""
+        bridge.OPENAI_API_KEY = ""
+
+        self.assertTrue(bridge.should_block_unconfigured_image_generation("image_generation"))
+        response = bridge.image_generation_not_configured_response()
+        self.assertFalse(response["ok"])
+        self.assertIn("FAL_KEY", response["answer"])
+
+        bridge.FAL_KEY = "set"
+        self.assertFalse(bridge.should_block_unconfigured_image_generation("image_generation"))

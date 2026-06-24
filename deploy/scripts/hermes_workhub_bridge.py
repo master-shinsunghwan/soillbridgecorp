@@ -19,6 +19,7 @@ REQUEST_TIMEOUT = int(os.environ.get("HERMES_BRIDGE_TIMEOUT", "240"))
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "").strip()
 OPENAI_TEXT_MODEL = os.environ.get("OPENAI_TEXT_MODEL", "gpt-5.5")
 OPENAI_IMAGE_MODEL = os.environ.get("OPENAI_IMAGE_MODEL", "gpt-image-2")
+FAL_KEY = os.environ.get("FAL_KEY", "").strip()
 AI_TOOL_PROVIDER = os.environ.get("WORKHUB_AI_TOOL_PROVIDER", "hermes").strip().lower()
 
 
@@ -192,6 +193,35 @@ def should_use_openai_for_intent(intent: str) -> bool:
     return bool(OPENAI_API_KEY)
 
 
+def should_block_unconfigured_image_generation(intent: str) -> bool:
+    if intent != "image_generation":
+        return False
+    if should_use_openai_for_intent(intent):
+        return False
+    return not FAL_KEY
+
+
+def image_generation_not_configured_response() -> dict[str, Any]:
+    openai_note = (
+        "OpenAI 이미지 API를 쓰려면 OPENAI_API_KEY와 WORKHUB_AI_TOOL_PROVIDER=openai를 설정해야 합니다."
+        if OPENAI_API_KEY
+        else "OpenAI 이미지 API로 전환할 OPENAI_API_KEY도 없습니다."
+    )
+    answer = (
+        "이미지 생성 설정이 아직 연결되지 않았습니다.\n\n"
+        f"VPS의 Hermes 이미지 생성 백엔드에 FAL_KEY가 없습니다. {openai_note}\n"
+        "서버 /opt/company-erp/workhub-openai.env에 FAL_KEY를 설정한 뒤 workhub-hermes-bridge를 재시작하면 Workhub에서 바로 이미지 생성 요청을 처리할 수 있습니다."
+    )
+    return {
+        "ok": False,
+        "answer": answer,
+        "text": answer,
+        "provider": "hermes",
+        "capability": "image_generation",
+        "missing_config": ["FAL_KEY"],
+    }
+
+
 def requested_intent(payload: dict[str, Any], mode: str) -> str:
     explicit = str(payload.get("intent") or "").strip().lower()
     if explicit in {"web_search", "image_generation"}:
@@ -249,6 +279,9 @@ class WorkhubHermesBridgeHandler(BaseHTTPRequestHandler):
                 return
             if intent == "image_generation" and should_use_openai_for_intent(intent):
                 self.send_json(200, run_openai_image_generation(payload))
+                return
+            if should_block_unconfigured_image_generation(intent):
+                self.send_json(200, image_generation_not_configured_response())
                 return
             prompt = build_prompt(payload, mode)
             answer = run_hermes(prompt)
