@@ -3882,14 +3882,14 @@ HTML = r"""<!doctype html>
       background: #eff6ff;
       color: #1d4ed8;
     }
-    .ledger-table tr.completed-cs td {
-      background: #fff8d8;
+    .ledger-table tbody tr.completed-cs td {
+      background: #fff8d8 !important;
     }
-    .ledger-table tr.completed-cs td.reship-cell {
-      background: #fff1c9;
+    .ledger-table tbody tr.completed-cs td.reship-cell {
+      background: #fff1c9 !important;
     }
-    .ledger-table tr.completed-cs td.return-cell {
-      background: #e5f0ff;
+    .ledger-table tbody tr.completed-cs td.return-cell {
+      background: #e5f0ff !important;
     }
     .ledger-table tr.row-dirty td {
       box-shadow: inset 0 0 0 9999px rgba(37, 99, 235, .035);
@@ -15847,6 +15847,7 @@ HTML = r"""<!doctype html>
       const type = normalizedLedgerText(typeValue);
       const status = normalizedLedgerText(statusValue);
       if (isOverallCompletedStatus(statusValue)) return true;
+      if (status.includes("완료")) return true;
       if ((type === "변심반품" || type === "변신반품" || type === "불량반품") && status.includes("회수완료")) return true;
       if ((type === "불량교환" || type === "오출고오배송" || type === "오출고오배송회수진행") && isOverallCompletedStatus(statusValue)) return true;
       if ((type === "불량재출고미회수" || type === "오출고오배송회수없음") && status.includes("재발송완료")) return true;
