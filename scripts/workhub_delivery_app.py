@@ -2489,6 +2489,16 @@ HTML = r"""<!doctype html>
       max-height: min(264px, calc(100vh - 102px));
       gap: 8px;
     }
+    .sales-detail-popup.expanded .sales-detail-body {
+      align-content: stretch !important;
+      overflow: hidden;
+    }
+    .sales-detail-popup.expanded .sales-detail-body.has-note {
+      grid-template-rows: auto auto minmax(0, 1fr);
+    }
+    .sales-detail-popup.expanded .sales-detail-body:not(.has-note) {
+      grid-template-rows: auto minmax(0, 1fr);
+    }
     .sales-detail-summary {
       display: grid;
       grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -2549,6 +2559,21 @@ HTML = r"""<!doctype html>
       background: #ffffff;
       box-shadow: 0 6px 16px rgba(15, 23, 42, .035);
     }
+    .sales-detail-sections {
+      display: grid;
+      gap: 10px;
+      min-height: 0;
+      overflow: hidden;
+    }
+    .sales-detail-popup.expanded .sales-detail-sections {
+      height: 100%;
+    }
+    .sales-detail-popup.expanded .sales-detail-body.multi-section .sales-detail-sections {
+      grid-template-rows: repeat(auto-fit, minmax(0, 1fr));
+    }
+    .sales-detail-popup.compact .sales-detail-sections {
+      overflow: visible;
+    }
     .sales-detail-section-title {
       min-height: 40px;
       display: flex;
@@ -2579,12 +2604,12 @@ HTML = r"""<!doctype html>
       max-height: 150px;
     }
     .sales-detail-popup.expanded .sales-detail-table-wrap {
-      height: clamp(360px, calc(100vh - 330px), 680px) !important;
+      height: 100% !important;
       max-height: none !important;
     }
     .sales-detail-popup.expanded .sales-detail-body.multi-section .sales-detail-table-wrap {
-      height: clamp(220px, calc((100vh - 380px) / 2), 340px) !important;
-      max-height: 340px !important;
+      height: 100% !important;
+      max-height: none !important;
     }
     .sales-detail-table-wrap::-webkit-scrollbar {
       width: 12px;
@@ -13181,7 +13206,9 @@ HTML = r"""<!doctype html>
       const noteHtml = data.note ? `<div class="sales-detail-note">${escapeHtml(data.note)}</div>` : "";
       if (salesDetailBody) {
         salesDetailBody.classList.toggle("multi-section", sections.length > 1);
-        salesDetailBody.innerHTML = `${metricHtml}${noteHtml}${sections.map(renderSalesDetailTable).join("") || `<div class="admin-message">상세 데이터가 없습니다.</div>`}`;
+        salesDetailBody.classList.toggle("has-note", Boolean(data.note));
+        const sectionsHtml = sections.map(renderSalesDetailTable).join("") || `<div class="admin-message">상세 데이터가 없습니다.</div>`;
+        salesDetailBody.innerHTML = `${metricHtml}${noteHtml}<div class="sales-detail-sections">${sectionsHtml}</div>`;
       }
       salesDetailPopup?.classList.add("open");
       salesDetailPopup?.setAttribute("aria-hidden", "false");
