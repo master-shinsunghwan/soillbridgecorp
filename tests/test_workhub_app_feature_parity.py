@@ -817,6 +817,8 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         self.assertIn(".sales-detail-popup.compact", html_source)
         self.assertIn(".sales-detail-popup.expanded", html_source)
         self.assertIn(".sales-detail-popup.compact .sales-detail-table-wrap", html_source)
+        self.assertIn("grid-template-rows: auto auto minmax(148px, 1fr);", html_source)
+        self.assertIn("min-height: 148px;", html_source)
         self.assertIn(".sales-detail-popup.expanded .sales-detail-table-wrap", html_source)
         self.assertIn(".sales-detail-sections", html_source)
         self.assertIn(".sales-detail-popup.compact .sales-detail-sections", html_source)

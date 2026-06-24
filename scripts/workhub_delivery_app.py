@@ -2490,7 +2490,7 @@ HTML = r"""<!doctype html>
       gap: 8px;
       align-content: stretch;
       overflow: hidden;
-      grid-template-rows: auto auto minmax(0, 1fr);
+      grid-template-rows: auto auto minmax(148px, 1fr);
     }
     .sales-detail-popup.expanded .sales-detail-body {
       align-content: stretch !important;
@@ -2544,12 +2544,18 @@ HTML = r"""<!doctype html>
       line-height: 1.15;
     }
     .sales-detail-popup.compact .sales-detail-metric {
-      min-height: 54px;
-      padding: 8px 10px 8px 14px;
+      min-height: 44px;
+      padding: 6px 10px 6px 14px;
     }
     .sales-detail-popup.compact .sales-detail-metric strong {
-      margin-top: 4px;
-      font-size: 17px;
+      margin-top: 2px;
+      font-size: 16px;
+    }
+    .sales-detail-popup.compact .sales-detail-note {
+      min-height: 28px;
+      padding: 6px 10px;
+      font-size: 11px;
+      line-height: 1.35;
     }
     .sales-detail-section {
       display: grid;
@@ -2605,6 +2611,7 @@ HTML = r"""<!doctype html>
     }
     .sales-detail-popup.compact .sales-detail-table-wrap {
       height: 100%;
+      min-height: 148px;
       max-height: none;
     }
     .sales-detail-popup.expanded .sales-detail-table-wrap {
