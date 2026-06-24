@@ -2417,6 +2417,7 @@ HTML = r"""<!doctype html>
       font-weight: 950;
     }
     .sales-detail-popup {
+      --detail-color: #2563eb;
       width: calc(100vw - 24px);
       height: calc(100vh - 24px);
       max-width: none;
@@ -2425,33 +2426,53 @@ HTML = r"""<!doctype html>
       display: grid;
       grid-template-rows: auto minmax(0, 1fr);
       padding: 0;
-      background: #f6f8fb;
-      border: 1px solid #cbd5e1;
-      box-shadow: 0 24px 70px rgba(15, 23, 42, .24);
+      background: #f8fafc;
+      border: 1px solid #d8e0ec;
+      border-radius: 8px;
+      box-shadow: 0 24px 70px rgba(15, 23, 42, .20);
     }
     .sales-detail-popup .notice-popup-head {
-      min-height: 62px;
-      padding: 0 18px;
+      min-height: 54px;
+      padding: 0 14px;
       margin: 0;
-      border-bottom: 1px solid #d8e0ec;
-      background: #0f172a;
-      color: #ffffff;
+      border-bottom: 1px solid #e2e8f0;
+      background: linear-gradient(90deg, color-mix(in srgb, var(--detail-color) 12%, #ffffff), #f8fafc 72%);
+      color: #0f172a;
+    }
+    .sales-detail-popup .notice-popup-head::before {
+      content: "";
+      width: 26px;
+      height: 26px;
+      border-radius: 8px;
+      flex: 0 0 auto;
+      background: color-mix(in srgb, var(--detail-color) 14%, white);
+      box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--detail-color) 18%, transparent);
     }
     .sales-detail-popup .notice-popup-head span {
-      font-size: 18px;
+      min-width: 0;
+      overflow: hidden;
+      color: #0f172a;
+      font-size: 15px;
       font-weight: 950;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
     .sales-detail-popup .popup-close-button {
-      color: #ffffff;
-      background: rgba(255, 255, 255, .12);
-      border-color: rgba(255, 255, 255, .24);
+      width: 32px;
+      height: 32px;
+      color: #475569;
+      background: #ffffff;
+      border-color: #d8e0ec;
+      border-radius: 8px;
+      box-shadow: 0 4px 10px rgba(15, 23, 42, .06);
     }
     .sales-detail-body {
       display: grid;
-      gap: 12px;
+      gap: 10px;
       min-height: 0;
       overflow: auto;
-      padding: 14px;
+      padding: 12px;
+      background: #f8fafc;
     }
     .sales-detail-summary {
       display: grid;
@@ -2459,42 +2480,66 @@ HTML = r"""<!doctype html>
       gap: 8px;
     }
     .sales-detail-metric {
-      min-height: 78px;
-      padding: 12px;
-      border: 1px solid #e2e8f0;
+      position: relative;
+      min-height: 82px;
+      padding: 10px 10px 10px 14px;
+      overflow: hidden;
+      border: 1px solid color-mix(in srgb, var(--detail-color) 20%, #d8e0ec);
       border-radius: 8px;
-      background: #ffffff;
-      box-shadow: 0 8px 18px rgba(15, 23, 42, .045);
+      background: linear-gradient(135deg, color-mix(in srgb, var(--detail-color) 8%, white), #ffffff 48%, #ffffff);
+      box-shadow: 0 6px 16px rgba(15, 23, 42, .04);
+    }
+    .sales-detail-metric::before {
+      content: "";
+      position: absolute;
+      left: 0;
+      top: 0;
+      bottom: 0;
+      width: 4px;
+      background: var(--detail-color);
     }
     .sales-detail-metric span {
       display: block;
+      overflow: hidden;
       color: #64748b;
-      font-size: 11px;
+      font-size: 12px;
       font-weight: 900;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
     .sales-detail-metric strong {
       display: block;
-      margin-top: 5px;
+      margin-top: 9px;
       color: #0f172a;
-      font-size: 18px;
+      font-size: 21px;
       font-weight: 950;
+      line-height: 1.15;
     }
     .sales-detail-section {
-      display: grid;
-      gap: 8px;
+      min-height: 0;
+      overflow: hidden;
+      border: 1px solid #d8e0ec;
+      border-top: 3px solid var(--detail-color);
+      border-radius: 8px;
+      background: #ffffff;
+      box-shadow: 0 6px 16px rgba(15, 23, 42, .035);
     }
     .sales-detail-section-title {
-      color: #111827;
+      min-height: 40px;
+      display: flex;
+      align-items: center;
+      padding: 0 12px;
+      border-bottom: 1px solid #e2e8f0;
+      background: linear-gradient(90deg, color-mix(in srgb, var(--detail-color) 12%, #ffffff), #f8fafc 70%);
+      color: #0f172a;
       font-size: 13px;
       font-weight: 950;
     }
     .sales-detail-table-wrap {
+      height: clamp(360px, calc(100vh - 315px), 760px);
       max-height: none;
       overflow: auto;
-      border: 1px solid #e2e8f0;
-      border-radius: 8px;
-      background: #ffffff;
-      box-shadow: 0 8px 18px rgba(15, 23, 42, .035);
+      scrollbar-gutter: stable;
     }
     .sales-detail-table {
       width: 100%;
@@ -2504,8 +2549,8 @@ HTML = r"""<!doctype html>
     }
     .sales-detail-table th,
     .sales-detail-table td {
-      height: 31px;
-      padding: 6px 8px;
+      height: 32px;
+      padding: 5px 8px;
       border-bottom: 1px solid #eef2f7;
       text-align: right;
       white-space: nowrap;
@@ -2514,19 +2559,39 @@ HTML = r"""<!doctype html>
       position: sticky;
       top: 0;
       z-index: 1;
-      background: #f8fafc;
+      background: color-mix(in srgb, var(--detail-color) 7%, #f8fafc);
       color: #1f2937;
       font-weight: 950;
+    }
+    .sales-detail-table td {
+      font-weight: 750;
+      transition: background .14s ease, color .14s ease;
     }
     .sales-detail-table th:first-child,
     .sales-detail-table td:first-child {
       text-align: left;
+      color: #111827;
+      font-weight: 850;
+    }
+    .sales-detail-table td:nth-child(4),
+    .sales-detail-table th:nth-child(4),
+    .sales-detail-table td:last-child,
+    .sales-detail-table th:last-child {
+      box-shadow: inset 0 0 0 9999px color-mix(in srgb, var(--detail-color) 5%, transparent);
+    }
+    .sales-detail-table tbody tr:hover td {
+      background: color-mix(in srgb, var(--detail-color) 8%, white);
     }
     .sales-detail-note {
+      padding: 9px 12px;
+      border: 1px solid #d8e0ec;
+      border-radius: 8px;
+      background: #ffffff;
       color: #64748b;
       font-size: 12px;
       font-weight: 800;
-      line-height: 1.5;
+      line-height: 1.45;
+      box-shadow: 0 4px 12px rgba(15, 23, 42, .03);
     }
     .sales-dashboard.loading .sales-kpi,
     .sales-dashboard.loading .sales-panel {
@@ -13023,6 +13088,13 @@ HTML = r"""<!doctype html>
     }
 
     function renderSalesDetailPopup(data = {}) {
+      const detailColors = {
+        daily: "#2563eb",
+        seller: "#2563eb",
+        product: "#7c3aed",
+        supplier: "#f97316",
+      };
+      salesDetailPopup?.style.setProperty("--detail-color", detailColors[data.kind] || "#2563eb");
       if (salesDetailTitle) salesDetailTitle.textContent = data.title || "매출 상세";
       const metrics = data.metrics || [];
       const sections = data.sections || [];
@@ -23236,15 +23308,24 @@ def sales_report_detail_payload(kind: str, key: str, period: str = "") -> dict[s
             table_name = "sales_report_seller_rows" if is_seller else "sales_report_supplier_rows"
             name_column = "seller_name" if is_seller else "supplier_name"
             amount_column = "profit_sales_amount" if is_seller else "supply_total"
+            latest_detail_snapshot = connection.execute(
+                f"""
+                SELECT MAX(report_date) AS report_date
+                  FROM {table_name}
+                 WHERE period = ? AND {name_column} = ? AND report_date != ''
+                """,
+                (selected_period, detail_key),
+            ).fetchone()
+            latest_detail_date = str(latest_detail_snapshot["report_date"] or "") if latest_detail_snapshot else ""
             sales_summary = connection.execute(
                 f"""
                 SELECT COALESCE(SUM(quantity), 0) AS quantity,
                        COALESCE(SUM({amount_column}), 0) AS amount,
                        COALESCE(SUM(profit_margin - profit_shipping), 0) AS profit_margin
                   FROM {table_name}
-                 WHERE period = ? AND {name_column} = ?
+                 WHERE period = ? AND {name_column} = ? AND (? = '' OR report_date = ?)
                 """,
-                (selected_period, detail_key),
+                (selected_period, detail_key, latest_detail_date, latest_detail_date),
             ).fetchone()
             vendor_column = "sales_vendor" if is_seller else "purchase_vendor"
             ledger_rows = connection.execute(
@@ -23433,6 +23514,26 @@ def sales_report_dashboard_payload(period: str = "", report_date: str = "") -> d
             """,
             (previous_period,),
         ).fetchone()
+        latest_seller_date_row = connection.execute(
+            "SELECT MAX(report_date) AS report_date FROM sales_report_seller_rows WHERE period = ? AND report_date != ''",
+            (selected_period,),
+        ).fetchone()
+        latest_seller_date = str(latest_seller_date_row["report_date"] or "") if latest_seller_date_row else ""
+        latest_previous_seller_date_row = connection.execute(
+            "SELECT MAX(report_date) AS report_date FROM sales_report_seller_rows WHERE period = ? AND report_date != ''",
+            (previous_period,),
+        ).fetchone()
+        latest_previous_seller_date = str(latest_previous_seller_date_row["report_date"] or "") if latest_previous_seller_date_row else ""
+        latest_supplier_date_row = connection.execute(
+            "SELECT MAX(report_date) AS report_date FROM sales_report_supplier_rows WHERE period = ? AND report_date != ''",
+            (selected_period,),
+        ).fetchone()
+        latest_supplier_date = str(latest_supplier_date_row["report_date"] or "") if latest_supplier_date_row else ""
+        latest_previous_supplier_date_row = connection.execute(
+            "SELECT MAX(report_date) AS report_date FROM sales_report_supplier_rows WHERE period = ? AND report_date != ''",
+            (previous_period,),
+        ).fetchone()
+        latest_previous_supplier_date = str(latest_previous_supplier_date_row["report_date"] or "") if latest_previous_supplier_date_row else ""
         seller_total = connection.execute(
             """
             SELECT COALESCE(SUM(quantity), 0) AS quantity,
@@ -23440,9 +23541,9 @@ def sales_report_dashboard_payload(period: str = "", report_date: str = "") -> d
                    COALESCE(SUM(profit_sales_amount), 0) AS profit_sales_amount,
                    COALESCE(SUM(profit_margin - profit_shipping), 0) AS profit_margin
               FROM sales_report_seller_rows
-             WHERE period = ?
+             WHERE period = ? AND (? = '' OR report_date = ?)
             """,
-            (selected_period,),
+            (selected_period, latest_seller_date, latest_seller_date),
         ).fetchone()
         previous_seller_total = connection.execute(
             """
@@ -23450,27 +23551,27 @@ def sales_report_dashboard_payload(period: str = "", report_date: str = "") -> d
                    COALESCE(SUM(profit_sales_amount), 0) AS profit_sales_amount,
                    COALESCE(SUM(profit_margin - profit_shipping), 0) AS profit_margin
               FROM sales_report_seller_rows
-             WHERE period = ?
+             WHERE period = ? AND (? = '' OR report_date = ?)
             """,
-            (previous_period,),
+            (previous_period, latest_previous_seller_date, latest_previous_seller_date),
         ).fetchone()
         supplier_purchase_total = connection.execute(
             """
             SELECT COALESCE(SUM(quantity), 0) AS quantity,
                    COALESCE(SUM(supply_total), 0) AS purchase_total
               FROM sales_report_supplier_rows
-             WHERE period = ?
+             WHERE period = ? AND (? = '' OR report_date = ?)
             """,
-            (selected_period,),
+            (selected_period, latest_supplier_date, latest_supplier_date),
         ).fetchone()
         previous_supplier_purchase_total = connection.execute(
             """
             SELECT COALESCE(SUM(quantity), 0) AS quantity,
                    COALESCE(SUM(supply_total), 0) AS purchase_total
               FROM sales_report_supplier_rows
-             WHERE period = ?
+             WHERE period = ? AND (? = '' OR report_date = ?)
             """,
-            (previous_period,),
+            (previous_period, latest_previous_supplier_date, latest_previous_supplier_date),
         ).fetchone()
         product_total = connection.execute(
             """
@@ -23514,11 +23615,11 @@ def sales_report_dashboard_payload(period: str = "", report_date: str = "") -> d
                    COALESCE(SUM(cs_amount), 0) AS cs_amount,
                    COALESCE(SUM(cs_margin), 0) AS cs_margin
               FROM sales_report_seller_rows
-             WHERE period = ?
+             WHERE period = ? AND (? = '' OR report_date = ?)
              GROUP BY seller_name
              ORDER BY profit_sales_amount DESC, quantity DESC, seller_name COLLATE NOCASE
             """,
-            (selected_period,),
+            (selected_period, latest_seller_date, latest_seller_date),
         ).fetchall()
         product_rows = connection.execute(
             """
@@ -23543,11 +23644,11 @@ def sales_report_dashboard_payload(period: str = "", report_date: str = "") -> d
                    COALESCE(SUM(quantity), 0) AS quantity,
                    COALESCE(SUM(supply_total), 0) AS purchase_total
               FROM sales_report_supplier_rows
-             WHERE period = ?
+             WHERE period = ? AND (? = '' OR report_date = ?)
              GROUP BY supplier_name
              ORDER BY purchase_total DESC, quantity DESC, supplier_name COLLATE NOCASE
             """,
-            (selected_period,),
+            (selected_period, latest_supplier_date, latest_supplier_date),
         ).fetchall()
         daily_compare_rows = connection.execute(
             """
@@ -23631,7 +23732,7 @@ def sales_report_dashboard_payload(period: str = "", report_date: str = "") -> d
                        COALESCE(SUM(quantity), 0) AS current_quantity,
                        COALESCE(SUM(profit_sales_amount), 0) AS current
                   FROM sales_report_seller_rows
-                 WHERE period = ?
+                 WHERE period = ? AND (? = '' OR report_date = ?)
                  GROUP BY seller_name
             ),
             previous_rows AS (
@@ -23639,7 +23740,7 @@ def sales_report_dashboard_payload(period: str = "", report_date: str = "") -> d
                        COALESCE(SUM(quantity), 0) AS previous_quantity,
                        COALESCE(SUM(profit_sales_amount), 0) AS previous
                   FROM sales_report_seller_rows
-                 WHERE period = ?
+                 WHERE period = ? AND (? = '' OR report_date = ?)
                  GROUP BY seller_name
             ),
             keys AS (
@@ -23657,7 +23758,14 @@ def sales_report_dashboard_payload(period: str = "", report_date: str = "") -> d
               LEFT JOIN previous_rows ON previous_rows.label = keys.label
              ORDER BY current DESC, previous DESC, keys.label COLLATE NOCASE
             """,
-            (selected_period, previous_period),
+            (
+                selected_period,
+                latest_seller_date,
+                latest_seller_date,
+                previous_period,
+                latest_previous_seller_date,
+                latest_previous_seller_date,
+            ),
         ).fetchall()
         supplier_compare_rows = connection.execute(
             """
@@ -23666,7 +23774,7 @@ def sales_report_dashboard_payload(period: str = "", report_date: str = "") -> d
                        COALESCE(SUM(quantity), 0) AS current_quantity,
                        COALESCE(SUM(supply_total), 0) AS current
                   FROM sales_report_supplier_rows
-                 WHERE period = ?
+                 WHERE period = ? AND (? = '' OR report_date = ?)
                  GROUP BY supplier_name
             ),
             previous_rows AS (
@@ -23674,7 +23782,7 @@ def sales_report_dashboard_payload(period: str = "", report_date: str = "") -> d
                        COALESCE(SUM(quantity), 0) AS previous_quantity,
                        COALESCE(SUM(supply_total), 0) AS previous
                   FROM sales_report_supplier_rows
-                 WHERE period = ?
+                 WHERE period = ? AND (? = '' OR report_date = ?)
                  GROUP BY supplier_name
             ),
             keys AS (
@@ -23692,7 +23800,14 @@ def sales_report_dashboard_payload(period: str = "", report_date: str = "") -> d
               LEFT JOIN previous_rows ON previous_rows.label = keys.label
              ORDER BY current DESC, previous DESC, keys.label COLLATE NOCASE
             """,
-            (selected_period, previous_period),
+            (
+                selected_period,
+                latest_supplier_date,
+                latest_supplier_date,
+                previous_period,
+                latest_previous_supplier_date,
+                latest_previous_supplier_date,
+            ),
         ).fetchall()
         review_rows = connection.execute(
             """

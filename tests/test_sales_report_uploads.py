@@ -406,11 +406,14 @@ class SalesReportUploadTests(unittest.TestCase):
 
         def fake_parse(path: Path, original_name: str = "") -> dict[str, object]:
             report_date = "2026-06-23" if "23" in original_name else "2026-06-24"
+            quantity = 1 if report_date == "2026-06-23" else 2
+            profit_sales_amount = 100 if report_date == "2026-06-23" else 200
+            profit_margin = 80 if report_date == "2026-06-23" else 160
             return {
                 "report_type": "seller",
                 "report_date": report_date,
                 "period": "2026-06",
-                "rows": [{"name": "A판매사", "quantity": 1, "profit_sales_amount": 100, "profit_margin": 80}],
+                "rows": [{"name": "A판매사", "quantity": quantity, "profit_sales_amount": profit_sales_amount, "profit_margin": profit_margin}],
             }
 
         try:
