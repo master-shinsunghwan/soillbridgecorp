@@ -2433,7 +2433,8 @@ HTML = r"""<!doctype html>
     }
     .sales-detail-popup.compact {
       height: auto;
-      max-height: min(680px, calc(100vh - 48px));
+      max-height: min(460px, calc(100vh - 48px));
+      grid-template-rows: auto auto;
     }
     .sales-detail-popup .notice-popup-head {
       min-height: 54px;
@@ -2479,7 +2480,8 @@ HTML = r"""<!doctype html>
       background: #f8fafc;
     }
     .sales-detail-popup.compact .sales-detail-body {
-      max-height: calc(100vh - 102px);
+      max-height: min(404px, calc(100vh - 102px));
+      gap: 8px;
     }
     .sales-detail-summary {
       display: grid;
@@ -2522,6 +2524,14 @@ HTML = r"""<!doctype html>
       font-weight: 950;
       line-height: 1.15;
     }
+    .sales-detail-popup.compact .sales-detail-metric {
+      min-height: 54px;
+      padding: 8px 10px 8px 14px;
+    }
+    .sales-detail-popup.compact .sales-detail-metric strong {
+      margin-top: 4px;
+      font-size: 17px;
+    }
     .sales-detail-section {
       display: grid;
       grid-template-rows: auto minmax(0, 1fr);
@@ -2559,8 +2569,8 @@ HTML = r"""<!doctype html>
       max-height: 340px;
     }
     .sales-detail-popup.compact .sales-detail-table-wrap {
-      height: clamp(180px, 34vh, 300px);
-      max-height: 300px;
+      height: clamp(140px, 24vh, 220px);
+      max-height: 220px;
     }
     .sales-detail-table-wrap::-webkit-scrollbar {
       width: 12px;
