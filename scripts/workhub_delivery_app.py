@@ -29980,6 +29980,106 @@ def save_hermes_settings(payload: dict) -> dict[str, object]:
     return load_hermes_settings(include_secret=False)
 
 
+def hermes_chat_intent(message: str) -> str:
+    text = str(message or "").strip().lower()
+    if text.startswith(("/검색", "검색:", "search:")) or any(token in text for token in ("검색해", "찾아봐", "최신", "뉴스", "인터넷")):
+        return "web_search"
+    if text.startswith(("/이미지", "이미지:", "image:")) or any(token in text for token in ("이미지 만들어", "그림 만들어", "로고 만들어", "배너 만들어", "포스터 만들어")):
+        return "image_generation"
+    return "chat"
+
+
+def hermes_workhub_context_snapshot() -> dict[str, object]:
+    init_db()
+    connection = connect_db()
+    try:
+        sales_period = latest_sales_report_period(connection)
+        sales_date, _ = latest_sales_report_context(connection, fallback_today=False)
+        cs_status_rows = connection.execute(
+            """
+            SELECT COALESCE(NULLIF(status, ''), '미지정') AS status, COUNT(*) AS count
+              FROM cs_cases
+             GROUP BY COALESCE(NULLIF(status, ''), '미지정')
+             ORDER BY count DESC
+             LIMIT 8
+            """
+        ).fetchall()
+        management_recent_rows = connection.execute(
+            """
+            SELECT substr(COALESCE(NULLIF(ship_date, ''), NULLIF(order_date, '')), 1, 10) AS activity_date,
+                   COUNT(*) AS count
+              FROM management_records
+             WHERE COALESCE(NULLIF(ship_date, ''), NULLIF(order_date, '')) != ''
+             GROUP BY substr(COALESCE(NULLIF(ship_date, ''), NULLIF(order_date, '')), 1, 10)
+             ORDER BY activity_date DESC
+             LIMIT 7
+            """
+        ).fetchall()
+        latest_management = connection.execute(
+            "SELECT COUNT(*) AS count FROM management_records"
+        ).fetchone()
+        shared_files = list_shared_files()[:5]
+    finally:
+        connection.close()
+
+    sales_summary: dict[str, object] = {}
+    if sales_period:
+        try:
+            payload = sales_report_dashboard_payload(sales_period, sales_date)
+            sales_summary = {
+                "period": payload.get("period", ""),
+                "selected_date": payload.get("selected_date", ""),
+                "today": payload.get("today", {}),
+                "month": payload.get("month", {}),
+                "seller_total": payload.get("seller_total", {}),
+                "supplier_purchase_total": payload.get("supplier_purchase_total", {}),
+                "top_sellers": payload.get("seller_top", [])[:5],
+                "top_products": payload.get("product_top", [])[:5],
+            }
+        except Exception as exc:
+            sales_summary = {"error": str(exc)}
+
+    return {
+        "generated_at": now_text(),
+        "sales_report": sales_summary,
+        "cs_status_counts": [{"status": str(row["status"]), "count": int(row["count"] or 0)} for row in cs_status_rows],
+        "management": {
+            "total_records": int(latest_management["count"] or 0) if latest_management else 0,
+            "recent_dates": [{"date": str(row["activity_date"] or ""), "count": int(row["count"] or 0)} for row in management_recent_rows],
+        },
+        "recent_shared_files": shared_files,
+    }
+
+
+def hermes_capabilities_payload(intent: str = "chat") -> dict[str, object]:
+    return {
+        "chat": True,
+        "workhub_context": True,
+        "automation_planning": True,
+        "web_search": "OpenAI Responses API web_search when OPENAI_API_KEY is configured",
+        "image_generation": "OpenAI Images API when OPENAI_API_KEY is configured",
+        "requested_intent": intent,
+    }
+
+
+def save_hermes_generated_image(data: dict[str, object], uploaded_by: str = "") -> dict[str, object] | None:
+    image_base64 = str(data.get("image_base64") or "")
+    if not image_base64:
+        return None
+    image_mime = str(data.get("image_mime") or "image/png").lower()
+    extension = ".jpg" if "jpeg" in image_mime or "jpg" in image_mime else ".png"
+    image_bytes = base64.b64decode(image_base64)
+    with tempfile.NamedTemporaryFile(delete=False, suffix=extension) as handle:
+        handle.write(image_bytes)
+        temp_path = Path(handle.name)
+    try:
+        saved = save_shared_file(temp_path, f"hermes_generated_{datetime.now().strftime('%Y%m%d_%H%M%S')}{extension}", uploaded_by)
+    finally:
+        temp_path.unlink(missing_ok=True)
+    saved["download_url"] = f"/api/shared-file-download?id={saved['id']}"
+    return saved
+
+
 def describe_hermes_connection_error(exc: Exception, url: str, base_url: str) -> str:
     if isinstance(exc, urllib.error.HTTPError):
         if exc.code in (401, 403):
@@ -31324,9 +31424,13 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                 message = clean_payload_text(payload, "message")
                 if not message:
                     raise ValueError("헤르메스에 보낼 내용을 입력해주세요.")
+                intent = hermes_chat_intent(message)
                 request_payload = {
                     "message": message,
+                    "intent": intent,
                     "source": "workhub",
+                    "capabilities": hermes_capabilities_payload(intent),
+                    "workhub_context": hermes_workhub_context_snapshot(),
                     "user": {
                         "id": int(user.get("id") or 0),
                         "username": user.get("username", ""),
@@ -31335,10 +31439,30 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                 }
                 try:
                     result = hermes_request("chat_path", request_payload)
-                    append_hermes_history("AI 업무채팅", message, "성공", json.dumps(result.get("data", {}), ensure_ascii=False)[:1000])
-                    self.send_json({"message": "헤르메스 응답을 받았습니다.", "result": result})
+                    data = result.get("data", {}) if isinstance(result.get("data"), dict) else {}
+                    generated_file = save_hermes_generated_image(
+                        data,
+                        str(user.get("display_name") or user.get("username") or ""),
+                    ) if intent == "image_generation" else None
+                    if generated_file:
+                        data["generated_file"] = generated_file
+                        data["answer"] = f"{data.get('answer') or data.get('text') or '이미지를 생성했습니다.'}\n다운로드: {generated_file['download_url']}"
+                        data["text"] = data["answer"]
+                        result["data"] = data
+                    elif intent == "image_generation" and data.get("image_url"):
+                        data["answer"] = f"{data.get('answer') or data.get('text') or '이미지를 생성했습니다.'}\n이미지 URL: {data['image_url']}"
+                        data["text"] = data["answer"]
+                        result["data"] = data
+                    append_hermes_history(
+                        "AI 업무채팅",
+                        message,
+                        "성공",
+                        json.dumps(data, ensure_ascii=False)[:1000],
+                        {"category": "chat", "intent": intent},
+                    )
+                    self.send_json({"message": "헤르메스 응답을 받았습니다.", "result": result, "intent": intent})
                 except Exception as exc:
-                    append_hermes_history("AI 업무채팅", message, "실패", str(exc))
+                    append_hermes_history("AI 업무채팅", message, "실패", str(exc), {"category": "chat", "intent": intent})
                     raise
                 return
 
@@ -31362,6 +31486,8 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                     "title": title,
                     "body": body,
                     "source": "workhub",
+                    "capabilities": hermes_capabilities_payload("automation"),
+                    "workhub_context": hermes_workhub_context_snapshot(),
                     "user": {
                         "id": int(user.get("id") or 0),
                         "username": user.get("username", ""),

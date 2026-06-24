@@ -25,6 +25,22 @@ class HermesWorkhubBridgeTests(unittest.TestCase):
         self.assertIn("summarize open CS cases", prompt)
         self.assertIn("Korean", prompt)
 
+    def test_bridge_prompt_includes_workhub_context_snapshot(self) -> None:
+        bridge = load_bridge_module()
+
+        prompt = bridge.build_prompt({
+            "message": "오늘 매출 요약해줘",
+            "workhub_context": {
+                "sales_report": {"period": "2026-06", "month": {"sales_amount": 12345}},
+                "cs_status_counts": [{"status": "open", "count": 2}],
+            },
+            "capabilities": {"workhub_context": True, "requested_intent": "chat"},
+        }, "chat")
+
+        self.assertIn("Workhub context snapshot", prompt)
+        self.assertIn("2026-06", prompt)
+        self.assertIn("Available Workhub AI capabilities", prompt)
+
     def test_bridge_authorization_accepts_bearer_or_x_hermes_key(self) -> None:
         bridge = load_bridge_module()
 
@@ -40,3 +56,19 @@ class HermesWorkhubBridgeTests(unittest.TestCase):
         self.assertIn("settlement check", prompt)
         self.assertIn("find missing vendor purchases", prompt)
         self.assertIn("actionable steps", prompt)
+
+    def test_bridge_routes_search_and_image_intents(self) -> None:
+        bridge = load_bridge_module()
+
+        self.assertEqual(
+            bridge.requested_intent({"message": "최신 택배비 정책 검색해줘"}, "chat"),
+            "web_search",
+        )
+        self.assertEqual(
+            bridge.requested_intent({"message": "상품 배너 이미지 만들어줘"}, "chat"),
+            "image_generation",
+        )
+        self.assertEqual(
+            bridge.requested_intent({"message": "최신 자료 조사해줘"}, "automation"),
+            "",
+        )
