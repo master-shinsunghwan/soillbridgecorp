@@ -356,12 +356,12 @@ class SalesReportUploadTests(unittest.TestCase):
         seller_detail = self.app.sales_report_detail_payload("seller", "A판매사", "2026-06")
         supplier_detail = self.app.sales_report_detail_payload("supplier", "공급사A", "2026-06")
 
-        self.assertEqual(daily_detail["sections"][0]["rows"][0], ["A판매사", 1, 3])
+        self.assertEqual(daily_detail["sections"][0]["rows"][0], ["A판매사", 1, 3, 900, 950, 800])
         self.assertNotIn("일자별 상품 손익", [section["title"] for section in product_detail["sections"]])
         self.assertEqual(product_detail["sections"][0]["rows"][0], ["2026-06-19", 1, 3])
         self.assertEqual(product_detail["sections"][1]["rows"][0], ["A판매사", 1, 3])
-        self.assertEqual(seller_detail["sections"][0]["rows"], [["2026-06-19", 1, 3]])
-        self.assertEqual(supplier_detail["sections"][0]["rows"], [["2026-06-19", 1, 3]])
+        self.assertEqual(seller_detail["sections"][0]["rows"], [["2026-06-19", 1, 3, "-", "-"]])
+        self.assertEqual(supplier_detail["sections"][0]["rows"], [["2026-06-19", 1, 3, "-", "-"]])
 
     def test_sales_report_margin_check_flags_margin_over_sales(self) -> None:
         connection = self.app.connect_db()
