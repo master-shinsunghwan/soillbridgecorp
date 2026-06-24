@@ -15857,6 +15857,11 @@ HTML = r"""<!doctype html>
       return isCompletedByValues(csCase.cs_type, csCase.status);
     }
 
+    function isLedgerCompletedCase(csCase) {
+      if (String(csCase.completed_at || '').trim()) return true;
+      return isCompletedCsCase(csCase);
+    }
+
     function fieldValue(element) {
       if (!element) return "";
       if ("value" in element) return String(element.value || "").trim();
@@ -15892,7 +15897,8 @@ HTML = r"""<!doctype html>
       if (!row) return;
       const status = fieldValue(row.querySelector('[data-field="status"]'));
       const csType = fieldValue(row.querySelector('[data-field="cs_type"]'));
-      row.classList.toggle("completed-cs", isCompletedByValues(csType, status));
+      const completedAt = fieldValue(row.querySelector('[data-field="completed_at"]'));
+      row.classList.toggle("completed-cs", isCompletedByValues(csType, status) || Boolean(completedAt));
       syncReturnCheckButtonVisibility(row);
     }
 
@@ -16853,7 +16859,7 @@ HTML = r"""<!doctype html>
           ? ""
           : `<button class="ledger-row-return-check" type="button" data-return-check-row>회수확인</button>`;
         const csTypeSelectOptions = ["", ...csTypeOptions];
-        if (isCompletedCsCase(csCase)) row.classList.add("completed-cs");
+        if (isLedgerCompletedCase(csCase)) row.classList.add("completed-cs");
         row.innerHTML = `
           <td><input class="ledger-check" type="checkbox" data-row-check /></td>
           <td data-full-date="${escapeHtml(csCase.occurred_at || csCase.created_at)}">${escapeHtml(shortKoreanDate(csCase.occurred_at || csCase.created_at))}</td>
@@ -16865,7 +16871,7 @@ HTML = r"""<!doctype html>
               ${returnCheckButtonHtml}
             </span>
           </td>
-          <td data-full-date="${escapeHtml(csCase.completed_at)}">${escapeHtml(shortKoreanDate(csCase.completed_at))}</td>
+          <td data-field="completed_at" data-value="${escapeHtml(csCase.completed_at)}" data-full-date="${escapeHtml(csCase.completed_at)}">${escapeHtml(shortKoreanDate(csCase.completed_at))}</td>
           ${editableCell({ scope: "ledger", field: "cs_type", label: "처리내용", value: csCase.cs_type, input: "select", options: csTypeSelectOptions })}
           ${editableCell({ scope: "ledger", field: "cs_content", label: "C/S 내용", value: csCase.cs_content, align: "left", input: "textarea" })}
           ${editableCell({ scope: "ledger", field: "reship_invoice", label: "재발송운송장번호", value: csCase.reship_invoice, align: "invoice-cell reship-cell" })}

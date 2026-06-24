@@ -227,8 +227,12 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         self.assertIn("if (isOverallCompletedStatus(statusValue)) return true;", html_source)
         self.assertIn("const type = normalizedLedgerText(typeValue);", html_source)
         self.assertIn("const status = normalizedLedgerText(statusValue);", html_source)
+        self.assertIn("function isLedgerCompletedCase(csCase)", html_source)
+        self.assertIn("if (String(csCase.completed_at || '').trim()) return true;", html_source)
+        self.assertIn('data-field="completed_at" data-value="${escapeHtml(csCase.completed_at)}"', html_source)
+        self.assertIn("const completedAt = fieldValue(row.querySelector('[data-field=\"completed_at\"]'));", html_source)
         self.assertIn('row.classList.add("completed-cs")', html_source)
-        self.assertIn('row.classList.toggle("completed-cs", isCompletedByValues(csType, status));', html_source)
+        self.assertIn('row.classList.toggle("completed-cs", isCompletedByValues(csType, status) || Boolean(completedAt));', html_source)
 
     def test_hermes_workspace_menu_and_configurable_agent_bridge_exist(self) -> None:
         html_source = (ROOT / "scripts" / "workhub_delivery_app.py").read_text(encoding="utf-8")
