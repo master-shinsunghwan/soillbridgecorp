@@ -13863,6 +13863,7 @@ HTML = r"""<!doctype html>
         return;
       }
       appendHermesChatMessage("user", message);
+      if (hermesChatInput) hermesChatInput.value = "";
       const answerId = appendHermesChatMessage("assistant", "헤르메스가 답변을 준비하는 중입니다.", "pending");
       const sessionId = hermesChatSessionId;
       hermesChatPending = true;
