@@ -432,6 +432,14 @@ class SalesReportUploadTests(unittest.TestCase):
 
         self.assertEqual([row["report_date"] for row in rows], ["2026-06-23", "2026-06-24"])
 
+    def test_sales_report_date_from_upload_name_uses_stored_timestamp(self) -> None:
+        parsed = self.app.sales_report_date_from_upload_name(
+            "20260623072000_925ce8e90482e99a354c_매출처별 매출 합계.xls",
+            "2026-06",
+        )
+
+        self.assertEqual(parsed, "2026-06-23")
+
     def test_sales_dimension_reports_without_date_inherit_latest_daily_context(self) -> None:
         base = Path(self.tempdir.name)
         daily = base / "daily.xlsx"

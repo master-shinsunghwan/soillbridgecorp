@@ -23850,6 +23850,35 @@ def latest_sales_report_context(connection: sqlite3.Connection, fallback_today: 
     return today, today[:7]
 
 
+def sales_report_date_from_upload_name(name: str, period: str = "") -> str:
+    text = str(name or "")
+    match = re.search(r"(20\d{2})(\d{2})(\d{2})", text)
+    if match:
+        year, month, day = match.groups()
+        try:
+            return date(int(year), int(month), int(day)).isoformat()
+        except ValueError:
+            return ""
+    if period:
+        compact_period = period.replace("-", "")
+        match = re.search(r"(?<!\d)(\d{1,2})(\d{2})(?!\d)", text)
+        if match:
+            month, day = match.groups()
+            year = int(period[:4])
+            try:
+                candidate = date(year, int(month), int(day)).isoformat()
+                return candidate if candidate.startswith(period) else ""
+            except ValueError:
+                return ""
+        match = re.search(rf"{re.escape(compact_period)}(\d{{2}})", text)
+        if match:
+            try:
+                return date(int(period[:4]), int(period[5:7]), int(match.group(1))).isoformat()
+            except ValueError:
+                return ""
+    return ""
+
+
 def save_sales_report_file(source_path: str | Path, original_name: str, uploaded_by: str = "") -> dict[str, str | int]:
     source = Path(source_path)
     if not source.is_file():
@@ -23875,11 +23904,15 @@ def save_sales_report_file(source_path: str | Path, original_name: str, uploaded
     connection = connect_db()
     try:
         if parsed_report and report_type in {"seller", "supplier", "product"} and (not report_date or not period):
+            original_date = sales_report_date_from_upload_name(safe_original, period)
             inferred_date, inferred_period = latest_sales_report_context(connection, fallback_today=not period)
             if not period:
-                period = inferred_period or report_date[:7]
-            if not report_date and inferred_date and (not inferred_period or inferred_period == period):
-                report_date = inferred_date
+                period = (original_date[:7] if original_date else "") or inferred_period or report_date[:7]
+            if not report_date:
+                if original_date and original_date.startswith(period):
+                    report_date = original_date
+                elif inferred_date and (not inferred_period or inferred_period == period):
+                    report_date = inferred_date
             parsed_report["report_date"] = report_date
             parsed_report["period"] = period
         cursor = connection.execute(
