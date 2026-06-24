@@ -360,8 +360,10 @@ class SalesReportUploadTests(unittest.TestCase):
         self.assertNotIn("일자별 상품 손익", [section["title"] for section in product_detail["sections"]])
         self.assertEqual(product_detail["sections"][0]["rows"][0], ["2026-06-19", 1, 3])
         self.assertEqual(product_detail["sections"][1]["rows"][0], ["A판매사", 1, 3])
-        self.assertEqual(seller_detail["sections"][0]["rows"], [["2026-06-19", 1, 3, "-", "-"]])
-        self.assertEqual(supplier_detail["sections"][0]["rows"], [["2026-06-19", 1, 3, "-", "-"]])
+        self.assertEqual(seller_detail["sections"][0]["rows"], [["2026-06-19", 1, 3]])
+        self.assertEqual(seller_detail["sections"][1]["rows"], [])
+        self.assertEqual(supplier_detail["sections"][0]["rows"], [["2026-06-19", 1, 3]])
+        self.assertEqual(supplier_detail["sections"][1]["rows"], [])
 
     def test_sales_report_margin_check_flags_margin_over_sales(self) -> None:
         connection = self.app.connect_db()
@@ -441,6 +443,161 @@ class SalesReportUploadTests(unittest.TestCase):
         self.assertEqual(dashboard["seller_top"][0]["name"], "A판매사")
         self.assertEqual(dashboard["seller_top"][0]["quantity"], 2)
         self.assertEqual(dashboard["seller_top"][0]["profit_sales_amount"], 200)
+
+    def test_same_date_dimension_upload_replaces_previous_snapshot(self) -> None:
+        connection = self.app.connect_db()
+        try:
+            cursor = connection.execute(
+                """
+                INSERT INTO sales_report_uploads
+                    (stored_name, original_name, report_type, report_date, period, size, uploaded_by, uploaded_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                ("first.xlsx", "first.xlsx", "seller", "2026-06-24", "2026-06", 1, "admin", "2026-06-24"),
+            )
+            first_id = int(cursor.lastrowid)
+            cursor = connection.execute(
+                """
+                INSERT INTO sales_report_uploads
+                    (stored_name, original_name, report_type, report_date, period, size, uploaded_by, uploaded_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                ("last.xlsx", "last.xlsx", "seller", "2026-06-24", "2026-06", 1, "admin", "2026-06-24"),
+            )
+            last_id = int(cursor.lastrowid)
+            connection.commit()
+        finally:
+            connection.close()
+
+        self.app.save_sales_report_snapshot(
+            first_id,
+            {
+                "report_type": "seller",
+                "report_date": "2026-06-24",
+                "period": "2026-06",
+                "rows": [{"name": "A판매사", "quantity": 1, "profit_sales_amount": 100, "profit_margin": 80}],
+            },
+        )
+        self.app.save_sales_report_snapshot(
+            last_id,
+            {
+                "report_type": "seller",
+                "report_date": "2026-06-24",
+                "period": "2026-06",
+                "rows": [{"name": "A판매사", "quantity": 9, "profit_sales_amount": 900, "profit_margin": 720}],
+            },
+        )
+
+        connection = self.app.connect_db()
+        try:
+            rows = connection.execute(
+                """
+                SELECT file_id, quantity, profit_sales_amount
+                  FROM sales_report_seller_rows
+                 WHERE period = ? AND report_date = ? AND seller_name = ?
+                """,
+                ("2026-06", "2026-06-24", "A판매사"),
+            ).fetchall()
+        finally:
+            connection.close()
+
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["file_id"], last_id)
+        self.assertEqual(rows[0]["quantity"], 9)
+        self.assertEqual(rows[0]["profit_sales_amount"], 900)
+
+        connection = self.app.connect_db()
+        try:
+            upload_ids: dict[str, int] = {}
+            for report_type in ("supplier", "product", "daily"):
+                cursor = connection.execute(
+                    """
+                    INSERT INTO sales_report_uploads
+                        (stored_name, original_name, report_type, report_date, period, size, uploaded_by, uploaded_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (f"{report_type}.xlsx", f"{report_type}.xlsx", report_type, "2026-06-24", "2026-06", 1, "admin", "2026-06-24"),
+                )
+                upload_ids[report_type] = int(cursor.lastrowid)
+            connection.commit()
+        finally:
+            connection.close()
+
+        self.app.save_sales_report_snapshot(
+            upload_ids["supplier"],
+            {
+                "report_type": "supplier",
+                "report_date": "2026-06-24",
+                "period": "2026-06",
+                "rows": [{"name": "A공급사", "quantity": 1, "supply_total": 1000}],
+            },
+        )
+        self.app.save_sales_report_snapshot(
+            upload_ids["supplier"],
+            {
+                "report_type": "supplier",
+                "report_date": "2026-06-24",
+                "period": "2026-06",
+                "rows": [{"name": "A공급사", "quantity": 8, "supply_total": 8000}],
+            },
+        )
+        self.app.save_sales_report_snapshot(
+            upload_ids["product"],
+            {
+                "report_type": "product",
+                "report_date": "2026-06-24",
+                "period": "2026-06",
+                "rows": [{"code": "P001", "name": "A상품", "quantity": 1, "profit_sales_amount": 100}],
+            },
+        )
+        self.app.save_sales_report_snapshot(
+            upload_ids["product"],
+            {
+                "report_type": "product",
+                "report_date": "2026-06-24",
+                "period": "2026-06",
+                "rows": [{"code": "P001", "name": "A상품", "quantity": 7, "profit_sales_amount": 700}],
+            },
+        )
+        self.app.save_sales_report_snapshot(
+            upload_ids["daily"],
+            {
+                "report_type": "daily",
+                "report_date": "2026-06-24",
+                "period": "2026-06",
+                "rows": [{"report_date": "2026-06-24", "period": "2026-06", "label": "2026-06-24", "quantity": 1, "profit_sales_amount": 100}],
+            },
+        )
+        self.app.save_sales_report_snapshot(
+            upload_ids["daily"],
+            {
+                "report_type": "daily",
+                "report_date": "2026-06-24",
+                "period": "2026-06",
+                "rows": [{"report_date": "2026-06-24", "period": "2026-06", "label": "2026-06-24", "quantity": 6, "profit_sales_amount": 600}],
+            },
+        )
+
+        connection = self.app.connect_db()
+        try:
+            supplier_row = connection.execute(
+                "SELECT quantity, supply_total FROM sales_report_supplier_rows WHERE report_date = ? AND supplier_name = ?",
+                ("2026-06-24", "A공급사"),
+            ).fetchone()
+            product_row = connection.execute(
+                "SELECT quantity, profit_sales_amount FROM sales_report_product_rows WHERE report_date = ? AND product_name = ?",
+                ("2026-06-24", "A상품"),
+            ).fetchone()
+            daily_row = connection.execute(
+                "SELECT quantity, profit_sales_amount FROM sales_report_daily_rows WHERE report_date = ?",
+                ("2026-06-24",),
+            ).fetchone()
+        finally:
+            connection.close()
+
+        self.assertEqual(dict(supplier_row), {"quantity": 8, "supply_total": 8000})
+        self.assertEqual(dict(product_row), {"quantity": 7, "profit_sales_amount": 700})
+        self.assertEqual(dict(daily_row), {"quantity": 6, "profit_sales_amount": 600})
 
     def test_sales_report_date_from_upload_name_uses_stored_timestamp(self) -> None:
         parsed = self.app.sales_report_date_from_upload_name(

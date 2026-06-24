@@ -2418,10 +2418,10 @@ HTML = r"""<!doctype html>
     }
     .sales-detail-popup {
       --detail-color: #2563eb;
-      width: calc(100vw - 24px);
-      height: calc(100vh - 24px);
-      max-width: none;
-      max-height: none;
+      width: clamp(720px, 54vw, 1040px);
+      height: clamp(520px, 58vh, 720px);
+      max-width: calc(100vw - 48px);
+      max-height: calc(100vh - 48px);
       overflow: hidden;
       display: grid;
       grid-template-rows: auto minmax(0, 1fr);
@@ -2481,8 +2481,8 @@ HTML = r"""<!doctype html>
     }
     .sales-detail-metric {
       position: relative;
-      min-height: 82px;
-      padding: 10px 10px 10px 14px;
+      min-height: 72px;
+      padding: 9px 10px 9px 14px;
       overflow: hidden;
       border: 1px solid color-mix(in srgb, var(--detail-color) 20%, #d8e0ec);
       border-radius: 8px;
@@ -2509,9 +2509,9 @@ HTML = r"""<!doctype html>
     }
     .sales-detail-metric strong {
       display: block;
-      margin-top: 9px;
+      margin-top: 7px;
       color: #0f172a;
-      font-size: 21px;
+      font-size: 19px;
       font-weight: 950;
       line-height: 1.15;
     }
@@ -2536,7 +2536,7 @@ HTML = r"""<!doctype html>
       font-weight: 950;
     }
     .sales-detail-table-wrap {
-      height: clamp(360px, calc(100vh - 315px), 760px);
+      height: clamp(210px, calc(58vh - 260px), 420px);
       max-height: none;
       overflow: auto;
       scrollbar-gutter: stable;
@@ -23402,6 +23402,11 @@ def sales_report_detail_payload(kind: str, key: str, period: str = "") -> dict[s
                 }
                 for activity_date in detail_dates
             ]
+            amount_detail_rows = [
+                row
+                for row in rows
+                if row["amount_delta"] is not None or row["margin_delta"] is not None
+            ]
             total_quantity = sum(int(row["quantity"] or 0) for row in rows)
             total_orders = sum(int(row["order_count"] or 0) for row in rows)
             total_amount = int(sales_summary["amount"] or 0) if sales_summary else 0
@@ -23410,7 +23415,7 @@ def sales_report_detail_payload(kind: str, key: str, period: str = "") -> dict[s
                 "kind": detail_kind,
                 "title": f"{detail_key} {'매출처' if is_seller else '매입처'} 월 전체 현황",
                 "period": selected_period,
-                "note": "일자별 주문건수와 수량은 통합관리대장 기준입니다. 일자별 금액은 거래처별 누적 스냅샷의 전일 대비 증가분이 확인되는 날짜에 표시합니다.",
+                "note": "월 전체 주문건수와 수량은 통합관리대장 기준입니다. 일자별 금액은 거래처별 누적 스냅샷이 연속으로 업로드된 날짜만 정확히 계산됩니다.",
                 "metrics": [
                     _sales_detail_metric("주문건수", total_orders),
                     _sales_detail_metric("관리대장 수량", total_quantity),
@@ -23419,20 +23424,31 @@ def sales_report_detail_payload(kind: str, key: str, period: str = "") -> dict[s
                 ],
                 "sections": [
                     {
-                        "title": "일자별 매출현황" if is_seller else "일자별 매입현황",
-                        "headers": ["일자", "주문건수", "수량", "매출금액" if is_seller else "매입금액", "손익마진(택배비 제외)"],
+                        "title": "월 전체 주문/수량",
+                        "headers": ["일자", "주문건수", "수량"],
                         "rows": [
                             [
                                 str(row["activity_date"] or ""),
                                 int(row["order_count"] or 0),
                                 int(row["quantity"] or 0),
-                                int(row["amount_delta"]) if row["amount_delta"] is not None else "-",
-                                int(row["margin_delta"]) if row["margin_delta"] is not None else "-",
                             ]
                             for row in rows
                         ],
                         "empty": "해당 거래처의 월 전체 관리대장 데이터가 없습니다.",
-                    }
+                    },
+                    {
+                        "title": "금액 확인 가능일",
+                        "headers": ["일자", "매출금액" if is_seller else "매입금액", "손익마진(택배비 제외)"],
+                        "rows": [
+                            [
+                                str(row["activity_date"] or ""),
+                                int(row["amount_delta"]) if row["amount_delta"] is not None else 0,
+                                int(row["margin_delta"]) if row["margin_delta"] is not None else 0,
+                            ]
+                            for row in amount_detail_rows
+                        ],
+                        "empty": "연속 업로드된 거래처별 누적 스냅샷이 없어 일자별 금액을 계산할 수 없습니다.",
+                    },
                 ],
             }
         raise ValueError("지원하지 않는 상세 조회 유형입니다.")
