@@ -811,6 +811,14 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         self.assertIn("매입처별 총합계 금액", html_source)
         self.assertNotIn('["파일 검증"', html_source)
 
+    def test_daily_sales_detail_popup_uses_compact_height(self) -> None:
+        html_source = (ROOT / "scripts" / "workhub_delivery_app.py").read_text(encoding="utf-8")
+
+        self.assertIn(".sales-detail-popup.compact", html_source)
+        self.assertIn(".sales-detail-popup.compact .sales-detail-table-wrap", html_source)
+        self.assertIn('salesDetailPopup?.classList.toggle("compact", data.kind === "daily");', html_source)
+        self.assertIn('salesDetailPopup?.classList.toggle("compact", kind === "daily");', html_source)
+
     def test_lucide_imports_do_not_request_missing_arrow_right_export(self) -> None:
         html_source = (ROOT / "scripts" / "workhub_delivery_app.py").read_text(encoding="utf-8")
 

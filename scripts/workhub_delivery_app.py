@@ -2431,6 +2431,10 @@ HTML = r"""<!doctype html>
       border-radius: 8px;
       box-shadow: 0 24px 70px rgba(15, 23, 42, .20);
     }
+    .sales-detail-popup.compact {
+      height: auto;
+      max-height: min(680px, calc(100vh - 48px));
+    }
     .sales-detail-popup .notice-popup-head {
       min-height: 54px;
       padding: 0 14px;
@@ -2473,6 +2477,9 @@ HTML = r"""<!doctype html>
       overflow: auto;
       padding: 12px;
       background: #f8fafc;
+    }
+    .sales-detail-popup.compact .sales-detail-body {
+      max-height: calc(100vh - 102px);
     }
     .sales-detail-summary {
       display: grid;
@@ -2550,6 +2557,10 @@ HTML = r"""<!doctype html>
     .sales-detail-body.multi-section .sales-detail-table-wrap {
       height: clamp(220px, calc((100vh - 380px) / 2), 340px);
       max-height: 340px;
+    }
+    .sales-detail-popup.compact .sales-detail-table-wrap {
+      height: clamp(180px, 34vh, 300px);
+      max-height: 300px;
     }
     .sales-detail-table-wrap::-webkit-scrollbar {
       width: 12px;
@@ -13122,6 +13133,7 @@ HTML = r"""<!doctype html>
         supplier: "#f97316",
       };
       salesDetailPopup?.style.setProperty("--detail-color", detailColors[data.kind] || "#2563eb");
+      salesDetailPopup?.classList.toggle("compact", data.kind === "daily");
       if (salesDetailTitle) salesDetailTitle.textContent = data.title || "매출 상세";
       const metrics = data.metrics || [];
       const sections = data.sections || [];
@@ -13148,6 +13160,7 @@ HTML = r"""<!doctype html>
       if (!kind || !key) return;
       if (salesDetailTitle) salesDetailTitle.textContent = "매출 상세";
       if (salesDetailBody) salesDetailBody.innerHTML = `<div class="admin-message">상세 데이터를 불러오는 중입니다.</div>`;
+      salesDetailPopup?.classList.toggle("compact", kind === "daily");
       salesDetailPopup?.classList.add("open");
       salesDetailPopup?.setAttribute("aria-hidden", "false");
       try {
