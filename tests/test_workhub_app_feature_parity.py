@@ -816,6 +816,8 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
 
         self.assertIn(".sales-detail-popup.compact", html_source)
         self.assertIn(".sales-detail-popup.compact .sales-detail-table-wrap", html_source)
+        self.assertIn("height: calc(100vh - 40px);", html_source)
+        self.assertIn("height: clamp(360px, calc(100vh - 330px), 680px);", html_source)
         self.assertIn('salesDetailPopup?.classList.toggle("compact", data.kind === "daily");', html_source)
         self.assertIn('salesDetailPopup?.classList.toggle("compact", kind === "daily");', html_source)
 
