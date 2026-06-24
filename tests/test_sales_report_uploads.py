@@ -315,6 +315,81 @@ class SalesReportUploadTests(unittest.TestCase):
         self.assertEqual(dashboard["product_total"]["profit_sales_amount"], 1000)
         self.assertEqual([row["label"] for row in dashboard["monthly_comparison_details"]["product"]], ["정상 상품"])
 
+    def test_sales_report_detail_payloads_are_limited_to_selected_month(self) -> None:
+        base = Path(self.tempdir.name)
+        daily = base / "매출 통계.xlsx"
+        seller = base / "매출처별.xlsx"
+        product = base / "Statistics_Good_2026-06-19.xls"
+        supplier = base / "Statistics_Sales_Suppler_2026-06-19.xls"
+        self.write_daily_report(daily)
+        self.write_seller_report(seller)
+        self.write_product_report(product)
+        self.write_supplier_report(supplier)
+
+        for source in (daily, seller, product, supplier):
+            self.app.save_sales_report_file(source, source.name, "admin")
+
+        connection = self.app.connect_db()
+        try:
+            connection.execute(
+                """
+                INSERT INTO management_records
+                    (created_at, source_file, source_sheet, source_row, sales_vendor, order_date, ship_date, product_name, quantity)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                ("2026-06-20", "manual", "sheet", 1, "A판매사", "2026-06-19", "2026-06-19", "테스트 상품 A", "3"),
+            )
+            connection.execute(
+                """
+                INSERT INTO management_records
+                    (created_at, source_file, source_sheet, source_row, sales_vendor, order_date, ship_date, product_name, quantity)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                ("2026-07-01", "manual", "sheet", 2, "A판매사", "2026-07-01", "2026-07-01", "테스트 상품 A", "99"),
+            )
+            connection.commit()
+        finally:
+            connection.close()
+
+        daily_detail = self.app.sales_report_detail_payload("daily", "2026-06-19", "2026-06")
+        product_detail = self.app.sales_report_detail_payload("product", "테스트 상품 A", "2026-06")
+        seller_detail = self.app.sales_report_detail_payload("seller", "A판매사", "2026-06")
+        supplier_detail = self.app.sales_report_detail_payload("supplier", "공급사A", "2026-06")
+
+        self.assertEqual(daily_detail["sections"][0]["rows"][0][0], "A판매사")
+        self.assertEqual(product_detail["sections"][1]["rows"][0], ["2026-06-19", 1, 3])
+        self.assertEqual(product_detail["sections"][2]["rows"][0], ["A판매사", 1, 3])
+        self.assertEqual(seller_detail["sections"][0]["rows"][0][0], "2026-06-19")
+        self.assertEqual(supplier_detail["sections"][0]["rows"][0][0], "2026-06-19")
+
+    def test_sales_report_margin_check_flags_margin_over_sales(self) -> None:
+        connection = self.app.connect_db()
+        try:
+            cursor = connection.execute(
+                """
+                INSERT INTO sales_report_uploads
+                    (stored_name, original_name, report_type, report_date, period, size, uploaded_by, uploaded_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                ("daily.xlsx", "daily.xlsx", "daily", "2026-06-20", "2026-06", 1, "admin", "2026-06-20"),
+            )
+            file_id = int(cursor.lastrowid)
+            connection.execute(
+                """
+                INSERT INTO sales_report_daily_rows
+                    (report_date, period, file_id, label, quantity, profit_sales_amount, profit_supply_amount, cs_margin, profit_margin)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                ("2026-06-20", "2026-06", file_id, "2026-06-20", 1, 100, -20, 0, 120),
+            )
+            connection.commit()
+            check = self.app.sales_report_margin_check(connection, "2026-06")
+        finally:
+            connection.close()
+
+        self.assertEqual(check["anomaly_count"], 1)
+        self.assertIn("손익 공급금액", check["message"])
+
     def test_sales_dimension_reports_without_date_inherit_latest_daily_context(self) -> None:
         base = Path(self.tempdir.name)
         daily = base / "daily.xlsx"

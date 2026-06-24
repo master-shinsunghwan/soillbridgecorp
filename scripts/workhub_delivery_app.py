@@ -2325,6 +2325,9 @@ HTML = r"""<!doctype html>
     .sales-table tbody tr {
       transition: background .14s ease;
     }
+    .sales-table tbody tr[data-sales-detail] {
+      cursor: zoom-in;
+    }
     .sales-table tbody tr:hover td {
       background: color-mix(in srgb, var(--panel-color) 8%, white);
     }
@@ -2390,6 +2393,115 @@ HTML = r"""<!doctype html>
       overflow-x: auto;
       scrollbar-gutter: stable both-edges;
     }
+    .sales-margin-diagnosis {
+      display: grid;
+      gap: 6px;
+      padding: 12px;
+      border: 1px solid #d8e0ec;
+      border-radius: 8px;
+      background: #f8fafc;
+      color: #334155;
+      font-size: 12px;
+      font-weight: 800;
+      line-height: 1.45;
+    }
+    .sales-margin-diagnosis.warn {
+      border-color: #fed7aa;
+      background: #fff7ed;
+      color: #9a3412;
+    }
+    .sales-margin-diagnosis strong {
+      display: block;
+      color: #111827;
+      font-size: 13px;
+      font-weight: 950;
+    }
+    .sales-detail-popup {
+      width: min(1120px, calc(100vw - 32px));
+      max-height: min(820px, calc(100vh - 42px));
+      overflow: hidden;
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr);
+    }
+    .sales-detail-body {
+      display: grid;
+      gap: 12px;
+      min-height: 0;
+      overflow: auto;
+      padding-right: 2px;
+    }
+    .sales-detail-summary {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 8px;
+    }
+    .sales-detail-metric {
+      min-height: 68px;
+      padding: 10px;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      background: #f8fafc;
+    }
+    .sales-detail-metric span {
+      display: block;
+      color: #64748b;
+      font-size: 11px;
+      font-weight: 900;
+    }
+    .sales-detail-metric strong {
+      display: block;
+      margin-top: 5px;
+      color: #0f172a;
+      font-size: 18px;
+      font-weight: 950;
+    }
+    .sales-detail-section {
+      display: grid;
+      gap: 8px;
+    }
+    .sales-detail-section-title {
+      color: #111827;
+      font-size: 13px;
+      font-weight: 950;
+    }
+    .sales-detail-table-wrap {
+      max-height: 360px;
+      overflow: auto;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+    }
+    .sales-detail-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+      font-variant-numeric: tabular-nums;
+    }
+    .sales-detail-table th,
+    .sales-detail-table td {
+      height: 31px;
+      padding: 6px 8px;
+      border-bottom: 1px solid #eef2f7;
+      text-align: right;
+      white-space: nowrap;
+    }
+    .sales-detail-table th {
+      position: sticky;
+      top: 0;
+      z-index: 1;
+      background: #f8fafc;
+      color: #1f2937;
+      font-weight: 950;
+    }
+    .sales-detail-table th:first-child,
+    .sales-detail-table td:first-child {
+      text-align: left;
+    }
+    .sales-detail-note {
+      color: #64748b;
+      font-size: 12px;
+      font-weight: 800;
+      line-height: 1.5;
+    }
     .sales-dashboard.loading .sales-kpi,
     .sales-dashboard.loading .sales-panel {
       position: relative;
@@ -2435,6 +2547,9 @@ HTML = r"""<!doctype html>
       .sales-table-tabs,
       .sales-dashboard-grid.sales-tab-panels {
         grid-template-columns: 1fr;
+      }
+      .sales-detail-summary {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
       }
     }
     .admin-section-title {
@@ -9112,6 +9227,18 @@ HTML = r"""<!doctype html>
     </section>
   </div>
 
+  <div class="notice-popup-backdrop" id="salesDetailPopup" aria-hidden="true">
+    <div class="notice-popup sales-detail-popup" role="dialog" aria-modal="true" aria-labelledby="salesDetailTitle">
+      <div class="notice-popup-head">
+        <span id="salesDetailTitle">매출 상세</span>
+        <button class="close popup-close-button" id="salesDetailClose" type="button" aria-label="닫기"><i data-lucide="x"></i></button>
+      </div>
+      <div class="sales-detail-body" id="salesDetailBody">
+        <div class="admin-message">상세 데이터를 불러오는 중입니다.</div>
+      </div>
+    </div>
+  </div>
+
   <div class="search-result-backdrop" id="searchResultDialog" aria-hidden="true">
     <section class="search-result-dialog" role="dialog" aria-modal="true" aria-labelledby="searchResultTitle">
       <div class="search-result-head">
@@ -10115,6 +10242,11 @@ HTML = r"""<!doctype html>
     const salesReportRecentList = document.querySelector("#salesReportRecentList");
     const salesReportDashboard = document.querySelector("#salesReportDashboard");
     const salesReportKpiGrid = document.querySelector("#salesReportKpiGrid");
+    const salesReportMarginDiagnosis = document.querySelector("#salesReportMarginDiagnosis");
+    const salesDetailPopup = document.querySelector("#salesDetailPopup");
+    const salesDetailTitle = document.querySelector("#salesDetailTitle");
+    const salesDetailBody = document.querySelector("#salesDetailBody");
+    const salesDetailClose = document.querySelector("#salesDetailClose");
     const dashboardSalesStatus = document.querySelector("#dashboardSalesStatus");
     const dashboardTodaySalesLabel = document.querySelector("#dashboardTodaySalesLabel");
     const dashboardTodaySales = document.querySelector("#dashboardTodaySales");
@@ -12770,6 +12902,7 @@ HTML = r"""<!doctype html>
     let activeSalesReportTab = "salesProduct";
     let activeMonthlyCompareDetail = "daily";
     let salesReportMonthlyCompareDetails = {};
+    let activeSalesReportPeriod = "";
 
     function setSalesReportTab(tabName) {
       activeSalesReportTab = tabName || "salesProduct";
@@ -12823,8 +12956,106 @@ HTML = r"""<!doctype html>
       return match ? `${match[1]}년 ${Number(match[2])}월` : String(period || "");
     }
 
+    function closeSalesDetailPopup() {
+      salesDetailPopup?.classList.remove("open");
+      salesDetailPopup?.setAttribute("aria-hidden", "true");
+    }
+
+    function salesDetailDisplayValue(value) {
+      if (typeof value === "number") return formatSalesNumber(value);
+      return String(value ?? "");
+    }
+
+    function renderSalesDetailTable(section = {}) {
+      const headers = section.headers || [];
+      const rows = section.rows || [];
+      if (!rows.length) {
+        return `
+          <div class="sales-detail-section">
+            <div class="sales-detail-section-title">${escapeHtml(section.title || "상세")}</div>
+            <div class="admin-message">${escapeHtml(section.empty || "표시할 상세 데이터가 없습니다.")}</div>
+            ${section.note ? `<div class="sales-detail-note">${escapeHtml(section.note)}</div>` : ""}
+          </div>
+        `;
+      }
+      return `
+        <div class="sales-detail-section">
+          <div class="sales-detail-section-title">${escapeHtml(section.title || "상세")}</div>
+          ${section.note ? `<div class="sales-detail-note">${escapeHtml(section.note)}</div>` : ""}
+          <div class="sales-detail-table-wrap">
+            <table class="sales-detail-table">
+              <thead><tr>${headers.map((header) => `<th>${escapeHtml(header)}</th>`).join("")}</tr></thead>
+              <tbody>
+                ${rows.map((row) => `
+                  <tr>${(row || []).map((cell) => `<td>${escapeHtml(salesDetailDisplayValue(cell))}</td>`).join("")}</tr>
+                `).join("")}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      `;
+    }
+
+    function renderSalesDetailPopup(data = {}) {
+      if (salesDetailTitle) salesDetailTitle.textContent = data.title || "매출 상세";
+      const metrics = data.metrics || [];
+      const sections = data.sections || [];
+      const metricHtml = metrics.length ? `
+        <div class="sales-detail-summary">
+          ${metrics.map((metric) => `
+            <div class="sales-detail-metric">
+              <span>${escapeHtml(metric.label || "")}</span>
+              <strong>${escapeHtml(salesDetailDisplayValue(metric.value))}</strong>
+            </div>
+          `).join("")}
+        </div>
+      ` : "";
+      const noteHtml = data.note ? `<div class="sales-detail-note">${escapeHtml(data.note)}</div>` : "";
+      if (salesDetailBody) {
+        salesDetailBody.innerHTML = `${metricHtml}${noteHtml}${sections.map(renderSalesDetailTable).join("") || `<div class="admin-message">상세 데이터가 없습니다.</div>`}`;
+      }
+      salesDetailPopup?.classList.add("open");
+      salesDetailPopup?.setAttribute("aria-hidden", "false");
+    }
+
+    async function openSalesReportDetail(kind, key) {
+      if (!kind || !key) return;
+      if (salesDetailTitle) salesDetailTitle.textContent = "매출 상세";
+      if (salesDetailBody) salesDetailBody.innerHTML = `<div class="admin-message">상세 데이터를 불러오는 중입니다.</div>`;
+      salesDetailPopup?.classList.add("open");
+      salesDetailPopup?.setAttribute("aria-hidden", "false");
+      try {
+        const params = new URLSearchParams({ kind, key });
+        if (activeSalesReportPeriod) params.set("period", activeSalesReportPeriod);
+        const response = await fetch(`/api/sales-report-detail?${params.toString()}`);
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "상세 데이터를 불러오지 못했습니다.");
+        renderSalesDetailPopup(data);
+      } catch (error) {
+        if (salesDetailBody) salesDetailBody.innerHTML = `<div class="admin-message">${escapeHtml(error.message)}</div>`;
+      }
+    }
+
+    function renderSalesReportMarginDiagnosis(check = {}) {
+      if (!salesReportMarginDiagnosis) return;
+      const anomalyCount = Number(check.anomaly_count || 0);
+      salesReportMarginDiagnosis.classList.toggle("warn", anomalyCount > 0);
+      if (anomalyCount > 0) {
+        salesReportMarginDiagnosis.innerHTML = `
+          <strong>마진이 손익매출보다 큰 데이터 ${formatSalesNumber(anomalyCount)}건 확인</strong>
+          <span>${escapeHtml(check.message || "손익 공급금액이 음수이거나 CS/배송비 조정값이 손익마진에 더해진 행이 있어 원본 데이터 확인이 필요합니다.")}</span>
+        `;
+      } else {
+        salesReportMarginDiagnosis.innerHTML = `
+          <strong>마진 검증 정상</strong>
+          <span>${escapeHtml(check.message || "해당 월 기준으로 손익마진이 손익매출보다 큰 행은 확인되지 않았습니다.")}</span>
+        `;
+      }
+    }
+
     function renderSalesReportDashboard(data) {
       if (!salesReportKpiGrid) return;
+      activeSalesReportPeriod = data.period || "";
       const today = data.today || {};
       const yesterday = data.yesterday || {};
       const comparison = data.comparison || {};
@@ -12861,7 +13092,7 @@ HTML = r"""<!doctype html>
       const dailyRows = data.daily_rows || [];
       if (dailyRows.length) {
         salesReportDailyBody.innerHTML = dailyRows.map((row) => `
-          <tr>
+          <tr data-sales-detail="daily" data-sales-key="${escapeHtml(row.report_date || "")}">
             <td>${escapeHtml(row.label || row.report_date || "")}</td>
             <td>${formatSalesNumber(row.quantity)}</td>
             <td>${formatSalesNumber(row.profit_sales_amount)}</td>
@@ -12876,7 +13107,7 @@ HTML = r"""<!doctype html>
       const sellerRows = data.seller_top || [];
       if (sellerRows.length) {
         salesReportSellerBody.innerHTML = sellerRows.map((row) => `
-          <tr>
+          <tr data-sales-detail="seller" data-sales-key="${escapeHtml(row.name || "")}">
             <td>${escapeHtml(row.name || "")}</td>
             <td>${formatSalesNumber(row.quantity)}</td>
             <td>${formatSalesNumber(row.profit_sales_amount)}</td>
@@ -12890,7 +13121,7 @@ HTML = r"""<!doctype html>
       const productRows = data.product_top || [];
       if (productRows.length) {
         salesReportProductBody.innerHTML = productRows.map((row) => `
-          <tr>
+          <tr data-sales-detail="product" data-sales-key="${escapeHtml(row.name || "")}">
             <td>${escapeHtml(row.name || "")}</td>
             <td>${formatSalesNumber(row.quantity)}</td>
             <td>${formatSalesNumber(row.profit_sales_amount)}</td>
@@ -12904,7 +13135,7 @@ HTML = r"""<!doctype html>
       const purchaseRows = data.supplier_purchase_totals || [];
       if (purchaseRows.length) {
         salesReportReviewBody.innerHTML = purchaseRows.map((row) => `
-          <tr>
+          <tr data-sales-detail="supplier" data-sales-key="${escapeHtml(row.name || "")}">
             <td>${escapeHtml(row.name || "")}</td>
             <td>${formatSalesNumber(row.purchase_total)}</td>
             <td>${formatSalesNumber(row.quantity)}</td>
@@ -12930,6 +13161,7 @@ HTML = r"""<!doctype html>
       }
       salesReportMonthlyCompareDetails = data.monthly_comparison_details || {};
       renderMonthlyCompareDetail(activeMonthlyCompareDetail);
+      renderSalesReportMarginDiagnosis(data.margin_check || {});
       setSalesReportTabCount("salesProduct", dailyRows.length + productRows.length);
       setSalesReportTabCount("partner", sellerRows.length + purchaseRows.length);
       setSalesReportTabCount("monthlyCompare", monthlyCompareRows.length);
@@ -20054,6 +20286,17 @@ HTML = r"""<!doctype html>
       button.setAttribute("role", "tab");
       button.addEventListener("click", () => renderMonthlyCompareDetail(button.dataset.salesCompareDetail || "daily"));
     });
+    [salesReportDailyBody, salesReportSellerBody, salesReportProductBody, salesReportReviewBody].forEach((tbody) => {
+      tbody?.addEventListener("dblclick", (event) => {
+        const row = event.target.closest("[data-sales-detail]");
+        if (!row) return;
+        openSalesReportDetail(row.dataset.salesDetail || "", row.dataset.salesKey || "");
+      });
+    });
+    salesDetailClose?.addEventListener("click", closeSalesDetailPopup);
+    salesDetailPopup?.addEventListener("click", (event) => {
+      if (event.target === salesDetailPopup) closeSalesDetailPopup();
+    });
     document.querySelector("#noticeInputOpen")?.addEventListener("click", () => {
       if (showWorkspace("dashboard") === false) return;
       setCompanyTab("notice");
@@ -21261,6 +21504,10 @@ ADMIN_WORKSPACE_HTML = r"""
               <input id="salesReportFileInput" name="sales_report" type="file" accept=".xlsx,.xlsm,.xls,.csv" hidden />
               <div class="sales-dashboard" id="salesReportDashboard">
                 <div class="sales-kpi-grid" id="salesReportKpiGrid"></div>
+                <div class="sales-margin-diagnosis" id="salesReportMarginDiagnosis">
+                  <strong>마진 검증 대기</strong>
+                  <span>매출표 업로드 후 손익매출과 마진 관계를 확인합니다.</span>
+                </div>
                 <div class="sales-table-tabs" id="salesReportTabs" role="tablist">
                   <button class="sales-table-tab active" type="button" data-sales-tab="salesProduct">
                     <span>매출 흐름 · 상품 분석</span><span class="sales-table-tab-count" id="salesReportSalesProductCount">0</span>
@@ -22626,6 +22873,318 @@ def sales_report_compare_detail_public(row: sqlite3.Row) -> dict[str, object]:
     }
 
 
+def latest_sales_report_period(connection: sqlite3.Connection) -> str:
+    row = connection.execute(
+        """
+        SELECT period
+          FROM (
+                SELECT period FROM sales_report_daily_rows WHERE period != ''
+                UNION ALL
+                SELECT period FROM sales_report_seller_rows WHERE period != ''
+                UNION ALL
+                SELECT period FROM sales_report_supplier_rows WHERE period != ''
+                UNION ALL
+                SELECT period FROM sales_report_product_rows WHERE period != ''
+               )
+         ORDER BY period DESC
+         LIMIT 1
+        """
+    ).fetchone()
+    return str(row["period"] or "") if row else ""
+
+
+def _sales_detail_metric(label: str, value: object) -> dict[str, object]:
+    return {"label": label, "value": value}
+
+
+def sales_report_margin_check(connection: sqlite3.Connection, period: str) -> dict[str, object]:
+    rows = connection.execute(
+        """
+        SELECT kind, name, report_date, profit_sales_amount, profit_supply_amount,
+               profit_shipping, cs_margin, profit_margin
+          FROM (
+                SELECT '일자별' AS kind, label AS name, report_date, profit_sales_amount,
+                       profit_supply_amount, profit_shipping, cs_margin, profit_margin
+                  FROM sales_report_daily_rows
+                 WHERE period = ?
+                UNION ALL
+                SELECT '매출처' AS kind, seller_name AS name, report_date, profit_sales_amount,
+                       profit_supply_amount, profit_shipping, cs_margin, profit_margin
+                  FROM sales_report_seller_rows
+                 WHERE period = ?
+                UNION ALL
+                SELECT '매입처' AS kind, supplier_name AS name, report_date, profit_sales_amount,
+                       profit_supply_amount, profit_shipping, cs_margin, profit_margin
+                  FROM sales_report_supplier_rows
+                 WHERE period = ?
+                UNION ALL
+                SELECT '상품' AS kind, product_name AS name, report_date, profit_sales_amount,
+                       profit_supply_amount, 0 AS profit_shipping, cs_margin, profit_margin
+                  FROM sales_report_product_rows
+                 WHERE period = ? AND product_name NOT LIKE ?
+               )
+         WHERE profit_margin > profit_sales_amount
+         ORDER BY (profit_margin - profit_sales_amount) DESC
+        """,
+        (period, period, period, period, SALES_REPORT_PRODUCT_EXCLUDE_PATTERN),
+    ).fetchall()
+    anomaly_count = len(rows)
+    negative_supply_count = sum(1 for row in rows if int(row["profit_supply_amount"] or 0) < 0)
+    positive_shipping_count = sum(1 for row in rows if int(row["profit_shipping"] or 0) > 0)
+    positive_cs_count = sum(1 for row in rows if int(row["cs_margin"] or 0) > 0)
+    zero_sales_count = sum(1 for row in rows if int(row["profit_sales_amount"] or 0) == 0 and int(row["profit_margin"] or 0) > 0)
+    shipping_total = sum(int(row["profit_shipping"] or 0) for row in rows if int(row["profit_shipping"] or 0) > 0)
+    over_amount = sum(int(row["profit_margin"] or 0) - int(row["profit_sales_amount"] or 0) for row in rows)
+    if not anomaly_count:
+        return {
+            "anomaly_count": 0,
+            "message": "해당 월 기준으로 손익마진이 손익매출보다 큰 행은 확인되지 않았습니다.",
+            "examples": [],
+        }
+    reasons: list[str] = []
+    if positive_shipping_count:
+        reasons.append(f"손익-배송비가 양수인 행 {positive_shipping_count}건(합계 {shipping_total:,}원)")
+    if negative_supply_count:
+        reasons.append(f"손익 공급금액이 음수인 행 {negative_supply_count}건")
+    if positive_cs_count:
+        reasons.append(f"CS 마진이 양수 보정된 행 {positive_cs_count}건")
+    if zero_sales_count:
+        reasons.append(f"손익매출이 0인데 마진만 양수인 행 {zero_sales_count}건")
+    if not reasons:
+        reasons.append("원본 손익 계산 컬럼의 판매금액/공급금액/배송비/CS 보정값 확인 필요")
+    return {
+        "anomaly_count": anomaly_count,
+        "over_amount": over_amount,
+        "message": "마진이 손익매출보다 큰 행은 일반적인 매출-원가 구조에서는 비정상 신호입니다. "
+                   + ", ".join(reasons)
+                   + "이 원인일 수 있습니다. 현재 원본의 손익마진은 손익-판매마진에 배송비 손익이 포함되는 구조로 보이므로, 손익매출과 단순 비교하면 마진이 더 크게 보일 수 있습니다.",
+        "examples": [
+            {
+                "kind": str(row["kind"] or ""),
+                "name": str(row["name"] or ""),
+                "report_date": str(row["report_date"] or ""),
+                "profit_sales_amount": int(row["profit_sales_amount"] or 0),
+                "profit_supply_amount": int(row["profit_supply_amount"] or 0),
+                "profit_shipping": int(row["profit_shipping"] or 0),
+                "cs_margin": int(row["cs_margin"] or 0),
+                "profit_margin": int(row["profit_margin"] or 0),
+            }
+            for row in rows[:5]
+        ],
+    }
+
+
+def sales_report_detail_payload(kind: str, key: str, period: str = "") -> dict[str, object]:
+    init_db()
+    connection = connect_db()
+    try:
+        selected_period = period or latest_sales_report_period(connection)
+        detail_kind = str(kind or "").strip().lower()
+        detail_key = str(key or "").strip()
+        if not selected_period:
+            raise ValueError("조회할 매출 월 데이터가 없습니다.")
+        if not detail_key:
+            raise ValueError("상세 조회 기준이 없습니다.")
+
+        if detail_kind == "daily":
+            summary = connection.execute(
+                "SELECT * FROM sales_report_daily_rows WHERE period = ? AND report_date = ?",
+                (selected_period, detail_key),
+            ).fetchone()
+            seller_rows = connection.execute(
+                """
+                SELECT seller_name, quantity, profit_sales_amount, sales_total, profit_margin
+                  FROM sales_report_seller_rows
+                 WHERE period = ? AND report_date = ?
+                 ORDER BY profit_sales_amount DESC, quantity DESC, seller_name COLLATE NOCASE
+                """,
+                (selected_period, detail_key),
+            ).fetchall()
+            return {
+                "kind": "daily",
+                "title": f"{detail_key} 업체별 매출",
+                "period": selected_period,
+                "note": "해당 날짜가 들어있는 매출처별 업로드 데이터만 표시합니다. 월 집계 파일만 업로드된 경우 날짜별 업체 분해가 없을 수 있습니다.",
+                "metrics": [
+                    _sales_detail_metric("수량", int(summary["quantity"] or 0) if summary else 0),
+                    _sales_detail_metric("손익매출", int(summary["profit_sales_amount"] or 0) if summary else 0),
+                    _sales_detail_metric("판매합계", int(summary["sales_total"] or 0) if summary else 0),
+                    _sales_detail_metric("손익마진", int(summary["profit_margin"] or 0) if summary else 0),
+                ],
+                "sections": [
+                    {
+                        "title": "업체별 매출",
+                        "headers": ["판매사", "수량", "손익매출", "판매합계", "손익마진"],
+                        "rows": [
+                            [
+                                str(row["seller_name"] or ""),
+                                int(row["quantity"] or 0),
+                                int(row["profit_sales_amount"] or 0),
+                                int(row["sales_total"] or 0),
+                                int(row["profit_margin"] or 0),
+                            ]
+                            for row in seller_rows
+                        ],
+                        "empty": "해당 날짜의 업체별 매출 데이터가 없습니다.",
+                    }
+                ],
+            }
+
+        if detail_kind == "product":
+            product_rows = connection.execute(
+                """
+                SELECT report_date,
+                       COALESCE(SUM(quantity), 0) AS quantity,
+                       COALESCE(SUM(profit_sales_amount), 0) AS profit_sales_amount,
+                       COALESCE(SUM(profit_margin), 0) AS profit_margin
+                  FROM sales_report_product_rows
+                 WHERE period = ? AND product_name = ? AND product_name NOT LIKE ?
+                 GROUP BY report_date
+                 ORDER BY report_date DESC
+                """,
+                (selected_period, detail_key, SALES_REPORT_PRODUCT_EXCLUDE_PATTERN),
+            ).fetchall()
+            shipment_rows = connection.execute(
+                """
+                WITH source AS (
+                    SELECT COALESCE(NULLIF(ship_date, ''), NULLIF(order_date, '')) AS sales_date,
+                           quantity
+                      FROM management_records
+                     WHERE COALESCE(NULLIF(ship_date, ''), NULLIF(order_date, '')) LIKE ?
+                       AND product_name != ''
+                       AND (product_name = ? OR instr(product_name, ?) > 0 OR instr(?, product_name) > 0)
+                )
+                SELECT substr(sales_date, 1, 10) AS sales_date,
+                       COUNT(*) AS order_count,
+                       COALESCE(SUM(CAST(REPLACE(quantity, ',', '') AS INTEGER)), 0) AS quantity
+                  FROM source
+                 GROUP BY substr(sales_date, 1, 10)
+                 ORDER BY sales_date DESC
+                """,
+                (f"{selected_period}%", detail_key, detail_key, detail_key),
+            ).fetchall()
+            seller_rows = connection.execute(
+                """
+                WITH source AS (
+                    SELECT COALESCE(NULLIF(sales_vendor, ''), '판매처 미입력') AS sales_vendor,
+                           quantity
+                      FROM management_records
+                     WHERE COALESCE(NULLIF(ship_date, ''), NULLIF(order_date, '')) LIKE ?
+                       AND product_name != ''
+                       AND (product_name = ? OR instr(product_name, ?) > 0 OR instr(?, product_name) > 0)
+                )
+                SELECT sales_vendor,
+                       COUNT(*) AS order_count,
+                       COALESCE(SUM(CAST(REPLACE(quantity, ',', '') AS INTEGER)), 0) AS quantity
+                  FROM source
+                 GROUP BY sales_vendor
+                 ORDER BY quantity DESC, order_count DESC, sales_vendor COLLATE NOCASE
+                """,
+                (f"{selected_period}%", detail_key, detail_key, detail_key),
+            ).fetchall()
+            total_quantity = sum(int(row["quantity"] or 0) for row in product_rows)
+            total_sales = sum(int(row["profit_sales_amount"] or 0) for row in product_rows)
+            total_margin = sum(int(row["profit_margin"] or 0) for row in product_rows)
+            return {
+                "kind": "product",
+                "title": f"{detail_key} 상세",
+                "period": selected_period,
+                "note": "매출표 상품별 데이터는 일자별 손익을, 통합관리대장 데이터는 출고일/판매처별 수량을 기준으로 표시합니다.",
+                "metrics": [
+                    _sales_detail_metric("매출표 수량", total_quantity),
+                    _sales_detail_metric("손익매출", total_sales),
+                    _sales_detail_metric("손익마진", total_margin),
+                    _sales_detail_metric("출고 수량", sum(int(row["quantity"] or 0) for row in shipment_rows)),
+                ],
+                "sections": [
+                    {
+                        "title": "일자별 상품 손익",
+                        "headers": ["일자", "수량", "손익매출", "손익마진"],
+                        "rows": [
+                            [str(row["report_date"] or "월 집계"), int(row["quantity"] or 0), int(row["profit_sales_amount"] or 0), int(row["profit_margin"] or 0)]
+                            for row in product_rows
+                        ],
+                        "empty": "해당 상품의 일자별 매출표 데이터가 없습니다.",
+                    },
+                    {
+                        "title": "일자별 출고 현황",
+                        "headers": ["출고일", "주문건수", "출고수량"],
+                        "rows": [
+                            [str(row["sales_date"] or ""), int(row["order_count"] or 0), int(row["quantity"] or 0)]
+                            for row in shipment_rows
+                        ],
+                        "empty": "통합관리대장에서 해당 상품의 출고 데이터를 찾지 못했습니다.",
+                    },
+                    {
+                        "title": "판매처별 판매수량",
+                        "headers": ["판매처", "주문건수", "판매수량"],
+                        "rows": [
+                            [str(row["sales_vendor"] or ""), int(row["order_count"] or 0), int(row["quantity"] or 0)]
+                            for row in seller_rows
+                        ],
+                        "empty": "통합관리대장에서 해당 상품의 판매처별 수량을 찾지 못했습니다.",
+                    },
+                ],
+            }
+
+        if detail_kind in {"seller", "supplier"}:
+            is_seller = detail_kind == "seller"
+            table_name = "sales_report_seller_rows" if is_seller else "sales_report_supplier_rows"
+            name_column = "seller_name" if is_seller else "supplier_name"
+            amount_column = "profit_sales_amount" if is_seller else "supply_total"
+            rows = connection.execute(
+                f"""
+                SELECT report_date,
+                       COALESCE(SUM(quantity), 0) AS quantity,
+                       COALESCE(SUM({amount_column}), 0) AS amount,
+                       COALESCE(SUM(profit_sales_amount), 0) AS profit_sales_amount,
+                       COALESCE(SUM(supply_total), 0) AS supply_total,
+                       COALESCE(SUM(profit_margin), 0) AS profit_margin
+                  FROM {table_name}
+                 WHERE period = ? AND {name_column} = ?
+                 GROUP BY report_date
+                 ORDER BY report_date DESC
+                """,
+                (selected_period, detail_key),
+            ).fetchall()
+            total_quantity = sum(int(row["quantity"] or 0) for row in rows)
+            total_amount = sum(int(row["amount"] or 0) for row in rows)
+            total_margin = sum(int(row["profit_margin"] or 0) for row in rows)
+            return {
+                "kind": detail_kind,
+                "title": f"{detail_key} {'매출' if is_seller else '매입'} 현황",
+                "period": selected_period,
+                "note": "해당 월 안에서 업로드된 거래처 행만 집계합니다. 월 집계 파일은 일자가 파일 기준일 또는 월 집계로 표시될 수 있습니다.",
+                "metrics": [
+                    _sales_detail_metric("수량", total_quantity),
+                    _sales_detail_metric("매출금액" if is_seller else "매입금액", total_amount),
+                    _sales_detail_metric("손익마진", total_margin),
+                    _sales_detail_metric("데이터 행", len(rows)),
+                ],
+                "sections": [
+                    {
+                        "title": "일자별 매출현황" if is_seller else "일자별 매입현황",
+                        "headers": ["일자", "수량", "매출금액" if is_seller else "매입금액", "손익매출", "매입합계", "손익마진"],
+                        "rows": [
+                            [
+                                str(row["report_date"] or "월 집계"),
+                                int(row["quantity"] or 0),
+                                int(row["amount"] or 0),
+                                int(row["profit_sales_amount"] or 0),
+                                int(row["supply_total"] or 0),
+                                int(row["profit_margin"] or 0),
+                            ]
+                            for row in rows
+                        ],
+                        "empty": "해당 거래처의 일자별 데이터가 없습니다.",
+                    }
+                ],
+            }
+        raise ValueError("지원하지 않는 상세 조회 유형입니다.")
+    finally:
+        connection.close()
+
+
 def sales_report_dashboard_payload(period: str = "", report_date: str = "") -> dict[str, object]:
     init_db()
     connection = connect_db()
@@ -22974,6 +23533,7 @@ def sales_report_dashboard_payload(period: str = "", report_date: str = "") -> d
             """,
             (selected_period, selected_period, selected_date, selected_date, selected_period),
         ).fetchall()
+        margin_check = sales_report_margin_check(connection, selected_period)
     finally:
         connection.close()
 
@@ -23084,6 +23644,7 @@ def sales_report_dashboard_payload(period: str = "", report_date: str = "") -> d
             "difference": difference,
             "ok": difference == 0,
         },
+        "margin_check": margin_check,
         "daily_rows": [_sales_report_daily_public(row) for row in daily_rows],
         "seller_top": [_sales_report_named_public(row) for row in seller_rows],
         "product_top": [_sales_report_named_public(row) for row in product_rows],
@@ -29844,6 +30405,21 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                 period=params.get("period", [""])[0],
                 report_date=params.get("date", [""])[0],
             ))
+            return
+
+        if self.path.startswith("/api/sales-report-detail"):
+            if not self.require_permission(user, "sales_report_manage", "매출현황"):
+                return
+            parsed = urlsplit(self.path)
+            params = parse_qs(parsed.query)
+            try:
+                self.send_json(sales_report_detail_payload(
+                    kind=params.get("kind", [""])[0],
+                    key=params.get("key", [""])[0],
+                    period=params.get("period", [""])[0],
+                ))
+            except Exception as exc:  # noqa: BLE001
+                self.send_json({"error": str(exc)}, status=400)
             return
 
         if self.path.startswith("/api/shared-file-download"):
