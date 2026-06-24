@@ -3073,13 +3073,15 @@ HTML = r"""<!doctype html>
     }
     .vehicle-fields { display: none; }
     .cs-fields,
+    .management-manual-fields,
     .stock-notice-fields,
     .vendor-contact-manage-fields { display: none; }
     .ledger-fields { display: none; }
     .management-fields { display: none; }
     .ledger-cs-popup-head { display: none; }
     .workhub-modal.ledger-modal .cs-fields.ledger-cs-popup,
-    #ledgerWorkspace .cs-fields.ledger-cs-popup {
+    #ledgerWorkspace .cs-fields.ledger-cs-popup,
+    #managementWorkspace .management-manual-fields.ledger-cs-popup {
       position: fixed;
       z-index: 35;
       top: 50%;
@@ -3098,7 +3100,8 @@ HTML = r"""<!doctype html>
       box-shadow: 0 18px 44px rgba(15, 23, 42, .28);
     }
     .workhub-modal.ledger-modal .cs-fields.ledger-cs-popup .ledger-cs-popup-head,
-    #ledgerWorkspace .cs-fields.ledger-cs-popup .ledger-cs-popup-head {
+    #ledgerWorkspace .cs-fields.ledger-cs-popup .ledger-cs-popup-head,
+    #managementWorkspace .management-manual-fields.ledger-cs-popup .ledger-cs-popup-head {
       position: sticky;
       top: -16px;
       z-index: 2;
@@ -3112,16 +3115,21 @@ HTML = r"""<!doctype html>
       border-bottom: 1px solid #d7dce5;
       background: white;
     }
-    .cs-fields.ledger-cs-popup .text-field {
+    .cs-fields.ledger-cs-popup .text-field,
+    .management-manual-fields.ledger-cs-popup .text-field {
       margin-top: 0;
     }
     .cs-fields.ledger-cs-popup .text-field.cs-wide,
+    .management-manual-fields.ledger-cs-popup .text-field.cs-wide,
     .cs-fields.ledger-cs-popup .add-row,
+    .management-manual-fields.ledger-cs-popup .add-row,
     .cs-fields.ledger-cs-popup .cs-toolbar,
+    .management-manual-fields.ledger-cs-popup .cs-toolbar,
     .cs-fields.ledger-cs-popup .cs-case-list {
       grid-column: 1 / -1;
     }
-    .cs-fields.ledger-cs-popup textarea {
+    .cs-fields.ledger-cs-popup textarea,
+    .management-manual-fields.ledger-cs-popup textarea {
       min-height: 72px;
     }
     .cs-fields.ledger-cs-popup #csBodyInput {
@@ -3129,7 +3137,8 @@ HTML = r"""<!doctype html>
     }
     @media (max-width: 840px) {
       .workhub-modal.ledger-modal .cs-fields.ledger-cs-popup,
-      #ledgerWorkspace .cs-fields.ledger-cs-popup {
+      #ledgerWorkspace .cs-fields.ledger-cs-popup,
+      #managementWorkspace .management-manual-fields.ledger-cs-popup {
         grid-template-columns: 1fr;
         width: min(620px, calc(100vw - 28px));
         max-height: calc(100vh - 36px);
@@ -8623,6 +8632,7 @@ HTML = r"""<!doctype html>
         <div class="workspace-head">
           <div class="workspace-title">통합관리대장 관리</div>
           <div class="workspace-actions">
+            <button class="workspace-button" type="button" id="managementAddManual">수기 추가</button>
             <button class="workspace-button" type="button" id="managementSaveAll">해당 내용 저장</button>
             <button class="workspace-button" type="button" id="managementBulkApply">체크 일괄 적용</button>
             <button class="workspace-button danger" type="button" id="managementDeleteSelected">선택 주문 삭제</button>
@@ -9193,9 +9203,98 @@ HTML = r"""<!doctype html>
             <button class="cs-save-button" id="saveCsCase" type="button">CS건 DB 저장</button>
             <button class="cs-save-button" id="sendCsMailButton" type="button">CS요청 메일 발송</button>
           </div>
-        <div class="cs-case-list">
+          <div class="cs-case-list">
             <div class="cs-case-head">최근 저장 CS</div>
             <div id="csCaseList"></div>
+          </div>
+        </div>
+        <div class="management-manual-fields" id="managementManualFields">
+          <div class="ledger-cs-popup-head">
+            <strong class="ledger-cs-popup-title">통합관리대장 수기 추가</strong>
+            <button class="ledger-cs-popup-close popup-close-button" id="managementManualClose" type="button" aria-label="닫기"><i data-lucide="x"></i></button>
+          </div>
+          <div class="text-field">
+            <label class="field-label" for="manualManagementPurchaseVendor">매입거래처</label>
+            <input id="manualManagementPurchaseVendor" data-management-manual-field="purchase_vendor" type="text" placeholder="예) 소일브릿지(본사)" />
+          </div>
+          <div class="text-field">
+            <label class="field-label" for="manualManagementSalesVendor">매출거래처</label>
+            <input id="manualManagementSalesVendor" data-management-manual-field="sales_vendor" type="text" />
+          </div>
+          <div class="text-field">
+            <label class="field-label" for="manualManagementTransactionType">거래구분</label>
+            <input id="manualManagementTransactionType" data-management-manual-field="transaction_type" type="text" readonly />
+          </div>
+          <div class="text-field">
+            <label class="field-label" for="manualManagementLedgerChecked">장부입력확인</label>
+            <input id="manualManagementLedgerChecked" data-management-manual-field="ledger_checked" type="text" value="입력 완료" />
+          </div>
+          <div class="text-field">
+            <label class="field-label" for="manualManagementOrderDate">주문일자</label>
+            <input id="manualManagementOrderDate" data-management-manual-field="order_date" type="date" />
+          </div>
+          <div class="text-field">
+            <label class="field-label" for="manualManagementShipDate">출고일</label>
+            <input id="manualManagementShipDate" data-management-manual-field="ship_date" type="date" />
+          </div>
+          <div class="text-field">
+            <label class="field-label" for="manualManagementOrdererName">주문자</label>
+            <input id="manualManagementOrdererName" data-management-manual-field="orderer_name" type="text" />
+          </div>
+          <div class="text-field">
+            <label class="field-label" for="manualManagementSenderPhone">발신자연락처</label>
+            <input id="manualManagementSenderPhone" data-management-manual-field="sender_phone" type="text" />
+          </div>
+          <div class="text-field">
+            <label class="field-label" for="manualManagementReceiverName">수령자</label>
+            <input id="manualManagementReceiverName" data-management-manual-field="receiver_name" type="text" />
+          </div>
+          <div class="text-field">
+            <label class="field-label" for="manualManagementReceiverPhone">수령자연락처</label>
+            <input id="manualManagementReceiverPhone" data-management-manual-field="receiver_phone" type="text" />
+          </div>
+          <div class="text-field cs-wide">
+            <label class="field-label" for="manualManagementProductName">제품명</label>
+            <input id="manualManagementProductName" data-management-manual-field="product_name" type="text" />
+          </div>
+          <div class="text-field">
+            <label class="field-label" for="manualManagementQuantity">수량</label>
+            <input id="manualManagementQuantity" data-management-manual-field="quantity" type="number" min="1" step="1" />
+          </div>
+          <div class="text-field">
+            <label class="field-label" for="manualManagementCourier">택배사</label>
+            <input id="manualManagementCourier" data-management-manual-field="courier" type="text" />
+          </div>
+          <div class="text-field">
+            <label class="field-label" for="manualManagementInvoiceNumber">운송장번호</label>
+            <input id="manualManagementInvoiceNumber" data-management-manual-field="invoice_number" type="text" />
+          </div>
+          <div class="text-field">
+            <label class="field-label" for="manualManagementOrderItemId">주문상품고유번호</label>
+            <input id="manualManagementOrderItemId" data-management-manual-field="order_item_id" type="text" />
+          </div>
+          <div class="text-field">
+            <label class="field-label" for="manualManagementProductCode">상품코드</label>
+            <input id="manualManagementProductCode" data-management-manual-field="product_code" type="text" />
+          </div>
+          <div class="text-field">
+            <label class="field-label" for="manualManagementOrderNumber">주문번호</label>
+            <input id="manualManagementOrderNumber" data-management-manual-field="order_number" type="text" />
+          </div>
+          <div class="text-field">
+            <label class="field-label" for="manualManagementCustomerOption">고객선택옵션</label>
+            <input id="manualManagementCustomerOption" data-management-manual-field="customer_option" type="text" />
+          </div>
+          <div class="text-field cs-wide">
+            <label class="field-label" for="manualManagementReceiverAddress">상세주소</label>
+            <textarea id="manualManagementReceiverAddress" data-management-manual-field="receiver_address"></textarea>
+          </div>
+          <div class="text-field cs-wide">
+            <label class="field-label" for="manualManagementMemo">특이사항</label>
+            <textarea id="manualManagementMemo" data-management-manual-field="memo"></textarea>
+          </div>
+          <div class="cs-toolbar">
+            <button class="cs-save-button" id="saveManagementManual" type="button">통합관리대장 추가 저장</button>
           </div>
         </div>
         <div class="vendor-contact-manage-fields" id="vendorContactManageFields">
@@ -9743,6 +9842,7 @@ HTML = r"""<!doctype html>
       setHidden(cargoInboundInputOpen, !canManageCargoShipments());
       setHidden(managementDeleteSelected, !can("ledger_delete"));
       setHidden(ledgerDeleteSelected, !can("ledger_delete"));
+      setHidden(managementAddManual, !can("ledger_edit"));
       setHidden(managementSaveAll, !can("ledger_edit"));
       setHidden(ledgerSaveAll, !can("ledger_edit"));
       setHidden(managementBulkApply, !can("ledger_edit"));
@@ -9801,6 +9901,7 @@ HTML = r"""<!doctype html>
     const messagePlaceholderBody = document.querySelector("#messagePlaceholderBody");
     const vehicleFields = document.querySelector("#vehicleFields");
     const csFields = document.querySelector("#csFields");
+    const managementManualFields = document.querySelector("#managementManualFields");
     const ledgerFields = document.querySelector("#ledgerFields");
     const managementFields = document.querySelector("#managementFields");
     const ledgerCellEditBar = document.querySelector("#ledgerCellEditBar");
@@ -9915,6 +10016,7 @@ HTML = r"""<!doctype html>
     const csBodyInput = document.querySelector("#csBodyInput");
     const saveCsCaseButton = document.querySelector("#saveCsCase");
     const sendCsMailButton = document.querySelector("#sendCsMailButton");
+    const saveManagementManualButton = document.querySelector("#saveManagementManual");
     const csCaseList = document.querySelector("#csCaseList");
     const stockNoticeFields = document.querySelector("#stockNoticeFields");
     const stockVendorPickerButton = document.querySelector("#stockVendorPickerButton");
@@ -9944,6 +10046,7 @@ HTML = r"""<!doctype html>
     const stockSubjectInput = document.querySelector("#stockSubjectInput");
     const stockBodyInput = document.querySelector("#stockBodyInput");
     const ledgerCsPopupClose = document.querySelector("#ledgerCsPopupClose");
+    const managementManualClose = document.querySelector("#managementManualClose");
     const ledgerSearchInput = document.querySelector("#ledgerSearchInput");
     const ledgerStatusFilter = document.querySelector("#ledgerStatusFilter");
     const ledgerYearFilter = document.querySelector("#ledgerYearFilter");
@@ -9973,6 +10076,7 @@ HTML = r"""<!doctype html>
     const managementSelectAll = document.querySelector("#managementSelectAll");
     const managementSaveAll = document.querySelector("#managementSaveAll");
     const ledgerSaveAll = document.querySelector("#ledgerSaveAll");
+    const managementAddManual = document.querySelector("#managementAddManual");
     const managementBulkApply = document.querySelector("#managementBulkApply");
     const ledgerBulkApply = document.querySelector("#ledgerBulkApply");
     const managementDeleteSelected = document.querySelector("#managementDeleteSelected");
@@ -16424,6 +16528,56 @@ HTML = r"""<!doctype html>
       if (currentMode === "ledger") csFields.style.display = "none";
     }
 
+    function managementTransactionTypeFromVendor(value) {
+      return String(value || "").replace(/\s+/g, "").includes("소일브릿지") ? "매출" : "매입/매출";
+    }
+
+    function managementManualInput(field) {
+      return managementManualFields?.querySelector(`[data-management-manual-field="${field}"]`);
+    }
+
+    function syncManagementManualTransactionType() {
+      const transactionInput = managementManualInput("transaction_type");
+      if (!transactionInput) return;
+      transactionInput.value = managementTransactionTypeFromVendor(managementManualInput("purchase_vendor")?.value || "");
+    }
+
+    function resetManagementManualForm() {
+      if (!managementManualFields) return;
+      managementManualFields.querySelectorAll("[data-management-manual-field]").forEach((input) => {
+        input.value = "";
+      });
+      const today = new Date().toISOString().slice(0, 10);
+      const orderDate = managementManualInput("order_date");
+      const shipDate = managementManualInput("ship_date");
+      const ledgerChecked = managementManualInput("ledger_checked");
+      if (orderDate) orderDate.value = today;
+      if (shipDate) shipDate.value = today;
+      if (ledgerChecked) ledgerChecked.value = "입력 완료";
+      syncManagementManualTransactionType();
+    }
+
+    function mountManagementManualFieldsInWorkspace() {
+      if (!managementWorkspaceMount || !managementManualFields || managementManualFields.parentElement === managementWorkspaceMount) return;
+      managementWorkspaceMount.appendChild(managementManualFields);
+    }
+
+    function openManagementManualPopup() {
+      closeLedgerFilter();
+      showWorkspace("management");
+      resetManagementManualForm();
+      mountManagementManualFieldsInWorkspace();
+      managementManualFields.classList.add("ledger-cs-popup");
+      managementManualFields.style.display = "block";
+      notice.textContent = "통합관리대장 수기 추가 내용을 입력한 뒤 저장을 눌러주세요.";
+      setTimeout(() => managementManualInput("purchase_vendor")?.focus(), 0);
+    }
+
+    function closeManagementManualPopup() {
+      managementManualFields?.classList.remove("ledger-cs-popup");
+      if (currentMode === "management" && managementManualFields) managementManualFields.style.display = "none";
+    }
+
     function syncLedgerSelectAll() {
       if (!ledgerSelectAll) return;
       const checks = Array.from(ledgerBody.querySelectorAll("tr[data-case-id] [data-row-check]"));
@@ -17206,6 +17360,43 @@ HTML = r"""<!doctype html>
           : value;
       });
       return payload;
+    }
+
+    function collectManagementManualPayload() {
+      const payload = {};
+      managementManualFields?.querySelectorAll("[data-management-manual-field]").forEach((input) => {
+        payload[input.dataset.managementManualField] = input.value || "";
+      });
+      payload.transaction_type = managementTransactionTypeFromVendor(payload.purchase_vendor);
+      if (!payload.ship_date && payload.order_date) payload.ship_date = payload.order_date;
+      if (!payload.ledger_checked) payload.ledger_checked = "입력 완료";
+      return payload;
+    }
+
+    async function saveManagementManualRecord() {
+      const payload = collectManagementManualPayload();
+      if (!payload.purchase_vendor && !payload.sales_vendor && !payload.receiver_name && !payload.product_name && !payload.invoice_number) {
+        notice.textContent = "매입처, 매출처, 수령자, 제품명, 운송장번호 중 하나 이상 입력해주세요.";
+        return;
+      }
+      try {
+        saveManagementManualButton.disabled = true;
+        const response = await fetch("/api/management-record-create", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "통합관리대장 수기 추가에 실패했습니다.");
+        notice.textContent = data.message || "통합관리대장 수기 추가를 저장했습니다.";
+        closeManagementManualPopup();
+        await loadManagementPeriods();
+        await loadManagementRecords();
+      } catch (error) {
+        notice.textContent = error.message;
+      } finally {
+        saveManagementManualButton.disabled = false;
+      }
     }
 
     async function saveManagementPayload(payload) {
@@ -19662,6 +19853,10 @@ HTML = r"""<!doctype html>
     });
     ledgerAddCs.addEventListener("click", openLedgerCsPopup);
     ledgerCsPopupClose.addEventListener("click", closeLedgerCsPopup);
+    managementAddManual.addEventListener("click", openManagementManualPopup);
+    managementManualClose.addEventListener("click", closeManagementManualPopup);
+    saveManagementManualButton.addEventListener("click", saveManagementManualRecord);
+    managementManualInput("purchase_vendor")?.addEventListener("input", syncManagementManualTransactionType);
     ledgerImportInput.addEventListener("change", uploadLedgerWorkbook);
     managementRefresh.addEventListener("click", () => loadManagementRecords({ showPicker: true }));
     managementImportInput.addEventListener("change", uploadManagementWorkbook);
@@ -26125,7 +26320,15 @@ def list_management_records(query: str = "", limit: int | None = 300, year: str 
                    product_code, order_number, customer_option, cs_received_at
               FROM management_records
               {where}
-             ORDER BY order_date DESC, id DESC
+             ORDER BY order_date DESC,
+                      CASE
+                        WHEN TRIM(quantity) GLOB '[0-9]*' THEN CAST(quantity AS REAL)
+                        ELSE 999999999
+                      END ASC,
+                      product_name ASC,
+                      purchase_vendor ASC,
+                      sales_vendor ASC,
+                      id ASC
              {limit_sql}
             """,
             params,
@@ -26402,6 +26605,29 @@ MANAGEMENT_EDIT_COLUMNS = [
     "memo",
 ]
 
+MANAGEMENT_MANUAL_COLUMNS = [
+    "purchase_vendor",
+    "sales_vendor",
+    "transaction_type",
+    "ledger_checked",
+    "order_date",
+    "ship_date",
+    "orderer_name",
+    "sender_phone",
+    "receiver_name",
+    "receiver_phone",
+    "product_name",
+    "quantity",
+    "receiver_address",
+    "courier",
+    "invoice_number",
+    "memo",
+    "order_item_id",
+    "product_code",
+    "order_number",
+    "customer_option",
+]
+
 
 def get_management_record(record_id: int) -> dict[str, str | int]:
     init_db()
@@ -26438,6 +26664,42 @@ def update_management_record(record_id: int, payload: dict) -> None:
         connection.commit()
         if cursor.rowcount == 0:
             raise ValueError("수정할 통합관리대장 행을 찾지 못했습니다.")
+    finally:
+        connection.close()
+
+
+def create_management_manual_record(payload: dict) -> int:
+    init_db()
+    timestamp = now_text()
+    record = {column: clean_payload_text(payload, column) for column in MANAGEMENT_MANUAL_COLUMNS}
+    if not any(record.values()):
+        raise ValueError("수기 추가할 통합관리대장 내용을 입력해주세요.")
+    record.update({
+        "created_at": timestamp,
+        "source_file": "수기입력",
+        "source_sheet": "수기추가",
+        "source_row": 0,
+    })
+    normalize_management_import_records([record])
+    columns = MANAGEMENT_IMPORT_COLUMNS
+    placeholders = ", ".join("?" for _ in columns)
+    connection = connect_db()
+    try:
+        next_row = connection.execute(
+            """
+            SELECT COALESCE(MAX(source_row), 0) + 1
+              FROM management_records
+             WHERE source_file = ? AND source_sheet = ?
+            """,
+            (record["source_file"], record["source_sheet"]),
+        ).fetchone()[0]
+        record["source_row"] = int(next_row or 1)
+        cursor = connection.execute(
+            f"INSERT INTO management_records ({', '.join(columns)}) VALUES ({placeholders})",
+            [record.get(column, "") for column in columns],
+        )
+        connection.commit()
+        return int(cursor.lastrowid)
     finally:
         connection.close()
 
@@ -26889,6 +27151,31 @@ def normalize_duplicate_token(value: object) -> str:
     return re.sub(r"[\s\-()._/]+", "", text).lower()
 
 
+def is_soilbridge_purchase_vendor(value: object) -> bool:
+    return "소일브릿지" in normalize_compact(clean_cell(value))
+
+
+def auto_management_transaction_type(purchase_vendor: object) -> str:
+    return "매출" if is_soilbridge_purchase_vendor(purchase_vendor) else "매입/매출"
+
+
+def management_import_quantity_sort_value(value: object) -> tuple[int, float | str]:
+    text = clean_cell(value).replace(",", "")
+    try:
+        return (0, float(text))
+    except ValueError:
+        return (1, text)
+
+
+def sort_management_import_records(records: list[dict[str, object]]) -> None:
+    records.sort(key=lambda record: (
+        management_import_quantity_sort_value(record.get("quantity")),
+        clean_cell(record.get("product_name")),
+        clean_cell(record.get("purchase_vendor")),
+        clean_cell(record.get("sales_vendor")),
+    ))
+
+
 def compact_duplicate_key(prefix: str, values: list[object]) -> str:
     tokens = [normalize_duplicate_token(value) for value in values]
     return f"{prefix}:" + "|".join(tokens)
@@ -27316,6 +27603,7 @@ def normalize_management_import_records(records: list[dict[str, object]]) -> Non
                 record[field] = normalized
         if not clean_cell(record.get("ship_date")) and parse_import_date_value(record.get("order_date"), default_year):
             record["ship_date"] = clean_cell(record.get("order_date"))
+        record["transaction_type"] = auto_management_transaction_type(record.get("purchase_vendor"))
         if not clean_cell(record.get("ledger_checked")):
             record["ledger_checked"] = "입력 완료"
 
@@ -27473,6 +27761,7 @@ def preview_management_import(path: Path, corrections: list[dict[str, object]] |
     records = parse_management_import_records(path, file_modified_date=file_modified_date)
     apply_import_corrections(records, corrections, MANAGEMENT_IMPORT_EDITABLE_FIELDS)
     normalize_management_import_records(records)
+    sort_management_import_records(records)
     connection = connect_db()
     try:
         existing_keys = existing_management_duplicate_keys(connection)
@@ -27500,6 +27789,7 @@ def import_management_workbook(path: Path, mode: str = "daily", corrections: lis
     records = parse_management_import_records(path, file_modified_date=file_modified_date)
     apply_import_corrections(records, corrections, MANAGEMENT_IMPORT_EDITABLE_FIELDS)
     normalize_management_import_records(records)
+    sort_management_import_records(records)
     placeholders = ", ".join("?" for _ in MANAGEMENT_IMPORT_COLUMNS)
     insert_sql = f"INSERT OR IGNORE INTO management_records ({', '.join(MANAGEMENT_IMPORT_COLUMNS)}) VALUES ({placeholders})"
     connection = connect_db()
@@ -29790,6 +30080,19 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                     raise ValueError("수정할 통합관리대장 행 ID가 없습니다.")
                 update_management_record(record_id, payload)
                 self.send_json({"message": "통합관리대장 행을 저장했습니다.", "record_id": record_id})
+                return
+
+            if self.path == "/api/management-record-create":
+                if not self.require_permission(user, "ledger_edit", "대장 수정"):
+                    return
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(length).decode("utf-8") or "{}")
+                record_id = create_management_manual_record(payload)
+                self.send_json({
+                    "message": "통합관리대장 수기 추가를 저장했습니다.",
+                    "record_id": record_id,
+                    "record": get_management_record(record_id),
+                })
                 return
 
             if self.path == "/api/management-import-corrections":

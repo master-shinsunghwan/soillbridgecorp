@@ -118,13 +118,17 @@ def test_management_import_defaults_blank_ship_date_and_ledger_check_only(tmp_pa
     app = load_app(tmp_path)
     records = [
         {
+            "purchase_vendor": "(주)소일브릿지(본사)",
             "order_date": "2026-06-15 09:30:46",
             "ship_date": "",
+            "transaction_type": "",
             "ledger_checked": "",
         },
         {
+            "purchase_vendor": "키친쿡",
             "order_date": "2026-06-16",
             "ship_date": "",
+            "transaction_type": "",
             "ledger_checked": "\ud655\uc778 \ubcf4\ub958",
         },
     ]
@@ -133,9 +137,55 @@ def test_management_import_defaults_blank_ship_date_and_ledger_check_only(tmp_pa
 
     assert records[0]["order_date"] == "2026-06-15"
     assert records[0]["ship_date"] == "2026-06-15"
+    assert records[0]["transaction_type"] == "매출"
     assert records[0]["ledger_checked"] == "\uc785\ub825 \uc644\ub8cc"
     assert records[1]["ship_date"] == "2026-06-16"
+    assert records[1]["transaction_type"] == "매입/매출"
     assert records[1]["ledger_checked"] == "\ud655\uc778 \ubcf4\ub958"
+
+
+def test_management_import_records_are_sorted_before_insert(tmp_path: Path) -> None:
+    app = load_app(tmp_path)
+    records = [
+        {"quantity": "2", "product_name": "나상품", "purchase_vendor": "키친쿡", "sales_vendor": "B"},
+        {"quantity": "1", "product_name": "다상품", "purchase_vendor": "키친쿡", "sales_vendor": "B"},
+        {"quantity": "1", "product_name": "가상품", "purchase_vendor": "모드니", "sales_vendor": "B"},
+        {"quantity": "1", "product_name": "가상품", "purchase_vendor": "가매입", "sales_vendor": "A"},
+    ]
+
+    app.sort_management_import_records(records)
+
+    assert [
+        (row["quantity"], row["product_name"], row["purchase_vendor"], row["sales_vendor"])
+        for row in records
+    ] == [
+        ("1", "가상품", "가매입", "A"),
+        ("1", "가상품", "모드니", "B"),
+        ("1", "다상품", "키친쿡", "B"),
+        ("2", "나상품", "키친쿡", "B"),
+    ]
+
+
+def test_manual_management_record_creation_normalizes_defaults(tmp_path: Path) -> None:
+    app = load_app(tmp_path)
+
+    record_id = app.create_management_manual_record({
+        "purchase_vendor": "키친쿡",
+        "sales_vendor": "모드니",
+        "order_date": "2026-06-24",
+        "ship_date": "",
+        "product_name": "수기 상품",
+        "quantity": "3",
+        "receiver_name": "홍길동",
+    })
+    record = app.get_management_record(record_id)
+
+    assert record["source_file"] == "수기입력"
+    assert record["source_sheet"] == "수기추가"
+    assert record["ship_date"] == "2026-06-24"
+    assert record["transaction_type"] == "매입/매출"
+    assert record["ledger_checked"] == "입력 완료"
+    assert record["product_name"] == "수기 상품"
 
 
 def test_management_template_export_uses_supply_columns_and_filename(tmp_path: Path) -> None:
@@ -180,6 +230,10 @@ def main() -> None:
         test_management_import_accepts_supply_header_on_first_row(Path(directory) / "import")
     with tempfile.TemporaryDirectory() as directory:
         test_management_import_defaults_blank_ship_date_and_ledger_check_only(Path(directory) / "normalize")
+    with tempfile.TemporaryDirectory() as directory:
+        test_management_import_records_are_sorted_before_insert(Path(directory) / "sort")
+    with tempfile.TemporaryDirectory() as directory:
+        test_manual_management_record_creation_normalizes_defaults(Path(directory) / "manual")
     with tempfile.TemporaryDirectory() as directory:
         test_management_template_export_uses_supply_columns_and_filename(Path(directory) / "export")
 

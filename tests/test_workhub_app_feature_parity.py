@@ -357,6 +357,19 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         self.assertIn('managementBulkApply.addEventListener("click"', html_source)
         self.assertIn('ledgerBulkApply.addEventListener("click"', html_source)
 
+    def test_management_manual_add_uses_popup_workflow(self) -> None:
+        html_source = (ROOT / "scripts" / "workhub_delivery_app.py").read_text(encoding="utf-8")
+
+        self.assertIn('id="managementAddManual"', html_source)
+        self.assertIn('id="managementManualFields"', html_source)
+        self.assertIn('id="managementManualClose"', html_source)
+        self.assertIn('id="saveManagementManual"', html_source)
+        self.assertIn("function openManagementManualPopup()", html_source)
+        self.assertIn("function closeManagementManualPopup()", html_source)
+        self.assertIn("async function saveManagementManualRecord()", html_source)
+        self.assertIn('fetch("/api/management-record-create"', html_source)
+        self.assertIn('managementAddManual.addEventListener("click"', html_source)
+
     def test_excel_style_filter_reset_controls_exist_for_ledgers(self) -> None:
         html_source = (ROOT / "scripts" / "workhub_delivery_app.py").read_text(encoding="utf-8")
 
