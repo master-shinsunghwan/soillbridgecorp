@@ -179,8 +179,15 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         self.assertNotIn('data-mail-popup="cs"', ledger_group)
         self.assertNotIn("CS처리 요청", ledger_group)
         self.assertIn('id="csAttachmentInput"', html_source)
+        self.assertIn('id="csAttachmentDropzone"', html_source)
+        self.assertIn('id="csAttachmentChoose"', html_source)
+        self.assertIn('id="csAttachmentDropMain"', html_source)
         self.assertIn('id="csAttachmentSummary"', html_source)
         self.assertIn('accept="image/*,video/*,.pdf,.xlsx,.xls,.doc,.docx,.zip"', html_source)
+        self.assertIn("setupDropzone(csAttachmentDropzone", html_source)
+        self.assertIn('csAttachmentChoose?.addEventListener("click"', html_source)
+        self.assertIn("파일 선택", html_source)
+        self.assertIn("드래그", html_source)
         self.assertIn('id="sendCsMailButton"', html_source)
         self.assertIn("async function sendCurrentCsMail()", html_source)
         self.assertIn('sendCsMailButton?.addEventListener("click"', html_source)
@@ -328,7 +335,12 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         html_source = (ROOT / "scripts" / "workhub_delivery_app.py").read_text(encoding="utf-8")
 
         self.assertIn("async function saveEditedCellRow(scope, row)", html_source)
-        apply_start = html_source.index("async function applyCellEditor(scope)")
+        self.assertIn("function scheduleCellEditorAutoApply(scope)", html_source)
+        self.assertIn("function commitCellEditorOnChange(scope)", html_source)
+        self.assertIn("control.addEventListener(\"input\", () => scheduleCellEditorAutoApply(scope));", html_source)
+        self.assertIn("control.addEventListener(\"change\", () => commitCellEditorOnChange(scope));", html_source)
+        self.assertIn("control.addEventListener(\"blur\", () => commitCellEditorOnChange(scope));", html_source)
+        apply_start = html_source.index("async function applyCellEditor(scope")
         apply_end = html_source.index("function dirtyRows", apply_start)
         apply_block = html_source[apply_start:apply_end]
         self.assertIn("await saveEditedCellRow(scope, row);", apply_block)
@@ -367,8 +379,22 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         self.assertIn("function openManagementManualPopup()", html_source)
         self.assertIn("function closeManagementManualPopup()", html_source)
         self.assertIn("async function saveManagementManualRecord()", html_source)
+        self.assertIn('id="manualManagementReceiverAddress" data-management-manual-field="receiver_address" rows="2"', html_source)
+        self.assertIn('id="manualManagementMemo" data-management-manual-field="memo" rows="2"', html_source)
+        self.assertIn(".management-manual-fields #manualManagementReceiverAddress", html_source)
+        self.assertIn(".management-manual-fields #manualManagementMemo", html_source)
+        self.assertIn("height: 52px;", html_source)
         self.assertIn('fetch("/api/management-record-create"', html_source)
         self.assertIn('managementAddManual.addEventListener("click"', html_source)
+
+    def test_workhub_uses_in_app_dialogs_instead_of_native_browser_dialogs(self) -> None:
+        html_source = (ROOT / "scripts" / "workhub_delivery_app.py").read_text(encoding="utf-8")
+
+        self.assertIn("function requestAppConfirm", html_source)
+        self.assertNotIn("window.alert(", html_source)
+        self.assertNotIn("window.confirm(", html_source)
+        self.assertNotIn("if (!confirm(", html_source)
+        self.assertNotIn("alert(error.message)", html_source)
 
     def test_excel_style_filter_reset_controls_exist_for_ledgers(self) -> None:
         html_source = (ROOT / "scripts" / "workhub_delivery_app.py").read_text(encoding="utf-8")

@@ -1903,6 +1903,42 @@ HTML = r"""<!doctype html>
     }
     .drop-main { font-size: 17px; font-weight: 750; color: #1a2230; }
     .drop-sub { font-size: 14px; color: var(--muted); }
+    .cs-attachment-dropzone {
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: center;
+      min-height: 74px;
+      padding: 10px 12px;
+      gap: 5px 10px;
+    }
+    .cs-attachment-dropzone .drop-main,
+    .cs-attachment-dropzone .drop-sub {
+      grid-column: 1 / 2;
+    }
+    .cs-attachment-dropzone .drop-main {
+      font-size: 13px;
+    }
+    .cs-attachment-dropzone .drop-sub {
+      font-size: 11px;
+    }
+    .cs-attachment-button {
+      grid-column: 2;
+      grid-row: 1 / span 2;
+      min-width: 82px;
+      height: 32px;
+      padding: 0 12px;
+      border: 1px solid #b7c6dc;
+      border-radius: 7px;
+      background: #ffffff;
+      color: #174ea6;
+      font-size: 12px;
+      font-weight: 900;
+      cursor: pointer;
+      box-shadow: 0 2px 8px rgba(15, 23, 42, .05);
+    }
+    .cs-attachment-button:hover {
+      border-color: #8ba7d4;
+      background: #f6f9ff;
+    }
     .workhub-modal-backdrop.open .workhub-modal,
     .workhub-modal-backdrop.open .workhub-modal .modal-title,
     .workhub-modal-backdrop.open .workhub-modal .field-label,
@@ -3131,6 +3167,12 @@ HTML = r"""<!doctype html>
     .cs-fields.ledger-cs-popup textarea,
     .management-manual-fields.ledger-cs-popup textarea {
       min-height: 72px;
+    }
+    .management-manual-fields #manualManagementReceiverAddress,
+    .management-manual-fields #manualManagementMemo {
+      min-height: 48px;
+      height: 52px;
+      resize: vertical;
     }
     .cs-fields.ledger-cs-popup #csBodyInput {
       min-height: 118px;
@@ -9188,7 +9230,12 @@ HTML = r"""<!doctype html>
           </div>
           <div class="text-field cs-wide">
             <label class="field-label" for="csAttachmentInput">첨부파일(이미지/영상)</label>
-            <input id="csAttachmentInput" name="cs_attachments" type="file" accept="image/*,video/*,.pdf,.xlsx,.xls,.doc,.docx,.zip" multiple />
+            <div class="cs-attachment-dropzone dropzone" id="csAttachmentDropzone">
+              <span class="drop-main" id="csAttachmentDropMain">파일을 드래그하거나 파일 선택 버튼을 눌러주세요.</span>
+              <span class="drop-sub">이미지, 영상, PDF, 엑셀, 문서, 압축파일 첨부 가능</span>
+              <button class="cs-attachment-button" id="csAttachmentChoose" type="button">파일 선택</button>
+              <input id="csAttachmentInput" name="cs_attachments" type="file" accept="image/*,video/*,.pdf,.xlsx,.xls,.doc,.docx,.zip" multiple />
+            </div>
             <div class="hint-line" id="csAttachmentSummary">첨부파일 없음</div>
           </div>
           <div class="text-field cs-wide">
@@ -9285,13 +9332,13 @@ HTML = r"""<!doctype html>
             <label class="field-label" for="manualManagementCustomerOption">고객선택옵션</label>
             <input id="manualManagementCustomerOption" data-management-manual-field="customer_option" type="text" />
           </div>
-          <div class="text-field cs-wide">
+          <div class="text-field">
             <label class="field-label" for="manualManagementReceiverAddress">상세주소</label>
-            <textarea id="manualManagementReceiverAddress" data-management-manual-field="receiver_address"></textarea>
+            <textarea id="manualManagementReceiverAddress" data-management-manual-field="receiver_address" rows="2"></textarea>
           </div>
-          <div class="text-field cs-wide">
+          <div class="text-field">
             <label class="field-label" for="manualManagementMemo">특이사항</label>
-            <textarea id="manualManagementMemo" data-management-manual-field="memo"></textarea>
+            <textarea id="manualManagementMemo" data-management-manual-field="memo" rows="2"></textarea>
           </div>
           <div class="cs-toolbar">
             <button class="cs-save-button" id="saveManagementManual" type="button">통합관리대장 추가 저장</button>
@@ -10010,6 +10057,9 @@ HTML = r"""<!doctype html>
     const csAddressInput = document.querySelector("#csAddressInput");
     const csTypeInput = document.querySelector("#csTypeInput");
     const csContentInput = document.querySelector("#csContentInput");
+    const csAttachmentDropzone = document.querySelector("#csAttachmentDropzone");
+    const csAttachmentDropMain = document.querySelector("#csAttachmentDropMain");
+    const csAttachmentChoose = document.querySelector("#csAttachmentChoose");
     const csAttachmentInput = document.querySelector("#csAttachmentInput");
     const csAttachmentSummary = document.querySelector("#csAttachmentSummary");
     const csSubjectInput = document.querySelector("#csSubjectInput");
@@ -10534,6 +10584,10 @@ HTML = r"""<!doctype html>
       ledger: null,
       management: null,
     };
+    const cellEditorAutoSaveTimers = {
+      ledger: null,
+      management: null,
+    };
     const ledgerFilters = {};
     const managementFilters = {};
     let isBulkSaving = false;
@@ -10938,7 +10992,13 @@ HTML = r"""<!doctype html>
     }
 
     async function deleteBackup(name) {
-      if (!confirm(`${name} 백업 파일을 삭제할까요?`)) return;
+      if (!await requestAppConfirm({
+        kicker: "백업 삭제",
+        title: "백업 파일을 삭제할까요?",
+        message: name,
+        okText: "삭제",
+        cancelText: "취소",
+      })) return;
       backupMessage.textContent = "백업 파일을 삭제하는 중입니다.";
       try {
         const response = await fetch("/api/backup-delete", {
@@ -10960,7 +11020,14 @@ HTML = r"""<!doctype html>
     }
 
     async function restoreBackupByName(name) {
-      if (!confirm(`${name} 백업 데이터로 현재 업무 데이터를 복원할까요?\n\n복원 전 현재 데이터는 자동으로 예비 백업됩니다.`)) return;
+      if (!await requestAppConfirm({
+        kicker: "백업 복원",
+        title: "백업 데이터로 현재 업무 데이터를 복원할까요?",
+        message: "복원 전 현재 데이터는 자동으로 예비 백업됩니다.",
+        highlight: name,
+        okText: "복원",
+        cancelText: "취소",
+      })) return;
       backupMessage.textContent = "백업 데이터를 복원하는 중입니다.";
       try {
         const response = await fetch("/api/backup-restore", {
@@ -10979,7 +11046,14 @@ HTML = r"""<!doctype html>
     async function restoreBackupFromUpload() {
       if (!backupRestoreInput || !backupRestoreInput.files[0]) return;
       const file = backupRestoreInput.files[0];
-      if (!confirm(`${file.name} 파일로 현재 업무 데이터를 복원할까요?\n\n복원 전 현재 데이터는 자동으로 예비 백업됩니다.`)) {
+      if (!await requestAppConfirm({
+        kicker: "백업 파일 복원",
+        title: "업로드한 파일로 현재 업무 데이터를 복원할까요?",
+        message: "복원 전 현재 데이터는 자동으로 예비 백업됩니다.",
+        highlight: file.name,
+        okText: "복원",
+        cancelText: "취소",
+      })) {
         backupRestoreInput.value = "";
         return;
       }
@@ -11063,7 +11137,13 @@ HTML = r"""<!doctype html>
     }
 
     async function applySystemUpdate() {
-      if (!confirm("업데이트 적용 전 현재 데이터를 자동 백업합니다.\nGitHub 최신 코드를 적용할까요?")) return;
+      if (!await requestAppConfirm({
+        kicker: "시스템 업데이트",
+        title: "GitHub 최신 코드를 적용할까요?",
+        message: "업데이트 적용 전 현재 데이터를 자동 백업합니다.",
+        okText: "적용",
+        cancelText: "취소",
+      })) return;
       systemUpdateApply.disabled = true;
       systemUpdateMessage.textContent = "업데이트 적용 중입니다. 창을 닫지 마세요.";
       try {
@@ -12748,10 +12828,12 @@ HTML = r"""<!doctype html>
       const files = Array.from(csAttachmentInput.files || []);
       if (!files.length) {
         csAttachmentSummary.textContent = "첨부파일 없음";
+        if (csAttachmentDropMain) csAttachmentDropMain.textContent = "파일을 드래그하거나 파일 선택 버튼을 눌러주세요.";
         return;
       }
       const totalSize = files.reduce((sum, file) => sum + file.size, 0);
       const sizeMb = Math.ceil((totalSize / 1024 / 1024) * 10) / 10;
+      if (csAttachmentDropMain) csAttachmentDropMain.textContent = files.length === 1 ? files[0].name : `${files.length}개 파일 선택됨`;
       csAttachmentSummary.textContent = `${files.length}개 첨부 선택 / 약 ${sizeMb}MB`;
     }
 
@@ -12957,7 +13039,14 @@ HTML = r"""<!doctype html>
         return;
       }
       const label = user.display_name || user.username || "선택한 사용자";
-      if (!window.confirm(`${label} 계정을 삭제할까요?\n삭제 후 해당 아이디는 로그인할 수 없습니다.`)) return;
+      if (!await requestAppConfirm({
+        kicker: "사용자 삭제",
+        title: "계정을 삭제할까요?",
+        message: "삭제 후 해당 아이디는 로그인할 수 없습니다.",
+        highlight: label,
+        okText: "삭제",
+        cancelText: "취소",
+      })) return;
       userAdminMessage.textContent = "사용자 계정을 삭제하는 중입니다.";
       try {
         const response = await fetch("/api/users-delete", {
@@ -14410,7 +14499,13 @@ HTML = r"""<!doctype html>
         setCrmMessage("삭제할 내 저장뷰를 선택해줘.", true);
         return;
       }
-      if (!confirm(`'${selected.name}' 저장뷰를 삭제할까요?`)) return;
+      if (!await requestAppConfirm({
+        kicker: "저장뷰 삭제",
+        title: "저장뷰를 삭제할까요?",
+        message: selected.name,
+        okText: "삭제",
+        cancelText: "취소",
+      })) return;
       const data = await crmFetchJson("/api/crm-saved-view-delete", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -15494,7 +15589,13 @@ HTML = r"""<!doctype html>
 
     async function rotateCrmWebhookToken() {
       if (!can("crm_message_manage")) return;
-      if (!confirm("웹훅 토큰을 재발급할까요? 기존 카카오 스킬 헤더 값은 즉시 실패합니다.")) return;
+      if (!await requestAppConfirm({
+        kicker: "웹훅 토큰",
+        title: "웹훅 토큰을 재발급할까요?",
+        message: "기존 카카오 스킬 헤더 값은 즉시 실패합니다.",
+        okText: "재발급",
+        cancelText: "취소",
+      })) return;
       const data = await crmFetchJson("/api/crm-webhook-token-rotate", { method: "POST" });
       setCrmMessage(data.message || "웹훅 토큰을 재발급했습니다.");
       renderCrmWebhookSetup(data);
@@ -16073,6 +16174,10 @@ HTML = r"""<!doctype html>
 
     function closeCellEditor(scope) {
       const selected = activeCellEditors[scope];
+      if (cellEditorAutoSaveTimers[scope]) {
+        clearTimeout(cellEditorAutoSaveTimers[scope]);
+        cellEditorAutoSaveTimers[scope] = null;
+      }
       if (selected?.cell) selected.cell.classList.remove("selected-cell");
       activeCellEditors[scope] = null;
       const parts = selectedEditorParts(scope);
@@ -16260,6 +16365,9 @@ HTML = r"""<!doctype html>
       parts.mount.appendChild(control);
       syncCellEditorWidth(parts, control);
       control.addEventListener("input", () => syncCellEditorWidth(parts, control));
+      control.addEventListener("input", () => scheduleCellEditorAutoApply(scope));
+      control.addEventListener("change", () => commitCellEditorOnChange(scope));
+      control.addEventListener("blur", () => commitCellEditorOnChange(scope));
       parts.label.textContent = rowHint ? `${label} · ${rowHint}` : label;
       parts.bar.classList.add("open");
       if (scope === "ledger" && ledgerReturnCheckButton) {
@@ -16276,7 +16384,29 @@ HTML = r"""<!doctype html>
       }, 0);
     }
 
-    async function applyCellEditor(scope) {
+    function scheduleCellEditorAutoApply(scope) {
+      if (cellEditorAutoSaveTimers[scope]) clearTimeout(cellEditorAutoSaveTimers[scope]);
+      cellEditorAutoSaveTimers[scope] = setTimeout(() => {
+        commitCellEditorOnChange(scope).catch((error) => {
+          notice.textContent = error.message || "선택 셀 값을 자동 반영하지 못했습니다.";
+        });
+      }, 700);
+    }
+
+    async function commitCellEditorOnChange(scope) {
+      if (cellEditorAutoSaveTimers[scope]) {
+        clearTimeout(cellEditorAutoSaveTimers[scope]);
+        cellEditorAutoSaveTimers[scope] = null;
+      }
+      if (!activeEditorHasChange(scope)) return;
+      await applyCellEditor(scope, { silent: true });
+    }
+
+    async function applyCellEditor(scope, { silent = false } = {}) {
+      if (cellEditorAutoSaveTimers[scope]) {
+        clearTimeout(cellEditorAutoSaveTimers[scope]);
+        cellEditorAutoSaveTimers[scope] = null;
+      }
       const selected = activeCellEditors[scope];
       if (!selected?.cell || !selected.control) return;
       const { cell, control } = selected;
@@ -16298,7 +16428,7 @@ HTML = r"""<!doctype html>
       }
       if (activeLedgerFilterField || activeManagementFilterField) refreshActiveFilterOptions();
       await saveEditedCellRow(scope, row);
-      if (!autoStatusApplied) {
+      if (!autoStatusApplied && !silent) {
         notice.textContent = scope === "management"
           ? "통합관리대장 셀 수정 내용을 저장했습니다."
           : "CS 처리대장 셀 수정 내용을 저장했습니다.";
@@ -16713,7 +16843,14 @@ HTML = r"""<!doctype html>
           return `- ${owner} · ${item.product_name || "상품명 없음"} · ${invoice || "송장번호 없음"} · ${item.status || "상태 없음"}`;
         });
         if (alerts.length > 12) lines.push(`외 ${alerts.length - 12}건`);
-        window.alert(`전날 송장이 입력됐지만 전체 처리완료가 아닌 CS건이 ${alerts.length}건 있습니다.\n\n${lines.join("\n")}`);
+        await requestAppConfirm({
+          kicker: "CS 확인",
+          title: `전체 처리완료가 아닌 CS건이 ${alerts.length}건 있습니다.`,
+          message: "전날 송장이 입력된 미처리 CS를 확인해주세요.",
+          highlight: lines.join("\n"),
+          okText: "확인",
+          cancelText: "닫기",
+        });
       } catch (error) {
         console.warn(error);
       } finally {
@@ -17589,7 +17726,7 @@ HTML = r"""<!doctype html>
       okText = "변경",
       cancelText = "유지",
     } = {}) {
-      if (!appConfirmDialog) return Promise.resolve(window.confirm(`${title}\n\n${message}`));
+      if (!appConfirmDialog) return Promise.resolve(false);
       if (activeAppConfirmResolver) closeAppConfirmDialog(false);
       appConfirmKicker.textContent = kicker;
       appConfirmTitle.textContent = title;
@@ -17759,7 +17896,13 @@ HTML = r"""<!doctype html>
         return;
       }
       const label = isManagement ? "통합관리대장" : "CS 처리대장";
-      if (!window.confirm(`${label} 선택 주문 ${ids.length}건을 삭제할까요?`)) return;
+      if (!await requestAppConfirm({
+        kicker: "선택 삭제",
+        title: `${label} 선택 주문 ${ids.length}건을 삭제할까요?`,
+        message: "삭제 후에는 목록에서 제외됩니다.",
+        okText: "삭제",
+        cancelText: "취소",
+      })) return;
       const endpoint = isManagement ? "/api/management-records-delete" : "/api/cs-cases-delete";
       try {
         const response = await fetch(endpoint, {
@@ -18985,7 +19128,7 @@ HTML = r"""<!doctype html>
       try {
         await downloadSavedOrderFile(button.dataset.orderDownloadId);
       } catch (error) {
-        alert(error.message);
+        notice.textContent = error.message || "저장된 발주 파일을 다운로드하지 못했습니다.";
       } finally {
         button.disabled = false;
       }
@@ -19041,11 +19184,17 @@ HTML = r"""<!doctype html>
         if (downloadButton) {
           await downloadSharedFile(downloadButton.dataset.sharedFileDownload);
         } else if (deleteButton) {
-          if (!confirm("선택한 업무 파일을 삭제할까요?")) return;
+          if (!await requestAppConfirm({
+            kicker: "업무 파일 삭제",
+            title: "선택한 업무 파일을 삭제할까요?",
+            message: deleteButton.dataset.sharedFileDelete || "",
+            okText: "삭제",
+            cancelText: "취소",
+          })) return;
           await deleteSharedFile(deleteButton.dataset.sharedFileDelete);
         }
       } catch (error) {
-        alert(error.message);
+        notice.textContent = error.message || "업무 파일 작업을 완료하지 못했습니다.";
       } finally {
         button.disabled = false;
       }
@@ -19773,6 +19922,12 @@ HTML = r"""<!doctype html>
       sharedFileDropMain,
       "업무 파일을 선택해주세요."
     );
+    setupDropzone(csAttachmentDropzone, csAttachmentInput, csAttachmentDropMain, "파일을 드래그하거나 파일 선택 버튼을 눌러주세요.");
+    csAttachmentChoose?.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      csAttachmentInput?.click();
+    });
     document.querySelector("#addProductRow").addEventListener("click", () => addProductRow());
     noticeSaveButton.addEventListener("click", saveNoticeTemplate);
     noticeClearButton.addEventListener("click", clearNoticeTemplate);
