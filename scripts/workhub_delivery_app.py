@@ -2417,18 +2417,41 @@ HTML = r"""<!doctype html>
       font-weight: 950;
     }
     .sales-detail-popup {
-      width: min(1120px, calc(100vw - 32px));
-      max-height: min(820px, calc(100vh - 42px));
+      width: calc(100vw - 24px);
+      height: calc(100vh - 24px);
+      max-width: none;
+      max-height: none;
       overflow: hidden;
       display: grid;
       grid-template-rows: auto minmax(0, 1fr);
+      padding: 0;
+      background: #f6f8fb;
+      border: 1px solid #cbd5e1;
+      box-shadow: 0 24px 70px rgba(15, 23, 42, .24);
+    }
+    .sales-detail-popup .notice-popup-head {
+      min-height: 62px;
+      padding: 0 18px;
+      margin: 0;
+      border-bottom: 1px solid #d8e0ec;
+      background: #0f172a;
+      color: #ffffff;
+    }
+    .sales-detail-popup .notice-popup-head span {
+      font-size: 18px;
+      font-weight: 950;
+    }
+    .sales-detail-popup .popup-close-button {
+      color: #ffffff;
+      background: rgba(255, 255, 255, .12);
+      border-color: rgba(255, 255, 255, .24);
     }
     .sales-detail-body {
       display: grid;
       gap: 12px;
       min-height: 0;
       overflow: auto;
-      padding-right: 2px;
+      padding: 14px;
     }
     .sales-detail-summary {
       display: grid;
@@ -2436,11 +2459,12 @@ HTML = r"""<!doctype html>
       gap: 8px;
     }
     .sales-detail-metric {
-      min-height: 68px;
-      padding: 10px;
+      min-height: 78px;
+      padding: 12px;
       border: 1px solid #e2e8f0;
       border-radius: 8px;
-      background: #f8fafc;
+      background: #ffffff;
+      box-shadow: 0 8px 18px rgba(15, 23, 42, .045);
     }
     .sales-detail-metric span {
       display: block;
@@ -2465,10 +2489,12 @@ HTML = r"""<!doctype html>
       font-weight: 950;
     }
     .sales-detail-table-wrap {
-      max-height: 360px;
+      max-height: none;
       overflow: auto;
       border: 1px solid #e2e8f0;
       border-radius: 8px;
+      background: #ffffff;
+      box-shadow: 0 8px 18px rgba(15, 23, 42, .035);
     }
     .sales-detail-table {
       width: 100%;
@@ -8522,7 +8548,7 @@ HTML = r"""<!doctype html>
                 <div class="dashboard-sales-insights" aria-label="매출 보조 지표">
                   <div class="dashboard-sales-insight sales-insight-revenue"><div class="dashboard-sales-insight-top"><span class="dashboard-sales-insight-icon"><i data-lucide="circle-dollar-sign"></i></span><span>매출처 합계</span></div><strong id="dashboardSellerTotal">-</strong></div>
                   <div class="dashboard-sales-insight sales-insight-purchase"><div class="dashboard-sales-insight-top"><span class="dashboard-sales-insight-icon"><i data-lucide="truck"></i></span><span>매입처 총액</span></div><strong id="dashboardSupplierPurchase">-</strong></div>
-                  <div class="dashboard-sales-insight sales-insight-margin"><div class="dashboard-sales-insight-top"><span class="dashboard-sales-insight-icon"><i data-lucide="bar-chart-3"></i></span><span>월 손익마진</span></div><strong id="dashboardSalesMargin">-</strong></div>
+                  <div class="dashboard-sales-insight sales-insight-margin"><div class="dashboard-sales-insight-top"><span class="dashboard-sales-insight-icon"><i data-lucide="bar-chart-3"></i></span><span>월 손익마진(택배비 제외)</span></div><strong id="dashboardSalesMargin">-</strong></div>
                 </div>
                 <div class="dashboard-sales-placeholder" id="dashboardSalesMessage">매출현황 및 관리 데이터 연결 대기 중</div>
               </div>
@@ -13042,13 +13068,13 @@ HTML = r"""<!doctype html>
       salesReportMarginDiagnosis.classList.toggle("warn", anomalyCount > 0);
       if (anomalyCount > 0) {
         salesReportMarginDiagnosis.innerHTML = `
-          <strong>마진이 손익매출보다 큰 데이터 ${formatSalesNumber(anomalyCount)}건 확인</strong>
-          <span>${escapeHtml(check.message || "손익 공급금액이 음수이거나 CS/배송비 조정값이 손익마진에 더해진 행이 있어 원본 데이터 확인이 필요합니다.")}</span>
+          <strong>택배비 제외 후 마진 이상 데이터 ${formatSalesNumber(anomalyCount)}건 확인</strong>
+          <span>${escapeHtml(check.message || "손익 공급금액 또는 CS 보정값 때문에 원본 데이터 확인이 필요합니다.")}</span>
         `;
       } else {
         salesReportMarginDiagnosis.innerHTML = `
           <strong>마진 검증 정상</strong>
-          <span>${escapeHtml(check.message || "해당 월 기준으로 손익마진이 손익매출보다 큰 행은 확인되지 않았습니다.")}</span>
+          <span>${escapeHtml(check.message || "택배비 제외 기준으로 손익마진이 손익매출보다 큰 행은 확인되지 않았습니다.")}</span>
         `;
       }
     }
@@ -14136,7 +14162,7 @@ HTML = r"""<!doctype html>
       }
       if (dashboardSalesDecisionNote) {
         dashboardSalesDecisionNote.textContent = hasTodaySalesData
-          ? `월 마진 ${formatSalesCompactMoney(marginAmount)}(${formatSalesPercent(marginRate)}) 기준으로 매출·매입 흐름을 확인하세요.`
+          ? `월 마진 ${formatSalesCompactMoney(marginAmount)}(${formatSalesPercent(marginRate)})는 택배비 제외 기준입니다.`
           : "매출표 업로드 후 손익, 매입, 마진 기준을 바로 확인할 수 있습니다.";
       }
       setDashboardDecisionChip(
@@ -21527,7 +21553,7 @@ ADMIN_WORKSPACE_HTML = r"""
                     </div>
                     <div class="sales-table-scroll">
                       <table class="sales-table">
-                        <thead><tr><th>일자</th><th>수량</th><th>손익매출</th><th>판매합계</th><th>손익마진</th></tr></thead>
+                        <thead><tr><th>일자</th><th>수량</th><th>손익매출</th><th>판매합계</th><th>손익마진(택배비 제외)</th></tr></thead>
                         <tbody id="salesReportDailyBody"></tbody>
                       </table>
                     </div>
@@ -21539,7 +21565,7 @@ ADMIN_WORKSPACE_HTML = r"""
                     </div>
                     <div class="sales-table-scroll">
                       <table class="sales-table">
-                        <thead><tr><th>판매사</th><th>수량</th><th>손익매출</th><th>마진</th></tr></thead>
+                        <thead><tr><th>판매사</th><th>수량</th><th>손익매출</th><th>마진(택배비 제외)</th></tr></thead>
                         <tbody id="salesReportSellerBody"></tbody>
                       </table>
                     </div>
@@ -22606,7 +22632,10 @@ def save_sales_report_snapshot(file_id: int, parsed: dict[str, object]) -> None:
                     ),
                 )
         elif report_type == "seller":
-            connection.execute("DELETE FROM sales_report_seller_rows WHERE period = ?", (period,))
+            if report_date:
+                connection.execute("DELETE FROM sales_report_seller_rows WHERE report_date = ?", (report_date,))
+            else:
+                connection.execute("DELETE FROM sales_report_seller_rows WHERE period = ?", (period,))
             for row in rows:
                 connection.execute(
                     """
@@ -22643,7 +22672,10 @@ def save_sales_report_snapshot(file_id: int, parsed: dict[str, object]) -> None:
                     ),
                 )
         elif report_type == "supplier":
-            connection.execute("DELETE FROM sales_report_supplier_rows WHERE period = ?", (period,))
+            if report_date:
+                connection.execute("DELETE FROM sales_report_supplier_rows WHERE report_date = ?", (report_date,))
+            else:
+                connection.execute("DELETE FROM sales_report_supplier_rows WHERE period = ?", (period,))
             for row in rows:
                 connection.execute(
                     """
@@ -22725,6 +22757,8 @@ def save_sales_report_snapshot(file_id: int, parsed: dict[str, object]) -> None:
 def _sales_report_daily_public(row: sqlite3.Row | None) -> dict[str, object]:
     if row is None:
         return {}
+    profit_shipping = int(row["profit_shipping"] or 0) if "profit_shipping" in row.keys() else 0
+    raw_profit_margin = int(row["profit_margin"] or 0)
     return {
         "report_date": str(row["report_date"] or ""),
         "label": str(row["label"] or ""),
@@ -22733,19 +22767,25 @@ def _sales_report_daily_public(row: sqlite3.Row | None) -> dict[str, object]:
         "sales_total": int(row["sales_total"] or 0),
         "profit_sales_amount": int(row["profit_sales_amount"] or 0),
         "profit_supply_amount": int(row["profit_supply_amount"] or 0),
-        "profit_margin": int(row["profit_margin"] or 0),
+        "profit_shipping": profit_shipping,
+        "raw_profit_margin": raw_profit_margin,
+        "profit_margin": raw_profit_margin - profit_shipping,
         "margin_rate": float(row["margin_rate"] or 0),
     }
 
 
 def _sales_report_named_public(row: sqlite3.Row) -> dict[str, object]:
     name = row["name"] if "name" in row.keys() else row[0]
+    profit_shipping = int(row["profit_shipping"] or 0) if "profit_shipping" in row.keys() else 0
+    raw_profit_margin = int(row["profit_margin"] or 0)
     return {
         "name": str(name or ""),
         "quantity": int(row["quantity"] or 0),
         "sales_amount": int(row["sales_amount"] or 0),
         "profit_sales_amount": int(row["profit_sales_amount"] or 0),
-        "profit_margin": int(row["profit_margin"] or 0),
+        "profit_shipping": profit_shipping,
+        "raw_profit_margin": raw_profit_margin,
+        "profit_margin": raw_profit_margin - profit_shipping,
         "margin_rate": float(row["margin_rate"] or 0),
         "cs_amount": int(row["cs_amount"] or 0) if "cs_amount" in row.keys() else 0,
         "cs_margin": int(row["cs_margin"] or 0) if "cs_margin" in row.keys() else 0,
@@ -22805,7 +22845,11 @@ def sales_report_day_summary_from_sources(connection: sqlite3.Connection, target
     ).fetchone()
     if daily:
         return _sales_report_daily_public(daily)
-    for table_name in ("sales_report_seller_rows", "sales_report_product_rows", "sales_report_supplier_rows"):
+    for table_name, margin_expression in (
+        ("sales_report_seller_rows", "profit_margin - profit_shipping"),
+        ("sales_report_product_rows", "profit_margin"),
+        ("sales_report_supplier_rows", "profit_margin - profit_shipping"),
+    ):
         row = connection.execute(
             f"""
             SELECT ? AS report_date,
@@ -22815,7 +22859,7 @@ def sales_report_day_summary_from_sources(connection: sqlite3.Connection, target
                    COALESCE(SUM(sales_total), 0) AS sales_total,
                    COALESCE(SUM(profit_sales_amount), 0) AS profit_sales_amount,
                    COALESCE(SUM(profit_supply_amount), 0) AS profit_supply_amount,
-                   COALESCE(SUM(profit_margin), 0) AS profit_margin
+                   COALESCE(SUM({margin_expression}), 0) AS profit_margin
               FROM {table_name}
              WHERE report_date = ?
             """,
@@ -22904,17 +22948,17 @@ def sales_report_margin_check(connection: sqlite3.Connection, period: str) -> di
                profit_shipping, cs_margin, profit_margin
           FROM (
                 SELECT '일자별' AS kind, label AS name, report_date, profit_sales_amount,
-                       profit_supply_amount, profit_shipping, cs_margin, profit_margin
+                       profit_supply_amount, profit_shipping, cs_margin, profit_margin - profit_shipping AS profit_margin
                   FROM sales_report_daily_rows
                  WHERE period = ?
                 UNION ALL
                 SELECT '매출처' AS kind, seller_name AS name, report_date, profit_sales_amount,
-                       profit_supply_amount, profit_shipping, cs_margin, profit_margin
+                       profit_supply_amount, profit_shipping, cs_margin, profit_margin - profit_shipping AS profit_margin
                   FROM sales_report_seller_rows
                  WHERE period = ?
                 UNION ALL
                 SELECT '매입처' AS kind, supplier_name AS name, report_date, profit_sales_amount,
-                       profit_supply_amount, profit_shipping, cs_margin, profit_margin
+                       profit_supply_amount, profit_shipping, cs_margin, profit_margin - profit_shipping AS profit_margin
                   FROM sales_report_supplier_rows
                  WHERE period = ?
                 UNION ALL
@@ -22930,20 +22974,16 @@ def sales_report_margin_check(connection: sqlite3.Connection, period: str) -> di
     ).fetchall()
     anomaly_count = len(rows)
     negative_supply_count = sum(1 for row in rows if int(row["profit_supply_amount"] or 0) < 0)
-    positive_shipping_count = sum(1 for row in rows if int(row["profit_shipping"] or 0) > 0)
     positive_cs_count = sum(1 for row in rows if int(row["cs_margin"] or 0) > 0)
     zero_sales_count = sum(1 for row in rows if int(row["profit_sales_amount"] or 0) == 0 and int(row["profit_margin"] or 0) > 0)
-    shipping_total = sum(int(row["profit_shipping"] or 0) for row in rows if int(row["profit_shipping"] or 0) > 0)
     over_amount = sum(int(row["profit_margin"] or 0) - int(row["profit_sales_amount"] or 0) for row in rows)
     if not anomaly_count:
         return {
             "anomaly_count": 0,
-            "message": "해당 월 기준으로 손익마진이 손익매출보다 큰 행은 확인되지 않았습니다.",
+            "message": "택배비 제외 기준으로 손익마진이 손익매출보다 큰 행은 확인되지 않았습니다.",
             "examples": [],
         }
     reasons: list[str] = []
-    if positive_shipping_count:
-        reasons.append(f"손익-배송비가 양수인 행 {positive_shipping_count}건(합계 {shipping_total:,}원)")
     if negative_supply_count:
         reasons.append(f"손익 공급금액이 음수인 행 {negative_supply_count}건")
     if positive_cs_count:
@@ -22951,13 +22991,13 @@ def sales_report_margin_check(connection: sqlite3.Connection, period: str) -> di
     if zero_sales_count:
         reasons.append(f"손익매출이 0인데 마진만 양수인 행 {zero_sales_count}건")
     if not reasons:
-        reasons.append("원본 손익 계산 컬럼의 판매금액/공급금액/배송비/CS 보정값 확인 필요")
+        reasons.append("원본 손익 계산 컬럼의 판매금액/공급금액/CS 보정값 확인 필요")
     return {
         "anomaly_count": anomaly_count,
         "over_amount": over_amount,
-        "message": "마진이 손익매출보다 큰 행은 일반적인 매출-원가 구조에서는 비정상 신호입니다. "
+        "message": "택배비 제외 후에도 마진이 손익매출보다 큰 행은 원본 데이터 확인이 필요한 신호입니다. "
                    + ", ".join(reasons)
-                   + "이 원인일 수 있습니다. 현재 원본의 손익마진은 손익-판매마진에 배송비 손익이 포함되는 구조로 보이므로, 손익매출과 단순 비교하면 마진이 더 크게 보일 수 있습니다.",
+                   + "이 원인일 수 있습니다. 화면의 손익마진은 손익-배송비를 제외해 계산합니다.",
         "examples": [
             {
                 "kind": str(row["kind"] or ""),
@@ -22993,7 +23033,8 @@ def sales_report_detail_payload(kind: str, key: str, period: str = "") -> dict[s
             ).fetchone()
             seller_rows = connection.execute(
                 """
-                SELECT seller_name, quantity, profit_sales_amount, sales_total, profit_margin
+                SELECT seller_name, quantity, profit_sales_amount, sales_total,
+                       profit_margin - profit_shipping AS profit_margin
                   FROM sales_report_seller_rows
                  WHERE period = ? AND report_date = ?
                  ORDER BY profit_sales_amount DESC, quantity DESC, seller_name COLLATE NOCASE
@@ -23009,12 +23050,12 @@ def sales_report_detail_payload(kind: str, key: str, period: str = "") -> dict[s
                     _sales_detail_metric("수량", int(summary["quantity"] or 0) if summary else 0),
                     _sales_detail_metric("손익매출", int(summary["profit_sales_amount"] or 0) if summary else 0),
                     _sales_detail_metric("판매합계", int(summary["sales_total"] or 0) if summary else 0),
-                    _sales_detail_metric("손익마진", int(summary["profit_margin"] or 0) if summary else 0),
+                    _sales_detail_metric("손익마진(택배비 제외)", int((summary["profit_margin"] or 0) - (summary["profit_shipping"] or 0)) if summary else 0),
                 ],
                 "sections": [
                     {
                         "title": "업체별 매출",
-                        "headers": ["판매사", "수량", "손익매출", "판매합계", "손익마진"],
+                        "headers": ["판매사", "수량", "손익매출", "판매합계", "손익마진(택배비 제외)"],
                         "rows": [
                             [
                                 str(row["seller_name"] or ""),
@@ -23139,7 +23180,7 @@ def sales_report_detail_payload(kind: str, key: str, period: str = "") -> dict[s
                        COALESCE(SUM({amount_column}), 0) AS amount,
                        COALESCE(SUM(profit_sales_amount), 0) AS profit_sales_amount,
                        COALESCE(SUM(supply_total), 0) AS supply_total,
-                       COALESCE(SUM(profit_margin), 0) AS profit_margin
+                       COALESCE(SUM(profit_margin - profit_shipping), 0) AS profit_margin
                   FROM {table_name}
                  WHERE period = ? AND {name_column} = ?
                  GROUP BY report_date
@@ -23158,13 +23199,13 @@ def sales_report_detail_payload(kind: str, key: str, period: str = "") -> dict[s
                 "metrics": [
                     _sales_detail_metric("수량", total_quantity),
                     _sales_detail_metric("매출금액" if is_seller else "매입금액", total_amount),
-                    _sales_detail_metric("손익마진", total_margin),
+                    _sales_detail_metric("손익마진(택배비 제외)", total_margin),
                     _sales_detail_metric("데이터 행", len(rows)),
                 ],
                 "sections": [
                     {
                         "title": "일자별 매출현황" if is_seller else "일자별 매입현황",
-                        "headers": ["일자", "수량", "매출금액" if is_seller else "매입금액", "손익매출", "매입합계", "손익마진"],
+                        "headers": ["일자", "수량", "매출금액" if is_seller else "매입금액", "손익매출", "매입합계", "손익마진(택배비 제외)"],
                         "rows": [
                             [
                                 str(row["report_date"] or "월 집계"),
@@ -23242,7 +23283,7 @@ def sales_report_dashboard_payload(period: str = "", report_date: str = "") -> d
                    COALESCE(SUM(sales_total), 0) AS sales_total,
                    COALESCE(SUM(profit_sales_amount), 0) AS profit_sales_amount,
                    COALESCE(SUM(profit_supply_amount), 0) AS profit_supply_amount,
-                   COALESCE(SUM(profit_margin), 0) AS profit_margin
+                   COALESCE(SUM(profit_margin - profit_shipping), 0) AS profit_margin
               FROM sales_report_daily_rows
              WHERE period = ?
             """,
@@ -23253,7 +23294,7 @@ def sales_report_dashboard_payload(period: str = "", report_date: str = "") -> d
             SELECT COALESCE(SUM(quantity), 0) AS quantity,
                    COALESCE(SUM(sales_total), 0) AS sales_total,
                    COALESCE(SUM(profit_sales_amount), 0) AS profit_sales_amount,
-                   COALESCE(SUM(profit_margin), 0) AS profit_margin
+                   COALESCE(SUM(profit_margin - profit_shipping), 0) AS profit_margin
               FROM sales_report_daily_rows
              WHERE period = ?
             """,
@@ -23264,7 +23305,7 @@ def sales_report_dashboard_payload(period: str = "", report_date: str = "") -> d
             SELECT COALESCE(SUM(quantity), 0) AS quantity,
                    COALESCE(SUM(sales_amount), 0) AS sales_amount,
                    COALESCE(SUM(profit_sales_amount), 0) AS profit_sales_amount,
-                   COALESCE(SUM(profit_margin), 0) AS profit_margin
+                   COALESCE(SUM(profit_margin - profit_shipping), 0) AS profit_margin
               FROM sales_report_seller_rows
              WHERE period = ?
             """,
@@ -23274,7 +23315,7 @@ def sales_report_dashboard_payload(period: str = "", report_date: str = "") -> d
             """
             SELECT COALESCE(SUM(quantity), 0) AS quantity,
                    COALESCE(SUM(profit_sales_amount), 0) AS profit_sales_amount,
-                   COALESCE(SUM(profit_margin), 0) AS profit_margin
+                   COALESCE(SUM(profit_margin - profit_shipping), 0) AS profit_margin
               FROM sales_report_seller_rows
              WHERE period = ?
             """,
@@ -23321,7 +23362,7 @@ def sales_report_dashboard_payload(period: str = "", report_date: str = "") -> d
         daily_rows = connection.execute(
             """
             SELECT report_date, label, quantity, sales_amount, sales_total, profit_sales_amount,
-                   profit_supply_amount, profit_margin, margin_rate
+                   profit_supply_amount, profit_shipping, profit_margin, margin_rate
               FROM sales_report_daily_rows
              WHERE period = ?
              ORDER BY report_date DESC
@@ -23331,7 +23372,7 @@ def sales_report_dashboard_payload(period: str = "", report_date: str = "") -> d
         seller_rows = connection.execute(
             """
             SELECT seller_name AS name, quantity, sales_amount, profit_sales_amount,
-                   profit_margin, margin_rate, cs_amount, cs_margin
+                   profit_shipping, profit_margin, margin_rate, cs_amount, cs_margin
               FROM sales_report_seller_rows
              WHERE period = ?
              ORDER BY profit_sales_amount DESC, quantity DESC, seller_name COLLATE NOCASE

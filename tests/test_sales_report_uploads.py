@@ -390,6 +390,48 @@ class SalesReportUploadTests(unittest.TestCase):
         self.assertEqual(check["anomaly_count"], 1)
         self.assertIn("손익 공급금액", check["message"])
 
+    def test_date_based_seller_uploads_preserve_previous_days(self) -> None:
+        base = Path(self.tempdir.name)
+        day23 = base / "seller-2026-06-23.xlsx"
+        day24 = base / "seller-2026-06-24.xlsx"
+        day23.write_text("placeholder", encoding="utf-8")
+        day24.write_text("placeholder", encoding="utf-8")
+
+        original_detect = self.app.detect_sales_report_type
+        original_parse = self.app.parse_sales_report_file
+
+        def fake_detect(path: Path, original_name: str = "") -> str:
+            return "seller"
+
+        def fake_parse(path: Path, original_name: str = "") -> dict[str, object]:
+            report_date = "2026-06-23" if "23" in original_name else "2026-06-24"
+            return {
+                "report_type": "seller",
+                "report_date": report_date,
+                "period": "2026-06",
+                "rows": [{"name": "A판매사", "quantity": 1, "profit_sales_amount": 100, "profit_margin": 80}],
+            }
+
+        try:
+            self.app.detect_sales_report_type = fake_detect
+            self.app.parse_sales_report_file = fake_parse
+            self.app.save_sales_report_file(day23, day23.name, "admin")
+            self.app.save_sales_report_file(day24, day24.name, "admin")
+        finally:
+            self.app.detect_sales_report_type = original_detect
+            self.app.parse_sales_report_file = original_parse
+
+        connection = self.app.connect_db()
+        try:
+            rows = connection.execute(
+                "SELECT report_date FROM sales_report_seller_rows WHERE period = ? ORDER BY report_date",
+                ("2026-06",),
+            ).fetchall()
+        finally:
+            connection.close()
+
+        self.assertEqual([row["report_date"] for row in rows], ["2026-06-23", "2026-06-24"])
+
     def test_sales_dimension_reports_without_date_inherit_latest_daily_context(self) -> None:
         base = Path(self.tempdir.name)
         daily = base / "daily.xlsx"
