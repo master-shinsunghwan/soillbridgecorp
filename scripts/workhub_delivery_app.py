@@ -23033,19 +23033,21 @@ def sales_report_detail_payload(kind: str, key: str, period: str = "") -> dict[s
             ).fetchone()
             seller_rows = connection.execute(
                 """
-                SELECT seller_name, quantity, profit_sales_amount, sales_total,
-                       profit_margin - profit_shipping AS profit_margin
-                  FROM sales_report_seller_rows
-                 WHERE period = ? AND report_date = ?
-                 ORDER BY profit_sales_amount DESC, quantity DESC, seller_name COLLATE NOCASE
+                SELECT COALESCE(NULLIF(sales_vendor, ''), '판매처 미입력') AS seller_name,
+                       COUNT(*) AS order_count,
+                       COALESCE(SUM(CAST(REPLACE(quantity, ',', '') AS INTEGER)), 0) AS quantity
+                  FROM management_records
+                 WHERE substr(COALESCE(NULLIF(ship_date, ''), NULLIF(order_date, '')), 1, 10) = ?
+                 GROUP BY COALESCE(NULLIF(sales_vendor, ''), '판매처 미입력')
+                 ORDER BY quantity DESC, order_count DESC, seller_name COLLATE NOCASE
                 """,
-                (selected_period, detail_key),
+                (detail_key,),
             ).fetchall()
             return {
                 "kind": "daily",
-                "title": f"{detail_key} 업체별 매출",
+                "title": f"{detail_key} 판매사별 당일 현황",
                 "period": selected_period,
-                "note": "해당 날짜가 들어있는 매출처별 업로드 데이터만 표시합니다. 월 집계 파일만 업로드된 경우 날짜별 업체 분해가 없을 수 있습니다.",
+                "note": "통합관리대장의 출고일 또는 주문일이 해당 날짜인 건만 표시합니다.",
                 "metrics": [
                     _sales_detail_metric("수량", int(summary["quantity"] or 0) if summary else 0),
                     _sales_detail_metric("손익매출", int(summary["profit_sales_amount"] or 0) if summary else 0),
@@ -23054,37 +23056,22 @@ def sales_report_detail_payload(kind: str, key: str, period: str = "") -> dict[s
                 ],
                 "sections": [
                     {
-                        "title": "업체별 매출",
-                        "headers": ["판매사", "수량", "손익매출", "판매합계", "손익마진(택배비 제외)"],
+                        "title": "해당 날짜 판매사별 발생 건",
+                        "headers": ["판매사", "주문건수", "판매수량"],
                         "rows": [
                             [
                                 str(row["seller_name"] or ""),
+                                int(row["order_count"] or 0),
                                 int(row["quantity"] or 0),
-                                int(row["profit_sales_amount"] or 0),
-                                int(row["sales_total"] or 0),
-                                int(row["profit_margin"] or 0),
                             ]
                             for row in seller_rows
                         ],
-                        "empty": "해당 날짜의 업체별 매출 데이터가 없습니다.",
+                        "empty": "해당 날짜에 발생한 판매사별 주문/출고 데이터가 없습니다.",
                     }
                 ],
             }
 
         if detail_kind == "product":
-            product_rows = connection.execute(
-                """
-                SELECT report_date,
-                       COALESCE(SUM(quantity), 0) AS quantity,
-                       COALESCE(SUM(profit_sales_amount), 0) AS profit_sales_amount,
-                       COALESCE(SUM(profit_margin), 0) AS profit_margin
-                  FROM sales_report_product_rows
-                 WHERE period = ? AND product_name = ? AND product_name NOT LIKE ?
-                 GROUP BY report_date
-                 ORDER BY report_date DESC
-                """,
-                (selected_period, detail_key, SALES_REPORT_PRODUCT_EXCLUDE_PATTERN),
-            ).fetchall()
             shipment_rows = connection.execute(
                 """
                 WITH source AS (
@@ -23123,30 +23110,19 @@ def sales_report_detail_payload(kind: str, key: str, period: str = "") -> dict[s
                 """,
                 (f"{selected_period}%", detail_key, detail_key, detail_key),
             ).fetchall()
-            total_quantity = sum(int(row["quantity"] or 0) for row in product_rows)
-            total_sales = sum(int(row["profit_sales_amount"] or 0) for row in product_rows)
-            total_margin = sum(int(row["profit_margin"] or 0) for row in product_rows)
+            shipped_quantity = sum(int(row["quantity"] or 0) for row in shipment_rows)
+            seller_count = len(seller_rows)
             return {
                 "kind": "product",
                 "title": f"{detail_key} 상세",
                 "period": selected_period,
-                "note": "매출표 상품별 데이터는 일자별 손익을, 통합관리대장 데이터는 출고일/판매처별 수량을 기준으로 표시합니다.",
+                "note": "통합관리대장의 해당 월 출고일과 판매처별 수량만 표시합니다.",
                 "metrics": [
-                    _sales_detail_metric("매출표 수량", total_quantity),
-                    _sales_detail_metric("손익매출", total_sales),
-                    _sales_detail_metric("손익마진", total_margin),
-                    _sales_detail_metric("출고 수량", sum(int(row["quantity"] or 0) for row in shipment_rows)),
+                    _sales_detail_metric("출고 수량", shipped_quantity),
+                    _sales_detail_metric("출고 일수", len(shipment_rows)),
+                    _sales_detail_metric("판매처 수", seller_count),
                 ],
                 "sections": [
-                    {
-                        "title": "일자별 상품 손익",
-                        "headers": ["일자", "수량", "손익매출", "손익마진"],
-                        "rows": [
-                            [str(row["report_date"] or "월 집계"), int(row["quantity"] or 0), int(row["profit_sales_amount"] or 0), int(row["profit_margin"] or 0)]
-                            for row in product_rows
-                        ],
-                        "empty": "해당 상품의 일자별 매출표 데이터가 없습니다.",
-                    },
                     {
                         "title": "일자별 출고 현황",
                         "headers": ["출고일", "주문건수", "출고수량"],
@@ -23173,51 +23149,63 @@ def sales_report_detail_payload(kind: str, key: str, period: str = "") -> dict[s
             table_name = "sales_report_seller_rows" if is_seller else "sales_report_supplier_rows"
             name_column = "seller_name" if is_seller else "supplier_name"
             amount_column = "profit_sales_amount" if is_seller else "supply_total"
-            rows = connection.execute(
+            sales_summary = connection.execute(
                 f"""
-                SELECT report_date,
-                       COALESCE(SUM(quantity), 0) AS quantity,
+                SELECT COALESCE(SUM(quantity), 0) AS quantity,
                        COALESCE(SUM({amount_column}), 0) AS amount,
-                       COALESCE(SUM(profit_sales_amount), 0) AS profit_sales_amount,
-                       COALESCE(SUM(supply_total), 0) AS supply_total,
                        COALESCE(SUM(profit_margin - profit_shipping), 0) AS profit_margin
                   FROM {table_name}
                  WHERE period = ? AND {name_column} = ?
-                 GROUP BY report_date
-                 ORDER BY report_date DESC
                 """,
                 (selected_period, detail_key),
+            ).fetchone()
+            vendor_column = "sales_vendor" if is_seller else "purchase_vendor"
+            rows = connection.execute(
+                f"""
+                WITH source AS (
+                    SELECT COALESCE(NULLIF(ship_date, ''), NULLIF(order_date, '')) AS activity_date,
+                           quantity
+                      FROM management_records
+                     WHERE COALESCE(NULLIF(ship_date, ''), NULLIF(order_date, '')) LIKE ?
+                       AND {vendor_column} = ?
+                )
+                SELECT substr(activity_date, 1, 10) AS activity_date,
+                       COUNT(*) AS order_count,
+                       COALESCE(SUM(CAST(REPLACE(quantity, ',', '') AS INTEGER)), 0) AS quantity
+                  FROM source
+                 GROUP BY substr(activity_date, 1, 10)
+                 ORDER BY activity_date ASC
+                """,
+                (f"{selected_period}%", detail_key),
             ).fetchall()
             total_quantity = sum(int(row["quantity"] or 0) for row in rows)
-            total_amount = sum(int(row["amount"] or 0) for row in rows)
-            total_margin = sum(int(row["profit_margin"] or 0) for row in rows)
+            total_orders = sum(int(row["order_count"] or 0) for row in rows)
+            total_amount = int(sales_summary["amount"] or 0) if sales_summary else 0
+            total_margin = int(sales_summary["profit_margin"] or 0) if sales_summary else 0
             return {
                 "kind": detail_kind,
-                "title": f"{detail_key} {'매출' if is_seller else '매입'} 현황",
+                "title": f"{detail_key} {'매출처' if is_seller else '매입처'} 월 전체 현황",
                 "period": selected_period,
-                "note": "해당 월 안에서 업로드된 거래처 행만 집계합니다. 월 집계 파일은 일자가 파일 기준일 또는 월 집계로 표시될 수 있습니다.",
+                "note": "일자별 현황은 통합관리대장의 해당 월 전체 주문/출고일 기준으로 표시합니다.",
                 "metrics": [
-                    _sales_detail_metric("수량", total_quantity),
+                    _sales_detail_metric("주문건수", total_orders),
+                    _sales_detail_metric("관리대장 수량", total_quantity),
                     _sales_detail_metric("매출금액" if is_seller else "매입금액", total_amount),
                     _sales_detail_metric("손익마진(택배비 제외)", total_margin),
-                    _sales_detail_metric("데이터 행", len(rows)),
                 ],
                 "sections": [
                     {
                         "title": "일자별 매출현황" if is_seller else "일자별 매입현황",
-                        "headers": ["일자", "수량", "매출금액" if is_seller else "매입금액", "손익매출", "매입합계", "손익마진(택배비 제외)"],
+                        "headers": ["일자", "주문건수", "수량"],
                         "rows": [
                             [
-                                str(row["report_date"] or "월 집계"),
+                                str(row["activity_date"] or ""),
+                                int(row["order_count"] or 0),
                                 int(row["quantity"] or 0),
-                                int(row["amount"] or 0),
-                                int(row["profit_sales_amount"] or 0),
-                                int(row["supply_total"] or 0),
-                                int(row["profit_margin"] or 0),
                             ]
                             for row in rows
                         ],
-                        "empty": "해당 거래처의 일자별 데이터가 없습니다.",
+                        "empty": "해당 거래처의 월 전체 관리대장 데이터가 없습니다.",
                     }
                 ],
             }
@@ -23371,10 +23359,18 @@ def sales_report_dashboard_payload(period: str = "", report_date: str = "") -> d
         ).fetchall()
         seller_rows = connection.execute(
             """
-            SELECT seller_name AS name, quantity, sales_amount, profit_sales_amount,
-                   profit_shipping, profit_margin, margin_rate, cs_amount, cs_margin
+            SELECT seller_name AS name,
+                   COALESCE(SUM(quantity), 0) AS quantity,
+                   COALESCE(SUM(sales_amount), 0) AS sales_amount,
+                   COALESCE(SUM(profit_sales_amount), 0) AS profit_sales_amount,
+                   COALESCE(SUM(profit_shipping), 0) AS profit_shipping,
+                   COALESCE(SUM(profit_margin), 0) AS profit_margin,
+                   0 AS margin_rate,
+                   COALESCE(SUM(cs_amount), 0) AS cs_amount,
+                   COALESCE(SUM(cs_margin), 0) AS cs_margin
               FROM sales_report_seller_rows
              WHERE period = ?
+             GROUP BY seller_name
              ORDER BY profit_sales_amount DESC, quantity DESC, seller_name COLLATE NOCASE
             """,
             (selected_period,),

@@ -334,18 +334,18 @@ class SalesReportUploadTests(unittest.TestCase):
             connection.execute(
                 """
                 INSERT INTO management_records
-                    (created_at, source_file, source_sheet, source_row, sales_vendor, order_date, ship_date, product_name, quantity)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    (created_at, source_file, source_sheet, source_row, sales_vendor, purchase_vendor, order_date, ship_date, product_name, quantity)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
-                ("2026-06-20", "manual", "sheet", 1, "A판매사", "2026-06-19", "2026-06-19", "테스트 상품 A", "3"),
+                ("2026-06-20", "manual", "sheet", 1, "A판매사", "공급사A", "2026-06-19", "2026-06-19", "테스트 상품 A", "3"),
             )
             connection.execute(
                 """
                 INSERT INTO management_records
-                    (created_at, source_file, source_sheet, source_row, sales_vendor, order_date, ship_date, product_name, quantity)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    (created_at, source_file, source_sheet, source_row, sales_vendor, purchase_vendor, order_date, ship_date, product_name, quantity)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
-                ("2026-07-01", "manual", "sheet", 2, "A판매사", "2026-07-01", "2026-07-01", "테스트 상품 A", "99"),
+                ("2026-07-01", "manual", "sheet", 2, "A판매사", "공급사A", "2026-07-01", "2026-07-01", "테스트 상품 A", "99"),
             )
             connection.commit()
         finally:
@@ -356,11 +356,12 @@ class SalesReportUploadTests(unittest.TestCase):
         seller_detail = self.app.sales_report_detail_payload("seller", "A판매사", "2026-06")
         supplier_detail = self.app.sales_report_detail_payload("supplier", "공급사A", "2026-06")
 
-        self.assertEqual(daily_detail["sections"][0]["rows"][0][0], "A판매사")
-        self.assertEqual(product_detail["sections"][1]["rows"][0], ["2026-06-19", 1, 3])
-        self.assertEqual(product_detail["sections"][2]["rows"][0], ["A판매사", 1, 3])
-        self.assertEqual(seller_detail["sections"][0]["rows"][0][0], "2026-06-19")
-        self.assertEqual(supplier_detail["sections"][0]["rows"][0][0], "2026-06-19")
+        self.assertEqual(daily_detail["sections"][0]["rows"][0], ["A판매사", 1, 3])
+        self.assertNotIn("일자별 상품 손익", [section["title"] for section in product_detail["sections"]])
+        self.assertEqual(product_detail["sections"][0]["rows"][0], ["2026-06-19", 1, 3])
+        self.assertEqual(product_detail["sections"][1]["rows"][0], ["A판매사", 1, 3])
+        self.assertEqual(seller_detail["sections"][0]["rows"], [["2026-06-19", 1, 3]])
+        self.assertEqual(supplier_detail["sections"][0]["rows"], [["2026-06-19", 1, 3]])
 
     def test_sales_report_margin_check_flags_margin_over_sales(self) -> None:
         connection = self.app.connect_db()
@@ -431,6 +432,12 @@ class SalesReportUploadTests(unittest.TestCase):
             connection.close()
 
         self.assertEqual([row["report_date"] for row in rows], ["2026-06-23", "2026-06-24"])
+
+        dashboard = self.app.sales_report_dashboard_payload("2026-06", "2026-06-24")
+        self.assertEqual(len(dashboard["seller_top"]), 1)
+        self.assertEqual(dashboard["seller_top"][0]["name"], "A판매사")
+        self.assertEqual(dashboard["seller_top"][0]["quantity"], 2)
+        self.assertEqual(dashboard["seller_top"][0]["profit_sales_amount"], 200)
 
     def test_sales_report_date_from_upload_name_uses_stored_timestamp(self) -> None:
         parsed = self.app.sales_report_date_from_upload_name(
