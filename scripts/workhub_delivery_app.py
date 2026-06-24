@@ -2544,9 +2544,29 @@ HTML = r"""<!doctype html>
       overflow-x: auto;
       overflow-y: scroll;
       scrollbar-gutter: stable;
+      scrollbar-width: thin;
+      scrollbar-color: color-mix(in srgb, var(--detail-color) 55%, #94a3b8) #eef2f7;
     }
     .sales-detail-body.multi-section .sales-detail-table-wrap {
-      height: 170px;
+      height: 165px;
+      max-height: 165px;
+    }
+    .sales-detail-table-wrap::-webkit-scrollbar {
+      width: 12px;
+      height: 12px;
+    }
+    .sales-detail-table-wrap::-webkit-scrollbar-track {
+      background: #eef2f7;
+      border-left: 1px solid #e2e8f0;
+    }
+    .sales-detail-table-wrap::-webkit-scrollbar-thumb {
+      min-height: 42px;
+      border: 3px solid #eef2f7;
+      border-radius: 999px;
+      background: color-mix(in srgb, var(--detail-color) 55%, #94a3b8);
+    }
+    .sales-detail-table-wrap::-webkit-scrollbar-thumb:hover {
+      background: var(--detail-color);
     }
     .sales-detail-table {
       width: 100%;
