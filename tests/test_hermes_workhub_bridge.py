@@ -72,3 +72,26 @@ class HermesWorkhubBridgeTests(unittest.TestCase):
             bridge.requested_intent({"message": "최신 자료 조사해줘"}, "automation"),
             "",
         )
+
+    def test_bridge_uses_shared_hermes_backend_for_tool_intents_by_default(self) -> None:
+        bridge = load_bridge_module()
+
+        bridge.AI_TOOL_PROVIDER = "hermes"
+        bridge.OPENAI_API_KEY = ""
+        self.assertFalse(bridge.should_use_openai_for_intent("web_search"))
+        self.assertFalse(bridge.should_use_openai_for_intent("image_generation"))
+
+        bridge.AI_TOOL_PROVIDER = "openai"
+        self.assertTrue(bridge.should_use_openai_for_intent("web_search"))
+
+        bridge.AI_TOOL_PROVIDER = "auto"
+        bridge.OPENAI_API_KEY = "set"
+        self.assertTrue(bridge.should_use_openai_for_intent("image_generation"))
+
+    def test_bridge_prompt_marks_shared_tool_intent_for_hermes(self) -> None:
+        bridge = load_bridge_module()
+
+        prompt = bridge.build_prompt({"message": "최신 자료 조사해줘", "intent": "web_search"}, "chat")
+
+        self.assertIn("Requested tool intent: web_search", prompt)
+        self.assertIn("shared Hermes research/search backend", prompt)

@@ -19,6 +19,7 @@ REQUEST_TIMEOUT = int(os.environ.get("HERMES_BRIDGE_TIMEOUT", "240"))
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "").strip()
 OPENAI_TEXT_MODEL = os.environ.get("OPENAI_TEXT_MODEL", "gpt-5.5")
 OPENAI_IMAGE_MODEL = os.environ.get("OPENAI_IMAGE_MODEL", "gpt-image-2")
+AI_TOOL_PROVIDER = os.environ.get("WORKHUB_AI_TOOL_PROVIDER", "hermes").strip().lower()
 
 
 def normalize_token(value: str) -> str:
@@ -49,6 +50,12 @@ def build_prompt(payload: dict[str, Any], mode: str) -> str:
     capability_text = ""
     if isinstance(capabilities, dict) and capabilities:
         capability_text = "\n\nAvailable Workhub AI capabilities:\n" + json.dumps(capabilities, ensure_ascii=False, indent=2)[:2000]
+    intent = str(payload.get("intent") or "").strip().lower()
+    intent_text = ""
+    if intent == "web_search":
+        intent_text = "\n\nRequested tool intent: web_search. Use the shared Hermes research/search backend when available."
+    elif intent == "image_generation":
+        intent_text = "\n\nRequested tool intent: image_generation. Use the shared Hermes image-generation backend when available."
     if mode == "automation":
         title = str(payload.get("title") or "Workhub automation request").strip()
         body = str(payload.get("body") or payload.get("message") or "").strip()
@@ -59,7 +66,7 @@ def build_prompt(payload: dict[str, Any], mode: str) -> str:
             "If the user asks for code or UI implementation, summarize the request and say Codex/developer work is needed.\n\n"
             f"Title: {title}\n"
             f"Request:\n{body}"
-            f"{context_text}{capability_text}"
+            f"{context_text}{capability_text}{intent_text}"
         )
     message = str(payload.get("message") or payload.get("prompt") or "").strip()
     return (
@@ -69,7 +76,7 @@ def build_prompt(payload: dict[str, Any], mode: str) -> str:
         "Use the provided Workhub context when it helps, but do not modify Workhub data.\n"
         "If the user asks for code or UI implementation, summarize the request and say Codex/developer work is needed.\n\n"
         f"Workhub message:\n{message}"
-        f"{context_text}{capability_text}"
+        f"{context_text}{capability_text}{intent_text}"
     )
 
 
@@ -175,6 +182,16 @@ def run_openai_image_generation(payload: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def should_use_openai_for_intent(intent: str) -> bool:
+    if intent not in {"web_search", "image_generation"}:
+        return False
+    if AI_TOOL_PROVIDER in {"hermes", "shared", "slack", "slack_hermes"}:
+        return False
+    if AI_TOOL_PROVIDER in {"openai", "api"}:
+        return True
+    return bool(OPENAI_API_KEY)
+
+
 def requested_intent(payload: dict[str, Any], mode: str) -> str:
     explicit = str(payload.get("intent") or "").strip().lower()
     if explicit in {"web_search", "image_generation"}:
@@ -227,10 +244,10 @@ class WorkhubHermesBridgeHandler(BaseHTTPRequestHandler):
         try:
             payload = self.read_payload()
             intent = requested_intent(payload, mode)
-            if intent == "web_search":
+            if intent == "web_search" and should_use_openai_for_intent(intent):
                 self.send_json(200, run_openai_web_search(payload))
                 return
-            if intent == "image_generation":
+            if intent == "image_generation" and should_use_openai_for_intent(intent):
                 self.send_json(200, run_openai_image_generation(payload))
                 return
             prompt = build_prompt(payload, mode)

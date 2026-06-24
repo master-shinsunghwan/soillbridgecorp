@@ -30139,8 +30139,8 @@ def hermes_capabilities_payload(intent: str = "chat") -> dict[str, object]:
         "chat": True,
         "workhub_context": True,
         "automation_planning": True,
-        "web_search": "OpenAI Responses API web_search when OPENAI_API_KEY is configured",
-        "image_generation": "OpenAI Images API when OPENAI_API_KEY is configured",
+        "web_search": "Hermes shared backend by default; OpenAI web_search only when WORKHUB_AI_TOOL_PROVIDER=openai",
+        "image_generation": "Hermes shared backend by default; OpenAI image API only when WORKHUB_AI_TOOL_PROVIDER=openai",
         "requested_intent": intent,
     }
 
