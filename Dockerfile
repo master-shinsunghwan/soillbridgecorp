@@ -9,6 +9,9 @@ ENV WORKHUB_DATA_DIR=/data
 WORKDIR /app
 
 COPY requirements.txt /app/requirements.txt
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates rclone \
+    && rm -rf /var/lib/apt/lists/*
 RUN pip install --no-cache-dir -r /app/requirements.txt
 
 COPY scripts /app/scripts

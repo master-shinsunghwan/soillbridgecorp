@@ -24,9 +24,12 @@ from datetime import date, datetime, timedelta
 from email.message import EmailMessage
 from email.utils import formataddr
 from html import escape as html_escape
+from html.parser import HTMLParser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, quote, unquote, urlsplit
+import urllib.error
+import urllib.request
 
 from openpyxl import Workbook, load_workbook
 from openpyxl.utils import get_column_letter
@@ -74,11 +77,15 @@ ORDER_DOWNLOAD_DIR = DOWNLOAD_DIR / "order_outputs"
 ORDER_DOWNLOAD_HISTORY_PATH = ORDER_DOWNLOAD_DIR / "history.json"
 ORDER_DOWNLOAD_LIMIT = 10
 SHARED_FILE_DIR = RUNTIME_ROOT / "shared_files"
+SALES_REPORT_DIR = RUNTIME_ROOT / "sales_reports"
 CONFIG_DIR = RUNTIME_ROOT / "config"
 DB_PATH = CONFIG_DIR / "workhub.db"
 MAIL_SETTINGS_PATH = CONFIG_DIR / "mail_settings.json"
 VENDOR_CONTACTS_PATH = CONFIG_DIR / "vendor_contacts.json"
 CRM_WEBHOOK_TOKEN_PATH = CONFIG_DIR / "crm_webhook_token.txt"
+BACKUP_SETTINGS_PATH = CONFIG_DIR / "backup_settings.json"
+HERMES_SETTINGS_PATH = CONFIG_DIR / "hermes_settings.json"
+HERMES_HISTORY_PATH = CONFIG_DIR / "hermes_history.jsonl"
 BACKUP_DIR = Path(os.environ.get("WORKHUB_BACKUP_DIR", str(RUNTIME_ROOT / "backups")))
 LUCIDE_DIR = ROOT / "node_modules" / "lucide"
 STATIC_DIR = ROOT / "static"
@@ -99,8 +106,30 @@ SECRET_KEY_PATH = CONFIG_DIR / "secret.key"
 TOKEN_PREFIX_DPAPI = "dpapi:"
 TOKEN_PREFIX_KEY = "key1:"
 SESSION_COOKIE_NAME = "workhub_session"
-SESSION_SECONDS = 60 * 60 * 12
-SESSION_IDLE_SECONDS = 60 * 60 * 2
+
+
+def env_bool(name: str, default: bool = False) -> bool:
+    value = os.environ.get(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def env_int(name: str, default: int, minimum: int = 1) -> int:
+    try:
+        return max(minimum, int(str(os.environ.get(name, default)).strip()))
+    except (TypeError, ValueError):
+        return default
+
+
+WORKHUB_ENV = os.environ.get("WORKHUB_ENV", "development").strip().lower()
+WORKHUB_PRODUCTION = WORKHUB_ENV in {"prod", "production"}
+SESSION_SECONDS = env_int("WORKHUB_SESSION_SECONDS", 60 * 60 * 12, minimum=60)
+SESSION_IDLE_SECONDS = env_int("WORKHUB_SESSION_IDLE_SECONDS", 60 * 60 * 2, minimum=60)
+WORKHUB_COOKIE_SECURE = env_bool("WORKHUB_COOKIE_SECURE", WORKHUB_PRODUCTION)
+WORKHUB_COOKIE_SAMESITE = os.environ.get("WORKHUB_COOKIE_SAMESITE", "Lax").strip().capitalize() or "Lax"
+if WORKHUB_COOKIE_SAMESITE not in {"Lax", "Strict", "None"}:
+    WORKHUB_COOKIE_SAMESITE = "Lax"
 LOGIN_MAX_FAILURES = 5
 LOGIN_FAILURE_WINDOW_SECONDS = 15 * 60
 LOGIN_LOCK_SECONDS = 15 * 60
@@ -108,11 +137,15 @@ PASSWORD_MIN_LENGTH = 10
 PASSWORD_MAX_LENGTH = 128
 BACKUP_RETENTION_DAYS = 90
 AUTO_BACKUP_HOUR = 3
+MAX_MAIL_ATTACHMENT_BYTES = 20 * 1024 * 1024
 _BACKUP_SCHEDULER_STARTED = False
 _SYSTEM_UPDATE_LOCK = threading.Lock()
-DEFAULT_USERS = (
-    ("admin", "관리자", "admin", "admin" + "1234"),
-    ("user", "사용자", "user", "user" + "1234"),
+_SALES_REPORT_ALERT_SCHEDULER_STARTED = False
+SALES_REPORT_UPLOAD_ALERT_HOUR = 15
+SALES_REPORT_UPLOAD_ALERT_INTERVAL_MINUTES = 30
+DEFAULT_LOCAL_BOOTSTRAP_USERS = (
+    ("admin", "관리자", "admin"),
+    ("user", "사용자", "user"),
 )
 PERMISSION_DEFINITIONS = (
     ("ledger_delete", "대장 삭제", "통합관리대장/CS처리대장 선택 삭제"),
@@ -122,10 +155,11 @@ PERMISSION_DEFINITIONS = (
     ("excel_download", "엑셀 다운로드", "대장 및 변환 결과 다운로드"),
     ("cs_receive", "CS접수", "통합관리대장에서 CS 처리대장 접수"),
     ("mail_send", "메일 발송", "업체 CS 메일 발송"),
-    ("import_shipment_manage", "수입제품 진행 관리", "수입제품 출고 진행 입력/완료 처리"),
+    ("import_shipment_manage", "수입제품 진행 관리", "수입제품 입고 진행 입력/완료 처리"),
     ("user_admin", "사용자 관리", "계정 추가/수정/권한 변경"),
     ("backup_manage", "백업 관리", "수동/자동 백업 파일 관리"),
     ("system_update", "시스템 업데이트", "GitHub 업데이트 확인/적용"),
+    ("sales_report_manage", "매출현황 관리", "매출표 업로드 및 매출현황 관리"),
     ("leave_view", "연차 조회", "연차 내역 조회"),
     ("leave_approve", "연차 승인", "연차 신청 승인/반려"),
     ("leave_approve_team", "\uC5F0\uCC28 \uD300\uC7A5 \uC2B9\uC778", "\uC5F0\uCC28 \uC2E0\uCCAD \uD300\uC7A5 \uD655\uC778"),
@@ -136,6 +170,9 @@ PERMISSION_DEFINITIONS = (
     ("crm_view", "CRM 조회", "CRM 거래처/업무 조회"),
     ("crm_manage", "CRM 관리", "CRM 거래처/업무 등록 및 수정"),
     ("crm_message_manage", "CRM 메신저 연동", "메신저 사용자 매핑 및 연동 로그 관리"),
+    ("hermes_use", "헤르메스 사용", "AI 업무채팅 및 작업내역 조회"),
+    ("hermes_automation", "헤르메스 자동화 요청", "AI 자동화 요청 생성"),
+    ("hermes_admin", "헤르메스 관리자 설정", "Hermes Agent 연결 설정"),
 )
 ALL_PERMISSIONS = tuple(key for key, _, _ in PERMISSION_DEFINITIONS)
 DEFAULT_ROLE_PERMISSIONS = {
@@ -158,16 +195,63 @@ DEFAULT_ROLE_PERMISSIONS = {
         "crm_view",
         "crm_manage",
         "crm_message_manage",
+        "hermes_use",
+        "hermes_automation",
     ),
-    "user": ("ledger_edit", "excel_download", "cs_receive", "leave_view", "crm_view"),
+    "user": ("ledger_edit", "excel_download", "cs_receive", "leave_view", "crm_view", "hermes_use"),
 }
 LUCIDE_FALLBACK_JS = """
-export function createIcons() {}
+const iconPaths = {
+  "bar-chart-3": "<path d='M4 19V9'/><path d='M12 19V5'/><path d='M20 19v-7'/>",
+  "bell": "<path d='M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9'/><path d='M10 21h4'/>",
+  "briefcase-business": "<path d='M10 6V5a2 2 0 0 1 2-2h0a2 2 0 0 1 2 2v1'/><rect x='3' y='7' width='18' height='13' rx='2'/><path d='M3 13h18'/>",
+  "calendar-days": "<path d='M8 2v4'/><path d='M16 2v4'/><rect x='3' y='4' width='18' height='18' rx='2'/><path d='M3 10h18'/><path d='M8 14h.01'/><path d='M12 14h.01'/><path d='M16 14h.01'/><path d='M8 18h.01'/><path d='M12 18h.01'/><path d='M16 18h.01'/>",
+  "chevron-down": "<path d='m6 9 6 6 6-6'/>",
+  "chevron-left": "<path d='m15 18-6-6 6-6'/>",
+  "chevron-right": "<path d='m9 18 6-6-6-6'/>",
+  "circle-dollar-sign": "<circle cx='12' cy='12' r='10'/><path d='M16 8h-6a2 2 0 0 0 0 4h4a2 2 0 0 1 0 4H8'/><path d='M12 18V6'/>",
+  "clipboard-check": "<rect x='8' y='2' width='8' height='4' rx='1'/><path d='M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2'/><path d='m9 14 2 2 4-4'/>",
+  "clipboard-list": "<rect x='8' y='2' width='8' height='4' rx='1'/><path d='M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2'/><path d='M8 11h8'/><path d='M8 16h8'/>",
+  "copy-check": "<path d='M7 7V5a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-2'/><rect x='4' y='8' width='11' height='11' rx='2'/><path d='m7 14 2 2 4-4'/>",
+  "database": "<ellipse cx='12' cy='5' rx='8' ry='3'/><path d='M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5'/><path d='M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3'/>",
+  "download": "<path d='M12 3v12'/><path d='m7 10 5 5 5-5'/><path d='M5 21h14'/>",
+  "file-spreadsheet": "<path d='M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z'/><path d='M14 2v6h6'/><path d='M8 13h8'/><path d='M8 17h8'/><path d='M11 11v8'/>",
+  "file-text": "<path d='M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z'/><path d='M14 2v6h6'/><path d='M8 13h8'/><path d='M8 17h5'/>",
+  "headphones": "<path d='M3 18v-6a9 9 0 0 1 18 0v6'/><path d='M21 19a2 2 0 0 1-2 2h-1v-7h3z'/><path d='M3 19a2 2 0 0 0 2 2h1v-7H3z'/>",
+  "home": "<path d='m3 11 9-8 9 8'/><path d='M5 10v11h14V10'/><path d='M9 21v-6h6v6'/>",
+  "info": "<circle cx='12' cy='12' r='10'/><path d='M12 16v-4'/><path d='M12 8h.01'/>",
+  "log-out": "<path d='M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4'/><path d='M16 17l5-5-5-5'/><path d='M21 12H9'/>",
+  "mail": "<rect x='3' y='5' width='18' height='14' rx='2'/><path d='m3 7 9 6 9-6'/>",
+  "message-circle": "<path d='M21 11.5a8.5 8.5 0 0 1-12.8 7.3L3 21l2.2-5.2A8.5 8.5 0 1 1 21 11.5Z'/>",
+  "package": "<path d='m7.5 4.3 9 5.2'/><path d='M21 8 12 3 3 8v8l9 5 9-5z'/><path d='M3 8l9 5 9-5'/><path d='M12 13v8'/>",
+  "plus-square": "<rect x='3' y='3' width='18' height='18' rx='2'/><path d='M12 8v8'/><path d='M8 12h8'/>",
+  "refresh-cw": "<path d='M21 12a9 9 0 0 1-15 6.7L3 16'/><path d='M3 21v-5h5'/><path d='M3 12a9 9 0 0 1 15-6.7L21 8'/><path d='M21 3v5h-5'/>",
+  "search": "<circle cx='11' cy='11' r='7'/><path d='m21 21-4.3-4.3'/>",
+  "settings": "<path d='M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z'/><path d='M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2 3.4-.2-.1a1.7 1.7 0 0 0-1.9.3 1.7 1.7 0 0 0-.8 1.7V22H9v-.3a1.7 1.7 0 0 0-.8-1.7 1.7 1.7 0 0 0-1.9-.3l-.2.1-2-3.4.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.5-1H3V9h.2a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.9l-.1-.1 2-3.4.2.1a1.7 1.7 0 0 0 1.9-.3A1.7 1.7 0 0 0 9.2.7V.5h5.6v.2a1.7 1.7 0 0 0 .8 1.7 1.7 1.7 0 0 0 1.9.3l.2-.1 2 3.4-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.5 1h.2v4h-.2a1.7 1.7 0 0 0-1.4 1Z'/>",
+  "truck": "<path d='M10 17H5V6h11v11h-2'/><path d='M16 8h3l2 3v6h-3'/><circle cx='7' cy='17' r='2'/><circle cx='17' cy='17' r='2'/>",
+  "upload": "<path d='M12 21V9'/><path d='m7 14 5-5 5 5'/><path d='M5 3h14'/>",
+  "warehouse": "<path d='M3 21h18'/><path d='M5 21V8l7-5 7 5v13'/><path d='M9 21v-6h6v6'/><path d='M9 10h6'/>",
+  "x": "<path d='M18 6 6 18'/><path d='m6 6 12 12'/>",
+};
+function toKebab(name) {
+  return String(name || "").replace(/([a-z0-9])([A-Z])/g, "$1-$2").replace(/_/g, "-").toLowerCase();
+}
+function svgFor(name) {
+  const key = toKebab(name);
+  const paths = iconPaths[key] || "<circle cx='12' cy='12' r='8'/>";
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false" data-lucide-rendered="${key}">${paths}</svg>`;
+}
+export function createIcons() {
+  document.querySelectorAll("[data-lucide]").forEach((element) => {
+    element.outerHTML = svgFor(element.getAttribute("data-lucide"));
+  });
+}
 export const BriefcaseBusiness = {};
 export const Home = {};
 export const MessageCircle = {};
 export const Info = {};
 export const ChevronDown = {};
+export const ChevronLeft = {};
 export const ChevronRight = {};
 export const PlusSquare = {};
 export const RefreshCw = {};
@@ -190,6 +274,9 @@ export const Database = {};
 export const CalendarDays = {};
 export const X = {};
 export const Settings = {};
+export const Search = {};
+export const LogOut = {};
+export const Warehouse = {};
 """.strip()
 
 
@@ -220,6 +307,11 @@ HTML = r"""<!doctype html>
       --purple-soft: #ede9fe;
       --red: #dc2626;
       --red-soft: #fee2e2;
+      --sidebar-text-primary: #f8fbff;
+      --sidebar-text-secondary: #d7e4ff;
+      --sidebar-text-muted: #9fb0d3;
+      --sidebar-text-subtle: #b8c7e6;
+      --sidebar-accent: #93c5fd;
       --shadow: 0 10px 28px rgba(15, 23, 42, .08);
       font-family: Pretendard, Inter, "Noto Sans KR", "Malgun Gothic", Arial, sans-serif;
     }
@@ -248,12 +340,22 @@ HTML = r"""<!doctype html>
     body.standalone .topbar { grid-template-columns: 1fr; }
     .sidebar {
       background: linear-gradient(180deg, var(--navy), #081430);
-      color: white;
+      color: var(--sidebar-text-primary);
       padding: 22px 16px;
+      min-height: 0;
+      height: 100vh;
+      max-height: 100vh;
       overflow-y: auto;
+      overflow-x: hidden;
+      overscroll-behavior: contain;
       scrollbar-width: thin;
       scrollbar-color: rgba(255,255,255,.28) transparent;
       border-right: 1px solid rgba(255,255,255,.08);
+    }
+    .sidebar::-webkit-scrollbar { width: 8px; }
+    .sidebar::-webkit-scrollbar-thumb {
+      background: rgba(255,255,255,.22);
+      border-radius: 999px;
     }
     .brand-icon {
       width: 38px; height: 38px; border-radius: 9px;
@@ -264,7 +366,7 @@ HTML = r"""<!doctype html>
       margin: 0;
       flex: 0 0 auto;
     }
-    .brand-icon svg { width: 21px; height: 21px; }
+    .brand-icon svg { width: 16px; height: 16px; }
     .brand {
       display: flex;
       align-items: center;
@@ -272,7 +374,7 @@ HTML = r"""<!doctype html>
       margin-bottom: 14px;
       padding: 0 4px;
     }
-    .brand-label { font-size: 18px; font-weight: 900; line-height: 1.32; margin: 0; }
+    .brand-label { font-size: 18px; font-weight: 900; line-height: 1.32; margin: 0; color: var(--sidebar-text-primary); }
     .sidebar-search {
       position: relative;
       margin: 0 0 18px;
@@ -284,7 +386,7 @@ HTML = r"""<!doctype html>
       transform: translateY(-50%);
       width: 15px;
       height: 15px;
-      color: #9fb0d3;
+      color: var(--sidebar-text-muted);
       pointer-events: none;
     }
     .sidebar-search input {
@@ -306,39 +408,147 @@ HTML = r"""<!doctype html>
       box-shadow: 0 0 0 2px rgba(59, 130, 246, .22);
     }
     .notice-board {
-      min-height: 44px;
-      border: 1px solid var(--line);
+      position: relative;
+      min-height: 156px;
+      border: 1px solid #cbdaf1;
       border-radius: 8px;
-      background: white;
-      padding: 13px 15px;
+      background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+      padding: 16px 18px 15px;
       color: #344054;
       overflow: hidden;
-      box-shadow: var(--shadow);
+      box-shadow: 0 12px 28px rgba(15, 23, 42, .06);
+    }
+    .notice-board::before {
+      content: "";
+      position: absolute;
+      left: 0;
+      top: 0;
+      right: 0;
+      height: 4px;
+      background: linear-gradient(90deg, #155bc8, #0b9b6d);
     }
     .notice-board-kicker {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      min-height: 24px;
+      padding: 0 9px;
+      border-radius: 999px;
+      background: #eef6ff;
       font-size: 11px;
       font-weight: 900;
       color: #155bc8;
-      margin-bottom: 5px;
+      margin-bottom: 8px;
     }
     .notice-board-title {
-      font-size: 16px;
+      font-size: 18px;
       font-weight: 900;
-      line-height: 1.32;
+      line-height: 1.28;
+      color: #111827;
     }
     .notice-board-meta {
       font-size: 12px;
       color: #667085;
-      margin-top: 3px;
+      margin-top: 4px;
+      font-weight: 800;
     }
     .notice-board-body {
       font-size: 13px;
       line-height: 1.48;
       color: #475467;
-      margin-top: 7px;
-      max-height: 72px;
+      margin-top: 8px;
+      max-height: 56px;
       overflow: hidden;
       white-space: pre-line;
+    }
+    .notice-auto-panel {
+      margin-top: 13px;
+      display: grid;
+      gap: 8px;
+    }
+    .notice-auto-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding-top: 10px;
+      border-top: 1px solid #e5edf8;
+      color: #1f2937;
+      font-size: 12px;
+      font-weight: 950;
+    }
+    .notice-auto-count {
+      min-width: 26px;
+      height: 22px;
+      padding: 0 8px;
+      border-radius: 999px;
+      background: #eaf3ff;
+      color: #155bc8;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 11px;
+      font-weight: 950;
+    }
+    .notice-auto-list {
+      display: grid;
+      gap: 6px;
+    }
+    .notice-auto-item {
+      display: grid;
+      grid-template-columns: 74px minmax(0, 1fr);
+      gap: 8px;
+      align-items: center;
+      min-height: 30px;
+      padding: 6px 8px;
+      border: 1px solid #e4ebf5;
+      border-radius: 7px;
+      background: white;
+      cursor: pointer;
+    }
+    .notice-auto-item:hover {
+      border-color: #b8d2f1;
+      background: #f8fbff;
+    }
+    .notice-auto-item:focus-visible {
+      outline: 3px solid rgba(21, 91, 200, .28);
+      outline-offset: 2px;
+    }
+    .notice-auto-badge {
+      height: 22px;
+      border-radius: 999px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0 8px;
+      background: #eef6ff;
+      color: #155bc8;
+      font-size: 11px;
+      font-weight: 950;
+      white-space: nowrap;
+    }
+    .notice-auto-badge.leave { background: #f0fdf4; color: #047857; }
+    .notice-auto-badge.pending { background: #fff7ed; color: #c2410c; }
+    .notice-auto-badge.import { background: #eff6ff; color: #1d4ed8; }
+    .notice-auto-badge.cargo-inbound { background: #ecfdf3; color: #087443; }
+    .notice-auto-badge.cargo { background: #f5f3ff; color: #6d28d9; }
+    .notice-auto-text {
+      min-width: 0;
+      color: #344054;
+      font-size: 12px;
+      font-weight: 850;
+      overflow: hidden;
+      white-space: nowrap;
+      text-overflow: ellipsis;
+    }
+    .notice-auto-empty {
+      padding: 8px 10px;
+      border: 1px dashed #cbd5e1;
+      border-radius: 7px;
+      color: #667085;
+      font-size: 12px;
+      font-weight: 800;
+      background: rgba(248, 250, 252, .7);
     }
     .import-progress-card {
       overflow: hidden;
@@ -398,7 +608,7 @@ HTML = r"""<!doctype html>
     }
     .import-table {
       width: 100%;
-      min-width: 980px;
+      min-width: 1320px;
       border-collapse: collapse;
       font-size: 12px;
     }
@@ -426,6 +636,76 @@ HTML = r"""<!doctype html>
       background: #f3f4f6;
       color: #667085;
     }
+    .dashboard-import-card .import-table {
+      min-width: 1040px;
+      table-layout: fixed;
+      font-size: 12px;
+    }
+    .dashboard-import-card .import-progress-head {
+      min-height: 50px;
+      padding: 0 16px;
+    }
+    .dashboard-import-card .import-progress-title {
+      font-size: 15px;
+    }
+    .dashboard-import-card .import-progress-title svg {
+      width: 18px;
+      height: 18px;
+    }
+    .dashboard-import-card .import-progress-summary {
+      font-size: 13px;
+    }
+    .dashboard-import-card .import-table th {
+      height: 36px;
+      padding: 0 6px;
+      font-size: 12px;
+    }
+    .dashboard-import-card .import-table td {
+      height: auto;
+      min-height: 38px;
+      padding: 7px 6px;
+      white-space: normal;
+      word-break: keep-all;
+      overflow-wrap: anywhere;
+      line-height: 1.32;
+      vertical-align: middle;
+    }
+    .dashboard-import-card .import-table th:nth-child(1),
+    .dashboard-import-card .import-table td:nth-child(1),
+    .dashboard-import-card .import-table th:nth-child(2),
+    .dashboard-import-card .import-table td:nth-child(2),
+    .dashboard-import-card .import-table th:nth-child(3),
+    .dashboard-import-card .import-table td:nth-child(3) { width: 72px; }
+    .dashboard-import-card .import-table th:nth-child(4),
+    .dashboard-import-card .import-table td:nth-child(4) { width: 64px; }
+    .dashboard-import-card .import-table th:nth-child(5),
+    .dashboard-import-card .import-table td:nth-child(5) { width: 180px; }
+    .dashboard-import-card .import-table th:nth-child(6),
+    .dashboard-import-card .import-table td:nth-child(6) { width: 70px; }
+    .dashboard-import-card .import-table th:nth-child(7),
+    .dashboard-import-card .import-table td:nth-child(7) { width: 126px; }
+    .dashboard-import-card .import-table th:nth-child(8),
+    .dashboard-import-card .import-table td:nth-child(8) { width: 116px; }
+    .dashboard-import-card .import-table th:nth-child(9),
+    .dashboard-import-card .import-table td:nth-child(9) { width: 74px; }
+    .dashboard-import-card .import-table th:nth-child(10),
+    .dashboard-import-card .import-table td:nth-child(10) { width: 72px; }
+    .dashboard-import-card .import-table th:nth-child(11),
+    .dashboard-import-card .import-table td:nth-child(11) { width: 72px; }
+    .dashboard-import-card .import-table th:nth-child(12),
+    .dashboard-import-card .import-table td:nth-child(12) { width: 80px; }
+    .dashboard-import-card .import-table td {
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      word-break: normal;
+      overflow-wrap: normal;
+    }
+    .dashboard-import-card .import-table td.left {
+      font-weight: 850;
+      white-space: normal;
+      line-height: 1.25;
+    }
     .import-empty {
       padding: 18px;
       color: var(--muted);
@@ -434,11 +714,10 @@ HTML = r"""<!doctype html>
       text-align: center;
     }
     .import-row-actions {
-      display: none;
+      display: inline-flex;
       gap: 6px;
       align-items: center;
     }
-    .import-progress-card.open .import-row-actions { display: inline-flex; }
     .import-row-actions button {
       height: 28px;
       border: 1px solid #cbd5e1;
@@ -449,6 +728,12 @@ HTML = r"""<!doctype html>
       font-size: 12px;
       font-weight: 900;
       cursor: pointer;
+    }
+    #importShipmentBody tr {
+      cursor: pointer;
+    }
+    #importShipmentBody tr:hover td {
+      background: #f8fbff;
     }
     .hidden-file-input {
       position: fixed;
@@ -462,7 +747,7 @@ HTML = r"""<!doctype html>
     .nav-item, .nav-section, .app-add {
       display: flex; align-items: center; gap: 13px;
       min-height: 43px; padding: 0 12px; border-radius: 8px;
-      font-size: 14px; font-weight: 750; color: #d9e3ff;
+      font-size: 14px; font-weight: 750; color: var(--sidebar-text-secondary);
       margin-bottom: 6px;
       border: 0;
       background: transparent;
@@ -473,21 +758,71 @@ HTML = r"""<!doctype html>
       transition: background .16s ease, color .16s ease, transform .16s ease, box-shadow .16s ease;
     }
     .nav-item.active {
-      color: white;
+      color: var(--sidebar-text-primary);
       background: rgba(72, 118, 255, .28);
       box-shadow: inset 0 0 0 1px rgba(255,255,255,.08);
     }
-    .nav-item svg { width: 18px; height: 18px; flex: 0 0 auto; }
+    .nav-item svg { width: 15px; height: 15px; flex: 0 0 auto; color: var(--sidebar-text-muted); }
     .nav-item .nav-label {
       display: flex;
       align-items: center;
       gap: 13px;
       min-width: 0;
     }
-    .nav-item .nav-chevron {
-      margin-left: auto;
+    .nav-item .nav-label span,
+    .nav-item > span {
+      color: var(--sidebar-text-secondary);
+    }
+    .nav-item:hover .nav-label span,
+    .nav-item:hover > span,
+    .nav-item.active .nav-label span,
+    .nav-item.active > span {
+      color: var(--sidebar-text-primary);
+    }
+    .nav-item:hover svg,
+    .nav-item.active svg {
+      color: var(--nav-icon, var(--sidebar-accent));
+    }
+    .nav-item .nav-label > svg,
+    .nav-item > svg:not(.nav-chevron) {
       width: 16px;
       height: 16px;
+      color: var(--nav-icon, var(--sidebar-text-muted));
+      stroke-width: 2.45;
+    }
+    .nav-item[data-nav-tone="home"] { --nav-icon: #60a5fa; --nav-active-bg: rgba(37, 99, 235, .28); }
+    .nav-item[data-nav-tone="import"] { --nav-icon: #34d399; --nav-active-bg: rgba(5, 150, 105, .24); }
+    .nav-item[data-nav-tone="order"] { --nav-icon: #38bdf8; --nav-active-bg: rgba(14, 165, 233, .24); }
+    .nav-item[data-nav-tone="management"] { --nav-icon: #22c55e; --nav-active-bg: rgba(34, 197, 94, .22); }
+    .nav-item[data-nav-tone="cs"] { --nav-icon: #fb7185; --nav-active-bg: rgba(244, 63, 94, .22); }
+    .nav-item[data-nav-tone="crm"] { --nav-icon: #a78bfa; --nav-active-bg: rgba(124, 58, 237, .24); }
+    .nav-item[data-nav-tone="mail"] { --nav-icon: #2dd4bf; --nav-active-bg: rgba(20, 184, 166, .22); }
+    .nav-item[data-nav-tone="leave"] { --nav-icon: #facc15; --nav-active-bg: rgba(234, 179, 8, .20); }
+    .nav-item[data-nav-tone="sales"] { --nav-icon: #4ade80; --nav-active-bg: rgba(22, 163, 74, .22); }
+    .nav-item[data-nav-tone="hermes"] { --nav-icon: #60a5fa; --nav-active-bg: rgba(59, 130, 246, .24); }
+    .nav-item[data-nav-tone="admin"] { --nav-icon: #fbbf24; --nav-active-bg: rgba(245, 158, 11, .22); }
+    .nav-item[data-nav-tone="files"] { --nav-icon: #5eead4; --nav-active-bg: rgba(13, 148, 136, .20); }
+    .hermes-mark {
+      width: 18px;
+      height: 18px;
+      flex: 0 0 auto;
+      border-radius: 50%;
+      overflow: hidden;
+      background: #ffffff;
+      box-shadow: 0 0 0 1px rgba(148, 163, 184, .35);
+    }
+    .hermes-mark img {
+      width: 100%;
+      height: 100%;
+      display: block;
+      object-fit: cover;
+      object-position: 44% 36%;
+    }
+    .nav-item .nav-chevron {
+      margin-left: auto;
+      width: 10px;
+      height: 10px;
+      color: var(--sidebar-text-muted);
       transition: transform .16s ease;
     }
     .nav-group.open .nav-chevron { transform: rotate(90deg); }
@@ -504,7 +839,7 @@ HTML = r"""<!doctype html>
       border: 0;
       border-radius: 7px;
       background: transparent;
-      color: #c9d6f4;
+      color: var(--sidebar-text-subtle);
       font-family: inherit;
       font-size: 13px;
       font-weight: 750;
@@ -515,24 +850,24 @@ HTML = r"""<!doctype html>
     .nav-subitem:hover,
     .nav-item:hover {
       background: rgba(255,255,255,.08);
-      color: white;
+      color: var(--sidebar-text-primary);
       transform: translateX(1px);
     }
     .nav-item.active,
     .nav-subitem.active {
       background: rgba(72, 118, 255, .28);
-      color: white;
+      color: var(--sidebar-text-primary);
       box-shadow: inset 3px 0 0 rgba(147, 197, 253, .9);
     }
     .nav-section {
       min-height: auto;
       padding: 0 8px 8px;
       margin: 18px 0 0;
-      color: #9fb0d3;
+      color: var(--sidebar-text-muted);
       font-size: 12px;
       font-weight: 850;
     }
-    .hash { font-size: 15px; width: 22px; text-align: center; color: #d9e3ff; font-weight: 900; }
+    .hash { font-size: 15px; width: 22px; text-align: center; color: var(--sidebar-accent); font-weight: 900; }
     .divider { height: 1px; background: rgba(255,255,255,.12); margin: 18px 6px; }
 
     main {
@@ -543,14 +878,26 @@ HTML = r"""<!doctype html>
       flex-direction: column;
       overflow: hidden;
     }
+    main.workspace-scroll-mode {
+      overflow-y: auto;
+      overflow-x: hidden;
+      scrollbar-gutter: stable;
+    }
+    main:has(#userAdminWorkspace.active),
+    main:has(#backupWorkspace.active),
+    main:has(#systemUpdateWorkspace.active) {
+      overflow-y: auto;
+      overflow-x: hidden;
+      scrollbar-gutter: stable;
+    }
     .topbar {
-      height: 74px;
-      flex: 0 0 74px;
+      height: 62px;
+      flex: 0 0 62px;
       display: grid;
-      grid-template-columns: 1fr minmax(260px, 430px) auto;
+      grid-template-columns: minmax(180px, 1fr) minmax(260px, 390px) auto;
       align-items: center;
-      gap: 18px;
-      padding: 0 22px;
+      gap: 12px;
+      padding: 0 18px;
       background: rgba(245, 247, 251, .88);
       border-bottom: 1px solid rgba(226, 232, 240, .9);
       backdrop-filter: blur(10px);
@@ -565,68 +912,388 @@ HTML = r"""<!doctype html>
       font-size: 13px; font-weight: 850; color: #344054;
     }
     .top-search {
-      height: 42px;
+      height: 36px;
       border: 1px solid var(--line);
-      border-radius: 8px;
+      border-radius: 9px;
       background: white;
       display: flex;
       align-items: center;
-      gap: 9px;
-      padding: 0 14px;
-      color: #98a2b3;
-      font-size: 13px;
+      gap: 7px;
+      padding: 0 8px 0 11px;
+      color: #64748b;
+      font-size: 12px;
       font-weight: 700;
+      box-shadow: 0 1px 2px rgba(15, 23, 42, .04);
+    }
+    .top-search input {
+      min-width: 0;
+      flex: 1;
+      border: 0;
+      outline: 0;
+      background: transparent;
+      color: #0f172a;
+      font: inherit;
+      font-weight: 750;
+    }
+    .top-search input::placeholder { color: #94a3b8; }
+    .top-search:focus-within {
+      border-color: #9db7f7;
+      box-shadow: 0 0 0 3px rgba(37, 99, 235, .11);
+    }
+    .top-search-submit {
+      width: 28px;
+      height: 28px;
+      border: 0;
+      border-radius: 7px;
+      background: #eef4ff;
+      color: #155bc8;
+      display: grid;
+      place-items: center;
+      cursor: pointer;
     }
     .top-tools {
       display: flex;
       align-items: center;
-      gap: 10px;
+      gap: 8px;
     }
     .icon-button {
-      width: 38px;
-      height: 38px;
+      width: 36px;
+      height: 36px;
       border: 1px solid var(--line);
-      border-radius: 8px;
+      border-radius: 9px;
       background: white;
       display: grid;
       place-items: center;
       color: #344054;
-      cursor: default;
+      cursor: pointer;
+      box-shadow: 0 1px 2px rgba(15, 23, 42, .04);
+      transition: border-color .16s ease, background .16s ease, color .16s ease, transform .16s ease;
+    }
+    .topbar .icon-button,
+    .topbar .icon-button.btn,
+    .topbar .icon-button.btn-square {
+      width: 36px !important;
+      min-width: 36px !important;
+      max-width: 36px !important;
+      height: 36px !important;
+      min-height: 36px !important;
+      padding: 0 !important;
+    }
+    .topbar .logout-button.btn {
+      height: 36px !important;
+      min-height: 36px !important;
+      padding: 0 10px !important;
+    }
+    .icon-button:hover,
+    .logout-button:hover {
+      border-color: #b8c7e6;
+      background: #f8fbff;
+      color: #155bc8;
+      transform: translateY(-1px);
+    }
+    .icon-button.busy svg {
+      animation: topbar-spin .75s linear infinite;
+    }
+    @keyframes topbar-spin {
+      to { transform: rotate(360deg); }
     }
     .icon-button svg,
-    .top-search svg { width: 17px; height: 17px; }
+    .top-search svg,
+    .top-search-submit svg,
+    .logout-button svg,
+    .workspace-button svg,
+    .crm-mini-button svg,
+    .btn svg { width: 14px; height: 14px; }
+    .topbar .icon-button svg,
+    .top-search-submit svg { width: 16px; height: 16px; }
     .user-chip {
-      height: 40px;
+      height: 36px;
       display: flex;
       align-items: center;
-      gap: 9px;
-      padding: 0 11px;
+      gap: 7px;
+      padding: 0 10px;
       border: 1px solid var(--line);
-      border-radius: 8px;
+      border-radius: 9px;
       background: white;
-      font-size: 13px;
+      font-size: 12px;
       font-weight: 850;
       white-space: nowrap;
+      color: #1f2937;
+      box-shadow: 0 1px 2px rgba(15, 23, 42, .04);
     }
     .logout-button {
-      height: 40px;
+      height: 36px;
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      padding: 0 12px;
+      gap: 6px;
+      padding: 0 10px;
       border: 1px solid var(--line);
-      border-radius: 8px;
+      border-radius: 9px;
       background: white;
       color: #475467;
-      font-size: 13px;
+      font-size: 12px;
       font-weight: 850;
       text-decoration: none;
+      box-shadow: 0 1px 2px rgba(15, 23, 42, .04);
     }
     .avatar {
-      width: 27px;
-      height: 27px;
+      width: 22px;
+      height: 22px;
       border-radius: 50%;
       background: linear-gradient(145deg, #155bc8, #08a66c);
+    }
+    .logout-button svg { width: 12px; height: 12px; }
+    .focus-widget-section {
+      display: grid;
+      gap: 8px;
+      padding: 12px;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      background: #f8fafc;
+    }
+    .focus-widget-section + .focus-widget-section { margin-top: 10px; }
+    .focus-widget-section h4 {
+      margin: 0;
+      color: #0f172a;
+      font-size: 14px;
+      font-weight: 900;
+    }
+    .focus-widget-section p,
+    .focus-widget-section ul {
+      margin: 0;
+      color: #475569;
+      font-size: 12px;
+      font-weight: 700;
+      line-height: 1.45;
+    }
+    .focus-widget-section ul {
+      padding-left: 18px;
+    }
+    .app-confirm-backdrop {
+      position: fixed;
+      inset: 0;
+      z-index: 120;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      background: rgba(15, 23, 42, .38);
+      backdrop-filter: blur(3px);
+    }
+    .app-confirm-backdrop.open {
+      display: flex;
+    }
+    .app-confirm {
+      width: min(460px, calc(100vw - 32px));
+      border: 1px solid rgba(203, 213, 225, .95);
+      border-radius: 14px;
+      background: #fff;
+      box-shadow: 0 24px 70px rgba(15, 23, 42, .28);
+      overflow: hidden;
+      animation: app-confirm-pop .16s ease-out;
+    }
+    @keyframes app-confirm-pop {
+      from { opacity: 0; transform: translateY(8px) scale(.98); }
+      to { opacity: 1; transform: translateY(0) scale(1); }
+    }
+    .app-confirm-head {
+      display: flex;
+      gap: 12px;
+      align-items: flex-start;
+      padding: 18px 18px 12px;
+      border-bottom: 1px solid #eef2f7;
+      background: linear-gradient(180deg, #f8fbff 0%, #fff 100%);
+    }
+    .app-confirm-icon {
+      width: 38px;
+      height: 38px;
+      flex: 0 0 38px;
+      border-radius: 11px;
+      display: grid;
+      place-items: center;
+      background: #eaf2ff;
+      color: #155bc8;
+    }
+    .app-confirm-icon svg {
+      width: 20px;
+      height: 20px;
+    }
+    .app-confirm-kicker {
+      color: #155bc8;
+      font-size: 12px;
+      font-weight: 900;
+      line-height: 1.2;
+    }
+    .app-confirm-title {
+      margin-top: 3px;
+      color: #0f172a;
+      font-size: 18px;
+      font-weight: 950;
+      line-height: 1.28;
+    }
+    .app-confirm-body {
+      display: grid;
+      gap: 10px;
+      padding: 16px 18px 4px;
+      color: #344054;
+      font-size: 13px;
+      font-weight: 750;
+      line-height: 1.55;
+      white-space: pre-line;
+    }
+    .app-confirm-highlight {
+      display: inline-flex;
+      width: fit-content;
+      max-width: 100%;
+      padding: 5px 9px;
+      border-radius: 8px;
+      background: #eef6ff;
+      color: #155bc8;
+      font-size: 12px;
+      font-weight: 950;
+      word-break: keep-all;
+    }
+    .app-confirm-actions {
+      display: flex;
+      justify-content: center;
+      gap: 8px;
+      padding: 16px 18px 18px;
+    }
+    .app-confirm-actions button {
+      min-width: 82px;
+      height: 34px;
+      border: 1px solid #cfd8e5;
+      border-radius: 9px;
+      background: #fff;
+      color: #344054;
+      font-family: inherit;
+      font-size: 12px;
+      font-weight: 900;
+      cursor: pointer;
+    }
+    .app-confirm-actions button.primary {
+      border-color: #155bc8;
+      background: #155bc8;
+      color: #fff;
+      box-shadow: 0 8px 18px rgba(21, 91, 200, .22);
+    }
+    .app-confirm-actions button:hover {
+      transform: translateY(-1px);
+    }
+    .search-result-backdrop {
+      position: fixed;
+      inset: 0;
+      z-index: 118;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      background: rgba(15, 23, 42, .32);
+      backdrop-filter: blur(3px);
+    }
+    .search-result-backdrop.open {
+      display: flex;
+    }
+    .search-result-dialog {
+      width: min(720px, calc(100vw - 32px));
+      max-height: min(680px, calc(100vh - 42px));
+      display: flex;
+      flex-direction: column;
+      border: 1px solid rgba(203, 213, 225, .95);
+      border-radius: 14px;
+      background: #fff;
+      box-shadow: 0 24px 70px rgba(15, 23, 42, .26);
+      overflow: hidden;
+      animation: app-confirm-pop .16s ease-out;
+    }
+    .search-result-head {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 14px;
+      padding: 16px 18px 12px;
+      border-bottom: 1px solid #eef2f7;
+      background: linear-gradient(180deg, #f8fbff 0%, #fff 100%);
+    }
+    .search-result-head strong {
+      display: block;
+      color: #0f172a;
+      font-size: 17px;
+      font-weight: 950;
+      line-height: 1.25;
+    }
+    .search-result-head p {
+      margin: 4px 0 0;
+      color: #64748b;
+      font-size: 12px;
+      font-weight: 750;
+      line-height: 1.4;
+    }
+    .search-result-close {
+      width: 30px;
+      height: 30px;
+      border: 1px solid #d7dce5;
+      border-radius: 8px;
+      background: #fff;
+      color: #344054;
+      display: grid;
+      place-items: center;
+      cursor: pointer;
+    }
+    .search-result-close svg {
+      width: 12px;
+      height: 12px;
+    }
+    .search-result-list {
+      display: grid;
+      gap: 8px;
+      padding: 14px 18px 18px;
+      overflow: auto;
+    }
+    .search-result-item {
+      width: 100%;
+      border: 1px solid #dbe3ef;
+      border-radius: 10px;
+      background: #fff;
+      padding: 10px 12px;
+      text-align: left;
+      font-family: inherit;
+      cursor: pointer;
+      transition: border-color .14s ease, background .14s ease, transform .14s ease;
+    }
+    .search-result-item:hover {
+      border-color: #9db7f7;
+      background: #f8fbff;
+      transform: translateY(-1px);
+    }
+    .search-result-main {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: #0f172a;
+      font-size: 13px;
+      font-weight: 950;
+      line-height: 1.3;
+    }
+    .search-result-badge {
+      flex: 0 0 auto;
+      padding: 3px 7px;
+      border-radius: 999px;
+      background: #eef6ff;
+      color: #155bc8;
+      font-size: 11px;
+      font-weight: 950;
+    }
+    .search-result-sub {
+      margin-top: 5px;
+      color: #64748b;
+      font-size: 12px;
+      font-weight: 750;
+      line-height: 1.45;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
 
     .content {
@@ -730,6 +1397,7 @@ HTML = r"""<!doctype html>
       gap: 8px;
     }
     .notice-template input,
+    .notice-template select,
     .notice-template textarea {
       border: 1px solid #cbd5e1;
       border-radius: 7px;
@@ -738,7 +1406,11 @@ HTML = r"""<!doctype html>
       font-size: 13px;
       background: white;
     }
-    .notice-template input { height: 34px; }
+    .notice-template input,
+    .notice-template select {
+      height: 34px;
+      min-width: 0;
+    }
     .notice-template textarea {
       min-height: 78px;
       padding-top: 9px;
@@ -763,6 +1435,88 @@ HTML = r"""<!doctype html>
       color: #111827;
       font-size: 14px;
       margin-bottom: 3px;
+    }
+    .notice-history {
+      display: grid;
+      gap: 8px;
+      padding-top: 4px;
+    }
+    .notice-history-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      color: #334155;
+      font-size: 12px;
+      font-weight: 900;
+    }
+    .notice-history-count {
+      min-width: 24px;
+      height: 22px;
+      padding: 0 8px;
+      border-radius: 999px;
+      display: inline-grid;
+      place-items: center;
+      background: #eef4ff;
+      color: #155bc8;
+      font-size: 11px;
+      font-weight: 950;
+    }
+    .notice-history-list {
+      display: grid;
+      gap: 7px;
+      max-height: 230px;
+      overflow-y: auto;
+      padding-right: 2px;
+    }
+    .notice-history-item {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 10px;
+      align-items: center;
+      padding: 10px 11px;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      background: #fff;
+    }
+    .notice-history-title {
+      color: #0f172a;
+      font-size: 13px;
+      font-weight: 900;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .notice-history-meta,
+    .notice-history-body {
+      margin-top: 3px;
+      color: #64748b;
+      font-size: 11px;
+      font-weight: 700;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .notice-history-delete {
+      height: 30px;
+      min-width: 48px;
+      border: 1px solid #fecaca;
+      border-radius: 7px;
+      background: #fff5f5;
+      color: #dc2626;
+      font-family: inherit;
+      font-size: 11px;
+      font-weight: 900;
+      cursor: pointer;
+    }
+    .notice-history-empty {
+      padding: 12px;
+      border: 1px dashed #cbd5e1;
+      border-radius: 8px;
+      color: #64748b;
+      font-size: 12px;
+      font-weight: 750;
+      text-align: center;
+      background: #f8fafc;
     }
     .message-placeholder {
       display: none;
@@ -952,6 +1706,149 @@ HTML = r"""<!doctype html>
       gap: 10px;
       margin-top: 18px;
     }
+    .import-progress-dialog {
+      width: min(560px, 100%);
+    }
+    .import-progress-meta {
+      display: grid;
+      gap: 6px;
+      margin: 12px 0 14px;
+      padding: 12px;
+      border: 1px solid #d7dce5;
+      border-radius: 8px;
+      background: #f8fafc;
+      color: #344054;
+      font-size: 13px;
+      font-weight: 800;
+    }
+    .import-progress-bar {
+      height: 9px;
+      overflow: hidden;
+      border-radius: 999px;
+      background: #e5e7eb;
+      margin: 12px 0 14px;
+    }
+    .import-progress-bar span {
+      display: block;
+      width: var(--import-progress-width, 8%);
+      height: 100%;
+      border-radius: inherit;
+      background: linear-gradient(90deg, #2563eb, #08a66c);
+      transition: width .22s ease;
+    }
+    .import-progress-stage {
+      min-height: 22px;
+      color: #155bc8;
+      font-size: 14px;
+      font-weight: 950;
+    }
+    .import-progress-steps {
+      display: grid;
+      gap: 8px;
+      margin: 14px 0 0;
+      padding: 0;
+      list-style: none;
+    }
+    .import-progress-steps li {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      color: #667085;
+      font-size: 13px;
+      font-weight: 850;
+    }
+    .import-progress-steps li::before {
+      content: "";
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: #cbd5e1;
+      box-shadow: inset 0 0 0 2px #fff;
+    }
+    .import-progress-steps li.done {
+      color: #047857;
+    }
+    .import-progress-steps li.done::before {
+      background: #08a66c;
+    }
+    .import-progress-steps li.active {
+      color: #155bc8;
+    }
+    .import-progress-steps li.active::before {
+      background: #2563eb;
+      box-shadow: 0 0 0 4px rgba(37, 99, 235, .14);
+    }
+    .import-progress-dialog.error .import-progress-stage {
+      color: #b42318;
+    }
+    .import-progress-dialog.error .import-progress-bar span {
+      background: #dc2626;
+    }
+    .import-correction-dialog {
+      width: min(920px, 100%);
+    }
+    .import-correction-list {
+      display: grid;
+      gap: 14px;
+      max-height: min(58vh, 560px);
+      overflow: auto;
+      padding-right: 4px;
+    }
+    .import-correction-row {
+      border: 1px solid #d7dce5;
+      border-radius: 8px;
+      background: #fbfcff;
+      padding: 12px;
+    }
+    .import-correction-row-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 10px;
+      color: #344054;
+      font-size: 13px;
+      font-weight: 900;
+    }
+    .import-correction-summary {
+      color: #667085;
+      font-size: 12px;
+      font-weight: 800;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .import-correction-fields {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 10px;
+    }
+    .import-correction-field label {
+      display: block;
+      margin-bottom: 5px;
+      color: #344054;
+      font-size: 12px;
+      font-weight: 900;
+    }
+    .import-correction-field input,
+    .import-correction-field select {
+      width: 100%;
+      height: 36px;
+      border: 1px solid #cbd5e1;
+      border-radius: 8px;
+      padding: 0 10px;
+      font-family: inherit;
+      font-size: 13px;
+      font-weight: 750;
+      background: white;
+    }
+    .import-correction-message {
+      margin-top: 5px;
+      color: #b42318;
+      font-size: 11px;
+      font-weight: 800;
+      line-height: 1.35;
+    }
     .workhub-modal.ledger-modal {
       width: calc(100vw - 18px);
       height: calc(100vh - 18px);
@@ -968,6 +1865,30 @@ HTML = r"""<!doctype html>
     .workhub-modal-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; }
     .modal-title { font-size: 25px; font-weight: 850; color: #1a2230; }
     .close { border: 0; background: transparent; color: #3f4650; cursor: pointer; padding: 4px; }
+    .popup-close-button {
+      width: 28px;
+      height: 28px;
+      min-width: 28px;
+      border: 1px solid #d8dee9;
+      border-radius: 7px;
+      display: inline-grid;
+      place-items: center;
+      padding: 0;
+      background: #ffffff;
+      color: #334155;
+      box-shadow: 0 2px 8px rgba(15, 23, 42, .06);
+      font-size: 0;
+      line-height: 1;
+      cursor: pointer;
+    }
+    .popup-close-button:hover {
+      border-color: #b8c2d3;
+      background: #f8fafc;
+    }
+    .popup-close-button svg {
+      width: 14px;
+      height: 14px;
+    }
     .field-label { display: block; font-size: 18px; font-weight: 750; margin-bottom: 10px; color: #1a2230; }
     .dropzone {
       border: 1px dashed #9aa4b2; border-radius: 8px; background: #fbfcff;
@@ -982,6 +1903,42 @@ HTML = r"""<!doctype html>
     }
     .drop-main { font-size: 17px; font-weight: 750; color: #1a2230; }
     .drop-sub { font-size: 14px; color: var(--muted); }
+    .cs-attachment-dropzone {
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: center;
+      min-height: 74px;
+      padding: 10px 12px;
+      gap: 5px 10px;
+    }
+    .cs-attachment-dropzone .drop-main,
+    .cs-attachment-dropzone .drop-sub {
+      grid-column: 1 / 2;
+    }
+    .cs-attachment-dropzone .drop-main {
+      font-size: 13px;
+    }
+    .cs-attachment-dropzone .drop-sub {
+      font-size: 11px;
+    }
+    .cs-attachment-button {
+      grid-column: 2;
+      grid-row: 1 / span 2;
+      min-width: 82px;
+      height: 32px;
+      padding: 0 12px;
+      border: 1px solid #b7c6dc;
+      border-radius: 7px;
+      background: #ffffff;
+      color: #174ea6;
+      font-size: 12px;
+      font-weight: 900;
+      cursor: pointer;
+      box-shadow: 0 2px 8px rgba(15, 23, 42, .05);
+    }
+    .cs-attachment-button:hover {
+      border-color: #8ba7d4;
+      background: #f6f9ff;
+    }
     .workhub-modal-backdrop.open .workhub-modal,
     .workhub-modal-backdrop.open .workhub-modal .modal-title,
     .workhub-modal-backdrop.open .workhub-modal .field-label,
@@ -1031,6 +1988,454 @@ HTML = r"""<!doctype html>
       border-radius: 8px;
       background: #fbfcff;
     }
+    #userAdminWorkspace.sales-report-only > .workspace-head,
+    #userAdminWorkspace.sales-report-only .workspace-actions,
+    #userAdminWorkspace.sales-report-only .admin-panel > .admin-card:not(#salesReportUploadCard),
+    #userAdminWorkspace.sales-report-only .admin-panel > .admin-form,
+    #userAdminWorkspace.sales-report-only .admin-panel > .permission-grid,
+    #userAdminWorkspace.sales-report-only .admin-panel > .admin-message,
+    #userAdminWorkspace.sales-report-only .admin-panel > .admin-table-wrap {
+      display: none;
+    }
+    #userAdminWorkspace:not(.sales-report-only) #salesReportUploadCard {
+      display: none;
+    }
+    #userAdminWorkspace.sales-report-only {
+      overflow-y: auto;
+      overflow-x: hidden;
+      scrollbar-gutter: stable;
+    }
+    #userAdminWorkspace.sales-report-only .workspace-mount,
+    #userAdminWorkspace.sales-report-only .admin-panel {
+      flex: 0 0 auto;
+      min-height: auto;
+    }
+    .sales-dashboard {
+      display: grid;
+      gap: 12px;
+      margin-top: 2px;
+    }
+    .sales-kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(6, minmax(0, 1fr));
+      gap: 8px;
+    }
+    .sales-kpi {
+      --kpi-bg: #ffffff;
+      position: relative;
+      min-height: 88px;
+      padding: 10px 10px 10px 14px;
+      border: 1px solid color-mix(in srgb, var(--kpi-color, #94a3b8) 22%, #d8e0ec);
+      border-radius: 8px;
+      background:
+        linear-gradient(135deg, color-mix(in srgb, var(--kpi-color, #94a3b8) 10%, white), var(--kpi-bg) 48%, #ffffff);
+      overflow: hidden;
+      box-shadow: 0 6px 16px rgba(15, 23, 42, .04);
+    }
+    .sales-kpi::before {
+      content: "";
+      position: absolute;
+      left: 0;
+      top: 0;
+      bottom: 0;
+      width: 4px;
+      background: var(--kpi-color, #94a3b8);
+    }
+    .sales-kpi.blue { --kpi-color: #2563eb; --kpi-bg: #f4f8ff; }
+    .sales-kpi.slate { --kpi-color: #64748b; --kpi-bg: #f8fafc; }
+    .sales-kpi.green { --kpi-color: #059669; --kpi-bg: #f2fbf7; }
+    .sales-kpi.red { --kpi-color: #dc2626; }
+    .sales-kpi.violet { --kpi-color: #7c3aed; --kpi-bg: #f8f5ff; }
+    .sales-kpi.orange { --kpi-color: #f97316; --kpi-bg: #fff7ed; }
+    .sales-kpi.teal { --kpi-color: #0d9488; --kpi-bg: #f0fdfa; }
+    .sales-kpi.muted { --kpi-color: #94a3b8; background: #f8fafc; }
+    .sales-kpi.primary {
+      border-color: rgba(37, 99, 235, .55);
+      box-shadow: 0 8px 20px rgba(37, 99, 235, .10);
+    }
+    .sales-kpi.danger,
+    .sales-kpi.red {
+      border-color: #fecaca;
+      background: #fff7f7;
+    }
+    .sales-kpi-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+    .sales-kpi-title {
+      min-width: 0;
+      display: flex;
+      align-items: center;
+      gap: 7px;
+    }
+    .sales-kpi-icon {
+      width: 26px;
+      height: 26px;
+      border-radius: 8px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      flex: 0 0 auto;
+      background: color-mix(in srgb, var(--kpi-color, #94a3b8) 14%, white);
+      color: var(--kpi-color, #475569);
+      font-size: 12px;
+      font-weight: 950;
+    }
+    .sales-kpi-badge {
+      height: 22px;
+      padding: 0 8px;
+      border-radius: 999px;
+      background: color-mix(in srgb, var(--kpi-color, #94a3b8) 12%, white);
+      color: var(--kpi-color, #475569);
+      display: inline-flex;
+      align-items: center;
+      flex: 0 0 auto;
+      font-size: 11px;
+      font-weight: 950;
+    }
+    .sales-kpi-label {
+      font-size: 12px;
+      color: #64748b;
+      font-weight: 950;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .sales-kpi-value {
+      margin-top: 8px;
+      font-size: 20px;
+      font-weight: 950;
+      color: #0f172a;
+    }
+    .sales-kpi-value.notice {
+      font-size: 14px;
+      line-height: 1.35;
+      color: #475569;
+      white-space: normal;
+    }
+    .sales-kpi-note {
+      margin-top: 4px;
+      font-size: 11px;
+      color: #64748b;
+      font-weight: 800;
+    }
+    .sales-dashboard.monthly-compare-mode .sales-kpi-grid {
+      display: none;
+    }
+    .sales-dashboard-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      gap: 10px;
+    }
+    .sales-table-tabs {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 8px;
+      margin: 10px 0;
+    }
+    .sales-table-tab {
+      min-height: 48px;
+      border: 1px solid #d8e0ec;
+      border-radius: 8px;
+      background: #fff;
+      color: #475569;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 0 12px;
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 950;
+      transition: border-color .16s ease, box-shadow .16s ease, transform .16s ease, background .16s ease;
+    }
+    .sales-table-tab:hover {
+      transform: translateY(-1px);
+      border-color: var(--tab-color, #2563eb);
+      box-shadow: 0 8px 18px rgba(15, 23, 42, .08);
+    }
+    .sales-table-tab.active {
+      border-color: var(--tab-color, #2563eb);
+      background: color-mix(in srgb, var(--tab-color, #2563eb) 8%, white);
+      color: #0f172a;
+      box-shadow: 0 8px 18px color-mix(in srgb, var(--tab-color, #2563eb) 14%, transparent);
+    }
+    .sales-table-tab[data-sales-tab="salesProduct"] { --tab-color: #2563eb; }
+    .sales-table-tab[data-sales-tab="partner"] { --tab-color: #2563eb; }
+    .sales-table-tab[data-sales-tab="monthlyCompare"] { --tab-color: #7c3aed; }
+    .sales-table-tab-count {
+      min-width: 34px;
+      height: 24px;
+      padding: 0 8px;
+      border-radius: 999px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      background: color-mix(in srgb, var(--tab-color, #2563eb) 12%, white);
+      color: var(--tab-color, #2563eb);
+      font-size: 11px;
+      font-weight: 950;
+    }
+    .sales-dashboard-grid.sales-tab-panels {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+      min-height: max(540px, calc(100vh - 335px));
+      align-items: stretch;
+    }
+    .sales-panel {
+      --panel-color: #64748b;
+      overflow: hidden;
+      border: 1px solid #d8e0ec;
+      border-radius: 8px;
+      background: white;
+      box-shadow: 0 6px 16px rgba(15, 23, 42, .035);
+      border-top: 3px solid var(--panel-color);
+    }
+    .sales-tab-panels .sales-panel {
+      display: none;
+    }
+    .sales-tab-panels .sales-panel.active {
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr);
+      animation: salesPanelIn .18s ease both;
+    }
+    .sales-panel.daily { --panel-color: #2563eb; }
+    .sales-panel.seller { --panel-color: #2563eb; }
+    .sales-panel.product { --panel-color: #7c3aed; }
+    .sales-panel.supplier { --panel-color: #f97316; }
+    .sales-panel.violet {
+      --panel-color: #7c3aed;
+      grid-column: 1 / -1;
+    }
+    .sales-panel.violet.active {
+      min-height: max(640px, calc(100vh - 150px));
+    }
+    .sales-panel-head {
+      min-height: 40px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 0 12px;
+      border-bottom: 1px solid #e2e8f0;
+      background: linear-gradient(90deg, color-mix(in srgb, var(--panel-color) 12%, #ffffff), #f8fafc 70%);
+      font-size: 13px;
+      font-weight: 950;
+    }
+    .sales-panel-title {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+    }
+    .sales-panel-icon {
+      width: 25px;
+      height: 25px;
+      border-radius: 8px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      background: color-mix(in srgb, var(--panel-color) 14%, white);
+      color: var(--panel-color);
+      font-size: 12px;
+      font-weight: 950;
+      flex: 0 0 auto;
+    }
+    .sales-panel-badge {
+      height: 22px;
+      padding: 0 8px;
+      border-radius: 999px;
+      display: inline-flex;
+      align-items: center;
+      background: color-mix(in srgb, var(--panel-color) 12%, white);
+      color: var(--panel-color);
+      font-size: 11px;
+      font-weight: 950;
+      white-space: nowrap;
+    }
+    .sales-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+      font-variant-numeric: tabular-nums;
+    }
+    .sales-table-scroll {
+      height: max(420px, calc(100vh - 395px));
+      max-height: none;
+      min-height: 0;
+      overflow-y: auto;
+      scrollbar-gutter: stable;
+    }
+    .sales-table th {
+      height: 32px;
+      padding: 0 8px;
+      position: sticky;
+      top: 0;
+      z-index: 1;
+      background: color-mix(in srgb, var(--panel-color) 7%, #f8fafc);
+      color: #1f2937;
+      border-bottom: 1px solid #e2e8f0;
+      text-align: right;
+      font-weight: 950;
+      white-space: nowrap;
+    }
+    .sales-table th:first-child,
+    .sales-table td:first-child {
+      text-align: left;
+    }
+    .sales-table td {
+      height: 32px;
+      padding: 5px 8px;
+      border-bottom: 1px solid #eef2f7;
+      text-align: right;
+      font-weight: 750;
+      white-space: nowrap;
+      transition: background .14s ease, color .14s ease;
+    }
+    .sales-table td:first-child {
+      color: #111827;
+      font-weight: 850;
+    }
+    .sales-panel.seller .sales-table th,
+    .sales-panel.seller .sales-table td {
+      background-clip: padding-box;
+    }
+    .sales-panel.seller .sales-table td:nth-child(3),
+    .sales-panel.seller .sales-table th:nth-child(3),
+    .sales-panel.product .sales-table td:nth-child(3),
+    .sales-panel.product .sales-table th:nth-child(3),
+    .sales-panel.daily .sales-table td:nth-child(3),
+    .sales-panel.daily .sales-table th:nth-child(3),
+    .sales-panel.daily .sales-table td:nth-child(4),
+    .sales-panel.daily .sales-table th:nth-child(4) {
+      box-shadow: inset 0 0 0 9999px rgba(37, 99, 235, .035);
+    }
+    .sales-panel.supplier .sales-table td:nth-child(2),
+    .sales-panel.supplier .sales-table th:nth-child(2) {
+      box-shadow: inset 0 0 0 9999px rgba(249, 115, 22, .07);
+    }
+    .sales-panel .sales-table td:last-child,
+    .sales-panel .sales-table th:last-child {
+      box-shadow: inset 0 0 0 9999px color-mix(in srgb, var(--panel-color) 5%, transparent);
+    }
+    .sales-table tbody tr {
+      transition: background .14s ease;
+    }
+    .sales-table tbody tr:hover td {
+      background: color-mix(in srgb, var(--panel-color) 8%, white);
+    }
+    .sales-table .empty {
+      text-align: center;
+      color: #667085;
+      height: 46px;
+    }
+    .sales-compare-layout {
+      display: grid;
+      gap: 10px;
+      padding: 10px;
+    }
+    .sales-panel.violet.active .sales-compare-layout {
+      min-height: calc(100vh - 195px);
+      grid-template-rows: auto minmax(0, 1fr);
+    }
+    .sales-panel.violet.active .sales-compare-layout > div:last-child {
+      min-height: 0;
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr);
+    }
+    .sales-compare-title {
+      font-size: 12px;
+      font-weight: 950;
+      color: #475569;
+    }
+    .sales-compare-detail-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-top: 4px;
+    }
+    .sales-compare-detail-tabs {
+      display: inline-flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+    .sales-compare-detail-tab {
+      height: 30px;
+      border: 1px solid #d8e0ec;
+      border-radius: 999px;
+      padding: 0 12px;
+      background: white;
+      color: #475569;
+      font-size: 11px;
+      font-weight: 950;
+      cursor: pointer;
+      transition: border-color .14s ease, background .14s ease, color .14s ease;
+    }
+    .sales-compare-detail-tab.active,
+    .sales-compare-detail-tab:hover {
+      border-color: #7c3aed;
+      background: #f3e8ff;
+      color: #5b21b6;
+    }
+    .sales-compare-detail-scroll {
+      height: clamp(460px, calc(100vh - 310px), 860px);
+      max-height: none;
+      min-height: 0;
+      overflow-y: scroll;
+      overflow-x: auto;
+      scrollbar-gutter: stable both-edges;
+    }
+    .sales-dashboard.loading .sales-kpi,
+    .sales-dashboard.loading .sales-panel {
+      position: relative;
+      overflow: hidden;
+    }
+    .sales-dashboard.loading .sales-kpi::after,
+    .sales-dashboard.loading .sales-panel::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      transform: translateX(-100%);
+      background: linear-gradient(90deg, transparent, rgba(148, 163, 184, .13), transparent);
+      animation: salesLoadingSweep 1.1s ease infinite;
+      pointer-events: none;
+    }
+    @keyframes salesPanelIn {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes salesLoadingSweep {
+      to { transform: translateX(100%); }
+    }
+    .sales-positive { color: #047857; }
+    .sales-negative { color: #b91c1c; }
+    @media (prefers-reduced-motion: reduce) {
+      .sales-table-tab,
+      .sales-table td,
+      .sales-table tbody tr,
+      .sales-tab-panels .sales-panel.active {
+        transition: none;
+        animation: none;
+      }
+      .sales-dashboard.loading .sales-kpi::after,
+      .sales-dashboard.loading .sales-panel::after {
+        animation: none;
+      }
+    }
+    @media (max-width: 1280px) {
+      .sales-kpi-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+      .sales-dashboard-grid { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 900px) {
+      .sales-table-tabs,
+      .sales-dashboard-grid.sales-tab-panels {
+        grid-template-columns: 1fr;
+      }
+    }
     .admin-section-title {
       font-size: 14px;
       font-weight: 950;
@@ -1069,6 +2474,12 @@ HTML = r"""<!doctype html>
       color: #344054;
     }
     .admin-check input { width: 16px; height: 16px; }
+    #userAdminWorkspace .workspace-mount,
+    #userAdminWorkspace .admin-panel {
+      flex: 0 0 auto;
+      min-height: auto;
+      overflow: visible;
+    }
     .permission-grid {
       display: grid;
       grid-template-columns: repeat(5, minmax(0, 1fr));
@@ -1077,6 +2488,12 @@ HTML = r"""<!doctype html>
       border: 1px solid var(--line);
       border-radius: 8px;
       background: #f8fafc;
+    }
+    #userAdminPermissions.permission-grid {
+      max-height: min(40vh, 380px);
+      overflow: auto;
+      align-content: start;
+      scrollbar-gutter: stable;
     }
     .permission-item {
       min-height: 42px;
@@ -1107,6 +2524,10 @@ HTML = r"""<!doctype html>
       border-radius: 8px;
       background: white;
     }
+    #userAdminWorkspace .admin-table-wrap {
+      max-height: min(44vh, 460px);
+      scrollbar-gutter: stable;
+    }
     .admin-table {
       width: 100%;
       min-width: 900px;
@@ -1114,6 +2535,9 @@ HTML = r"""<!doctype html>
       font-size: 13px;
     }
     .admin-table th {
+      position: sticky;
+      top: 0;
+      z-index: 1;
       height: 34px;
       padding: 0 10px;
       background: #eef6ff;
@@ -1137,8 +2561,301 @@ HTML = r"""<!doctype html>
       font-weight: 850;
       cursor: pointer;
     }
+    .admin-action.danger {
+      border-color: #fecaca;
+      color: #b42318;
+      background: #fff7f7;
+    }
+    .admin-action:disabled {
+      opacity: .45;
+      cursor: not-allowed;
+    }
     .admin-message { min-height: 20px; color: var(--muted); font-size: 13px; font-weight: 750; }
     .permission-hidden { display: none !important; }
+    .hermes-panel {
+      display: grid;
+      gap: 14px;
+      min-height: 0;
+    }
+    .hermes-hero,
+    .hermes-card {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: white;
+      box-shadow: var(--shadow);
+    }
+    .hermes-hero {
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr) auto;
+      gap: 14px;
+      align-items: center;
+      padding: 16px;
+      border-top: 3px solid #3b82f6;
+    }
+    .hermes-hero h2 {
+      margin: 2px 0 4px;
+      font-size: 22px;
+      line-height: 1.25;
+    }
+    .hermes-hero p {
+      margin: 0;
+      color: #475569;
+      font-size: 13px;
+      font-weight: 750;
+      line-height: 1.55;
+    }
+    .hermes-hero-icon {
+      width: 46px;
+      height: 46px;
+      border-radius: 12px;
+      display: grid;
+      place-items: center;
+      color: #2563eb;
+      background: linear-gradient(135deg, #eff6ff, #eef2ff);
+      border: 1px solid #bfdbfe;
+    }
+    .hermes-hero-icon .hermes-mark,
+    .hermes-hero-icon .hermes-mark img {
+      width: 100%;
+      height: 100%;
+    }
+    .hermes-hero-icon .hermes-mark {
+      width: 34px;
+      height: 34px;
+    }
+    .hermes-status-pill {
+      min-width: 92px;
+      height: 30px;
+      padding: 0 12px;
+      border-radius: 999px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      background: #f8fafc;
+      color: #475569;
+      border: 1px solid #d8e0ec;
+      font-size: 12px;
+      font-weight: 950;
+      white-space: nowrap;
+    }
+    .hermes-status-pill.ok {
+      background: #ecfdf3;
+      border-color: #bbf7d0;
+      color: #047857;
+    }
+    .hermes-status-pill.error {
+      background: #fff1f2;
+      border-color: #fecdd3;
+      color: #be123c;
+    }
+    .hermes-tabs {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .hermes-tab {
+      height: 36px;
+      padding: 0 14px;
+      border: 1px solid #d8e0ec;
+      border-radius: 8px;
+      background: white;
+      color: #475569;
+      font-size: 13px;
+      font-weight: 950;
+      cursor: pointer;
+    }
+    .hermes-tab.active {
+      border-color: #2563eb;
+      color: #1d4ed8;
+      background: #eff6ff;
+    }
+    .hermes-tab-panel { display: none; }
+    .hermes-tab-panel.active { display: block; }
+    .hermes-card {
+      display: grid;
+      gap: 12px;
+      padding: 16px;
+    }
+    .hermes-chat-layout {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      gap: 14px;
+      align-items: stretch;
+    }
+    .hermes-input,
+    .hermes-settings-grid input {
+      width: 100%;
+      height: 36px;
+      border: 1px solid #cfd6e2;
+      border-radius: 8px;
+      padding: 0 10px;
+      font-family: inherit;
+      font-size: 13px;
+      font-weight: 750;
+      background: white;
+    }
+    .hermes-textarea {
+      min-height: 140px;
+      height: 150px;
+      font-size: 13px;
+    }
+    .hermes-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+    }
+    .hermes-response {
+      min-height: 48px;
+      padding: 12px;
+      border: 1px dashed #cbd5e1;
+      border-radius: 8px;
+      background: #f8fafc;
+      color: #475569;
+      font-size: 13px;
+      font-weight: 750;
+      line-height: 1.55;
+      white-space: pre-wrap;
+    }
+    .hermes-side-grid {
+      display: grid;
+      gap: 12px;
+    }
+    .hermes-side-card {
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      background: #ffffff;
+      padding: 12px;
+    }
+    .hermes-side-card strong {
+      display: block;
+      margin-bottom: 8px;
+      font-size: 13px;
+      font-weight: 950;
+      color: #111827;
+    }
+    .hermes-side-card .hermes-response {
+      min-height: 210px;
+    }
+    .hermes-quick-actions {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+    }
+    .hermes-quick-actions button {
+      min-height: 34px;
+      border: 1px solid #d8dee9;
+      border-radius: 7px;
+      background: #f8fafc;
+      color: #1f2937;
+      font-family: inherit;
+      font-size: 12px;
+      font-weight: 850;
+      cursor: pointer;
+    }
+    .hermes-settings-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+      align-items: end;
+    }
+    .hermes-preset-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin: 8px 0 12px;
+    }
+    .hermes-preset-button {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+      color: var(--text);
+      cursor: pointer;
+      font-weight: 800;
+      padding: 8px 12px;
+    }
+    .hermes-preset-button:hover {
+      border-color: var(--blue);
+      color: var(--blue);
+    }
+    .hermes-help {
+      margin-bottom: 12px;
+    }
+    .hermes-settings-grid label {
+      display: grid;
+      gap: 6px;
+      color: #344054;
+      font-size: 12px;
+      font-weight: 900;
+    }
+    .hermes-history-list {
+      display: grid;
+      gap: 8px;
+    }
+    .hermes-history-tools {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+      margin: 12px 0;
+    }
+    .hermes-history-filter {
+      min-width: 150px;
+      height: 36px;
+      border: 1px solid #cbd5e1;
+      border-radius: 7px;
+      padding: 0 10px;
+      background: #ffffff;
+      font-family: inherit;
+      font-weight: 800;
+      color: #111827;
+    }
+    .hermes-summary-list {
+      display: grid;
+      gap: 10px;
+      margin: 10px 0 14px;
+    }
+    .hermes-summary-card {
+      border: 1px solid #bfdbfe;
+      border-radius: 8px;
+      background: #eff6ff;
+      padding: 12px;
+      color: #172554;
+    }
+    .hermes-summary-card strong {
+      display: block;
+      font-size: 13px;
+      margin-bottom: 6px;
+    }
+    .hermes-summary-card span {
+      display: block;
+      color: #475569;
+      font-size: 11px;
+      font-weight: 800;
+      margin-top: 7px;
+    }
+    .hermes-history-item {
+      display: grid;
+      gap: 5px;
+      padding: 11px;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      background: #fbfcff;
+    }
+    .hermes-history-item strong {
+      color: #111827;
+      font-size: 13px;
+    }
+    .hermes-history-item span {
+      color: #64748b;
+      font-size: 12px;
+      font-weight: 750;
+    }
+    @media (max-width: 1100px) {
+      .hermes-settings-grid { grid-template-columns: 1fr; }
+      .hermes-hero { grid-template-columns: auto minmax(0, 1fr); }
+      .hermes-status-pill { grid-column: 1 / -1; justify-self: start; }
+      .hermes-chat-layout { grid-template-columns: 1fr; }
+    }
     .leave-panel { display: grid; gap: 14px; }
     .leave-summary-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
     .leave-summary-card {
@@ -1195,6 +2912,52 @@ HTML = r"""<!doctype html>
       background: white;
     }
     .leave-form textarea { min-height: 92px; resize: vertical; }
+    .leave-user-picker {
+      grid-column: 1 / -1;
+      display: grid;
+      gap: 8px;
+    }
+    .leave-user-list {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 6px;
+      max-height: 184px;
+      overflow-y: auto;
+      padding: 8px;
+      border: 1px solid #d8e1ef;
+      border-radius: 8px;
+      background: #f8fbff;
+    }
+    .leave-user-option {
+      border: 1px solid #d8e1ef;
+      border-radius: 7px;
+      background: white;
+      padding: 8px 10px;
+      color: #1f2937;
+      text-align: left;
+      font-size: 12px;
+      font-weight: 900;
+      cursor: pointer;
+    }
+    .leave-user-option.active {
+      border-color: var(--blue);
+      background: #eff6ff;
+      color: var(--blue);
+    }
+    .leave-user-option span {
+      display: block;
+      margin-top: 2px;
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 800;
+    }
+    .leave-user-empty {
+      grid-column: 1 / -1;
+      padding: 10px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 850;
+    }
     .leave-table {
       width: 100%;
       border-collapse: collapse;
@@ -1392,51 +3155,91 @@ HTML = r"""<!doctype html>
     }
     .vehicle-fields { display: none; }
     .cs-fields,
-    .stock-notice-fields { display: none; }
+    .management-manual-fields,
+    .stock-notice-fields,
+    .vendor-contact-manage-fields { display: none; }
     .ledger-fields { display: none; }
     .management-fields { display: none; }
     .ledger-cs-popup-head { display: none; }
-    .workhub-modal.ledger-modal .cs-fields.ledger-cs-popup {
-      position: absolute;
+    .workhub-modal.ledger-modal .cs-fields.ledger-cs-popup,
+    #ledgerWorkspace .cs-fields.ledger-cs-popup,
+    #managementWorkspace .management-manual-fields.ledger-cs-popup {
+      position: fixed;
       z-index: 35;
-      top: 70px;
-      right: 22px;
-      bottom: 72px;
-      display: block !important;
-      width: min(560px, calc(100vw - 62px));
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      display: grid !important;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px 12px;
+      width: min(920px, calc(100vw - 64px));
+      max-height: min(82vh, 760px);
       overflow: auto;
-      padding: 18px;
+      padding: 16px;
       border: 1px solid #9aa4b2;
       border-radius: 10px;
       background: white;
       box-shadow: 0 18px 44px rgba(15, 23, 42, .28);
     }
-    .workhub-modal.ledger-modal .cs-fields.ledger-cs-popup .ledger-cs-popup-head {
+    .workhub-modal.ledger-modal .cs-fields.ledger-cs-popup .ledger-cs-popup-head,
+    #ledgerWorkspace .cs-fields.ledger-cs-popup .ledger-cs-popup-head,
+    #managementWorkspace .management-manual-fields.ledger-cs-popup .ledger-cs-popup-head {
       position: sticky;
-      top: -18px;
+      top: -16px;
       z-index: 2;
+      grid-column: 1 / -1;
       display: flex;
       align-items: center;
       justify-content: space-between;
       gap: 12px;
-      margin: -18px -18px 14px;
-      padding: 15px 18px;
+      margin: -16px -16px 4px;
+      padding: 13px 16px;
       border-bottom: 1px solid #d7dce5;
       background: white;
+    }
+    .cs-fields.ledger-cs-popup .text-field,
+    .management-manual-fields.ledger-cs-popup .text-field {
+      margin-top: 0;
+    }
+    .cs-fields.ledger-cs-popup .text-field.cs-wide,
+    .management-manual-fields.ledger-cs-popup .text-field.cs-wide,
+    .cs-fields.ledger-cs-popup .add-row,
+    .management-manual-fields.ledger-cs-popup .add-row,
+    .cs-fields.ledger-cs-popup .cs-toolbar,
+    .management-manual-fields.ledger-cs-popup .cs-toolbar,
+    .cs-fields.ledger-cs-popup .cs-case-list {
+      grid-column: 1 / -1;
+    }
+    .cs-fields.ledger-cs-popup textarea,
+    .management-manual-fields.ledger-cs-popup textarea {
+      min-height: 72px;
+    }
+    .management-manual-fields #manualManagementReceiverAddress,
+    .management-manual-fields #manualManagementMemo {
+      min-height: 48px;
+      height: 52px;
+      resize: vertical;
+    }
+    .cs-fields.ledger-cs-popup #csBodyInput {
+      min-height: 118px;
+    }
+    @media (max-width: 840px) {
+      .workhub-modal.ledger-modal .cs-fields.ledger-cs-popup,
+      #ledgerWorkspace .cs-fields.ledger-cs-popup,
+      #managementWorkspace .management-manual-fields.ledger-cs-popup {
+        grid-template-columns: 1fr;
+        width: min(620px, calc(100vw - 28px));
+        max-height: calc(100vh - 36px);
+      }
     }
     .ledger-cs-popup-title {
       font-size: 20px;
       font-weight: 850;
     }
     .ledger-cs-popup-close {
-      height: 34px;
-      min-width: 64px;
-      border: 1px solid #aab2bf;
-      border-radius: 6px;
-      background: white;
-      font-family: inherit;
-      font-weight: 800;
-      cursor: pointer;
+      width: 28px;
+      height: 28px;
+      min-width: 28px;
     }
     .text-field { margin-top: 14px; }
     .text-field input,
@@ -1666,9 +3469,10 @@ HTML = r"""<!doctype html>
     .ledger-import-button input { display: none; }
     .cell-edit-bar {
       display: none;
-      grid-template-columns: minmax(150px, auto) minmax(280px, 1fr) auto auto;
+      grid-template-columns: minmax(140px, auto) minmax(180px, max-content) auto auto auto;
       gap: 7px;
       align-items: center;
+      justify-content: start;
       margin: -2px 0 10px;
       padding: 8px;
       border: 1px solid #cfd6e2;
@@ -1676,11 +3480,25 @@ HTML = r"""<!doctype html>
       background: #f8fafc;
     }
     .cell-edit-bar.open { display: grid; }
+    .cell-edit-bar:has(textarea.cell-edit-control) {
+      align-items: start;
+    }
+    .cell-edit-bar:has(textarea.cell-edit-control) .cell-edit-label {
+      padding-top: 0;
+    }
+    .cell-edit-bar:has(textarea.cell-edit-control) .cell-edit-button {
+      align-self: center;
+    }
     .cell-edit-label {
       color: #344054;
       font-size: 12px;
       font-weight: 900;
       white-space: nowrap;
+    }
+    .cell-edit-bar > div:nth-child(2) {
+      width: min(var(--cell-editor-width, 420px), calc(100vw - 520px));
+      min-width: 180px;
+      max-width: 100%;
     }
     .cell-edit-control {
       width: 100%;
@@ -1695,25 +3513,53 @@ HTML = r"""<!doctype html>
       font-weight: 750;
     }
     textarea.cell-edit-control {
-      min-height: 64px;
+      min-height: 36px;
+      max-height: 180px;
       resize: vertical;
       line-height: 1.45;
+      overflow-y: auto;
     }
     .cell-edit-button {
-      height: 34px;
-      padding: 0 12px;
+      height: 28px;
+      padding: 0 9px;
       border: 1px solid #aab2bf;
-      border-radius: 7px;
+      border-radius: 6px;
       background: white;
       font-family: inherit;
-      font-size: 12px;
+      font-size: 11px;
       font-weight: 900;
       cursor: pointer;
+      align-self: center;
+      justify-self: center;
     }
     .cell-edit-button.apply {
       border-color: #087a46;
       background: #087a46;
       color: white;
+    }
+    .cell-edit-button.return-check {
+      border-color: #2563eb;
+      background: #eff6ff;
+      color: #1d4ed8;
+    }
+    .cell-edit-button[hidden] { display: none; }
+    @media (max-width: 1100px) {
+      .cell-edit-bar {
+        grid-template-columns: 1fr auto auto auto;
+        align-items: center;
+        justify-content: stretch;
+      }
+      .cell-edit-label,
+      .cell-edit-bar > div:nth-child(2) {
+        grid-column: 1 / -1;
+        width: 100%;
+      }
+      .cell-edit-label {
+        white-space: normal;
+      }
+      .cell-edit-button {
+        justify-self: center;
+      }
     }
     .management-month-tabs {
       display: flex;
@@ -1779,6 +3625,19 @@ HTML = r"""<!doctype html>
     }
     .download-menu button:last-child { border-bottom: 0; }
     .download-menu button:hover { background: #eef6ff; }
+    .import-mode-actions {
+      justify-content: center;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .import-mode-actions .btn {
+      min-width: 126px;
+    }
+    .import-mode-actions .danger {
+      border-color: #dc2626;
+      background: #dc2626;
+      color: #fff;
+    }
     .ledger-wrap {
       border: 1px solid #d7dce5;
       border-radius: 8px;
@@ -1788,6 +3647,19 @@ HTML = r"""<!doctype html>
       max-width: 100%;
       background: white;
       scrollbar-gutter: stable both-edges;
+    }
+    .ledger-fields::before {
+      content: "우선순위: 상태와 C/S 내용을 먼저 보고, 필요한 행을 선택한 뒤 상단 저장을 눌러줘.";
+      display: block;
+      margin: 0 0 8px;
+      padding: 9px 12px;
+      border: 1px solid #dbeafe;
+      border-radius: 8px;
+      background: #eff6ff;
+      color: #1d4ed8;
+      font-size: 12px;
+      line-height: 1.35;
+      font-weight: 900;
     }
     .workhub-modal.ledger-modal.ledger-view .ledger-fields {
       display: flex !important;
@@ -1813,26 +3685,59 @@ HTML = r"""<!doctype html>
     }
     .ledger-table {
       width: 100%;
-      min-width: 2600px;
+      min-width: 2520px;
+      table-layout: fixed;
       border-collapse: collapse;
       font-size: 12px;
+      font-variant-numeric: tabular-nums;
+    }
+    .ledger-table col.select-col { width: 28px; }
+    .ledger-table col.date-col { width: 82px; }
+    .ledger-table col.vendor-col { width: 118px; }
+    .ledger-table col.status-col { width: 160px; }
+    .ledger-table col.short-col { width: 78px; }
+    .ledger-table col.type-col { width: 132px; }
+    .ledger-table col.content-col { width: 260px; }
+    .ledger-table col.invoice-col { width: 124px; }
+    .ledger-table col.original-invoice-col { width: 138px; }
+    .ledger-table col.name-col { width: 68px; }
+    .ledger-table col.phone-col { width: 104px; }
+    .ledger-table col.product-col { width: 230px; }
+    .ledger-table col.quantity-col { width: 62px; }
+    .ledger-table col.address-col { width: 260px; }
+    .ledger-table col.courier-col { width: 90px; }
+    .ledger-table col.memo-col { width: 190px; }
+    .ledger-table col.action-col { width: 86px; }
+    .management-wrap .ledger-table col[data-management-col] {
+      width: var(--management-col-width, auto);
     }
     .ledger-table th {
       position: sticky;
       top: 0;
-      z-index: 1;
-      background: #8ecf45;
-      border-bottom: 1px solid #6baa2d;
-      color: #111827;
-      font-weight: 850;
-      padding: 5px 6px;
+      z-index: 2;
+      background: #f8fafc;
+      border-bottom: 1px solid #d7dce5;
+      color: #344054;
+      font-weight: 950;
+      padding: 7px 6px;
       text-align: center;
       white-space: nowrap;
       vertical-align: bottom;
-      line-height: 1.18;
+      line-height: 1.2;
+    }
+    .ledger-table th .ledger-th-title {
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .ledger-table th.select-head {
+      width: 28px;
+      min-width: 28px;
+      max-width: 28px;
+      padding-left: 2px;
+      padding-right: 2px;
     }
     .ledger-table th.has-filter {
-      padding-right: 26px;
+      padding-right: 21px;
     }
     .ledger-th-title {
       display: block;
@@ -1840,16 +3745,16 @@ HTML = r"""<!doctype html>
     }
     .ledger-filter-trigger {
       position: absolute;
-      right: 5px;
+      right: 4px;
       top: 50%;
       transform: translateY(-50%);
-      width: 19px;
-      height: 19px;
-      border: 1px solid rgba(17, 24, 39, .42);
+      width: 10px;
+      height: 10px;
+      border: 1px solid rgba(17, 24, 39, .32);
       border-radius: 3px;
       background: rgba(255,255,255,.88);
       color: #111827;
-      font-size: 11px;
+      font-size: 9px;
       line-height: 1;
       cursor: pointer;
       padding: 0;
@@ -1863,7 +3768,7 @@ HTML = r"""<!doctype html>
       position: fixed;
       z-index: 40;
       display: none;
-      width: 260px;
+      width: 320px;
       max-height: 390px;
       padding: 10px;
       border: 1px solid #98a2b3;
@@ -1910,6 +3815,7 @@ HTML = r"""<!doctype html>
     .ledger-filter-actions {
       display: flex;
       justify-content: flex-end;
+      flex-wrap: wrap;
       gap: 7px;
     }
     .ledger-filter-actions button {
@@ -1920,28 +3826,69 @@ HTML = r"""<!doctype html>
       font-family: inherit;
       font-weight: 800;
       cursor: pointer;
-      padding: 0 10px;
+      padding: 0 9px;
     }
     .ledger-filter-actions .apply {
       border-color: #087a46;
       background: #087a46;
       color: white;
     }
-    .ledger-table th.invoice-head {
-      background: #f3b21d;
-      border-bottom-color: #c98e10;
+    .ledger-table th.invoice-head.reship-head {
+      background: #fff7ed;
+      border-bottom-color: #fed7aa;
+      color: #9a3412;
+    }
+    .ledger-table th.invoice-head.return-head {
+      background: #eff6ff;
+      border-bottom-color: #bfdbfe;
+      color: #1e3a8a;
     }
     .ledger-table td {
       border-bottom: 1px solid #e6eaf0;
-      padding: 4px 6px;
+      padding: 7px 8px;
+      height: 36px;
+      box-sizing: border-box;
       vertical-align: middle;
       text-align: center;
       color: #1f2937;
-      font-size: 11px;
-      line-height: 1.22;
+      font-size: 12px;
+      line-height: 1.35;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .ledger-table tbody tr:nth-child(even) td {
+      background-color: #fbfcff;
+    }
+    .ledger-table tbody tr:hover td {
+      background-color: #f2f7ff;
+    }
+    .ledger-table td:first-child {
+      width: 28px;
+      min-width: 28px;
+      max-width: 28px;
+      padding-left: 2px;
+      padding-right: 2px;
+    }
+    .ledger-table td.invoice-cell {
+      font-weight: 800;
+    }
+    .ledger-table td.reship-cell {
+      background: #fff8e6;
+      color: #7a4a00;
+    }
+    .ledger-table td.return-cell {
+      background: #eff6ff;
+      color: #1d4ed8;
     }
     .ledger-table tr.completed-cs td {
       background: #fff8d8;
+    }
+    .ledger-table tr.completed-cs td.reship-cell {
+      background: #fff1c9;
+    }
+    .ledger-table tr.completed-cs td.return-cell {
+      background: #e5f0ff;
     }
     .ledger-table tr.row-dirty td {
       box-shadow: inset 0 0 0 9999px rgba(37, 99, 235, .035);
@@ -1950,6 +3897,57 @@ HTML = r"""<!doctype html>
       background: var(--duplicate-row-color, #eef6ff);
     }
     .ledger-table td.left { text-align: left; }
+    .ledger-table td[data-field="cs_content"],
+    .ledger-table td[data-field="product_name"],
+    .ledger-table td[data-field="receiver_address"],
+    .ledger-table td[data-field="memo"],
+    .ledger-table td[data-management-field="purchase_vendor"],
+    .ledger-table td[data-management-field="sales_vendor"],
+    .ledger-table td[data-management-field="orderer_name"],
+    .ledger-table td[data-management-field="sender_name"],
+    .ledger-table td[data-management-field="receiver_name"],
+    .ledger-table td[data-management-field="product_name"],
+    .ledger-table td[data-management-field="receiver_address"],
+    .ledger-table td[data-management-field="memo"] {
+      text-align: left;
+    }
+    .ledger-table td[data-field="cs_content"],
+    .ledger-table td[data-field="product_name"],
+    .ledger-table td[data-field="receiver_address"],
+    .ledger-table td[data-management-field="product_name"],
+    .ledger-table td[data-management-field="receiver_address"] {
+      white-space: normal;
+      line-height: 1.38;
+      max-height: 44px;
+    }
+    .ledger-table td[data-field="quantity"],
+    .ledger-table td[data-management-field="quantity"] {
+      text-align: right;
+      font-weight: 900;
+    }
+    .ledger-table td[data-management-field="purchase_vendor"] {
+      background: #fff7ed;
+      color: #7c2d12;
+      box-shadow: inset 3px 0 0 rgba(249, 115, 22, .35);
+    }
+    .ledger-table td[data-management-field="sales_vendor"] {
+      background: #eff6ff;
+      color: #1e3a8a;
+      box-shadow: inset 3px 0 0 rgba(37, 99, 235, .35);
+    }
+    .ledger-table td[data-field="cs_status"],
+    .ledger-table td[data-field="status"],
+    .ledger-table td[data-management-field="transaction_type"],
+    .ledger-table td[data-management-field="ledger_checked"] {
+      font-weight: 900;
+      color: #1f2937;
+      background: #f8fafc;
+    }
+    .ledger-table td[data-field="status"] {
+      background: #eef6ff;
+      color: #155bc8;
+      box-shadow: inset 3px 0 0 rgba(21, 91, 200, .35);
+    }
     .ledger-table td.editable-cell {
       cursor: pointer;
       white-space: nowrap;
@@ -1958,7 +3956,7 @@ HTML = r"""<!doctype html>
       max-width: 260px;
     }
     .ledger-table td.editable-cell.left {
-      max-width: 360px;
+      max-width: 260px;
     }
     .ledger-table td.editable-cell:hover {
       background: #eef6ff;
@@ -1967,6 +3965,55 @@ HTML = r"""<!doctype html>
       outline: 2px solid #155bc8;
       outline-offset: -2px;
       background: #eef6ff;
+    }
+    .ledger-status-cell {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      width: 100%;
+      min-width: 160px;
+    }
+    .ledger-cell-value {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .ledger-table td.quantity-blue,
+    .ledger-table td.quantity-blue .ledger-cell-value {
+      color: #155bc8;
+      font-weight: 950;
+    }
+    .ledger-table td.quantity-red,
+    .ledger-table td.quantity-red .ledger-cell-value {
+      color: #dc2626;
+      font-weight: 950;
+    }
+    .ledger-table tr.search-target-highlight td {
+      animation: search-target-flash 1.8s ease-out;
+      box-shadow: inset 0 0 0 1px rgba(37, 99, 235, .55);
+    }
+    @keyframes search-target-flash {
+      0%, 55% { background: #dbeafe; }
+      100% { background: inherit; }
+    }
+    .ledger-row-return-check {
+      height: 22px;
+      padding: 0 7px;
+      border: 1px solid #bfdbfe;
+      border-radius: 5px;
+      background: #eff6ff;
+      color: #1d4ed8;
+      font-family: inherit;
+      font-size: 10px;
+      font-weight: 900;
+      line-height: 1;
+      white-space: nowrap;
+      cursor: pointer;
+    }
+    .ledger-row-return-check:hover {
+      border-color: #2563eb;
+      background: #dbeafe;
     }
     .ledger-status {
       display: inline-flex;
@@ -2005,8 +4052,8 @@ HTML = r"""<!doctype html>
       cursor: pointer;
     }
     .ledger-check {
-      width: 16px;
-      height: 16px;
+      width: 13px;
+      height: 13px;
       accent-color: #155bc8;
       cursor: pointer;
     }
@@ -2062,6 +4109,14 @@ HTML = r"""<!doctype html>
       padding: 0 22px 24px;
     }
     .workspace-view.active { display: flex; }
+    #userAdminWorkspace.active,
+    #backupWorkspace.active,
+    #systemUpdateWorkspace.active {
+      flex: 0 0 auto;
+      min-height: auto;
+      overflow: visible;
+      padding-bottom: 48px;
+    }
     .order-exec-panel {
       display: grid;
       gap: 14px;
@@ -2449,13 +4504,17 @@ HTML = r"""<!doctype html>
       gap: 12px;
     }
     .dashboard-import-card .import-table {
-      min-width: 720px;
+      width: 100%;
+      min-width: 1040px;
     }
     .company-grid {
       display: grid;
       grid-template-columns: minmax(0, 1.1fr) minmax(320px, .9fr);
       gap: 12px;
       align-items: stretch;
+    }
+    .company-panel[data-company-panel="notice"] .company-grid {
+      grid-template-columns: 1fr;
     }
     .company-rule-grid {
       display: grid;
@@ -2557,18 +4616,35 @@ HTML = r"""<!doctype html>
       margin-top: 10px;
     }
     .dashboard-calendar-panel .company-calendar-shell {
-      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      grid-template-columns: minmax(0, 1.8fr) minmax(340px, 1fr);
       align-items: stretch;
     }
     .dashboard-calendar-card .company-calendar-grid {
-      min-height: 360px;
+      min-height: 760px;
     }
     .dashboard-calendar-card .calendar-day {
+      min-height: 118px;
+      padding: 8px;
+      gap: 6px;
+    }
+    .dashboard-calendar-card .calendar-event {
+      min-height: 22px;
+      padding: 4px 6px;
+      font-size: 11px;
+    }
+    .company-portal.notice-calendar-mode .dashboard-calendar-panel .company-calendar-shell {
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      align-items: stretch;
+    }
+    .company-portal.notice-calendar-mode .dashboard-calendar-card .company-calendar-grid {
+      min-height: 360px;
+    }
+    .company-portal.notice-calendar-mode .dashboard-calendar-card .calendar-day {
       min-height: 60px;
       padding: 6px;
       gap: 4px;
     }
-    .dashboard-calendar-card .calendar-event {
+    .company-portal.notice-calendar-mode .dashboard-calendar-card .calendar-event {
       min-height: 18px;
       padding: 3px 5px;
       font-size: 10px;
@@ -2587,24 +4663,74 @@ HTML = r"""<!doctype html>
       align-content: start;
       min-height: 0;
     }
+    .company-portal.notice-calendar-mode .company-calendar-side {
+      display: none;
+    }
+    .company-portal.calendar-detail-mode #dashboardSalesPanel {
+      display: none;
+    }
+    .company-portal.calendar-detail-mode .company-calendar-side {
+      display: grid;
+    }
     .dashboard-sales-grid {
       display: grid;
       grid-template-columns: repeat(2, minmax(0, 1fr));
       gap: 8px;
     }
     .dashboard-sales-metric {
+      --metric-bg: #ffffff;
       min-height: 72px;
-      padding: 12px;
-      border: 1px solid #e5e7eb;
+      padding: 11px 12px;
+      border: 1px solid color-mix(in srgb, var(--metric-color, #64748b) 18%, #e5e7eb);
       border-radius: 8px;
-      background: #f8fafc;
+      background:
+        linear-gradient(135deg, color-mix(in srgb, var(--metric-color, #64748b) 10%, white), var(--metric-bg) 58%, #ffffff);
+      position: relative;
+      overflow: hidden;
     }
-    .dashboard-sales-metric span {
-      display: block;
+    .dashboard-sales-metric::before {
+      content: "";
+      position: absolute;
+      inset: 0 auto 0 0;
+      width: 3px;
+      background: var(--metric-color, #64748b);
+    }
+    .dashboard-sales-metric.blue { --metric-color: #2563eb; --metric-bg: #f4f8ff; }
+    .dashboard-sales-metric.violet { --metric-color: #7c3aed; --metric-bg: #f8f5ff; }
+    .dashboard-sales-metric.green { --metric-color: #059669; --metric-bg: #f2fbf7; }
+    .dashboard-sales-metric.orange { --metric-color: #f97316; --metric-bg: #fff7ed; }
+    .dashboard-sales-metric-top {
+      display: flex;
+      align-items: center;
+      gap: 7px;
       margin-bottom: 8px;
+      min-width: 0;
+    }
+    .dashboard-sales-icon {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      flex: 0 0 auto;
+      width: 24px;
+      height: 24px;
+      border-radius: 8px;
+      background: color-mix(in srgb, var(--metric-color, #64748b) 13%, #ffffff);
+      color: var(--metric-color, #64748b);
+    }
+    .dashboard-sales-icon svg {
+      width: 14px;
+      height: 14px;
+      stroke-width: 2.4;
+    }
+    .dashboard-sales-metric-label {
+      display: block;
+      min-width: 0;
       color: #667085;
       font-size: 11px;
       font-weight: 850;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
     .dashboard-sales-metric strong {
       color: #111827;
@@ -2612,6 +4738,179 @@ HTML = r"""<!doctype html>
       font-weight: 950;
       line-height: 1.25;
     }
+    .dashboard-sales-metric strong.sales-positive {
+      color: #047857;
+    }
+    .dashboard-sales-metric strong.sales-negative {
+      color: #b91c1c;
+    }
+    .dashboard-sales-metric strong.notice {
+      color: #64748b;
+      font-size: 16px;
+    }
+    .dashboard-sales-status {
+      display: inline-flex;
+      align-items: center;
+      min-height: 22px;
+      padding: 3px 8px;
+      border-radius: 999px;
+      background: #f1f5f9;
+      color: #475569;
+      font-size: 11px;
+      font-weight: 900;
+    }
+    .dashboard-sales-status.connected {
+      background: #ecfdf5;
+      color: #047857;
+    }
+    .dashboard-sales-status.warning {
+      background: #fff7ed;
+      color: #c2410c;
+    }
+    .dashboard-sales-insights {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 7px;
+      margin-top: 10px;
+    }
+    .dashboard-sales-compare-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 7px;
+      margin-top: 10px;
+    }
+    .dashboard-sales-previous-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 7px;
+      margin-top: 8px;
+    }
+    .dashboard-sales-compare-grid + .dashboard-sales-grid {
+      margin-top: 8px;
+    }
+    .dashboard-sales-compare {
+      --mini-card-color: #64748b;
+      min-width: 0;
+      padding: 9px 10px;
+      border: 1px solid color-mix(in srgb, var(--mini-card-color) 16%, #e5e7eb);
+      border-radius: 8px;
+      background: linear-gradient(135deg, color-mix(in srgb, var(--mini-card-color) 7%, white), #ffffff 62%);
+    }
+    .dashboard-sales-insight {
+      --insight-color: #64748b;
+      min-width: 0;
+      padding: 9px 10px;
+      border: 1px solid color-mix(in srgb, var(--insight-color) 18%, #e5e7eb);
+      border-radius: 8px;
+      background: linear-gradient(135deg, color-mix(in srgb, var(--insight-color) 8%, white), #ffffff 62%);
+      box-shadow: inset 3px 0 0 var(--insight-color);
+    }
+    .dashboard-sales-compare:nth-child(1) { --mini-card-color: #2563eb; }
+    .dashboard-sales-compare:nth-child(2) { --mini-card-color: #059669; }
+    .dashboard-sales-insight.sales-insight-revenue,
+    .dashboard-sales-insight:nth-child(1) { --insight-color: #2563eb; }
+    .dashboard-sales-insight.sales-insight-purchase,
+    .dashboard-sales-insight:nth-child(2) { --insight-color: #f97316; }
+    .dashboard-sales-insight.sales-insight-margin,
+    .dashboard-sales-insight:nth-child(3) { --insight-color: #7c3aed; }
+    .dashboard-sales-previous {
+      min-width: 0;
+      padding: 8px 9px;
+      border: 1px solid #dbe4f0;
+      border-radius: 8px;
+      background: #f8fafc;
+    }
+    .dashboard-sales-compare.waiting {
+      padding: 7px 8px;
+      background: #fbfcff;
+      border-style: dashed;
+    }
+    .dashboard-sales-compare-top,
+    .dashboard-sales-previous-top,
+    .dashboard-sales-insight-top {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-bottom: 5px;
+      min-width: 0;
+    }
+    .dashboard-sales-compare-icon,
+    .dashboard-sales-previous-icon,
+    .dashboard-sales-insight-icon {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 18px;
+      height: 18px;
+      flex: 0 0 auto;
+      border-radius: 6px;
+      background: color-mix(in srgb, var(--mini-card-color, var(--insight-color, #64748b)) 12%, #ffffff);
+      color: var(--mini-card-color, var(--insight-color, #475569));
+    }
+    .dashboard-sales-compare-icon svg,
+    .dashboard-sales-previous-icon svg,
+    .dashboard-sales-insight-icon svg {
+      width: 11px;
+      height: 11px;
+      stroke-width: 2.5;
+    }
+    .dashboard-sales-compare span,
+    .dashboard-sales-previous span,
+    .dashboard-sales-insight span {
+      display: block;
+      min-width: 0;
+      color: #667085;
+      font-size: 10px;
+      font-weight: 850;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .dashboard-sales-compare strong,
+    .dashboard-sales-previous strong,
+    .dashboard-sales-insight strong {
+      display: block;
+      color: #111827;
+      font-size: 13px;
+      font-weight: 950;
+      line-height: 1.25;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-variant-numeric: tabular-nums;
+    }
+    .dashboard-sales-previous strong {
+      font-size: 14px;
+    }
+    .dashboard-sales-compare.waiting strong {
+      font-size: 12px;
+      color: #64748b;
+    }
+    .dashboard-sales-compare.waiting .dashboard-sales-rate {
+      font-size: 10px;
+    }
+    .dashboard-sales-compare-value {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 6px;
+      min-width: 0;
+    }
+    .dashboard-sales-rate {
+      flex: 0 0 auto;
+      color: #64748b;
+      font-size: 11px;
+      font-weight: 950;
+    }
+    .dashboard-sales-rate.sales-positive { color: #047857; }
+    .dashboard-sales-rate.sales-negative { color: #b91c1c; }
+    .dashboard-sales-rate.notice { color: #64748b; }
+    .dashboard-sales-compare strong.sales-positive,
+    .dashboard-sales-insight strong.sales-positive { color: #047857; }
+    .dashboard-sales-compare strong.sales-negative,
+    .dashboard-sales-insight strong.sales-negative { color: #b91c1c; }
+    .dashboard-sales-compare strong.notice,
+    .dashboard-sales-insight strong.notice { color: #64748b; }
     .dashboard-sales-placeholder {
       margin-top: 12px;
       padding: 13px 14px;
@@ -2624,6 +4923,624 @@ HTML = r"""<!doctype html>
       line-height: 1.5;
       text-align: center;
     }
+    .dashboard-sales-placeholder.has-chart {
+      padding: 0;
+      border: 0;
+      background: transparent;
+      text-align: left;
+    }
+    .dashboard-recent-sales {
+      display: grid;
+      gap: 8px;
+      padding: 10px;
+      border: 1px solid #d7e3f2;
+      border-radius: 8px;
+      background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+      box-shadow: 0 8px 18px rgba(15, 23, 42, .05);
+      text-align: left;
+    }
+    .dashboard-recent-sales-head {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 10px;
+    }
+    .dashboard-recent-sales-title {
+      color: #111827;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      font-weight: 950;
+    }
+    .dashboard-recent-sales-title::before {
+      content: "";
+      width: 7px;
+      height: 7px;
+      border-radius: 999px;
+      background: #2563eb;
+      box-shadow: 0 0 0 3px rgba(37, 99, 235, .12);
+    }
+    .dashboard-recent-sales-caption {
+      padding: 3px 7px;
+      border-radius: 999px;
+      background: #eef6ff;
+      color: #64748b;
+      font-size: 10px;
+      font-weight: 850;
+      white-space: nowrap;
+    }
+    .dashboard-recent-summary {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 6px;
+    }
+    .dashboard-recent-summary-card {
+      min-width: 0;
+      padding: 6px 8px;
+      border: 1px solid #e2eaf4;
+      border-radius: 8px;
+      background: #ffffff;
+    }
+    .dashboard-recent-summary-card span {
+      display: block;
+      color: #64748b;
+      font-size: 8.5px;
+      font-weight: 900;
+      line-height: 1.2;
+      white-space: nowrap;
+    }
+    .dashboard-recent-summary-card strong {
+      display: block;
+      min-width: 0;
+      margin-top: 3px;
+      color: #0f172a;
+      font-size: 13px;
+      font-weight: 950;
+      line-height: 1.15;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      font-variant-numeric: tabular-nums;
+    }
+    .dashboard-recent-summary-card.delta strong {
+      color: #047857;
+    }
+    .dashboard-recent-summary-card.delta.negative strong {
+      color: #b91c1c;
+    }
+    .dashboard-recent-chart {
+      display: grid;
+      gap: 5px;
+    }
+    .dashboard-recent-chart-frame {
+      position: relative;
+      min-height: 82px;
+      padding: 6px 8px;
+      border: 1px solid #e1eaf5;
+      border-radius: 8px;
+      background: linear-gradient(180deg, #f8fbff 0%, #ffffff 100%);
+      overflow: hidden;
+    }
+    .dashboard-recent-scale {
+      position: absolute;
+      z-index: 3;
+      inset: 6px 8px;
+      pointer-events: none;
+    }
+    .dashboard-recent-scale span {
+      position: absolute;
+      right: 0;
+      top: var(--scale-y);
+      transform: translateY(-50%);
+      padding: 1px 5px;
+      border: 1px solid rgba(203, 213, 225, .78);
+      border-radius: 999px;
+      background: rgba(255, 255, 255, .88);
+      color: #64748b;
+      font-size: 8px;
+      font-weight: 950;
+      line-height: 1.25;
+      white-space: nowrap;
+      box-shadow: 0 4px 10px rgba(15, 23, 42, .05);
+    }
+    .dashboard-recent-chart-frame::before {
+      content: "";
+      position: absolute;
+      inset: 6px 8px;
+      background: repeating-linear-gradient(0deg, transparent 0, transparent 22px, rgba(148, 163, 184, .14) 23px);
+      pointer-events: none;
+    }
+    .dashboard-recent-chart-frame svg {
+      position: relative;
+      z-index: 1;
+      width: 100%;
+      height: 72px;
+      display: block;
+      overflow: visible;
+    }
+    .dashboard-recent-area {
+      fill: url(#dashboardRecentSalesGradient);
+      opacity: .76;
+    }
+    .dashboard-recent-line {
+      fill: none;
+      stroke: #1d4ed8;
+      stroke-width: 2.2;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      vector-effect: non-scaling-stroke;
+    }
+    .dashboard-recent-points {
+      position: absolute;
+      z-index: 2;
+      inset: 6px 8px;
+      pointer-events: none;
+    }
+    .dashboard-recent-point {
+      position: absolute;
+      left: var(--point-x);
+      top: var(--point-y);
+      width: 8px;
+      height: 8px;
+      border: 2px solid #1d4ed8;
+      border-radius: 999px;
+      background: #ffffff;
+      box-shadow: 0 0 0 4px rgba(29, 78, 216, .12);
+      transform: translate(-50%, -50%);
+    }
+    .dashboard-recent-point.latest {
+      width: 10px;
+      height: 10px;
+      border-color: #059669;
+      box-shadow: 0 0 0 4px rgba(5, 150, 105, .14);
+    }
+    .dashboard-recent-point.missing {
+      border-color: #94a3b8;
+      background: #f8fafc;
+      box-shadow: 0 0 0 3px rgba(148, 163, 184, .12);
+    }
+    .dashboard-recent-axis {
+      display: grid;
+      grid-template-columns: repeat(7, minmax(0, 1fr));
+      gap: 4px;
+      color: #64748b;
+      font-size: 8.5px;
+      font-weight: 900;
+      text-align: center;
+      white-space: nowrap;
+    }
+    .dashboard-recent-note {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      color: #64748b;
+      font-size: 9px;
+      font-weight: 850;
+      padding-top: 2px;
+    }
+    .content.company-portal {
+      background: #f6f7f9;
+    }
+    .company-portal .company-tab {
+      min-height: 40px;
+      color: rgba(0, 12, 30, .62);
+      font-size: 12px;
+      font-weight: 850;
+    }
+    .company-portal .company-tab.active {
+      color: #155bc8;
+      border-bottom-color: #155bc8;
+    }
+    .company-portal .import-progress-card,
+    .company-portal .company-card {
+      border: 0;
+      border-radius: 16px;
+      background: #ffffff;
+      box-shadow: none;
+    }
+    .company-portal .import-progress-head,
+    .company-portal .company-card-head {
+      min-height: 54px;
+      padding: 0 20px;
+      border-bottom: 1px solid rgba(0, 23, 51, .06);
+      background: #ffffff;
+      color: rgba(0, 12, 30, .88);
+      font-size: 15px;
+      font-weight: 900;
+    }
+    .company-portal .company-card-body {
+      padding: 18px 20px 20px;
+    }
+    .company-portal.notice-calendar-mode .dashboard-calendar-panel .company-calendar-shell {
+      grid-template-columns: minmax(0, 1fr);
+      gap: 16px;
+      align-items: stretch;
+    }
+    .company-portal.notice-calendar-mode #dashboardSalesPanel {
+      grid-column: 1 / -1;
+      order: -1;
+    }
+    .company-portal.notice-calendar-mode .dashboard-calendar-card {
+      grid-column: 1 / -1;
+    }
+    .company-portal.notice-calendar-mode .dashboard-calendar-card .company-calendar-grid {
+      min-height: 520px;
+    }
+    .company-portal.notice-calendar-mode .dashboard-calendar-card .calendar-day {
+      min-height: 82px;
+      padding: 8px;
+    }
+    .dashboard-sales-panel {
+      gap: 16px;
+    }
+    .dashboard-sales-panel > .company-card {
+      height: auto;
+    }
+    .dashboard-sales-panel .company-card-head {
+      border-bottom: 0;
+      padding-bottom: 0;
+    }
+    .dashboard-sales-panel .company-card-body {
+      display: grid;
+      grid-template-columns: repeat(12, minmax(0, 1fr));
+      gap: 12px;
+      align-content: start;
+    }
+    .dashboard-sales-primary-grid,
+    .dashboard-sales-previous-grid,
+    .dashboard-sales-compare-grid,
+    .dashboard-sales-month-grid {
+      grid-column: span 4;
+      margin-top: 0;
+    }
+    .dashboard-sales-insights {
+      grid-column: span 8;
+      margin-top: 0;
+    }
+    .dashboard-sales-placeholder {
+      grid-column: 1 / -1;
+      margin-top: 0;
+    }
+    .dashboard-sales-grid,
+    .dashboard-sales-previous-grid,
+    .dashboard-sales-compare-grid,
+    .dashboard-sales-insights {
+      gap: 10px;
+      align-content: stretch;
+    }
+    .dashboard-sales-metric,
+    .dashboard-sales-previous,
+    .dashboard-sales-compare,
+    .dashboard-sales-insight {
+      min-height: 104px;
+      padding: 15px 16px;
+      border: 1px solid rgba(0, 27, 55, .08);
+      border-radius: 16px;
+      background: #ffffff;
+      box-shadow: none;
+    }
+    .dashboard-sales-primary-grid .dashboard-sales-metric {
+      min-height: 118px;
+    }
+    .dashboard-sales-metric {
+      border-top: 3px solid color-mix(in srgb, var(--metric-color, #64748b) 44%, #eef2f7);
+      background: #ffffff;
+    }
+    .dashboard-sales-metric::before {
+      display: none;
+    }
+    .dashboard-sales-compare,
+    .dashboard-sales-insight {
+      border-top: 3px solid color-mix(in srgb, var(--mini-card-color, var(--insight-color, #64748b)) 44%, #eef2f7);
+    }
+    .dashboard-sales-previous {
+      border-top: 3px solid #e5e7eb;
+      background: #ffffff;
+    }
+    .dashboard-sales-icon,
+    .dashboard-sales-compare-icon,
+    .dashboard-sales-previous-icon,
+    .dashboard-sales-insight-icon {
+      border-radius: 10px;
+      background: rgba(0, 23, 51, .04);
+    }
+    .dashboard-sales-icon {
+      width: 30px;
+      height: 30px;
+    }
+    .dashboard-sales-icon svg {
+      width: 16px;
+      height: 16px;
+    }
+    .dashboard-sales-metric-top {
+      margin-bottom: 12px;
+    }
+    .dashboard-sales-metric-label,
+    .dashboard-sales-compare span,
+    .dashboard-sales-previous span,
+    .dashboard-sales-insight span {
+      color: rgba(0, 12, 30, .58);
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: 0;
+    }
+    .dashboard-sales-metric strong {
+      color: rgba(0, 12, 30, .9);
+      font-size: 24px;
+      font-weight: 900;
+      letter-spacing: 0;
+      font-variant-numeric: tabular-nums;
+    }
+    .dashboard-sales-previous strong,
+    .dashboard-sales-compare strong,
+    .dashboard-sales-insight strong {
+      color: rgba(0, 12, 30, .88);
+      font-size: 17px;
+      font-weight: 900;
+      letter-spacing: 0;
+      font-variant-numeric: tabular-nums;
+    }
+    .dashboard-sales-insight strong {
+      margin-top: 6px;
+      font-size: 21px;
+      line-height: 1.12;
+    }
+    .dashboard-sales-rate {
+      color: rgba(0, 12, 30, .48);
+      font-size: 12px;
+      font-weight: 900;
+    }
+    .dashboard-sales-status {
+      min-height: 26px;
+      padding: 4px 10px;
+      border-radius: 999px;
+      background: rgba(0, 23, 51, .04);
+      color: rgba(0, 12, 30, .58);
+      font-size: 11px;
+      font-weight: 900;
+    }
+    .dashboard-sales-status.connected {
+      background: rgba(0, 150, 92, .08);
+      color: #00895a;
+    }
+    .dashboard-sales-placeholder.has-chart {
+      padding: 0;
+    }
+    .dashboard-sales-decision {
+      grid-column: 1 / -1;
+      display: grid;
+      grid-template-columns: minmax(0, 1.2fr) repeat(3, minmax(150px, .55fr));
+      gap: 10px;
+      align-items: stretch;
+      padding: 14px 16px;
+      border: 1px solid rgba(21, 91, 200, .16);
+      border-radius: 16px;
+      background: linear-gradient(135deg, rgba(21, 91, 200, .08), rgba(0, 150, 92, .06) 62%, #fff);
+    }
+    .dashboard-sales-decision-main {
+      min-width: 0;
+      display: grid;
+      gap: 5px;
+      align-content: center;
+    }
+    .dashboard-sales-decision-label {
+      color: rgba(0, 12, 30, .54);
+      font-size: 11px;
+      font-weight: 900;
+    }
+    .dashboard-sales-decision-title {
+      color: rgba(0, 12, 30, .92);
+      font-size: 18px;
+      line-height: 1.25;
+      font-weight: 950;
+      word-break: keep-all;
+    }
+    .dashboard-sales-decision-note {
+      color: rgba(0, 12, 30, .58);
+      font-size: 12px;
+      line-height: 1.45;
+      font-weight: 800;
+      word-break: keep-all;
+    }
+    .dashboard-sales-decision-chip {
+      min-width: 0;
+      padding: 10px 12px;
+      border-radius: 12px;
+      background: rgba(255, 255, 255, .72);
+      border: 1px solid rgba(0, 27, 55, .07);
+    }
+    .dashboard-sales-decision-chip span {
+      display: block;
+      color: rgba(0, 12, 30, .5);
+      font-size: 10px;
+      font-weight: 900;
+      white-space: nowrap;
+    }
+    .dashboard-sales-decision-chip strong {
+      display: block;
+      margin-top: 5px;
+      color: rgba(0, 12, 30, .9);
+      font-size: 18px;
+      line-height: 1.1;
+      font-weight: 950;
+      font-variant-numeric: tabular-nums;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .dashboard-sales-decision-chip.good strong { color: #00895a; }
+    .dashboard-sales-decision-chip.warn strong { color: #c2410c; }
+    .dashboard-sales-decision-chip.bad strong { color: #b42318; }
+    .dashboard-recent-sales {
+      gap: 14px;
+      padding: 20px;
+      border: 1px solid rgba(0, 27, 55, .08);
+      border-radius: 16px;
+      background: #ffffff;
+      box-shadow: none;
+    }
+    .dashboard-recent-sales-title {
+      color: rgba(0, 12, 30, .9);
+      font-size: 16px;
+      font-weight: 900;
+    }
+    .dashboard-recent-sales-title::before {
+      width: 8px;
+      height: 8px;
+      background: #3182f6;
+      box-shadow: 0 0 0 4px rgba(49, 130, 246, .12);
+    }
+    .dashboard-recent-sales-caption {
+      padding: 5px 9px;
+      border-radius: 999px;
+      background: rgba(0, 23, 51, .04);
+      color: rgba(0, 12, 30, .5);
+      font-size: 11px;
+      font-weight: 850;
+    }
+    .dashboard-recent-summary {
+      gap: 10px;
+    }
+    .dashboard-recent-summary-card {
+      padding: 12px 14px;
+      border: 0;
+      border-radius: 14px;
+      background: #f6f7f9;
+    }
+    .dashboard-recent-summary-card span {
+      color: rgba(0, 12, 30, .52);
+      font-size: 11px;
+      font-weight: 850;
+    }
+    .dashboard-recent-summary-card strong {
+      margin-top: 6px;
+      color: rgba(0, 12, 30, .9);
+      font-size: 21px;
+      font-weight: 900;
+    }
+    .dashboard-recent-chart {
+      gap: 8px;
+    }
+    .dashboard-recent-chart-frame {
+      min-height: 184px;
+      padding: 16px 18px 18px;
+      border: 1px solid rgba(0, 27, 55, .08);
+      border-radius: 16px;
+      background: #ffffff;
+    }
+    .dashboard-recent-chart-frame::before {
+      inset: 16px 18px 18px;
+      background: repeating-linear-gradient(0deg, transparent 0, transparent 37px, rgba(0, 27, 55, .07) 38px);
+    }
+    .dashboard-recent-chart-frame svg {
+      height: 150px;
+    }
+    .dashboard-recent-scale,
+    .dashboard-recent-points {
+      inset: 16px 18px 18px;
+    }
+    .dashboard-recent-scale span {
+      padding: 2px 7px;
+      border: 0;
+      background: rgba(246, 247, 249, .92);
+      color: rgba(0, 12, 30, .52);
+      font-size: 10px;
+      font-weight: 900;
+      box-shadow: none;
+    }
+    .dashboard-recent-line {
+      stroke: #3182f6;
+      stroke-width: 2.4;
+    }
+    .dashboard-recent-area {
+      opacity: .64;
+    }
+    .dashboard-recent-point {
+      border-color: #3182f6;
+      box-shadow: 0 0 0 5px rgba(49, 130, 246, .12);
+    }
+    .dashboard-recent-axis {
+      gap: 8px;
+      color: rgba(0, 12, 30, .48);
+      font-size: 11px;
+      font-weight: 850;
+    }
+    .dashboard-recent-note {
+      color: rgba(0, 12, 30, .52);
+      font-size: 11px;
+      font-weight: 800;
+    }
+    .company-portal .company-calendar-toolbar {
+      min-height: 64px;
+      padding: 18px 20px 10px;
+      border-bottom: 0;
+      background: #ffffff;
+      align-items: flex-start;
+    }
+    .company-portal .company-calendar-title {
+      flex: 0 0 auto;
+      min-width: max-content;
+      color: rgba(0, 12, 30, .9);
+      font-size: 21px;
+      font-weight: 900;
+      line-height: 1.2;
+      white-space: nowrap;
+    }
+    .company-portal .company-calendar-summary {
+      gap: 7px;
+    }
+    .company-portal .company-calendar-summary-chip {
+      min-height: 30px;
+      padding: 0 10px;
+      border: 0;
+      border-radius: 10px;
+      background: rgba(0, 23, 51, .04);
+      color: rgba(0, 12, 30, .58);
+      font-size: 11px;
+      font-weight: 850;
+    }
+    .company-portal .company-calendar-actions .crm-mini-button {
+      min-height: 34px;
+      height: 34px;
+      border-color: rgba(0, 27, 55, .1);
+      border-radius: 10px;
+      background: #ffffff;
+      color: rgba(0, 12, 30, .72);
+      box-shadow: none;
+    }
+    .company-portal .company-calendar-legend {
+      padding: 2px 20px 16px;
+      border-bottom: 1px solid rgba(0, 23, 51, .06);
+      color: rgba(0, 12, 30, .52);
+      font-size: 11px;
+      font-weight: 800;
+    }
+    .company-portal .company-calendar-weekdays {
+      border-bottom: 1px solid rgba(0, 23, 51, .06);
+      background: #fafbfc;
+      color: rgba(0, 12, 30, .48);
+      font-size: 11px;
+      font-weight: 850;
+    }
+    .company-portal .company-calendar-grid {
+      background: rgba(0, 23, 51, .06);
+    }
+    .company-portal .calendar-day {
+      background: #ffffff;
+    }
+    .company-portal .calendar-day.other-month {
+      background: #fafbfc;
+    }
+    .company-portal .calendar-date {
+      color: rgba(0, 12, 30, .78);
+      font-weight: 900;
+    }
+    .company-portal .calendar-event {
+      border-radius: 8px;
+      font-weight: 800;
+    }
     .company-calendar-toolbar {
       display: flex;
       align-items: center;
@@ -2634,16 +5551,69 @@ HTML = r"""<!doctype html>
       background: #fbfcff;
     }
     .company-calendar-title {
+      flex: 0 0 124px;
+      min-width: 124px;
       color: #111827;
       font-size: 18px;
       font-weight: 950;
       letter-spacing: 0;
+      line-height: 1.2;
+      white-space: nowrap;
     }
     .company-calendar-actions {
       display: flex;
       flex-wrap: wrap;
       gap: 6px;
       justify-content: flex-end;
+    }
+    .company-calendar-actions .crm-mini-button {
+      min-height: 34px;
+      height: 34px;
+      padding: 0 10px;
+      border-radius: 7px;
+      gap: 5px;
+      font-size: 12px;
+      font-weight: 900;
+    }
+    .company-calendar-actions .crm-mini-button.icon-only {
+      width: 36px;
+      padding: 0;
+    }
+    .company-calendar-actions .crm-mini-button svg {
+      width: 12px;
+      height: 12px;
+      stroke-width: 2.5;
+    }
+    .company-calendar-summary {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      min-width: 0;
+      flex: 0 1 auto;
+      justify-content: flex-end;
+    }
+    .company-calendar-summary-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      min-height: 26px;
+      padding: 0 8px;
+      border: 1px solid #e5e7eb;
+      border-radius: 999px;
+      background: #ffffff;
+      color: #475569;
+      font-size: 11px;
+      font-weight: 900;
+      white-space: nowrap;
+    }
+    .company-calendar-summary-chip svg {
+      width: 12px;
+      height: 12px;
+      stroke-width: 2.5;
+      color: #2563eb;
+    }
+    .company-calendar-summary-chip.warning svg {
+      color: #c2410c;
     }
     .company-calendar-legend {
       display: flex;
@@ -2655,18 +5625,32 @@ HTML = r"""<!doctype html>
       font-size: 11px;
       font-weight: 850;
     }
-    .calendar-legend-dot {
-      width: 9px;
-      height: 9px;
-      border-radius: 999px;
-      display: inline-block;
-      margin-right: 5px;
-      vertical-align: -1px;
+    .company-calendar-legend span {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
     }
-    .calendar-legend-dot.project { background: #155bc8; }
-    .calendar-legend-dot.task { background: #0b8f55; }
-    .calendar-legend-dot.leave { background: #c2410c; }
-    .calendar-legend-dot.pending { background: #9333ea; }
+    .calendar-legend-dot {
+      width: 18px;
+      height: 18px;
+      border-radius: 999px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      margin-right: 0;
+    }
+    .calendar-legend-dot svg {
+      width: 11px;
+      height: 11px;
+      stroke-width: 2.7;
+    }
+    .calendar-legend-dot.project { background: #eff6ff; color: #155bc8; }
+    .calendar-legend-dot.import { background: #e0f2fe; color: #0369a1; }
+    .calendar-legend-dot.cargo-inbound { background: #dcfce7; color: #15803d; }
+    .calendar-legend-dot.cargo { background: #ede9fe; color: #6d28d9; }
+    .calendar-legend-dot.task { background: #f0fdf4; color: #0b8f55; }
+    .calendar-legend-dot.leave { background: #fff7ed; color: #c2410c; }
+    .calendar-legend-dot.pending { background: #f5f3ff; color: #9333ea; }
     .company-calendar-weekdays,
     .company-calendar-grid {
       display: grid;
@@ -2764,6 +5748,21 @@ HTML = r"""<!doctype html>
       background: #eff6ff;
       color: #155bc8;
     }
+    .calendar-event.import {
+      border-color: #bae6fd;
+      background: #e0f2fe;
+      color: #0369a1;
+    }
+    .calendar-event.cargo-inbound {
+      border-color: #bbf7d0;
+      background: #ecfdf3;
+      color: #087443;
+    }
+    .calendar-event.cargo {
+      border-color: #ddd6fe;
+      background: #f5f3ff;
+      color: #6d28d9;
+    }
     .calendar-event.task {
       border-color: #bbf7d0;
       background: #f0fdf4;
@@ -2787,16 +5786,21 @@ HTML = r"""<!doctype html>
     .company-calendar-side {
       display: grid;
       gap: 12px;
+      align-content: start;
+    }
+    .company-calendar-side > .company-card {
+      min-height: 760px;
     }
     .calendar-side-date {
       color: #111827;
-      font-size: 16px;
+      font-size: 18px;
       font-weight: 950;
     }
     .calendar-side-list {
       display: grid;
       gap: 8px;
       margin-top: 12px;
+      align-content: start;
     }
     .calendar-empty {
       padding: 18px;
@@ -3051,6 +6055,790 @@ HTML = r"""<!doctype html>
       color: #111827;
       font-size: 13px;
       font-weight: 950;
+    }
+    .floating-messenger {
+      position: fixed;
+      right: 24px;
+      bottom: 24px;
+      z-index: 80;
+      display: grid;
+      justify-items: end;
+      pointer-events: none;
+    }
+    .floating-messenger-fab,
+    .floating-messenger-panel {
+      pointer-events: auto;
+    }
+    .floating-messenger-fab {
+      position: relative;
+      width: 58px;
+      height: 58px;
+      border: 0;
+      border-radius: 999px;
+      display: grid;
+      place-items: center;
+      background: #3182f6;
+      color: #ffffff;
+      box-shadow: 0 18px 34px rgba(49, 130, 246, .32);
+      cursor: pointer;
+      transition: opacity .16s ease, transform .16s ease, box-shadow .16s ease, background .16s ease;
+    }
+    .floating-messenger-fab:hover {
+      transform: translateY(-2px);
+      background: #1d6ee8;
+      box-shadow: 0 22px 40px rgba(49, 130, 246, .38);
+    }
+    .floating-messenger-fab svg {
+      width: 27px;
+      height: 27px;
+      stroke-width: 2.4;
+    }
+    .floating-messenger-badge {
+      position: absolute;
+      top: -3px;
+      right: -3px;
+      min-width: 20px;
+      height: 20px;
+      padding: 0 6px;
+      border: 2px solid #ffffff;
+      border-radius: 999px;
+      display: none;
+      place-items: center;
+      background: #f04452;
+      color: #ffffff;
+      font-size: 10px;
+      font-weight: 950;
+      line-height: 1;
+    }
+    .floating-messenger-badge.visible {
+      display: grid;
+    }
+    .floating-messenger-panel {
+      position: absolute;
+      right: 0;
+      bottom: 0;
+      width: min(392px, calc(100vw - 28px));
+      height: min(656px, calc(100vh - 40px));
+      display: grid;
+      grid-template-rows: minmax(0, 1fr) 76px;
+      overflow: hidden;
+      border: 1px solid rgba(255, 255, 255, .08);
+      border-radius: 24px;
+      background: #2f3133;
+      color: #f5f7f8;
+      box-shadow: 0 30px 90px rgba(0, 0, 0, .34);
+      opacity: 0;
+      transform: translateY(14px) scale(.98);
+      pointer-events: none;
+      transition: opacity .16s ease, transform .16s ease;
+    }
+    .floating-messenger.open .floating-messenger-fab {
+      opacity: 0;
+      transform: scale(.82);
+      pointer-events: none;
+    }
+    .floating-messenger.open .floating-messenger-panel {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+      pointer-events: auto;
+    }
+    .floating-messenger-utility {
+      position: absolute;
+      top: 16px;
+      right: 14px;
+      z-index: 3;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .floating-messenger-icon-button {
+      width: 32px;
+      height: 32px;
+      padding: 0;
+      border: 1px solid rgba(255, 255, 255, .08);
+      border-radius: 999px;
+      display: inline-grid;
+      place-items: center;
+      background: rgba(255, 255, 255, .05);
+      color: rgba(255, 255, 255, .76);
+      cursor: pointer;
+      transition: background .14s ease, color .14s ease;
+    }
+    .floating-messenger-icon-button:hover {
+      background: rgba(255, 255, 255, .1);
+      color: #ffffff;
+    }
+    .floating-messenger-icon-button svg {
+      width: 16px;
+      height: 16px;
+      stroke-width: 2.5;
+    }
+    .floating-messenger-screen {
+      min-height: 0;
+      display: none;
+      flex-direction: column;
+      padding: 24px 18px 0;
+      overflow: hidden;
+    }
+    .floating-messenger-screen.active {
+      display: flex;
+    }
+    .floating-messenger-scroll {
+      min-height: 0;
+      overflow: auto;
+      padding-bottom: 14px;
+      scrollbar-width: thin;
+      scrollbar-color: rgba(255, 255, 255, .32) transparent;
+    }
+    .floating-messenger-brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 26px;
+      padding-right: 112px;
+    }
+    .floating-messenger-logo {
+      position: relative;
+      width: 44px;
+      height: 44px;
+      flex: 0 0 auto;
+      border-radius: 999px;
+      background:
+        radial-gradient(circle at 66% 31%, rgba(255, 255, 255, .72), transparent 0 16%, transparent 100%),
+        linear-gradient(135deg, #121318 0%, #3e4148 46%, #08090d 47%, #808692 100%);
+      box-shadow: inset 0 1px 8px rgba(255, 255, 255, .12), 0 8px 20px rgba(0, 0, 0, .22);
+    }
+    .floating-messenger-logo::after {
+      content: "";
+      position: absolute;
+      inset: 6px 18px 6px 13px;
+      border-radius: 999px;
+      background: linear-gradient(160deg, rgba(255, 255, 255, .62), rgba(255, 255, 255, 0) 54%);
+      transform: rotate(28deg);
+    }
+    .floating-messenger-brand strong,
+    .floating-messenger-page-title {
+      color: #f5f7f8;
+      font-size: 21px;
+      font-weight: 950;
+      line-height: 1.1;
+      letter-spacing: 0;
+    }
+    .floating-messenger-page-title {
+      margin: 0 112px 16px 0;
+    }
+    .floating-messenger-card {
+      border-radius: 20px;
+      background: rgba(255, 255, 255, .1);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, .05);
+    }
+    .floating-messenger-intro {
+      display: grid;
+      gap: 14px;
+      padding: 14px 12px 14px;
+      margin-bottom: 14px;
+    }
+    .floating-messenger-intro-head {
+      display: grid;
+      grid-template-columns: 34px minmax(0, 1fr);
+      gap: 10px;
+      align-items: start;
+    }
+    .floating-messenger-intro-title {
+      color: rgba(255, 255, 255, .86);
+      font-size: 12px;
+      font-weight: 950;
+      line-height: 1.3;
+    }
+    .floating-messenger-intro-copy {
+      margin: 3px 0 0;
+      color: rgba(255, 255, 255, .72);
+      font-size: 14px;
+      font-weight: 820;
+      line-height: 1.46;
+    }
+    .floating-messenger-primary {
+      min-height: 42px;
+      border: 0;
+      border-radius: 13px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 7px;
+      background: #e9f8ff;
+      color: #0f171b;
+      font-family: inherit;
+      font-size: 14px;
+      font-weight: 950;
+      cursor: pointer;
+    }
+    .floating-messenger-plane {
+      position: relative;
+      width: 13px;
+      height: 13px;
+      display: inline-block;
+    }
+    .floating-messenger-plane::before {
+      content: "";
+      position: absolute;
+      left: 1px;
+      top: 2px;
+      width: 0;
+      height: 0;
+      border-left: 11px solid currentColor;
+      border-top: 5px solid transparent;
+      border-bottom: 5px solid transparent;
+      transform: rotate(-22deg);
+    }
+    .floating-messenger-plane::after {
+      content: "";
+      position: absolute;
+      left: 3px;
+      top: 6px;
+      width: 6px;
+      height: 1px;
+      background: #e9f8ff;
+      transform: rotate(-22deg);
+    }
+    .floating-messenger-alert-card {
+      padding: 12px;
+      margin-bottom: 12px;
+    }
+    .floating-messenger-alert-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 9px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid rgba(255, 255, 255, .07);
+      color: rgba(255, 255, 255, .46);
+      font-size: 12px;
+      font-weight: 950;
+    }
+    .floating-messenger-text-button {
+      border: 0;
+      padding: 0;
+      background: transparent;
+      color: rgba(255, 255, 255, .72);
+      font-family: inherit;
+      font-size: 12px;
+      font-weight: 950;
+      cursor: pointer;
+    }
+    .floating-messenger-preview {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 10px;
+      align-items: center;
+      min-height: 56px;
+    }
+    .floating-messenger-preview-title {
+      color: #ffffff;
+      font-size: 13px;
+      font-weight: 950;
+      line-height: 1.35;
+    }
+    .floating-messenger-preview-body {
+      margin-top: 3px;
+      color: rgba(255, 255, 255, .68);
+      font-size: 13px;
+      font-weight: 820;
+      line-height: 1.35;
+      overflow: hidden;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+    }
+    .floating-messenger-preview-badge {
+      width: 42px;
+      height: 42px;
+      border-radius: 12px;
+      display: grid;
+      place-items: center;
+      background: linear-gradient(135deg, #12142b, #0b52d9 72%, #6e57ff);
+      color: #ffffff;
+      font-size: 9px;
+      font-weight: 950;
+      box-shadow: inset 0 1px 8px rgba(255, 255, 255, .16);
+    }
+    .floating-messenger-secondary {
+      width: 100%;
+      min-height: 32px;
+      margin-top: 10px;
+      border: 0;
+      border-radius: 10px;
+      background: #4d7584;
+      color: #8ce3ff;
+      font-family: inherit;
+      font-size: 12px;
+      font-weight: 900;
+      cursor: pointer;
+    }
+    .floating-messenger-status {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 5px;
+      color: rgba(255, 255, 255, .36);
+      font-size: 11px;
+      font-weight: 900;
+    }
+    .floating-messenger-status-dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 999px;
+      display: inline-grid;
+      place-items: center;
+      border: 2px solid rgba(255, 255, 255, .34);
+      font-size: 7px;
+      line-height: 1;
+    }
+    .floating-messenger-chat-notice {
+      min-height: 36px;
+      padding: 0 12px;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      background: rgba(255, 255, 255, .08);
+      color: rgba(255, 255, 255, .52);
+      font-size: 12px;
+      font-weight: 850;
+      margin-bottom: 12px;
+    }
+    .floating-messenger-thread {
+      min-height: 0;
+      flex: 1 1 auto;
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr) auto;
+      overflow: hidden;
+    }
+    .floating-messenger-thread[hidden] {
+      display: none;
+    }
+    .floating-messenger-thread-head {
+      display: grid;
+      grid-template-columns: 34px minmax(0, 1fr);
+      gap: 8px;
+      align-items: center;
+      padding: 0 0 10px;
+    }
+    .floating-messenger-thread-back {
+      width: 32px;
+      height: 32px;
+      border: 0;
+      border-radius: 999px;
+      display: grid;
+      place-items: center;
+      background: rgba(255, 255, 255, .08);
+      color: rgba(255, 255, 255, .8);
+      cursor: pointer;
+    }
+    .floating-messenger-thread-back svg {
+      width: 17px;
+      height: 17px;
+      stroke-width: 2.7;
+    }
+    .floating-messenger-title {
+      color: rgba(255, 255, 255, .82);
+      font-size: 14px;
+      font-weight: 950;
+      line-height: 1.25;
+    }
+    .floating-messenger-kicker {
+      margin: 2px 0 8px;
+      color: rgba(255, 255, 255, .42);
+      font-size: 11px;
+      font-weight: 850;
+    }
+    .floating-messenger-roombar {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      min-height: 0;
+      padding: 2px 0 16px;
+      overflow: auto;
+      scrollbar-width: thin;
+      scrollbar-color: rgba(255, 255, 255, .32) transparent;
+    }
+    .floating-messenger-room {
+      width: 100%;
+      min-height: 58px;
+      padding: 0;
+      border: 0;
+      border-radius: 14px;
+      display: grid;
+      grid-template-columns: 42px minmax(0, 1fr) auto;
+      gap: 10px;
+      align-items: center;
+      background: transparent;
+      color: rgba(255, 255, 255, .76);
+      font-family: inherit;
+      font-size: 12px;
+      font-weight: 900;
+      cursor: pointer;
+      text-align: left;
+      white-space: normal;
+      transition: background .14s ease;
+    }
+    .floating-messenger-room:hover,
+    .floating-messenger-room.active {
+      background: rgba(255, 255, 255, .06);
+      color: rgba(255, 255, 255, .88);
+    }
+    .floating-messenger-room-avatar {
+      width: 38px;
+      height: 38px;
+      border-radius: 999px;
+      display: grid;
+      place-items: center;
+      background:
+        radial-gradient(circle at 65% 30%, rgba(255, 255, 255, .72), transparent 0 15%, transparent 100%),
+        linear-gradient(135deg, #17191f 0%, #4c505a 46%, #0b0d12 48%, #8d939e 100%);
+      color: rgba(255, 255, 255, .82);
+      font-size: 10px;
+      font-weight: 950;
+      box-shadow: 0 6px 14px rgba(0, 0, 0, .24);
+    }
+    .floating-messenger-room-main {
+      min-width: 0;
+    }
+    .floating-messenger-room-top {
+      display: flex;
+      align-items: baseline;
+      gap: 7px;
+      min-width: 0;
+    }
+    .floating-messenger-room-title {
+      min-width: 0;
+      color: rgba(255, 255, 255, .84);
+      font-size: 13px;
+      font-weight: 950;
+      line-height: 1.25;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .floating-messenger-room-date {
+      color: rgba(255, 255, 255, .34);
+      font-size: 11px;
+      font-weight: 850;
+      white-space: nowrap;
+    }
+    .floating-messenger-room-preview {
+      margin-top: 3px;
+      color: rgba(255, 255, 255, .5);
+      font-size: 13px;
+      font-weight: 820;
+      line-height: 1.35;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .floating-messenger-room-dot {
+      width: 5px;
+      height: 5px;
+      margin-right: 2px;
+      border-radius: 999px;
+      background: #ff5366;
+    }
+    .floating-messenger-list {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      min-height: 0;
+      padding: 6px 0 12px;
+      overflow: auto;
+      background: transparent;
+      scrollbar-width: thin;
+      scrollbar-color: rgba(255, 255, 255, .32) transparent;
+    }
+    .floating-messenger-empty {
+      margin: auto;
+      color: rgba(255, 255, 255, .48);
+      font-size: 12px;
+      font-weight: 850;
+      line-height: 1.5;
+      text-align: center;
+    }
+    .floating-thread-message {
+      max-width: 86%;
+      padding: 10px 12px;
+      border-radius: 16px;
+      align-self: flex-start;
+      background: rgba(255, 255, 255, .1);
+      color: rgba(255, 255, 255, .74);
+    }
+    .floating-thread-message.mine {
+      align-self: flex-end;
+      background: #3182f6;
+      color: #ffffff;
+    }
+    .floating-thread-message .internal-message-meta {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-bottom: 4px;
+      color: rgba(255, 255, 255, .48);
+      font-size: 10px;
+      font-weight: 850;
+      line-height: 1.25;
+    }
+    .floating-thread-message.mine .internal-message-meta {
+      color: rgba(255, 255, 255, .72);
+    }
+    .floating-thread-message .internal-message-name {
+      color: rgba(255, 255, 255, .84);
+      font-size: 11px;
+      font-weight: 950;
+    }
+    .floating-thread-message .internal-message-body {
+      color: rgba(255, 255, 255, .82);
+      font-size: 13px;
+      font-weight: 850;
+      line-height: 1.45;
+      white-space: pre-wrap;
+    }
+    .floating-thread-message.mine .internal-message-body,
+    .floating-thread-message.mine .internal-message-name {
+      color: #ffffff;
+    }
+    .floating-thread-message.command-ok .internal-message-body {
+      color: #dff7e8;
+    }
+    .floating-thread-message.command-error .internal-message-body {
+      color: #ffd4d9;
+    }
+    .floating-messenger-form {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 8px;
+      padding: 10px 0 0;
+      border-top: 1px solid rgba(255, 255, 255, .08);
+      background: transparent;
+    }
+    .floating-messenger-input-wrap {
+      display: grid;
+      gap: 6px;
+      min-width: 0;
+    }
+    .floating-messenger-hint {
+      color: rgba(255, 255, 255, .42);
+      font-size: 10px;
+      font-weight: 800;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .floating-messenger-form textarea {
+      width: 100%;
+      min-height: 44px;
+      max-height: 96px;
+      resize: vertical;
+      border: 1px solid rgba(232, 248, 255, .32);
+      border-radius: 14px;
+      padding: 10px 12px;
+      background: rgba(255, 255, 255, .96);
+      color: #161d22;
+      font-family: inherit;
+      font-size: 13px;
+      font-weight: 800;
+      line-height: 1.4;
+      outline: none;
+    }
+    .floating-messenger-form textarea:focus {
+      border-color: #e9f8ff;
+      background: #ffffff;
+      box-shadow: 0 0 0 3px rgba(233, 248, 255, .16);
+    }
+    .floating-messenger-send {
+      align-self: end;
+      min-width: 58px;
+      min-height: 44px;
+      border: 0;
+      border-radius: 14px;
+      background: #3182f6;
+      color: #ffffff;
+      font-family: inherit;
+      font-size: 13px;
+      font-weight: 950;
+      cursor: pointer;
+    }
+    .floating-messenger-send:disabled {
+      opacity: .55;
+      cursor: wait;
+    }
+    .floating-messenger-settings-profile {
+      display: grid;
+      justify-items: center;
+      gap: 8px;
+      padding: 26px 0 24px;
+      border-bottom: 1px solid rgba(255, 255, 255, .08);
+      margin: 0 -18px 10px;
+    }
+    .floating-messenger-profile-icon {
+      width: 52px;
+      height: 52px;
+      border-radius: 16px;
+      display: grid;
+      place-items: center;
+      background: linear-gradient(135deg, #9a74ff, #c49aff);
+      color: #ffffff;
+      font-size: 26px;
+      font-weight: 950;
+    }
+    .floating-messenger-profile-name {
+      color: rgba(255, 255, 255, .78);
+      font-size: 14px;
+      font-weight: 950;
+    }
+    .floating-messenger-profile-phone,
+    .floating-messenger-version {
+      color: rgba(255, 255, 255, .34);
+      font-size: 12px;
+      font-weight: 850;
+    }
+    .floating-messenger-profile-edit {
+      min-height: 24px;
+      padding: 0 10px;
+      border: 0;
+      border-radius: 8px;
+      background: rgba(255, 255, 255, .1);
+      color: rgba(255, 255, 255, .6);
+      font-family: inherit;
+      font-size: 12px;
+      font-weight: 900;
+      cursor: pointer;
+    }
+    .floating-messenger-setting-section {
+      padding: 10px 0 14px;
+      border-bottom: 1px solid rgba(255, 255, 255, .08);
+    }
+    .floating-messenger-setting-section:last-child {
+      border-bottom: 0;
+    }
+    .floating-messenger-setting-label {
+      margin-bottom: 8px;
+      color: rgba(255, 255, 255, .34);
+      font-size: 12px;
+      font-weight: 950;
+    }
+    .floating-messenger-setting-row {
+      min-height: 36px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      color: rgba(255, 255, 255, .72);
+      font-size: 14px;
+      font-weight: 880;
+    }
+    .floating-messenger-setting-value {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      color: rgba(255, 255, 255, .58);
+      font-size: 13px;
+      font-weight: 850;
+    }
+    .floating-messenger-setting-value svg {
+      width: 15px;
+      height: 15px;
+      stroke-width: 2.6;
+    }
+    .floating-messenger-switch {
+      position: relative;
+      width: 34px;
+      height: 21px;
+      flex: 0 0 auto;
+    }
+    .floating-messenger-switch input {
+      position: absolute;
+      inset: 0;
+      opacity: 0;
+      cursor: pointer;
+    }
+    .floating-messenger-switch span {
+      position: absolute;
+      inset: 0;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, .12);
+      transition: background .16s ease;
+    }
+    .floating-messenger-switch span::after {
+      content: "";
+      position: absolute;
+      width: 15px;
+      height: 15px;
+      left: 3px;
+      top: 3px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, .34);
+      transition: transform .16s ease, background .16s ease;
+    }
+    .floating-messenger-switch input:checked + span {
+      background: #2ed96f;
+    }
+    .floating-messenger-switch input:checked + span::after {
+      transform: translateX(13px);
+      background: #ffffff;
+    }
+    .floating-messenger-bottom-nav {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      align-items: center;
+      padding: 6px 26px 10px;
+      border-top: 1px solid rgba(255, 255, 255, .06);
+      background: #2f3133;
+    }
+    .floating-messenger-tab-button {
+      position: relative;
+      min-height: 56px;
+      border: 0;
+      border-radius: 14px;
+      display: grid;
+      justify-items: center;
+      align-content: center;
+      gap: 4px;
+      background: transparent;
+      color: rgba(255, 255, 255, .44);
+      font-family: inherit;
+      font-size: 11px;
+      font-weight: 850;
+      cursor: pointer;
+    }
+    .floating-messenger-tab-button svg {
+      width: 21px;
+      height: 21px;
+      stroke-width: 2.45;
+    }
+    .floating-messenger-tab-button.active {
+      color: #ffffff;
+    }
+    .floating-messenger-tab-dot {
+      position: absolute;
+      top: 8px;
+      right: calc(50% - 18px);
+      width: 5px;
+      height: 5px;
+      border-radius: 999px;
+      display: none;
+      background: #ff5366;
+    }
+    .floating-messenger-tab-dot.visible {
+      display: block;
+    }
+    @media (max-width: 640px) {
+      .floating-messenger {
+        right: 12px;
+        bottom: 14px;
+      }
+      .floating-messenger-panel {
+        width: calc(100vw - 24px);
+        height: min(656px, calc(100vh - 28px));
+      }
     }
     .company-staff-layout {
       display: grid;
@@ -3375,7 +7163,7 @@ HTML = r"""<!doctype html>
     }
     .crm-task-toolbar {
       display: grid;
-      grid-template-columns: minmax(150px, .9fr) minmax(140px, .9fr) auto auto minmax(180px, 1.2fr) repeat(5, minmax(128px, .8fr)) auto auto auto;
+      grid-template-columns: minmax(150px, .9fr) minmax(180px, 1.2fr) auto auto auto;
       align-items: center;
     }
     .crm-task-toolbar .crm-input,
@@ -3383,6 +7171,14 @@ HTML = r"""<!doctype html>
       width: 100%;
       min-width: 0;
     }
+    .crm-advanced-filters {
+      grid-column: 1 / -1;
+      display: grid;
+      grid-template-columns: minmax(140px, .9fr) auto auto repeat(5, minmax(128px, .8fr)) auto;
+      gap: 8px;
+      align-items: center;
+    }
+    .crm-advanced-filters[hidden] { display: none; }
     .crm-filter-check {
       min-height: 32px;
       display: inline-flex;
@@ -3456,6 +7252,37 @@ HTML = r"""<!doctype html>
     }
     .crm-form-grid .wide { grid-column: span 2; }
     .crm-form-grid .full { grid-column: 1 / -1; }
+    .crm-task-form {
+      order: 20;
+    }
+    .crm-task-form.collapsed {
+      order: 20;
+    }
+    .crm-task-form:not(.collapsed) {
+      order: 20;
+      border-color: #bfdbfe;
+      background: #fbfdff;
+    }
+    .crm-task-form:not(.collapsed) .crm-card-head {
+      min-height: 38px;
+      background: #eff6ff;
+    }
+    .crm-task-form:not(.collapsed) .crm-card-body {
+      padding: 10px;
+      grid-template-columns: repeat(6, minmax(0, 1fr));
+      align-items: start;
+    }
+    .crm-task-form:not(.collapsed) .crm-form-grid .wide {
+      grid-column: span 2;
+    }
+    .crm-task-form:not(.collapsed) .crm-textarea.full {
+      grid-column: span 4;
+      height: 44px;
+      min-height: 44px;
+    }
+    .crm-task-form:not(.collapsed) #crmTaskReset {
+      min-height: 32px;
+    }
     .crm-table-wrap {
       overflow: auto;
       border: 1px solid var(--line);
@@ -3827,8 +7654,21 @@ HTML = r"""<!doctype html>
       .crm-task-detail { min-height: 320px; }
       .company-grid { grid-template-columns: 1fr; }
       .company-calendar-shell { grid-template-columns: 1fr; }
+      .dashboard-sales-primary-grid,
+      .dashboard-sales-previous-grid,
+      .dashboard-sales-compare-grid,
+      .dashboard-sales-month-grid {
+        grid-column: span 6;
+      }
+      .dashboard-sales-decision {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+      .dashboard-sales-decision-main {
+        grid-column: 1 / -1;
+      }
       .company-staff-layout { grid-template-columns: 1fr; }
       .crm-task-toolbar { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+      .crm-advanced-filters { grid-template-columns: repeat(3, minmax(0, 1fr)); }
       .crm-project-row { grid-template-columns: 1fr; }
       .crm-project-metrics { justify-content: flex-start; }
     }
@@ -3846,11 +7686,33 @@ HTML = r"""<!doctype html>
       .company-rule-grid,
       .company-mini-grid,
       .internal-chat-side { grid-template-columns: 1fr; }
+      .dashboard-sales-primary-grid,
+      .dashboard-sales-previous-grid,
+      .dashboard-sales-compare-grid,
+      .dashboard-sales-month-grid,
+      .dashboard-sales-insights,
+      .dashboard-sales-placeholder {
+        grid-column: 1 / -1;
+      }
+      .dashboard-sales-grid,
+      .dashboard-sales-previous-grid,
+      .dashboard-sales-compare-grid,
+      .dashboard-sales-insights,
+      .dashboard-recent-summary {
+        grid-template-columns: 1fr;
+      }
+      .dashboard-sales-decision {
+        grid-template-columns: 1fr;
+      }
+      .dashboard-sales-decision-main {
+        grid-column: auto;
+      }
       .company-org-tree { min-width: 560px; }
       .company-calendar-grid { min-height: 520px; }
       .calendar-day { min-height: 92px; padding: 6px; }
       .internal-chat-form { grid-template-columns: 1fr; }
       .crm-task-toolbar { grid-template-columns: 1fr; }
+      .crm-advanced-filters { grid-template-columns: 1fr; }
     }
     .crm-help {
       margin: 0;
@@ -3985,6 +7847,14 @@ HTML = r"""<!doctype html>
       place-items: center;
       cursor: pointer;
     }
+    .focus-widget-close.popup-close-button,
+    .search-result-close.popup-close-button,
+    .ledger-cs-popup-close.popup-close-button {
+      width: 28px;
+      height: 28px;
+      min-width: 28px;
+      padding: 0;
+    }
     .focus-widget-body {
       min-height: 0;
       overflow: auto;
@@ -4103,16 +7973,17 @@ HTML = r"""<!doctype html>
       }
     }
 
-    /* Compact typography pass: keep controls usable while reducing visual bulk. */
-    .brand-label { font-size: 16px; }
-    .nav-item, .nav-section, .app-add { font-size: 13px; }
-    .nav-subitem { font-size: 12px; }
-    .title { font-size: 22px; }
+    /* Readability pass: keep dense work screens scannable without making text feel cramped. */
+    body { font-size: 14px; }
+    .brand-label { font-size: 17px; line-height: 1.38; }
+    .nav-item, .nav-section, .app-add { font-size: 14px; line-height: 1.35; }
+    .nav-subitem { font-size: 13px; line-height: 1.35; }
+    .title { font-size: 24px; }
     .top-button,
     .top-search,
     .user-chip,
-    .logout-button { font-size: 12px; }
-    .notice-board-title { font-size: 15px; }
+    .logout-button { font-size: 13px; }
+    .notice-board-title { font-size: 20px; line-height: 1.35; }
     .notice-board-body,
     .import-empty,
     .notice-preview,
@@ -4121,10 +7992,10 @@ HTML = r"""<!doctype html>
     .system-message,
     .backup-message,
     .leave-message,
-    .admin-message { font-size: 12px; }
-    .dashboard-title { font-size: 15px; }
-    .action-title { font-size: 14px; }
-    .action-sub { min-height: 34px; font-size: 11px; }
+    .admin-message { font-size: 13px; line-height: 1.55; }
+    .dashboard-title { font-size: 16px; }
+    .action-title { font-size: 15px; line-height: 1.35; }
+    .action-sub { min-height: 38px; font-size: 12px; line-height: 1.45; }
     .modal-title { font-size: 22px; }
     .field-label { font-size: 15px; }
     .drop-main { font-size: 15px; }
@@ -4133,9 +8004,9 @@ HTML = r"""<!doctype html>
     textarea,
     .text-field input,
     .text-field select,
-    .text-field textarea { font-size: 13px; }
+    .text-field textarea { font-size: 14px; line-height: 1.45; }
     .btn { font-size: 14px; }
-    .notice { font-size: 12px; }
+    .notice { font-size: 13px; line-height: 1.55; }
     .notice-template input,
     .notice-template textarea,
     .admin-form input,
@@ -4146,39 +8017,39 @@ HTML = r"""<!doctype html>
     .leave-form textarea,
     .backup-summary-card span,
     .system-summary-card span,
-    .leave-summary-card span { font-size: 12px; }
+    .leave-summary-card span { font-size: 13px; line-height: 1.45; }
     .permission-item,
     .admin-table,
     .leave-table,
     .system-table,
-    .import-table { font-size: 12px; }
+    .import-table { font-size: 13px; line-height: 1.4; }
     .backup-summary-card strong { font-size: 16px; }
     .leave-summary-card strong { font-size: 25px; }
     .leave-card-title { font-size: 15px; }
     .ledger-cs-popup-title { font-size: 18px; }
     .product-row input,
     .checkbox-field,
-    .cs-case-head { font-size: 13px; }
-    .cs-case-item { font-size: 12px; }
-    .cs-case-meta { font-size: 11px; }
+    .cs-case-head { font-size: 14px; }
+    .cs-case-item { font-size: 13px; line-height: 1.45; }
+    .cs-case-meta { font-size: 12px; }
     .ledger-toolbar input,
     .ledger-toolbar select,
     .ledger-toolbar .btn,
     .ledger-count,
-    .management-month-tab { font-size: 11px; }
-    .ledger-table { font-size: 11px; }
+    .management-month-tab { font-size: 12px; }
+    .ledger-table { font-size: 12px; }
     .ledger-filter-trigger,
     .ledger-table td,
     .ledger-edit,
     .ledger-status-select,
     .ledger-save,
-    .management-edit,
-    .management-cs-button { font-size: 10px; }
+    .management-edit { font-size: 11px; }
+    .management-cs-button { font-size: 11px; }
     .ledger-filter-title,
-    .ledger-filter-search { font-size: 12px; }
+    .ledger-filter-search { font-size: 13px; }
     .ledger-filter-option,
-    .workspace-button { font-size: 11px; }
-    .workspace-title { font-size: 16px; }
+    .workspace-button { font-size: 12px; }
+    .workspace-title { font-size: 18px; line-height: 1.35; }
     .ledger-table th {
       padding: 3px 5px;
       line-height: 1.05;
@@ -4186,7 +8057,7 @@ HTML = r"""<!doctype html>
       vertical-align: middle;
     }
     .ledger-table th.has-filter {
-      padding-right: 22px;
+      padding-right: 19px;
     }
     .ledger-th-title {
       line-height: 1.08;
@@ -4200,6 +8071,19 @@ HTML = r"""<!doctype html>
     .ledger-table td {
       padding: 2px 4px;
       line-height: 1.1;
+    }
+    .ledger-table td {
+      padding: 7px 8px;
+      line-height: 1.35;
+    }
+    .ledger-table td[data-field="cs_content"],
+    .ledger-table td[data-field="product_name"],
+    .ledger-table td[data-field="receiver_address"],
+    .ledger-table td[data-management-field="product_name"],
+    .ledger-table td[data-management-field="receiver_address"] {
+      white-space: normal;
+      line-height: 1.38;
+      max-height: 44px;
     }
     .ledger-edit,
     .ledger-status-select {
@@ -4246,6 +8130,39 @@ HTML = r"""<!doctype html>
       .top-tools { display: none; }
       .content { padding: 0 12px 18px; }
       .title { font-size: 22px; }
+      .top-search { width: 100%; min-width: 0; }
+      .company-calendar-toolbar {
+        flex-wrap: wrap;
+        align-items: flex-start;
+      }
+      .company-calendar-title {
+        flex: 1 0 100%;
+        min-width: 0;
+      }
+      .company-calendar-summary {
+        justify-content: flex-start;
+        flex-wrap: wrap;
+      }
+      .company-calendar-actions {
+        width: 100%;
+        justify-content: flex-start;
+      }
+      .admin-card,
+      .admin-panel,
+      .workspace-view { min-width: 0; }
+      .admin-form {
+        grid-template-columns: 1fr;
+        gap: 12px;
+      }
+      .admin-form label,
+      .admin-form input,
+      .admin-form select,
+      .admin-form button,
+      .admin-check {
+        min-width: 0;
+        width: 100%;
+      }
+      .permission-grid { grid-template-columns: 1fr; }
       .stat-grid,
       .action-grid { grid-template-columns: 1fr; }
     }
@@ -4263,51 +8180,64 @@ HTML = r"""<!doctype html>
         <input id="sidebarSearchInput" name="workhub-menu-search" type="search" placeholder="메뉴 검색" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" />
       </label>
       <div class="nav-section">MAIN</div>
-      <div class="nav-group open" id="companyNavGroup">
-        <button class="nav-item active" id="companyNavToggle" type="button" data-view="dashboard" data-company-tab="notice">
+      <div class="nav-group" id="companyNavGroup">
+        <button class="nav-item active" id="companyNavToggle" type="button" data-view="dashboard" data-company-tab="notice" data-nav-tone="home">
           <span class="nav-label"><i data-lucide="home"></i> <span>회사 포털</span></span>
           <i class="nav-chevron" data-lucide="chevron-right"></i>
         </button>
         <div class="nav-submenu">
           <button class="nav-subitem active" type="button" data-view="dashboard" data-company-tab="notice">공지사항</button>
+          <button class="nav-subitem" id="noticeInputOpen" type="button">공지사항 입력</button>
           <button class="nav-subitem" type="button" data-view="dashboard" data-company-tab="calendar">캘린더</button>
           <button class="nav-subitem" type="button" data-view="dashboard" data-company-tab="rules">사규/가이드</button>
           <button class="nav-subitem" type="button" data-view="dashboard" data-company-tab="staff">직원 대시보드</button>
           <button class="nav-subitem" type="button" data-view="dashboard" data-company-tab="chat">사내 메신저</button>
         </div>
       </div>
+      __SALES_REPORT_NAV__
       <div class="nav-group" id="importNavGroup">
-        <button class="nav-item" id="importNavToggle" type="button" data-open="import">
-          <span class="nav-label"><i data-lucide="truck"></i> <span>수출입 업무</span></span>
+        <button class="nav-item" id="importNavToggle" type="button" data-open="import" data-nav-tone="import">
+          <span class="nav-label"><i data-lucide="truck"></i> <span>수출입 업무 및 화물 입 출고 관리</span></span>
           <i class="nav-chevron" data-lucide="chevron-right"></i>
         </button>
         <div class="nav-submenu">
-          <button class="nav-subitem" id="importShipmentInputOpen" type="button">수입제품 출고 진행 입력</button>
+          <button class="nav-subitem" id="importShipmentInputOpen" type="button">수입제품 입고 진행 입력</button>
+          <button class="nav-subitem" id="cargoInboundInputOpen" type="button">화물 입고 예정건 입력</button>
+          <button class="nav-subitem" id="cargoShipmentInputOpen" type="button">화물 출고건 입력</button>
         </div>
       </div>
       <div class="nav-group" id="orderNavGroup">
-        <button class="nav-item" id="orderNavToggle" type="button" data-open="order">
+        <button class="nav-item" id="orderNavToggle" type="button" data-open="order" data-nav-tone="order">
           <span class="nav-label"><i data-lucide="clipboard-list"></i> <span>발주업무</span></span>
         </button>
       </div>
-      <button class="nav-item" type="button" data-open="management"><i data-lucide="database"></i> <span>통합관리대장 관리</span></button>
-      <button class="nav-item" type="button" data-open="ledger"><i data-lucide="clipboard-check"></i> <span>CS 처리대장</span></button>
+      <div class="nav-group" id="managementNavGroup">
+        <button class="nav-item" id="managementNavToggle" type="button" data-open="management" data-nav-tone="management">
+          <span class="nav-label"><i data-lucide="database"></i> <span>통합관리대장 관리</span></span>
+        </button>
+      </div>
+      <div class="nav-group" id="ledgerNavGroup">
+        <button class="nav-item" id="ledgerNavToggle" type="button" data-open="ledger" data-nav-tone="cs">
+          <span class="nav-label"><i data-lucide="clipboard-check"></i> <span>CS 처리대장</span></span>
+        </button>
+      </div>
       <div class="nav-group" id="crmNavGroup">
-        <button class="nav-item" id="crmNavToggle" type="button" data-open="crm" data-crm-nav-tab="dashboard">
+        <button class="nav-item" id="crmNavToggle" type="button" data-open="crm" data-crm-nav-tab="dashboard" data-nav-tone="crm">
           <span class="nav-label"><i data-lucide="message-circle"></i> <span>업무관리</span></span>
           <i class="nav-chevron" data-lucide="chevron-right"></i>
         </button>
         <div class="nav-submenu">
-          <button class="nav-subitem" type="button" data-open="crm" data-crm-nav-tab="dashboard">대시보드</button>
+          <button class="nav-subitem" type="button" data-open="crm" data-crm-nav-tab="dashboard">업무 현황</button>
           <button class="nav-subitem" type="button" data-open="crm" data-crm-nav-tab="mine">내 업무</button>
           <button class="nav-subitem" type="button" data-open="crm" data-crm-nav-tab="tasks">업무보드</button>
-          <button class="nav-subitem" type="button" data-open="crm" data-crm-nav-tab="accounts">직원</button>
+          <button class="nav-subitem" type="button" data-open="crm" data-crm-nav-tab="accounts">직원 현황</button>
           <button class="nav-subitem" type="button" data-open="crm" data-crm-nav-tab="messages">메신저 연동</button>
         </div>
       </div>
+      __HERMES_NAV__
       <div class="nav-group" id="distributionMailNavGroup">
-        <button class="nav-item" id="distributionMailNavToggle" type="button">
-          <span class="nav-label"><i data-lucide="mail"></i> <span>유통사 업무관련 메일 발송</span></span>
+        <button class="nav-item" id="distributionMailNavToggle" type="button" data-nav-tone="mail">
+          <span class="nav-label"><i data-lucide="mail"></i> <span>거래처 업무관련</span></span>
           <i class="nav-chevron" data-lucide="chevron-right"></i>
         </button>
         <div class="nav-submenu">
@@ -4318,7 +8248,7 @@ HTML = r"""<!doctype html>
       __LEAVE_NAV__
       __ADMIN_TOOLS_NAV__
       <div class="nav-section">보조 도구</div>
-      <button class="nav-item" type="button" data-open="fileLibrary"><i data-lucide="download"></i> <span>업무 파일 자료실</span></button>
+      <button class="nav-item" type="button" data-open="fileLibrary" data-nav-tone="files"><i data-lucide="download"></i> <span>업무 파일 자료실</span></button>
     </aside>
 
     <main>
@@ -4327,16 +8257,20 @@ HTML = r"""<!doctype html>
           <div class="title">회사 포털 <i data-lucide="chevron-down"></i></div>
           <p class="subtitle">공지사항, 사규, 직원 현황을 한 곳에서 확인합니다.</p>
         </div>
-        <div class="top-search"><i data-lucide="file-text"></i> 파일명, 수령인, 송장번호, CS내용 검색</div>
+        <form class="top-search" id="topbarSearchForm" role="search">
+          <i data-lucide="search"></i>
+          <input id="topbarSearchInput" name="topbar_search" type="search" placeholder="수령인, 송장번호, CS내용 검색" autocomplete="off" />
+          <button class="top-search-submit" type="submit" title="검색" aria-label="검색"><i data-lucide="arrow-right"></i></button>
+        </form>
         <div class="top-tools">
-          <button class="icon-button" type="button"><i data-lucide="bell"></i></button>
-          <button class="icon-button" type="button"><i data-lucide="refresh-cw"></i></button>
+          <button class="icon-button" id="topbarAlertButton" type="button" title="알림" aria-label="알림"><i data-lucide="bell"></i></button>
+          <button class="icon-button" id="topbarRefreshButton" type="button" title="현재 화면 새로고침" aria-label="현재 화면 새로고침"><i data-lucide="refresh-cw"></i></button>
           <div class="user-chip"><span class="avatar"></span><span>__USER_DISPLAY__</span></div>
-          <a class="logout-button" href="/logout">로그아웃</a>
+          <a class="logout-button" href="/logout" title="로그아웃"><i data-lucide="log-out"></i><span>로그아웃</span></a>
         </div>
       </header>
 
-      <section class="content company-portal" id="dashboardContent">
+      <section class="content company-portal notice-calendar-mode" id="dashboardContent">
         <div class="company-tabs">
           <button class="company-tab active" type="button" data-company-tab="notice">공지사항</button>
           <button class="company-tab" type="button" data-company-tab="calendar">캘린더</button>
@@ -4346,29 +8280,78 @@ HTML = r"""<!doctype html>
         </div>
 
         <section class="company-panel active" data-company-panel="notice">
+          <aside class="dashboard-sales-panel" id="dashboardSalesPanel">
+            <article class="company-card">
+              <div class="company-card-head"><span>매출 현황</span><span class="dashboard-sales-status" id="dashboardSalesStatus">연동 대기</span></div>
+              <div class="company-card-body">
+                <div class="dashboard-sales-decision" id="dashboardSalesDecision">
+                  <div class="dashboard-sales-decision-main">
+                    <span class="dashboard-sales-decision-label">관리자 요약</span>
+                    <strong class="dashboard-sales-decision-title" id="dashboardSalesDecisionTitle">매출현황 데이터 연결 대기 중</strong>
+                    <span class="dashboard-sales-decision-note" id="dashboardSalesDecisionNote">금일 매출 업로드 후 손익, 매입, 마진 기준을 바로 확인할 수 있습니다.</span>
+                  </div>
+                  <div class="dashboard-sales-decision-chip" id="dashboardDecisionTodayChip"><span>선택일 손익</span><strong id="dashboardDecisionTodaySales">-</strong></div>
+                  <div class="dashboard-sales-decision-chip" id="dashboardDecisionPurchaseChip"><span>월 매입</span><strong id="dashboardDecisionPurchase">-</strong></div>
+                  <div class="dashboard-sales-decision-chip" id="dashboardDecisionMarginChip"><span>월 마진</span><strong id="dashboardDecisionMargin">-</strong></div>
+                </div>
+                <div class="dashboard-sales-grid dashboard-sales-primary-grid">
+                  <div class="dashboard-sales-metric blue">
+                    <div class="dashboard-sales-metric-top"><span class="dashboard-sales-icon"><i data-lucide="circle-dollar-sign"></i></span><span class="dashboard-sales-metric-label" id="dashboardTodaySalesLabel">오늘 손익매출</span></div>
+                    <strong id="dashboardTodaySales">-</strong>
+                  </div>
+                  <div class="dashboard-sales-metric green">
+                    <div class="dashboard-sales-metric-top"><span class="dashboard-sales-icon"><i data-lucide="package"></i></span><span class="dashboard-sales-metric-label" id="dashboardTodayQuantityLabel">오늘 판매수량</span></div>
+                    <strong id="dashboardTodayQuantity">-</strong>
+                  </div>
+                </div>
+                <div class="dashboard-sales-previous-grid" aria-label="직전 영업일 데이터">
+                  <div class="dashboard-sales-previous">
+                    <div class="dashboard-sales-previous-top"><span class="dashboard-sales-previous-icon"><i data-lucide="calendar-days"></i></span><span id="dashboardPreviousSalesLabel">직전 영업일 매출</span></div>
+                    <strong id="dashboardPreviousSales">-</strong>
+                  </div>
+                  <div class="dashboard-sales-previous">
+                    <div class="dashboard-sales-previous-top"><span class="dashboard-sales-previous-icon"><i data-lucide="package"></i></span><span id="dashboardPreviousQuantityLabel">직전 영업일 수량</span></div>
+                    <strong id="dashboardPreviousQuantity">-</strong>
+                  </div>
+                </div>
+                <div class="dashboard-sales-compare-grid" aria-label="전영업일 대비">
+                  <div class="dashboard-sales-compare" id="dashboardSalesAmountCompareCard">
+                    <div class="dashboard-sales-compare-top"><span class="dashboard-sales-compare-icon"><i data-lucide="refresh-cw"></i></span><span id="dashboardSalesAmountCompareLabel">매출금액 비교</span></div>
+                    <div class="dashboard-sales-compare-value"><strong id="dashboardSalesAmountCompare">-</strong><span class="dashboard-sales-rate" id="dashboardSalesAmountRate">-</span></div>
+                  </div>
+                  <div class="dashboard-sales-compare" id="dashboardSalesQuantityCompareCard">
+                    <div class="dashboard-sales-compare-top"><span class="dashboard-sales-compare-icon"><i data-lucide="package"></i></span><span id="dashboardSalesQuantityCompareLabel">판매수량 비교</span></div>
+                    <div class="dashboard-sales-compare-value"><strong id="dashboardSalesQuantityCompare">-</strong><span class="dashboard-sales-rate" id="dashboardSalesQuantityRate">-</span></div>
+                  </div>
+                </div>
+                <div class="dashboard-sales-grid dashboard-sales-month-grid">
+                  <div class="dashboard-sales-metric violet">
+                    <div class="dashboard-sales-metric-top"><span class="dashboard-sales-icon"><i data-lucide="bar-chart-3"></i></span><span class="dashboard-sales-metric-label" id="dashboardMonthSalesLabel">이번 달 누적매출</span></div>
+                    <strong id="dashboardMonthSales">-</strong>
+                  </div>
+                  <div class="dashboard-sales-metric green">
+                    <div class="dashboard-sales-metric-top"><span class="dashboard-sales-icon"><i data-lucide="package"></i></span><span class="dashboard-sales-metric-label" id="dashboardSalesQuantityLabel">이번 달 판매수량</span></div>
+                    <strong id="dashboardSalesQuantity">-</strong>
+                  </div>
+                </div>
+                <div class="dashboard-sales-insights" aria-label="매출 보조 지표">
+                  <div class="dashboard-sales-insight sales-insight-revenue"><div class="dashboard-sales-insight-top"><span class="dashboard-sales-insight-icon"><i data-lucide="circle-dollar-sign"></i></span><span>매출처 합계</span></div><strong id="dashboardSellerTotal">-</strong></div>
+                  <div class="dashboard-sales-insight sales-insight-purchase"><div class="dashboard-sales-insight-top"><span class="dashboard-sales-insight-icon"><i data-lucide="truck"></i></span><span>매입처 총액</span></div><strong id="dashboardSupplierPurchase">-</strong></div>
+                  <div class="dashboard-sales-insight sales-insight-margin"><div class="dashboard-sales-insight-top"><span class="dashboard-sales-insight-icon"><i data-lucide="bar-chart-3"></i></span><span>월 손익마진</span></div><strong id="dashboardSalesMargin">-</strong></div>
+                </div>
+                <div class="dashboard-sales-placeholder" id="dashboardSalesMessage">매출현황 및 관리 데이터 연결 대기 중</div>
+              </div>
+            </article>
+          </aside>
           <div class="company-grid">
             <section class="notice-board company-notice" id="sidebarNoticePreview" role="button" tabindex="0" aria-label="공지사항 크게 보기">
               <div class="notice-board-kicker">금일 공지사항</div>
               <div class="notice-board-title">등록된 공지 없음</div>
               <div class="notice-board-body">공지사항 입력 버튼을 눌러 내용을 입력해주세요.</div>
             </section>
-            <article class="company-card">
-              <div class="company-card-head">
-                <span>공지 관리</span>
-                <button class="workspace-button" id="noticeInputOpen" type="button">공지사항 입력</button>
-              </div>
-              <div class="company-card-body">
-                <p>오늘 공유해야 할 출고 마감, 업체 회신 필요 건, 내부 전달사항을 이곳에서 관리합니다.</p>
-                <div class="company-mini-grid">
-                  <div><span>저장 방식</span><strong>브라우저 localStorage</strong></div>
-                  <div><span>권한</span><strong>공지사항 관리</strong></div>
-                </div>
-              </div>
-            </article>
           </div>
-        </section>
 
-        <section class="import-progress-card dashboard-import-card open" id="dashboardImportScheduleCard">
+          <section class="import-progress-card dashboard-import-card open" id="dashboardImportScheduleCard">
           <div class="import-progress-head">
             <button class="import-progress-title" type="button" id="dashboardImportScheduleOpen">
               <i data-lucide="package"></i>
@@ -4376,26 +8359,29 @@ HTML = r"""<!doctype html>
             </button>
             <div class="import-progress-summary" id="dashboardImportScheduleSummary">진행 0건</div>
           </div>
-          <div class="import-progress-actions">
-            <button class="workspace-button" type="button" id="dashboardImportScheduleRefresh">새로고침</button>
-            <button class="workspace-button" type="button" data-view="import">전체 보기</button>
-          </div>
           <div class="import-table-wrap">
             <table class="import-table">
               <thead>
                 <tr>
+                  <th>입고예정일</th>
+                  <th>출항일</th>
                   <th>입항일</th>
-                  <th>품명</th>
-                  <th>수량</th>
-                  <th>진행상태</th>
-                  <th>입고/반입 일정</th>
+                  <th>선적항</th>
+                  <th>제품명</th>
+                  <th>제품수량</th>
+                  <th>선명</th>
+                  <th>HBL NO.</th>
+                  <th>SIZE</th>
+                  <th>진행상황</th>
+                  <th>프리타임</th>
                 </tr>
               </thead>
               <tbody id="dashboardImportScheduleBody">
-                <tr><td colspan="5"><div class="import-empty">수입제품 입고 일정을 불러오는 중입니다.</div></td></tr>
+                <tr><td colspan="11"><div class="import-empty">수입제품 입고 일정을 불러오는 중입니다.</div></td></tr>
               </tbody>
             </table>
           </div>
+          </section>
         </section>
 
         <section class="company-panel active dashboard-calendar-panel" data-company-panel="calendar">
@@ -4403,18 +8389,26 @@ HTML = r"""<!doctype html>
             <article class="company-card dashboard-calendar-card">
               <div class="company-calendar-toolbar">
                 <div class="company-calendar-title" id="companyCalendarTitle">캘린더</div>
+                <div class="company-calendar-summary" aria-label="캘린더 요약">
+                  <span class="company-calendar-summary-chip"><i data-lucide="calendar-days"></i><span id="companyCalendarMonthTotal">월 일정 0건</span></span>
+                  <span class="company-calendar-summary-chip"><i data-lucide="clipboard-check"></i><span id="companyCalendarTodayTotal">오늘 0건</span></span>
+                  <span class="company-calendar-summary-chip warning"><i data-lucide="bell"></i><span id="companyCalendarPendingTotal">대기 0건</span></span>
+                </div>
                 <div class="company-calendar-actions">
-                  <button class="crm-mini-button" type="button" id="companyCalendarPrev" aria-label="이전 달"><i data-lucide="chevron-left"></i></button>
-                  <button class="crm-mini-button" type="button" id="companyCalendarToday">오늘</button>
-                  <button class="crm-mini-button" type="button" id="companyCalendarNext" aria-label="다음 달"><i data-lucide="chevron-right"></i></button>
-                  <button class="crm-mini-button" type="button" id="companyCalendarRefresh">새로고침</button>
+                  <button class="crm-mini-button icon-only" type="button" id="companyCalendarPrev" aria-label="이전 달"><i data-lucide="chevron-left"></i></button>
+                  <button class="crm-mini-button" type="button" id="companyCalendarToday"><i data-lucide="calendar-days"></i><span>오늘</span></button>
+                  <button class="crm-mini-button icon-only" type="button" id="companyCalendarNext" aria-label="다음 달"><i data-lucide="chevron-right"></i></button>
+                  <button class="crm-mini-button" type="button" id="companyCalendarRefresh"><i data-lucide="refresh-cw"></i><span>새로고침</span></button>
                 </div>
               </div>
               <div class="company-calendar-legend" aria-label="캘린더 항목 구분">
-                <span><i class="calendar-legend-dot project"></i>프로젝트</span>
-                <span><i class="calendar-legend-dot task"></i>업무 마감</span>
-                <span><i class="calendar-legend-dot leave"></i>연차</span>
-                <span><i class="calendar-legend-dot pending"></i>승인대기</span>
+                <span><span class="calendar-legend-dot project"><i data-lucide="file-text"></i></span>프로젝트</span>
+                <span><span class="calendar-legend-dot import"><i data-lucide="package"></i></span>컨테이너</span>
+                <span><span class="calendar-legend-dot cargo-inbound"><i data-lucide="warehouse"></i></span>화물 입고</span>
+                <span><span class="calendar-legend-dot cargo"><i data-lucide="truck"></i></span>화물 출고</span>
+                <span><span class="calendar-legend-dot task"><i data-lucide="clipboard-check"></i></span>업무 마감</span>
+                <span><span class="calendar-legend-dot leave"><i data-lucide="calendar-days"></i></span>연차</span>
+                <span><span class="calendar-legend-dot pending"><i data-lucide="bell"></i></span>승인대기</span>
               </div>
               <div class="company-calendar-weekdays" aria-hidden="true">
                 <div>월</div><div>화</div><div>수</div><div>목</div><div>금</div><div>토</div><div>일</div>
@@ -4423,17 +8417,14 @@ HTML = r"""<!doctype html>
                 <div class="calendar-empty">캘린더를 불러오는 중입니다.</div>
               </div>
             </article>
-            <aside class="dashboard-sales-panel" id="dashboardSalesPanel">
+            <aside class="company-calendar-side">
               <article class="company-card">
-                <div class="company-card-head"><span>매출 현황</span><span>연동 대기</span></div>
+                <div class="company-card-head"><span>선택 날짜 일정</span><span class="dashboard-sales-status" id="companyCalendarSelectedCount">0건</span></div>
                 <div class="company-card-body">
-                  <div class="dashboard-sales-grid">
-                    <div class="dashboard-sales-metric"><span>오늘 매출</span><strong>-</strong></div>
-                    <div class="dashboard-sales-metric"><span>이번 달 매출</span><strong>-</strong></div>
-                    <div class="dashboard-sales-metric"><span>주문 건수</span><strong>-</strong></div>
-                    <div class="dashboard-sales-metric"><span>평균 객단가</span><strong>-</strong></div>
+                  <div class="calendar-side-date" id="companyCalendarSelectedDate">오늘</div>
+                  <div class="calendar-side-list" id="companyCalendarSelectedList">
+                    <div class="calendar-empty">날짜를 선택하면 해당 일자의 일정이 표시됩니다.</div>
                   </div>
-                  <div class="dashboard-sales-placeholder">매출현황 및 관리 데이터 연결 대기 중</div>
                 </div>
               </article>
             </aside>
@@ -4683,12 +8674,13 @@ HTML = r"""<!doctype html>
           </section>
         </div>
       </section>
+      __HERMES_WORKSPACE__
 
       <section class="workspace-view" id="importWorkspace">
         <div class="workspace-head">
-          <div class="workspace-title">수출입 업무</div>
+          <div class="workspace-title">수출입 업무 및 화물 입 출고 관리</div>
           <div class="workspace-actions">
-            <button class="workspace-button" type="button" id="importShipmentWorkspaceOpen">수입제품 출고 진행 입력</button>
+            <button class="workspace-button" type="button" id="importShipmentWorkspaceOpen">수입제품 입고 진행 입력</button>
             <button class="workspace-button" type="button" id="importShipmentRefresh">새로고침</button>
           </div>
         </div>
@@ -4696,7 +8688,7 @@ HTML = r"""<!doctype html>
           <div class="import-progress-head">
             <button class="import-progress-title" type="button" id="importShipmentTreeToggle">
               <i data-lucide="chevron-right"></i>
-              <span>수입제품 출고 진행 상황</span>
+              <span>수입제품 입고 진행 상황</span>
             </button>
             <div class="import-progress-summary" id="importShipmentSummary">진행 0건</div>
           </div>
@@ -4704,21 +8696,21 @@ HTML = r"""<!doctype html>
             <table class="import-table">
               <thead>
                 <tr>
+                  <th>입고예정일</th>
                   <th>출항일</th>
                   <th>입항일</th>
                   <th>선적항</th>
-                  <th>도착항</th>
                   <th>제품명</th>
-                  <th>수량</th>
+                  <th>제품수량</th>
+                  <th>선명</th>
                   <th>HBL NO.</th>
                   <th>SIZE</th>
                   <th>진행상황</th>
                   <th>프리타임</th>
-                  <th>입고예정일</th>
                 </tr>
               </thead>
               <tbody id="importShipmentBody">
-                <tr><td colspan="11"><div class="import-empty">등록된 수입제품 출고 진행 건이 없습니다.</div></td></tr>
+                <tr><td colspan="10"><div class="import-empty">등록된 수입제품 입고 진행 건이 없습니다.</div></td></tr>
               </tbody>
             </table>
           </div>
@@ -4728,7 +8720,9 @@ HTML = r"""<!doctype html>
         <div class="workspace-head">
           <div class="workspace-title">통합관리대장 관리</div>
           <div class="workspace-actions">
+            <button class="workspace-button" type="button" id="managementAddManual">수기 추가</button>
             <button class="workspace-button" type="button" id="managementSaveAll">해당 내용 저장</button>
+            <button class="workspace-button" type="button" id="managementBulkApply">체크 일괄 적용</button>
             <button class="workspace-button danger" type="button" id="managementDeleteSelected">선택 주문 삭제</button>
             <button class="workspace-button" type="button" data-open-window="management">새창으로 열기</button>
           </div>
@@ -4740,6 +8734,7 @@ HTML = r"""<!doctype html>
           <div class="workspace-title">CS 처리대장</div>
           <div class="workspace-actions">
             <button class="workspace-button" type="button" id="ledgerSaveAll">해당 내용 저장</button>
+            <button class="workspace-button" type="button" id="ledgerBulkApply">체크 일괄 적용</button>
             <button class="workspace-button danger" type="button" id="ledgerDeleteSelected">선택 주문 삭제</button>
             <button class="workspace-button" type="button" data-open-window="ledger">새창으로 열기</button>
           </div>
@@ -4748,20 +8743,20 @@ HTML = r"""<!doctype html>
       </section>
       <section class="workspace-view" id="crmWorkspace">
         <div class="workspace-head">
-          <div class="workspace-title">업무관리</div>
+          <div class="workspace-title">업무 현황</div>
           <div class="workspace-actions">
             <button class="workspace-button" type="button" id="crmRefresh">새로고침</button>
-            <button class="workspace-button" type="button" id="crmAccountQuick">직원 보기</button>
+            <button class="workspace-button" type="button" id="crmAccountQuick">직원 현황</button>
             <button class="workspace-button" type="button" id="crmTaskQuick">업무 등록</button>
             <button class="workspace-button" type="button" data-open-window="crm">새창으로 열기</button>
           </div>
         </div>
         <div class="crm-tabs" role="tablist" aria-label="CRM 메뉴">
-          <button class="crm-tab active" type="button" role="tab" id="crmTabDashboard" aria-selected="true" aria-controls="crmPanelDashboard" tabindex="0" data-crm-tab="dashboard">대시보드</button>
+          <button class="crm-tab active" type="button" role="tab" id="crmTabDashboard" aria-selected="true" aria-controls="crmPanelDashboard" tabindex="0" data-crm-tab="dashboard">업무 현황</button>
           <button class="crm-tab" type="button" role="tab" id="crmTabMine" aria-selected="false" aria-controls="crmPanelMine" tabindex="-1" data-crm-tab="mine">내 업무</button>
           <button class="crm-tab" type="button" role="tab" id="crmTabTasks" aria-selected="false" aria-controls="crmPanelTasks" tabindex="-1" data-crm-tab="tasks">업무보드</button>
-          <button class="crm-tab" type="button" role="tab" id="crmTabAccounts" aria-selected="false" aria-controls="crmPanelAccounts" tabindex="-1" data-crm-tab="accounts">직원</button>
-          <button class="crm-tab" type="button" role="tab" id="crmMessagesTab" aria-selected="false" aria-controls="crmPanelMessages" tabindex="-1" data-crm-tab="messages">메신저 연동</button>
+          <button class="crm-tab" type="button" role="tab" id="crmTabAccounts" aria-selected="false" aria-controls="crmPanelAccounts" tabindex="-1" data-crm-tab="accounts">직원 현황</button>
+          <button class="crm-tab" type="button" role="tab" id="crmMessagesTab" aria-selected="false" aria-controls="crmPanelMessages" tabindex="-1" data-crm-tab="messages">연동 로그</button>
         </div>
         <div class="crm-message" id="crmMessage" role="status" aria-live="polite"></div>
 
@@ -4874,12 +8869,16 @@ HTML = r"""<!doctype html>
           <div class="crm-toolbar crm-task-toolbar" aria-label="업무 필터">
             <label class="sr-only" for="crmTaskViewSelect">저장뷰</label>
             <select class="crm-select" id="crmTaskViewSelect"><option value="">저장뷰 선택</option></select>
+            <label class="sr-only" for="crmTaskSearch">업무 검색</label>
+            <input class="crm-input" id="crmTaskSearch" type="search" placeholder="업무, 직원, 번호 검색" />
+            <button class="crm-mini-button primary" type="button" id="crmTaskSearchButton">조회</button>
+            <button class="crm-mini-button" type="button" id="crmTaskAdvancedToggle" aria-expanded="false" aria-controls="crmAdvancedFilters">고급 필터</button>
+            <button class="crm-mini-button" type="button" id="crmTaskFilterReset">초기화</button>
+            <div class="crm-advanced-filters" id="crmAdvancedFilters" hidden>
             <label class="sr-only" for="crmTaskViewName">저장뷰 이름</label>
             <input class="crm-input" id="crmTaskViewName" type="text" placeholder="저장뷰 이름" />
             <button class="crm-mini-button" type="button" id="crmTaskViewSave">현재 보기 저장</button>
             <button class="crm-mini-button" type="button" id="crmTaskViewDelete">저장뷰 삭제</button>
-            <label class="sr-only" for="crmTaskSearch">업무 검색</label>
-            <input class="crm-input" id="crmTaskSearch" type="search" placeholder="업무, 직원, 번호 검색" />
             <label class="sr-only" for="crmTaskStatusFilter">상태</label>
             <select class="crm-select" id="crmTaskStatusFilter"><option value="">상태 전체</option><option>대기</option><option>진행중</option><option>완료</option><option>보류</option></select>
             <label class="sr-only" for="crmTaskAssigneeFilter">담당자</label>
@@ -4893,8 +8892,7 @@ HTML = r"""<!doctype html>
             <label class="sr-only" for="crmTaskSort">정렬</label>
             <select class="crm-select" id="crmTaskSort"><option value="smart">추천순</option><option value="due">마감순</option><option value="updated">최근 수정순</option></select>
             <label class="crm-filter-check"><input type="checkbox" id="crmTaskOpenOnly" checked /> 미완료만</label>
-            <button class="crm-mini-button primary" type="button" id="crmTaskSearchButton">조회</button>
-            <button class="crm-mini-button" type="button" id="crmTaskFilterReset">초기화</button>
+            </div>
           </div>
           <div class="crm-task-board-stats" id="crmTaskBoardStats"></div>
           <div class="crm-task-layout">
@@ -4968,7 +8966,7 @@ HTML = r"""<!doctype html>
     <div class="notice-popup" role="dialog" aria-modal="true">
       <div class="notice-popup-head">
         <span>공지사항 입력</span>
-        <button class="close" id="noticePopupClose" type="button" aria-label="닫기"><i data-lucide="x"></i></button>
+        <button class="close popup-close-button" id="noticePopupClose" type="button" aria-label="닫기"><i data-lucide="x"></i></button>
       </div>
       <div class="notice-template">
         <div class="notice-template-grid">
@@ -4985,8 +8983,76 @@ HTML = r"""<!doctype html>
           <strong>저장된 공지사항이 없습니다.</strong>
           공지사항을 입력하고 저장하면 이곳에서 미리 볼 수 있습니다.
         </div>
+        <div class="notice-history">
+          <div class="notice-history-head">
+            <span>기존 공지사항</span>
+            <span class="notice-history-count" id="noticeHistoryCount">0</span>
+          </div>
+          <div class="notice-history-list" id="noticeHistoryList"></div>
+        </div>
       </div>
     </div>
+  </div>
+
+  <div class="notice-popup-backdrop" id="returnCheckPopup">
+    <div class="notice-popup" role="dialog" aria-modal="true">
+      <div class="notice-popup-head">
+        <span>회수 확인 및 검수</span>
+        <button class="close popup-close-button" id="returnCheckClose" type="button" aria-label="닫기"><i data-lucide="x"></i></button>
+      </div>
+      <div class="notice-template">
+        <input id="returnCheckCaseId" type="hidden" />
+        <div class="notice-template-grid">
+          <select id="returnCheckResult">
+            <option>정상 입고</option>
+            <option>불량 확인</option>
+            <option>구성품 누락</option>
+            <option>파손</option>
+            <option>기타</option>
+          </select>
+          <select id="returnCheckNextStatus"></select>
+          <input id="returnCheckDate" type="text" placeholder="검수일 예) 6/21" />
+        </div>
+        <textarea id="returnCheckMemo" placeholder="검수 메모를 입력해주세요. 예) 박스 파손 없음 / 구성품 확인 완료"></textarea>
+        <div class="notice-template-actions">
+          <button class="workspace-button" type="button" id="returnCheckCancel">취소</button>
+          <button class="workspace-button" type="button" id="returnCheckSave">적용</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="app-confirm-backdrop" id="appConfirmDialog" aria-hidden="true">
+    <section class="app-confirm" role="dialog" aria-modal="true" aria-labelledby="appConfirmTitle">
+      <div class="app-confirm-head">
+        <div class="app-confirm-icon"><i data-lucide="clipboard-check"></i></div>
+        <div>
+          <div class="app-confirm-kicker" id="appConfirmKicker">상태 변경 확인</div>
+          <div class="app-confirm-title" id="appConfirmTitle">처리상태를 변경할까요?</div>
+        </div>
+      </div>
+      <div class="app-confirm-body">
+        <div id="appConfirmMessage"></div>
+        <div class="app-confirm-highlight" id="appConfirmHighlight"></div>
+      </div>
+      <div class="app-confirm-actions">
+        <button type="button" id="appConfirmCancel">유지</button>
+        <button class="primary" type="button" id="appConfirmOk">변경</button>
+      </div>
+    </section>
+  </div>
+
+  <div class="search-result-backdrop" id="searchResultDialog" aria-hidden="true">
+    <section class="search-result-dialog" role="dialog" aria-modal="true" aria-labelledby="searchResultTitle">
+      <div class="search-result-head">
+        <div>
+          <strong id="searchResultTitle">검색 결과 선택</strong>
+          <p id="searchResultDescription">여러 건이 검색되었습니다. 확인할 데이터를 선택해주세요.</p>
+        </div>
+        <button class="search-result-close popup-close-button" id="searchResultClose" type="button" aria-label="닫기"><i data-lucide="x"></i></button>
+      </div>
+      <div class="search-result-list" id="searchResultList"></div>
+    </section>
   </div>
 
   <div class="focus-widget-backdrop" id="focusWidget" aria-hidden="true">
@@ -4997,38 +9063,73 @@ HTML = r"""<!doctype html>
           <div class="focus-widget-title" id="focusWidgetTitle">상세 보기</div>
           <div class="focus-widget-subtitle" id="focusWidgetSubtitle"></div>
         </div>
-        <button class="focus-widget-close" id="focusWidgetClose" type="button" aria-label="닫기"><i data-lucide="x"></i></button>
+        <button class="focus-widget-close popup-close-button" id="focusWidgetClose" type="button" aria-label="닫기"><i data-lucide="x"></i></button>
       </div>
       <div class="focus-widget-body" id="focusWidgetBody"></div>
     </section>
   </div>
 
+  <div class="notice-popup-backdrop" id="cargoShipmentPopup">
+    <div class="notice-popup" role="dialog" aria-modal="true">
+      <div class="notice-popup-head">
+        <span id="cargoShipmentPopupTitle">화물 출고건 입력</span>
+        <button class="close popup-close-button" id="cargoShipmentClose" type="button" aria-label="닫기"><i data-lucide="x"></i></button>
+      </div>
+      <div class="notice-template">
+        <input id="cargoShipmentId" type="hidden" />
+        <div class="notice-template-grid">
+          <input id="cargoShipDate" type="text" placeholder="출고일 예) 6/21" />
+          <input id="cargoCustomer" type="text" placeholder="거래처/현장" />
+          <input id="cargoItem" type="text" placeholder="제품명" />
+        </div>
+        <div class="notice-template-grid">
+          <input id="cargoQuantity" type="text" placeholder="수량" />
+          <input id="cargoDestination" type="text" placeholder="도착지" />
+          <select id="cargoStatus">
+            <option>출고 예정</option>
+            <option>배차 완료</option>
+            <option>출고 완료</option>
+            <option>보류</option>
+          </select>
+        </div>
+        <textarea id="cargoMemo" placeholder="메모 예) 차량번호 / 담당자 / 주의사항"></textarea>
+        <div class="notice-template-actions">
+          <button class="workspace-button" type="button" id="cargoVehicleReceiptLink">인수증 출력 연결</button>
+          <button class="workspace-button" type="button" id="cargoShipmentReset">초기화</button>
+          <button class="workspace-button" type="button" id="cargoShipmentSave">저장</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <div class="notice-popup-backdrop" id="importShipmentPopup">
     <div class="notice-popup" role="dialog" aria-modal="true">
       <div class="notice-popup-head">
-        <span>수입제품 출고 진행 입력</span>
-        <button class="close" id="importShipmentClose" type="button" aria-label="닫기"><i data-lucide="x"></i></button>
+        <span>수입제품 입고 진행 입력</span>
+        <button class="close popup-close-button" id="importShipmentClose" type="button" aria-label="닫기"><i data-lucide="x"></i></button>
       </div>
       <div class="notice-template">
         <input id="importShipmentId" type="hidden" />
+        <input id="importArrivalPort" type="hidden" />
+        <input id="importShipper" type="hidden" />
         <div class="notice-template-grid">
+          <input id="importWarehouseDueDate" type="text" placeholder="입고예정일" />
           <input id="importDepartureDate" type="text" placeholder="출항일 예) 6/10" />
           <input id="importArrivalDate" type="text" placeholder="입항일 예) 6/13" />
+        </div>
+        <div class="notice-template-grid">
           <input id="importLoadingPort" type="text" placeholder="선적항" />
-        </div>
-        <div class="notice-template-grid">
-          <input id="importArrivalPort" type="text" placeholder="도착항" />
           <input id="importItem" type="text" placeholder="제품명" />
-          <input id="importQuantity" type="text" placeholder="수량" />
+          <input id="importQuantity" type="text" placeholder="제품수량" />
         </div>
         <div class="notice-template-grid">
+          <input id="importVesselName" type="text" placeholder="선명" />
           <input id="importHblNo" type="text" placeholder="HBL NO." />
           <input id="importSize" type="text" placeholder="SIZE" />
-          <input id="importProgressStatus" type="text" placeholder="진행상황" />
         </div>
         <div class="notice-template-grid">
+          <input id="importProgressStatus" type="text" placeholder="진행상황" />
           <input id="importFreeTime" type="text" placeholder="프리타임 예) 7일" />
-          <input id="importWarehouseDueDate" type="text" placeholder="입고예정일" />
         </div>
         <div class="notice-template-actions">
           <button class="workspace-button" type="button" id="importShipmentReset">초기화</button>
@@ -5042,7 +9143,7 @@ HTML = r"""<!doctype html>
     <div class="workhub-modal" role="dialog" aria-modal="true">
       <div class="workhub-modal-head">
         <div class="modal-title" id="modalTitle">파일 업로드</div>
-        <button class="close" id="closeModal" aria-label="닫기"><i data-lucide="x"></i></button>
+        <button class="close popup-close-button" id="closeModal" aria-label="닫기"><i data-lucide="x"></i></button>
       </div>
       <form id="uploadForm">
         <label class="field-label" id="fileLabel">엑셀 파일 선택</label>
@@ -5113,30 +9214,30 @@ HTML = r"""<!doctype html>
         <div class="cs-fields" id="csFields">
           <div class="ledger-cs-popup-head">
             <strong class="ledger-cs-popup-title">CS 추가</strong>
-            <button class="ledger-cs-popup-close" id="ledgerCsPopupClose" type="button">닫기</button>
+            <button class="ledger-cs-popup-close popup-close-button" id="ledgerCsPopupClose" type="button" aria-label="닫기"><i data-lucide="x"></i></button>
           </div>
           <div class="text-field">
-            <label class="field-label" for="vendorContactSelect">업체 선택</label>
+            <label class="field-label" for="vendorContactSelect">거래처 선택</label>
             <select id="vendorContactSelect">
               <option value="">업체를 선택해주세요</option>
             </select>
           </div>
           <div class="text-field">
-            <label class="field-label" for="vendorTypeSelect">업체 구분</label>
+            <label class="field-label" for="vendorTypeSelect">거래처 구분</label>
             <select id="vendorTypeSelect">
               <option value="purchase">매입처</option>
               <option value="sales">매출처</option>
             </select>
           </div>
           <div class="text-field">
-            <label class="field-label" for="recipientEmailInput">받는 업체 메일</label>
+            <label class="field-label" for="recipientEmailInput">받는 거래처 메일</label>
             <input id="recipientEmailInput" name="recipient_email" type="email" placeholder="예) vendor@example.com" />
           </div>
           <div class="text-field">
-            <label class="field-label" for="vendorNameInput">업체명</label>
+            <label class="field-label" for="vendorNameInput">거래처명</label>
             <input id="vendorNameInput" name="vendor_name" type="text" placeholder="예) 키친쿡" />
           </div>
-          <button class="add-row" id="saveVendorContact" type="button">업체 메일 저장/업데이트</button>
+          <button class="add-row" id="saveVendorContact" type="button">거래처 메일 저장/업데이트</button>
           <div class="text-field">
             <label class="field-label" for="csOriginInput">원출고일 및 원송장번호</label>
             <input id="csOriginInput" name="cs_origin" type="text" placeholder="예) 2026-06-13 / 1234567890" />
@@ -5165,27 +9266,153 @@ HTML = r"""<!doctype html>
               <option value="불량반품">불량반품</option>
               <option value="불량교환">불량교환</option>
               <option value="불량재출고(미회수)">불량재출고(미회수)</option>
-              <option value="오출고(오배송)">오출고(오배송)</option>
+              <option value="오출고(오배송)/회수진행">오출고(오배송)/회수진행</option>
+              <option value="오출고(오배송)/회수없음">오출고(오배송)/회수없음</option>
             </select>
           </div>
-          <div class="text-field">
+          <div class="text-field cs-wide">
             <label class="field-label" for="csContentInput">CS내용</label>
             <textarea id="csContentInput" name="cs_content" placeholder="예) 파손 / 오배송 / 누락 / 반품 접수 요청"></textarea>
           </div>
-          <div class="text-field">
+          <div class="text-field cs-wide">
+            <label class="field-label" for="csAttachmentInput">첨부파일(이미지/영상)</label>
+            <div class="cs-attachment-dropzone dropzone" id="csAttachmentDropzone">
+              <span class="drop-main" id="csAttachmentDropMain">파일을 드래그하거나 파일 선택 버튼을 눌러주세요.</span>
+              <span class="drop-sub">이미지, 영상, PDF, 엑셀, 문서, 압축파일 첨부 가능</span>
+              <button class="cs-attachment-button" id="csAttachmentChoose" type="button">파일 선택</button>
+              <input id="csAttachmentInput" name="cs_attachments" type="file" accept="image/*,video/*,.pdf,.xlsx,.xls,.doc,.docx,.zip" multiple />
+            </div>
+            <div class="hint-line" id="csAttachmentSummary">첨부파일 없음</div>
+          </div>
+          <div class="text-field cs-wide">
             <label class="field-label" for="csSubjectInput">메일 제목</label>
             <input id="csSubjectInput" name="subject" type="text" />
           </div>
-          <div class="text-field">
+          <div class="text-field cs-wide">
             <label class="field-label" for="csBodyInput">요청 내용</label>
             <textarea id="csBodyInput" name="body"></textarea>
           </div>
           <div class="cs-toolbar">
             <button class="cs-save-button" id="saveCsCase" type="button">CS건 DB 저장</button>
+            <button class="cs-save-button" id="sendCsMailButton" type="button">CS요청 메일 발송</button>
           </div>
           <div class="cs-case-list">
             <div class="cs-case-head">최근 저장 CS</div>
             <div id="csCaseList"></div>
+          </div>
+        </div>
+        <div class="management-manual-fields" id="managementManualFields">
+          <div class="ledger-cs-popup-head">
+            <strong class="ledger-cs-popup-title">통합관리대장 수기 추가</strong>
+            <button class="ledger-cs-popup-close popup-close-button" id="managementManualClose" type="button" aria-label="닫기"><i data-lucide="x"></i></button>
+          </div>
+          <div class="text-field">
+            <label class="field-label" for="manualManagementPurchaseVendor">매입거래처</label>
+            <input id="manualManagementPurchaseVendor" data-management-manual-field="purchase_vendor" type="text" placeholder="예) 소일브릿지(본사)" />
+          </div>
+          <div class="text-field">
+            <label class="field-label" for="manualManagementSalesVendor">매출거래처</label>
+            <input id="manualManagementSalesVendor" data-management-manual-field="sales_vendor" type="text" />
+          </div>
+          <div class="text-field">
+            <label class="field-label" for="manualManagementTransactionType">거래구분</label>
+            <input id="manualManagementTransactionType" data-management-manual-field="transaction_type" type="text" readonly />
+          </div>
+          <div class="text-field">
+            <label class="field-label" for="manualManagementLedgerChecked">장부입력확인</label>
+            <input id="manualManagementLedgerChecked" data-management-manual-field="ledger_checked" type="text" value="입력 완료" />
+          </div>
+          <div class="text-field">
+            <label class="field-label" for="manualManagementOrderDate">주문일자</label>
+            <input id="manualManagementOrderDate" data-management-manual-field="order_date" type="date" />
+          </div>
+          <div class="text-field">
+            <label class="field-label" for="manualManagementShipDate">출고일</label>
+            <input id="manualManagementShipDate" data-management-manual-field="ship_date" type="date" />
+          </div>
+          <div class="text-field">
+            <label class="field-label" for="manualManagementOrdererName">주문자</label>
+            <input id="manualManagementOrdererName" data-management-manual-field="orderer_name" type="text" />
+          </div>
+          <div class="text-field">
+            <label class="field-label" for="manualManagementSenderPhone">발신자연락처</label>
+            <input id="manualManagementSenderPhone" data-management-manual-field="sender_phone" type="text" />
+          </div>
+          <div class="text-field">
+            <label class="field-label" for="manualManagementReceiverName">수령자</label>
+            <input id="manualManagementReceiverName" data-management-manual-field="receiver_name" type="text" />
+          </div>
+          <div class="text-field">
+            <label class="field-label" for="manualManagementReceiverPhone">수령자연락처</label>
+            <input id="manualManagementReceiverPhone" data-management-manual-field="receiver_phone" type="text" />
+          </div>
+          <div class="text-field cs-wide">
+            <label class="field-label" for="manualManagementProductName">제품명</label>
+            <input id="manualManagementProductName" data-management-manual-field="product_name" type="text" />
+          </div>
+          <div class="text-field">
+            <label class="field-label" for="manualManagementQuantity">수량</label>
+            <input id="manualManagementQuantity" data-management-manual-field="quantity" type="number" min="1" step="1" />
+          </div>
+          <div class="text-field">
+            <label class="field-label" for="manualManagementCourier">택배사</label>
+            <input id="manualManagementCourier" data-management-manual-field="courier" type="text" />
+          </div>
+          <div class="text-field">
+            <label class="field-label" for="manualManagementInvoiceNumber">운송장번호</label>
+            <input id="manualManagementInvoiceNumber" data-management-manual-field="invoice_number" type="text" />
+          </div>
+          <div class="text-field">
+            <label class="field-label" for="manualManagementOrderItemId">주문상품고유번호</label>
+            <input id="manualManagementOrderItemId" data-management-manual-field="order_item_id" type="text" />
+          </div>
+          <div class="text-field">
+            <label class="field-label" for="manualManagementProductCode">상품코드</label>
+            <input id="manualManagementProductCode" data-management-manual-field="product_code" type="text" />
+          </div>
+          <div class="text-field">
+            <label class="field-label" for="manualManagementOrderNumber">주문번호</label>
+            <input id="manualManagementOrderNumber" data-management-manual-field="order_number" type="text" />
+          </div>
+          <div class="text-field">
+            <label class="field-label" for="manualManagementCustomerOption">고객선택옵션</label>
+            <input id="manualManagementCustomerOption" data-management-manual-field="customer_option" type="text" />
+          </div>
+          <div class="text-field">
+            <label class="field-label" for="manualManagementReceiverAddress">상세주소</label>
+            <textarea id="manualManagementReceiverAddress" data-management-manual-field="receiver_address" rows="2"></textarea>
+          </div>
+          <div class="text-field">
+            <label class="field-label" for="manualManagementMemo">특이사항</label>
+            <textarea id="manualManagementMemo" data-management-manual-field="memo" rows="2"></textarea>
+          </div>
+          <div class="cs-toolbar">
+            <button class="cs-save-button" id="saveManagementManual" type="button">통합관리대장 추가 저장</button>
+          </div>
+        </div>
+        <div class="vendor-contact-manage-fields" id="vendorContactManageFields">
+          <div class="text-field">
+            <label class="field-label" for="vendorManageTypeLabel">관리 구분</label>
+            <input id="vendorManageTypeLabel" type="text" value="매입처" readonly />
+          </div>
+          <div class="text-field">
+            <label class="field-label" for="vendorManageNameInput">거래처명</label>
+            <input id="vendorManageNameInput" type="text" placeholder="예) 키친쿡" />
+          </div>
+          <div class="text-field">
+            <label class="field-label" for="vendorManageEmailInput">메일주소</label>
+            <input id="vendorManageEmailInput" type="email" placeholder="예) vendor@example.com" />
+          </div>
+          <button class="add-row" id="vendorManageSave" type="button">거래처 메일 저장/업데이트</button>
+          <label class="dropzone" for="vendorManageFileInput">
+            <span class="drop-main" id="vendorManageDropMain">거래처명/메일주소 엑셀을 업로드해주세요.</span>
+            <span>구분 열이 없으면 현재 관리 구분으로 저장됩니다.</span>
+            <input id="vendorManageFileInput" type="file" accept=".xlsx,.xlsm" />
+          </label>
+          <div class="hint-line">권장 열 이름: 업체명 또는 거래처명 / 메일주소 또는 이메일 / 구분(선택)</div>
+          <div class="cs-case-list">
+            <div class="cs-case-head" id="vendorManageListTitle">저장된 매입처</div>
+            <div id="vendorManageList"></div>
           </div>
         </div>
         <div class="stock-notice-fields" id="stockNoticeFields">
@@ -5257,7 +9484,7 @@ HTML = r"""<!doctype html>
             <select id="ledgerPageSize">
               <option value="100">100개씩 보기</option>
               <option value="500">500개씩 보기</option>
-              <option value="1000">1,000개씩 보기</option>
+              <option value="1000" selected>1,000개씩 보기</option>
               <option value="2000">2,000개씩 보기</option>
               <option value="5000">5,000개씩 보기</option>
             </select>
@@ -5268,20 +9495,45 @@ HTML = r"""<!doctype html>
                 <button type="button" data-ledger-download="selected">선택 다운로드</button>
               </div>
             </div>
+            <button class="btn blue" type="button" data-ledger-import-mode="daily">CS처리대장 업로드</button>
             <button class="btn primary" id="ledgerAddCs" type="button">CS 추가</button>
           </div>
           <div class="cell-edit-bar" id="ledgerCellEditBar">
             <div class="cell-edit-label" id="ledgerCellEditLabel">셀 선택</div>
             <div id="ledgerCellEditMount"></div>
+            <button class="cell-edit-button return-check" id="ledgerReturnCheckButton" type="button" hidden>회수확인</button>
             <button class="cell-edit-button apply" id="ledgerCellApply" type="button">적용</button>
             <button class="cell-edit-button" id="ledgerCellCancel" type="button">취소</button>
           </div>
           <input class="hidden-file-input" id="ledgerImportInput" name="ledger_import" type="file" accept=".xlsx,.xlsm" />
           <div class="ledger-wrap">
             <table class="ledger-table">
+              <colgroup>
+                <col class="select-col" />
+                <col class="date-col" />
+                <col class="vendor-col" />
+                <col class="vendor-col" />
+                <col class="status-col" />
+                <col class="date-col" />
+                <col class="type-col" />
+                <col class="content-col" />
+                <col class="invoice-col" />
+                <col class="invoice-col" />
+                <col class="date-col" />
+                <col class="date-col" />
+                <col class="name-col" />
+                <col class="phone-col" />
+                <col class="name-col" />
+                <col class="phone-col" />
+                <col class="product-col" />
+                <col class="quantity-col" />
+                <col class="address-col" />
+                <col class="courier-col" />
+                <col class="original-invoice-col" />
+              </colgroup>
               <thead>
                 <tr>
-                  <th>선택</th>
+                  <th class="select-head"><input class="ledger-check" id="ledgerSelectAll" type="checkbox" title="전체 선택" /></th>
                   <th class="has-filter"><span class="ledger-th-title">날짜</span><button class="ledger-filter-trigger" type="button" data-ledger-filter-button="occurred_at" data-label="날짜">▼</button></th>
                   <th class="has-filter"><span class="ledger-th-title">매출거래처</span><button class="ledger-filter-trigger" type="button" data-ledger-filter-button="sales_vendor" data-label="매출거래처">▼</button></th>
                   <th class="has-filter"><span class="ledger-th-title">매입거래처</span><button class="ledger-filter-trigger" type="button" data-ledger-filter-button="purchase_vendor" data-label="매입거래처">▼</button></th>
@@ -5289,8 +9541,8 @@ HTML = r"""<!doctype html>
                   <th class="has-filter"><span class="ledger-th-title">완료일</span><button class="ledger-filter-trigger" type="button" data-ledger-filter-button="completed_at" data-label="완료일">▼</button></th>
                   <th class="has-filter"><span class="ledger-th-title">처리내용</span><button class="ledger-filter-trigger" type="button" data-ledger-filter-button="cs_type" data-label="처리내용">▼</button></th>
                   <th class="has-filter"><span class="ledger-th-title">C/S 내용</span><button class="ledger-filter-trigger" type="button" data-ledger-filter-button="cs_content" data-label="C/S 내용">▼</button></th>
-                  <th class="invoice-head has-filter"><span class="ledger-th-title">재발송운송장번호</span><button class="ledger-filter-trigger" type="button" data-ledger-filter-button="reship_invoice" data-label="재발송운송장번호">▼</button></th>
-                  <th class="invoice-head has-filter"><span class="ledger-th-title">회수운송장번호</span><button class="ledger-filter-trigger" type="button" data-ledger-filter-button="return_invoice" data-label="회수운송장번호">▼</button></th>
+                  <th class="invoice-head reship-head has-filter"><span class="ledger-th-title">재발송운송장번호</span><button class="ledger-filter-trigger" type="button" data-ledger-filter-button="reship_invoice" data-label="재발송운송장번호">▼</button></th>
+                  <th class="invoice-head return-head has-filter"><span class="ledger-th-title">회수운송장번호</span><button class="ledger-filter-trigger" type="button" data-ledger-filter-button="return_invoice" data-label="회수운송장번호">▼</button></th>
                   <th class="has-filter"><span class="ledger-th-title">주문일자</span><button class="ledger-filter-trigger" type="button" data-ledger-filter-button="order_date" data-label="주문일자">▼</button></th>
                   <th class="has-filter"><span class="ledger-th-title">출고일</span><button class="ledger-filter-trigger" type="button" data-ledger-filter-button="ship_date" data-label="출고일">▼</button></th>
                   <th class="has-filter"><span class="ledger-th-title">주문자</span><button class="ledger-filter-trigger" type="button" data-ledger-filter-button="orderer_name" data-label="주문자">▼</button></th>
@@ -5320,8 +9572,8 @@ HTML = r"""<!doctype html>
             <button class="btn blue" id="managementRefresh" type="button">조회</button>
             <select id="managementPageSize">
               <option value="100">100개씩 보기</option>
-              <option value="500" selected>500개씩 보기</option>
-              <option value="1000">1,000개씩 보기</option>
+              <option value="500">500개씩 보기</option>
+              <option value="1000" selected>1,000개씩 보기</option>
               <option value="2000">2,000개씩 보기</option>
               <option value="5000">5,000개씩 보기</option>
             </select>
@@ -5334,6 +9586,7 @@ HTML = r"""<!doctype html>
                 <button type="button" data-management-download="selected">선택 다운로드</button>
               </div>
             </div>
+            <button class="btn blue" type="button" data-management-import-mode="daily">통합관리대장 업로드</button>
           </div>
           <div class="cell-edit-bar" id="managementCellEditBar">
             <div class="cell-edit-label" id="managementCellEditLabel">셀 선택</div>
@@ -5344,9 +9597,29 @@ HTML = r"""<!doctype html>
           <input class="hidden-file-input" id="managementImportInput" name="management_import" type="file" accept=".xlsx,.xlsm" />
           <div class="ledger-wrap management-wrap">
             <table class="ledger-table">
+              <colgroup>
+                <col class="select-col" data-management-col="select" />
+                <col class="date-col" data-management-col="order_date" />
+                <col class="date-col" data-management-col="ship_date" />
+                <col class="vendor-col" data-management-col="purchase_vendor" />
+                <col class="vendor-col" data-management-col="sales_vendor" />
+                <col class="short-col" data-management-col="transaction_type" />
+                <col class="short-col" data-management-col="ledger_checked" />
+                <col class="name-col" data-management-col="orderer_name" />
+                <col class="phone-col" data-management-col="sender_phone" />
+                <col class="name-col" data-management-col="receiver_name" />
+                <col class="phone-col" data-management-col="receiver_phone" />
+                <col class="product-col" data-management-col="product_name" />
+                <col class="quantity-col" data-management-col="quantity" />
+                <col class="address-col" data-management-col="receiver_address" />
+                <col class="courier-col" data-management-col="courier" />
+                <col class="original-invoice-col" data-management-col="invoice_number" />
+                <col class="memo-col" data-management-col="memo" />
+                <col class="action-col" data-management-col="cs_action" />
+              </colgroup>
               <thead>
                 <tr>
-                  <th><input class="ledger-check" id="managementSelectAll" type="checkbox" title="전체 선택" /></th>
+                  <th class="select-head"><input class="ledger-check" id="managementSelectAll" type="checkbox" title="전체 선택" /></th>
                   <th class="has-filter"><span class="ledger-th-title">주문일자</span><button class="ledger-filter-trigger" type="button" data-management-filter-button="order_date" data-label="주문일자">▼</button></th>
                   <th class="has-filter"><span class="ledger-th-title">출고일</span><button class="ledger-filter-trigger" type="button" data-management-filter-button="ship_date" data-label="출고일">▼</button></th>
                   <th class="has-filter"><span class="ledger-th-title">매입거래처</span><button class="ledger-filter-trigger" type="button" data-management-filter-button="purchase_vendor" data-label="매입거래처">▼</button></th>
@@ -5376,7 +9649,8 @@ HTML = r"""<!doctype html>
           <input class="ledger-filter-search" id="ledgerFilterSearch" type="text" placeholder="검색어 입력" />
           <div class="ledger-filter-option-list" id="ledgerFilterOptions"></div>
           <div class="ledger-filter-actions">
-            <button type="button" id="ledgerFilterClear">전체</button>
+            <button type="button" id="ledgerFilterClear">현재 초기화</button>
+            <button type="button" id="ledgerFilterResetAll">전체 초기화</button>
             <button class="apply" type="button" id="ledgerFilterApply">적용</button>
           </div>
         </div>
@@ -5410,9 +9684,184 @@ HTML = r"""<!doctype html>
     </div>
   </div>
 
+  <div class="safe-number-dialog-backdrop" id="importWarningDialog" aria-hidden="true">
+    <div class="safe-number-dialog" role="dialog" aria-modal="true" aria-labelledby="importWarningTitle">
+      <h2 class="safe-number-dialog-title" id="importWarningTitle">업로드 확인</h2>
+      <p class="safe-number-dialog-description" id="importWarningDescription"></p>
+      <pre class="safe-number-dialog-preview" id="importWarningPreview"></pre>
+      <div class="safe-number-dialog-actions">
+        <button class="btn" id="importWarningCancel" type="button">취소</button>
+        <button class="btn primary" id="importWarningProceed" type="button">진행</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="safe-number-dialog-backdrop" id="importModeDialog" aria-hidden="true">
+    <div class="safe-number-dialog" role="dialog" aria-modal="true" aria-labelledby="importModeTitle">
+      <h2 class="safe-number-dialog-title" id="importModeTitle">업로드 방식 선택</h2>
+      <p class="safe-number-dialog-description" id="importModeDescription"></p>
+      <pre class="safe-number-dialog-preview" id="importModePreview"></pre>
+      <div class="safe-number-dialog-actions import-mode-actions">
+        <button class="btn" id="importModeCancel" type="button">취소</button>
+        <button class="btn primary" id="importModeDaily" type="button">중복 제외 신규만 업로드</button>
+        <button class="btn danger" id="importModeReplace" type="button">전체 데이터 교체</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="safe-number-dialog-backdrop" id="importProgressDialog" aria-hidden="true">
+    <div class="safe-number-dialog import-progress-dialog" role="dialog" aria-modal="true" aria-labelledby="importProgressTitle">
+      <h2 class="safe-number-dialog-title" id="importProgressTitle">업로드 진행상황</h2>
+      <p class="safe-number-dialog-description" id="importProgressDescription">파일 업로드를 준비 중입니다.</p>
+      <div class="import-progress-meta">
+        <span id="importProgressFile">파일명: -</span>
+        <span id="importProgressMode">방식: -</span>
+      </div>
+      <div class="import-progress-bar" aria-hidden="true"><span id="importProgressBar"></span></div>
+      <div class="import-progress-stage" id="importProgressStage">준비 중</div>
+      <ol class="import-progress-steps" id="importProgressSteps">
+        <li data-import-progress-step="prepare">파일 준비</li>
+        <li data-import-progress-step="preview">엑셀 읽기 및 양식 검사</li>
+        <li data-import-progress-step="confirm">업로드 방식 확인</li>
+        <li data-import-progress-step="saving">DB 저장</li>
+        <li data-import-progress-step="correction">수정 필요 데이터 확인</li>
+        <li data-import-progress-step="done">완료</li>
+      </ol>
+      <div class="safe-number-dialog-actions">
+        <button class="btn primary" id="importProgressClose" type="button" hidden>확인</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="safe-number-dialog-backdrop" id="importCorrectionDialog" aria-hidden="true">
+    <div class="safe-number-dialog import-correction-dialog" role="dialog" aria-modal="true" aria-labelledby="importCorrectionTitle">
+      <h2 class="safe-number-dialog-title" id="importCorrectionTitle">업로드 데이터 수정</h2>
+      <p class="safe-number-dialog-description" id="importCorrectionDescription"></p>
+      <div class="import-correction-list" id="importCorrectionList"></div>
+      <div class="safe-number-dialog-actions">
+        <button class="btn" id="importCorrectionCancel" type="button">취소</button>
+        <button class="btn primary" id="importCorrectionApply" type="button">수정 후 적용</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="floating-messenger" id="floatingMessenger" aria-live="polite">
+    <section class="floating-messenger-panel" id="floatingMessengerPanel" role="dialog" aria-modal="false" aria-labelledby="floatingMessengerTitle" aria-hidden="true">
+      <div class="floating-messenger-utility">
+        <button class="floating-messenger-icon-button" type="button" id="floatingMessengerRefresh" aria-label="메신저 새로고침"><i data-lucide="refresh-cw"></i></button>
+        <button class="floating-messenger-icon-button" type="button" id="floatingMessengerOpenFull" aria-label="사내 메신저 전체 화면 열기"><i data-lucide="chevron-right"></i></button>
+        <button class="floating-messenger-icon-button" type="button" id="floatingMessengerClose" aria-label="메신저 닫기"><i data-lucide="x"></i></button>
+      </div>
+      <div class="floating-messenger-screen floating-messenger-home active" data-floating-messenger-screen="home">
+        <div class="floating-messenger-scroll">
+          <div class="floating-messenger-brand">
+            <span class="floating-messenger-logo" aria-hidden="true"></span>
+            <strong>사내 메신저</strong>
+          </div>
+          <article class="floating-messenger-card floating-messenger-intro">
+            <div class="floating-messenger-intro-head">
+              <span class="floating-messenger-logo" aria-hidden="true"></span>
+              <div>
+                <div class="floating-messenger-intro-title">사내 메신저</div>
+                <p class="floating-messenger-intro-copy">
+                  안녕하세요, 소일브릿지 업무 공유를 빠르게 이어주는 사내 상담센터입니다.
+                  궁금한 내용이나 업무 지시를 바로 남겨주세요.
+                </p>
+              </div>
+            </div>
+            <button class="floating-messenger-primary" type="button" id="floatingMessengerHomeCta">문의하기 <span class="floating-messenger-plane" aria-hidden="true"></span></button>
+          </article>
+          <article class="floating-messenger-card floating-messenger-alert-card">
+            <div class="floating-messenger-alert-head">
+              <span id="floatingMessengerUnreadSummary">최근 알림</span>
+              <button class="floating-messenger-text-button" type="button" id="floatingMessengerReadAll">모두 읽기</button>
+            </div>
+            <div class="floating-messenger-preview" id="floatingMessengerHomePreview">
+              <div>
+                <div class="floating-messenger-preview-title">메시지를 불러오는 중입니다</div>
+                <div class="floating-messenger-preview-body">잠시만 기다려줘.</div>
+              </div>
+              <div class="floating-messenger-preview-badge">WORK</div>
+            </div>
+            <button class="floating-messenger-secondary" type="button" id="floatingMessengerNoticeCta">지금 업무 상담 진행하기</button>
+          </article>
+          <div class="floating-messenger-status"><span class="floating-messenger-status-dot">c</span> 사내 채팅 이용중</div>
+        </div>
+      </div>
+      <div class="floating-messenger-screen floating-messenger-chat" data-floating-messenger-screen="chat">
+        <h2 class="floating-messenger-page-title">대화</h2>
+        <div class="floating-messenger-chat-notice">
+          <span id="floatingMessengerChatNotice">최근 대화를 확인해줘</span>
+          <button class="floating-messenger-text-button" type="button" id="floatingMessengerChatReadAll">모두 읽기</button>
+        </div>
+        <div class="floating-messenger-roombar" id="floatingMessengerRoomList" aria-label="대화 목록">
+          <button class="floating-messenger-room active" type="button" data-floating-chat-room="global">
+            <span class="floating-messenger-room-avatar" aria-hidden="true"></span>
+            <span class="floating-messenger-room-main">
+              <span class="floating-messenger-room-top"><span class="floating-messenger-room-title">전체방</span></span>
+              <span class="floating-messenger-room-preview">메시지를 불러오는 중입니다.</span>
+            </span>
+            <span class="floating-messenger-room-dot" aria-hidden="true"></span>
+          </button>
+        </div>
+        <div class="floating-messenger-thread" id="floatingMessengerThread" hidden>
+          <div class="floating-messenger-thread-head">
+            <button class="floating-messenger-thread-back" type="button" id="floatingMessengerThreadBack" aria-label="대화 목록으로 돌아가기"><i data-lucide="chevron-left"></i></button>
+            <div>
+              <div class="floating-messenger-title" id="floatingMessengerTitle">전체방</div>
+              <div class="floating-messenger-kicker" id="floatingMessengerKicker">빠른 대화</div>
+            </div>
+          </div>
+          <div class="floating-messenger-list" id="floatingMessengerList">
+            <div class="floating-messenger-empty">메시지를 불러오는 중입니다.</div>
+          </div>
+          <form class="floating-messenger-form" id="floatingMessengerForm">
+            <div class="floating-messenger-input-wrap">
+              <textarea id="floatingMessengerBody" placeholder="메시지 또는 /업무 @직원 내용 / 기한"></textarea>
+              <div class="floating-messenger-hint" id="floatingMessengerHint">전체방 공유와 업무 지시를 바로 남길 수 있어.</div>
+            </div>
+            <button class="floating-messenger-send" type="submit" id="floatingMessengerSend">보내기</button>
+          </form>
+        </div>
+      </div>
+      <div class="floating-messenger-screen floating-messenger-settings" data-floating-messenger-screen="settings">
+        <div class="floating-messenger-scroll">
+          <h2 class="floating-messenger-page-title">설정</h2>
+          <div class="floating-messenger-settings-profile">
+            <div class="floating-messenger-profile-icon">●</div>
+            <div class="floating-messenger-profile-name" id="floatingMessengerProfileName">사용자</div>
+            <div class="floating-messenger-profile-phone">010-3663-0838</div>
+            <button class="floating-messenger-profile-edit" type="button">정보 수정하기</button>
+          </div>
+          <section class="floating-messenger-setting-section">
+            <div class="floating-messenger-setting-label">상담 환경</div>
+            <div class="floating-messenger-setting-row"><span>언어</span><span class="floating-messenger-setting-value">한국어 <i data-lucide="chevron-right"></i></span></div>
+            <label class="floating-messenger-setting-row"><span>메시지 번역 표시</span><span class="floating-messenger-switch"><input type="checkbox" checked><span></span></span></label>
+            <label class="floating-messenger-setting-row"><span>알림음</span><span class="floating-messenger-switch"><input type="checkbox" checked><span></span></span></label>
+          </section>
+          <section class="floating-messenger-setting-section">
+            <div class="floating-messenger-setting-label">업무 수신 설정</div>
+            <label class="floating-messenger-setting-row"><span>문자 수신거부</span><span class="floating-messenger-switch"><input type="checkbox"><span></span></span></label>
+            <label class="floating-messenger-setting-row"><span>이메일 수신거부</span><span class="floating-messenger-switch"><input type="checkbox"><span></span></span></label>
+          </section>
+          <div class="floating-messenger-version">v17.1.11</div>
+        </div>
+      </div>
+      <nav class="floating-messenger-bottom-nav" aria-label="사내 메신저 탭">
+        <button class="floating-messenger-tab-button active" type="button" data-floating-messenger-tab="home"><i data-lucide="home"></i><span>홈</span></button>
+        <button class="floating-messenger-tab-button" type="button" data-floating-messenger-tab="chat"><span class="floating-messenger-tab-dot" id="floatingMessengerTabDot"></span><i data-lucide="message-circle"></i><span>대화</span></button>
+        <button class="floating-messenger-tab-button" type="button" data-floating-messenger-tab="settings"><i data-lucide="settings"></i><span>설정</span></button>
+      </nav>
+    </section>
+    <button class="floating-messenger-fab" type="button" id="floatingMessengerToggle" aria-label="사내 메신저 열기" aria-expanded="false" aria-controls="floatingMessengerPanel">
+      <i data-lucide="message-circle"></i>
+      <span class="floating-messenger-badge" id="floatingMessengerBadge">0</span>
+    </button>
+  </div>
+
   <script type="module">
-    import { createIcons, BriefcaseBusiness, Home, MessageCircle, Info, ChevronDown, ChevronRight, PlusSquare, RefreshCw, Ellipsis, Headphones, Package, ClipboardCheck, CircleDollarSign, FileText, FileSpreadsheet, ClipboardList, BarChart3, CopyCheck, Bell, Download, Truck, Mail, Upload, Database, CalendarDays, X, Settings } from "/lucide/dist/esm/lucide.js";
-    createIcons({ icons: { BriefcaseBusiness, Home, MessageCircle, Info, ChevronDown, ChevronRight, PlusSquare, RefreshCw, Ellipsis, Headphones, Package, ClipboardCheck, CircleDollarSign, FileText, FileSpreadsheet, ClipboardList, BarChart3, CopyCheck, Bell, Download, Truck, Mail, Upload, Database, CalendarDays, X, Settings, "package": Package, "file-text": FileText, "file-spreadsheet": FileSpreadsheet, "truck": Truck } });
+    import { createIcons, BriefcaseBusiness, Home, MessageCircle, Info, ChevronDown, ChevronLeft, ChevronRight, PlusSquare, RefreshCw, Ellipsis, Headphones, Package, ClipboardCheck, CircleDollarSign, FileText, FileSpreadsheet, ClipboardList, BarChart3, CopyCheck, Bell, Download, Truck, Mail, Upload, Database, CalendarDays, X, Settings, Search, LogOut, Warehouse } from "/lucide/dist/esm/lucide.js";
+    createIcons({ icons: { BriefcaseBusiness, Home, MessageCircle, Info, ChevronDown, ChevronLeft, ChevronRight, PlusSquare, RefreshCw, Ellipsis, Headphones, Package, ClipboardCheck, CircleDollarSign, FileText, FileSpreadsheet, ClipboardList, BarChart3, CopyCheck, Bell, Download, Truck, Mail, Upload, Database, CalendarDays, X, Settings, Search, LogOut, Warehouse, "package": Package, "file-text": FileText, "file-spreadsheet": FileSpreadsheet, "truck": Truck, "search": Search, "arrow-right": ChevronRight, "log-out": LogOut, "warehouse": Warehouse } });
     function applyDaisyUiClasses() {
       document.querySelectorAll(".workspace-button, .crm-mini-button, .action-button, .logout-button, .top-button").forEach((element) => {
         element.classList.add("btn", "btn-sm");
@@ -5452,6 +9901,10 @@ HTML = r"""<!doctype html>
     const currentUser = __CURRENT_USER__;
     const currentUserPermissions = new Set(__USER_PERMISSIONS__);
     const permissionLabels = __PERMISSION_LABELS__;
+    const topbarSearchForm = document.querySelector("#topbarSearchForm");
+    const topbarSearchInput = document.querySelector("#topbarSearchInput");
+    const topbarAlertButton = document.querySelector("#topbarAlertButton");
+    const topbarRefreshButton = document.querySelector("#topbarRefreshButton");
     const sidebar = document.querySelector(".sidebar");
     const sidebarSearchInput = document.querySelector("#sidebarSearchInput");
     let sidebarSearchUserTyped = false;
@@ -5464,6 +9917,10 @@ HTML = r"""<!doctype html>
       return currentUserPermissions.has(permission);
     }
 
+    function canManageCargoShipments() {
+      return can("notice_manage") || can("import_shipment_manage");
+    }
+
     function permissionLabel(permission) {
       return permissionLabels[permission] || permission;
     }
@@ -5474,17 +9931,30 @@ HTML = r"""<!doctype html>
 
     function applyStaticPermissions() {
       setHidden(document.querySelector("#noticeInputOpen"), !can("notice_manage"));
+      setHidden(cargoShipmentInputOpen, !canManageCargoShipments());
+      setHidden(cargoInboundInputOpen, !canManageCargoShipments());
       setHidden(managementDeleteSelected, !can("ledger_delete"));
       setHidden(ledgerDeleteSelected, !can("ledger_delete"));
+      setHidden(managementAddManual, !can("ledger_edit"));
       setHidden(managementSaveAll, !can("ledger_edit"));
       setHidden(ledgerSaveAll, !can("ledger_edit"));
+      setHidden(managementBulkApply, !can("ledger_edit"));
+      setHidden(ledgerBulkApply, !can("ledger_edit"));
       setHidden(ledgerAddCs, !can("ledger_edit"));
       setHidden(saveCsCaseButton, !can("ledger_edit"));
+      setHidden(sendCsMailButton, !can("mail_send"));
       setHidden(ledgerDownloadMenuButton, !can("excel_download"));
       setHidden(managementDownloadMenuButton, !can("excel_download"));
+      document.querySelectorAll('[data-ledger-import-mode="daily"], [data-management-import-mode="daily"]').forEach((button) => {
+        setHidden(button, !can("excel_upload"));
+      });
+      document.querySelectorAll('[data-ledger-import-mode="replace"], [data-management-import-mode="replace"]').forEach((button) => {
+        setHidden(button, currentUser.role !== "admin");
+      });
       setHidden(document.querySelector("label[for='vendorContactsFileInput']"), !can("excel_upload"));
       setHidden(saveVendorContactButton, !can("mail_send"));
       setHidden(document.querySelector("#distributionMailNavGroup"), !can("mail_send"));
+      document.querySelectorAll("[data-mail-popup]").forEach((button) => setHidden(button, !can("mail_send")));
       document.querySelectorAll('[data-open="cs"]').forEach((button) => setHidden(button, !can("mail_send")));
       setHidden(sharedFileUploadPanel, currentUser.role !== "admin");
       setHidden(importShipmentInputOpen, !can("import_shipment_manage"));
@@ -5492,6 +9962,10 @@ HTML = r"""<!doctype html>
       setHidden(dashboardImportScheduleOpen, !can("import_shipment_manage"));
       document.querySelectorAll('[data-open="crm"]').forEach((button) => setHidden(button, !can("crm_view")));
       setHidden(document.querySelector('.nav-subitem[data-crm-nav-tab="messages"]'), !can("crm_message_manage"));
+      setHidden(document.querySelector("#hermesNavGroup"), !can("hermes_use"));
+      document.querySelectorAll('[data-open="hermes"]').forEach((button) => setHidden(button, !can("hermes_use")));
+      document.querySelectorAll('[data-hermes-tab="automation"], [data-hermes-tab-button="automation"]').forEach((button) => setHidden(button, !can("hermes_automation")));
+      document.querySelectorAll('[data-hermes-tab="settings"], [data-hermes-tab-button="settings"]').forEach((button) => setHidden(button, !can("hermes_admin")));
       setHidden(crmAccountQuick, !can("crm_view"));
       setHidden(crmTaskQuick, !can("crm_manage"));
       setHidden(crmAccountForm, !can("crm_manage"));
@@ -5520,6 +9994,7 @@ HTML = r"""<!doctype html>
     const messagePlaceholderBody = document.querySelector("#messagePlaceholderBody");
     const vehicleFields = document.querySelector("#vehicleFields");
     const csFields = document.querySelector("#csFields");
+    const managementManualFields = document.querySelector("#managementManualFields");
     const ledgerFields = document.querySelector("#ledgerFields");
     const managementFields = document.querySelector("#managementFields");
     const ledgerCellEditBar = document.querySelector("#ledgerCellEditBar");
@@ -5527,11 +10002,33 @@ HTML = r"""<!doctype html>
     const ledgerCellEditMount = document.querySelector("#ledgerCellEditMount");
     const ledgerCellApply = document.querySelector("#ledgerCellApply");
     const ledgerCellCancel = document.querySelector("#ledgerCellCancel");
+    const ledgerReturnCheckButton = document.querySelector("#ledgerReturnCheckButton");
     const managementCellEditBar = document.querySelector("#managementCellEditBar");
     const managementCellEditLabel = document.querySelector("#managementCellEditLabel");
     const managementCellEditMount = document.querySelector("#managementCellEditMount");
     const managementCellApply = document.querySelector("#managementCellApply");
     const managementCellCancel = document.querySelector("#managementCellCancel");
+    const returnCheckPopup = document.querySelector("#returnCheckPopup");
+    const returnCheckCaseId = document.querySelector("#returnCheckCaseId");
+    const returnCheckResult = document.querySelector("#returnCheckResult");
+    const returnCheckNextStatus = document.querySelector("#returnCheckNextStatus");
+    const returnCheckDate = document.querySelector("#returnCheckDate");
+    const returnCheckMemo = document.querySelector("#returnCheckMemo");
+    const returnCheckClose = document.querySelector("#returnCheckClose");
+    const returnCheckCancel = document.querySelector("#returnCheckCancel");
+    const returnCheckSave = document.querySelector("#returnCheckSave");
+    const appConfirmDialog = document.querySelector("#appConfirmDialog");
+    const appConfirmKicker = document.querySelector("#appConfirmKicker");
+    const appConfirmTitle = document.querySelector("#appConfirmTitle");
+    const appConfirmMessage = document.querySelector("#appConfirmMessage");
+    const appConfirmHighlight = document.querySelector("#appConfirmHighlight");
+    const appConfirmCancel = document.querySelector("#appConfirmCancel");
+    const appConfirmOk = document.querySelector("#appConfirmOk");
+    const searchResultDialog = document.querySelector("#searchResultDialog");
+    const searchResultTitle = document.querySelector("#searchResultTitle");
+    const searchResultDescription = document.querySelector("#searchResultDescription");
+    const searchResultList = document.querySelector("#searchResultList");
+    const searchResultClose = document.querySelector("#searchResultClose");
     const productTable = document.querySelector("#productTable");
     const receiptTypeSelect = document.querySelector("#receiptTypeSelect");
     const supplierInput = document.querySelector("#supplierInput");
@@ -5543,6 +10040,58 @@ HTML = r"""<!doctype html>
     const vendorContactSelect = document.querySelector("#vendorContactSelect");
     const vendorContactsFileInput = document.querySelector("#vendorContactsFileInput");
     const vendorContactsDropMain = document.querySelector("#vendorContactsDropMain");
+    const salesReportFileInput = document.querySelector("#salesReportFileInput");
+    const salesReportUploadMessage = document.querySelector("#salesReportUploadMessage");
+    const salesReportRecentList = document.querySelector("#salesReportRecentList");
+    const salesReportDashboard = document.querySelector("#salesReportDashboard");
+    const salesReportKpiGrid = document.querySelector("#salesReportKpiGrid");
+    const dashboardSalesStatus = document.querySelector("#dashboardSalesStatus");
+    const dashboardTodaySalesLabel = document.querySelector("#dashboardTodaySalesLabel");
+    const dashboardTodaySales = document.querySelector("#dashboardTodaySales");
+    const dashboardTodayQuantityLabel = document.querySelector("#dashboardTodayQuantityLabel");
+    const dashboardTodayQuantity = document.querySelector("#dashboardTodayQuantity");
+    const dashboardPreviousSalesLabel = document.querySelector("#dashboardPreviousSalesLabel");
+    const dashboardPreviousSales = document.querySelector("#dashboardPreviousSales");
+    const dashboardPreviousQuantityLabel = document.querySelector("#dashboardPreviousQuantityLabel");
+    const dashboardPreviousQuantity = document.querySelector("#dashboardPreviousQuantity");
+    const dashboardMonthSalesLabel = document.querySelector("#dashboardMonthSalesLabel");
+    const dashboardMonthSales = document.querySelector("#dashboardMonthSales");
+    const dashboardSalesQuantityLabel = document.querySelector("#dashboardSalesQuantityLabel");
+    const dashboardSalesQuantity = document.querySelector("#dashboardSalesQuantity");
+    const dashboardSalesAmountCompareCard = document.querySelector("#dashboardSalesAmountCompareCard");
+    const dashboardSalesAmountCompareLabel = document.querySelector("#dashboardSalesAmountCompareLabel");
+    const dashboardSalesAmountCompare = document.querySelector("#dashboardSalesAmountCompare");
+    const dashboardSalesAmountRate = document.querySelector("#dashboardSalesAmountRate");
+    const dashboardSalesQuantityCompareCard = document.querySelector("#dashboardSalesQuantityCompareCard");
+    const dashboardSalesQuantityCompareLabel = document.querySelector("#dashboardSalesQuantityCompareLabel");
+    const dashboardSalesQuantityCompare = document.querySelector("#dashboardSalesQuantityCompare");
+    const dashboardSalesQuantityRate = document.querySelector("#dashboardSalesQuantityRate");
+    const dashboardSalesMargin = document.querySelector("#dashboardSalesMargin");
+    const dashboardSellerTotal = document.querySelector("#dashboardSellerTotal");
+    const dashboardSupplierPurchase = document.querySelector("#dashboardSupplierPurchase");
+    const dashboardSalesDecisionTitle = document.querySelector("#dashboardSalesDecisionTitle");
+    const dashboardSalesDecisionNote = document.querySelector("#dashboardSalesDecisionNote");
+    const dashboardDecisionTodaySales = document.querySelector("#dashboardDecisionTodaySales");
+    const dashboardDecisionPurchase = document.querySelector("#dashboardDecisionPurchase");
+    const dashboardDecisionMargin = document.querySelector("#dashboardDecisionMargin");
+    const dashboardDecisionTodayChip = document.querySelector("#dashboardDecisionTodayChip");
+    const dashboardDecisionPurchaseChip = document.querySelector("#dashboardDecisionPurchaseChip");
+    const dashboardDecisionMarginChip = document.querySelector("#dashboardDecisionMarginChip");
+    const dashboardSalesMessage = document.querySelector("#dashboardSalesMessage");
+    const salesReportDailyBody = document.querySelector("#salesReportDailyBody");
+    const salesReportSellerBody = document.querySelector("#salesReportSellerBody");
+    const salesReportProductBody = document.querySelector("#salesReportProductBody");
+    const salesReportReviewBody = document.querySelector("#salesReportReviewBody");
+    const salesReportMonthlyCompareBody = document.querySelector("#salesReportMonthlyCompareBody");
+    const salesReportMonthlyCompareDetailBody = document.querySelector("#salesReportMonthlyCompareDetailBody");
+    const salesReportMonthlyCompareDetailButtons = [...document.querySelectorAll("[data-sales-compare-detail]")];
+    const salesReportTabButtons = [...document.querySelectorAll("[data-sales-tab]")];
+    const salesReportPanels = [...document.querySelectorAll("[data-sales-panel]")];
+    const salesReportTabCounts = {
+      salesProduct: document.querySelector("#salesReportSalesProductCount"),
+      partner: document.querySelector("#salesReportPartnerCount"),
+      monthlyCompare: document.querySelector("#salesReportMonthlyCompareCount"),
+    };
     const vendorTypeSelect = document.querySelector("#vendorTypeSelect");
     const recipientEmailInput = document.querySelector("#recipientEmailInput");
     const vendorNameInput = document.querySelector("#vendorNameInput");
@@ -5554,9 +10103,16 @@ HTML = r"""<!doctype html>
     const csAddressInput = document.querySelector("#csAddressInput");
     const csTypeInput = document.querySelector("#csTypeInput");
     const csContentInput = document.querySelector("#csContentInput");
+    const csAttachmentDropzone = document.querySelector("#csAttachmentDropzone");
+    const csAttachmentDropMain = document.querySelector("#csAttachmentDropMain");
+    const csAttachmentChoose = document.querySelector("#csAttachmentChoose");
+    const csAttachmentInput = document.querySelector("#csAttachmentInput");
+    const csAttachmentSummary = document.querySelector("#csAttachmentSummary");
     const csSubjectInput = document.querySelector("#csSubjectInput");
     const csBodyInput = document.querySelector("#csBodyInput");
     const saveCsCaseButton = document.querySelector("#saveCsCase");
+    const sendCsMailButton = document.querySelector("#sendCsMailButton");
+    const saveManagementManualButton = document.querySelector("#saveManagementManual");
     const csCaseList = document.querySelector("#csCaseList");
     const stockNoticeFields = document.querySelector("#stockNoticeFields");
     const stockVendorPickerButton = document.querySelector("#stockVendorPickerButton");
@@ -5565,6 +10121,15 @@ HTML = r"""<!doctype html>
     const stockVendorTypeSelect = document.querySelector("#stockVendorTypeSelect");
     const stockRecipientEmailInput = document.querySelector("#stockRecipientEmailInput");
     const stockVendorNameInput = document.querySelector("#stockVendorNameInput");
+    const vendorContactManageFields = document.querySelector("#vendorContactManageFields");
+    const vendorManageTypeLabel = document.querySelector("#vendorManageTypeLabel");
+    const vendorManageNameInput = document.querySelector("#vendorManageNameInput");
+    const vendorManageEmailInput = document.querySelector("#vendorManageEmailInput");
+    const vendorManageSave = document.querySelector("#vendorManageSave");
+    const vendorManageFileInput = document.querySelector("#vendorManageFileInput");
+    const vendorManageDropMain = document.querySelector("#vendorManageDropMain");
+    const vendorManageListTitle = document.querySelector("#vendorManageListTitle");
+    const vendorManageList = document.querySelector("#vendorManageList");
     const stockNoticeDateInput = document.querySelector("#stockNoticeDateInput");
     const stockInboundProductInput = document.querySelector("#stockInboundProductInput");
     const stockInboundScheduleInput = document.querySelector("#stockInboundScheduleInput");
@@ -5577,6 +10142,7 @@ HTML = r"""<!doctype html>
     const stockSubjectInput = document.querySelector("#stockSubjectInput");
     const stockBodyInput = document.querySelector("#stockBodyInput");
     const ledgerCsPopupClose = document.querySelector("#ledgerCsPopupClose");
+    const managementManualClose = document.querySelector("#managementManualClose");
     const ledgerSearchInput = document.querySelector("#ledgerSearchInput");
     const ledgerStatusFilter = document.querySelector("#ledgerStatusFilter");
     const ledgerYearFilter = document.querySelector("#ledgerYearFilter");
@@ -5602,9 +10168,13 @@ HTML = r"""<!doctype html>
     const managementImportOpen = document.querySelector("#managementImportOpen");
     const managementBody = document.querySelector("#managementBody");
     const managementMonthTabs = document.querySelector("#managementMonthTabs");
+    const ledgerSelectAll = document.querySelector("#ledgerSelectAll");
     const managementSelectAll = document.querySelector("#managementSelectAll");
     const managementSaveAll = document.querySelector("#managementSaveAll");
     const ledgerSaveAll = document.querySelector("#ledgerSaveAll");
+    const managementAddManual = document.querySelector("#managementAddManual");
+    const managementBulkApply = document.querySelector("#managementBulkApply");
+    const ledgerBulkApply = document.querySelector("#ledgerBulkApply");
     const managementDeleteSelected = document.querySelector("#managementDeleteSelected");
     const ledgerDeleteSelected = document.querySelector("#ledgerDeleteSelected");
     const ledgerFilterButtons = Array.from(document.querySelectorAll("[data-ledger-filter-button]"));
@@ -5614,6 +10184,7 @@ HTML = r"""<!doctype html>
     const ledgerFilterSearch = document.querySelector("#ledgerFilterSearch");
     const ledgerFilterOptions = document.querySelector("#ledgerFilterOptions");
     const ledgerFilterClear = document.querySelector("#ledgerFilterClear");
+    const ledgerFilterResetAll = document.querySelector("#ledgerFilterResetAll");
     const ledgerFilterApply = document.querySelector("#ledgerFilterApply");
     const result = document.querySelector("#result");
     const resultText = document.querySelector("#resultText");
@@ -5623,6 +10194,35 @@ HTML = r"""<!doctype html>
     const safeNumberPackagePreview = document.querySelector("#safeNumberPackagePreview");
     const safeNumberPackageApprove = document.querySelector("#safeNumberPackageApprove");
     const safeNumberPackageReject = document.querySelector("#safeNumberPackageReject");
+    const importWarningDialog = document.querySelector("#importWarningDialog");
+    const importWarningTitle = document.querySelector("#importWarningTitle");
+    const importWarningDescription = document.querySelector("#importWarningDescription");
+    const importWarningPreview = document.querySelector("#importWarningPreview");
+    const importWarningCancel = document.querySelector("#importWarningCancel");
+    const importWarningProceed = document.querySelector("#importWarningProceed");
+    const importModeDialog = document.querySelector("#importModeDialog");
+    const importModeTitle = document.querySelector("#importModeTitle");
+    const importModeDescription = document.querySelector("#importModeDescription");
+    const importModePreview = document.querySelector("#importModePreview");
+    const importModeCancel = document.querySelector("#importModeCancel");
+    const importModeDaily = document.querySelector("#importModeDaily");
+    const importModeReplace = document.querySelector("#importModeReplace");
+    const importProgressDialog = document.querySelector("#importProgressDialog");
+    const importProgressPanel = importProgressDialog?.querySelector(".import-progress-dialog");
+    const importProgressTitle = document.querySelector("#importProgressTitle");
+    const importProgressDescription = document.querySelector("#importProgressDescription");
+    const importProgressFile = document.querySelector("#importProgressFile");
+    const importProgressMode = document.querySelector("#importProgressMode");
+    const importProgressBar = document.querySelector("#importProgressBar");
+    const importProgressStage = document.querySelector("#importProgressStage");
+    const importProgressSteps = document.querySelector("#importProgressSteps");
+    const importProgressClose = document.querySelector("#importProgressClose");
+    const importCorrectionDialog = document.querySelector("#importCorrectionDialog");
+    const importCorrectionTitle = document.querySelector("#importCorrectionTitle");
+    const importCorrectionDescription = document.querySelector("#importCorrectionDescription");
+    const importCorrectionList = document.querySelector("#importCorrectionList");
+    const importCorrectionCancel = document.querySelector("#importCorrectionCancel");
+    const importCorrectionApply = document.querySelector("#importCorrectionApply");
     const pageTitle = document.querySelector(".title");
     const dashboardContent = document.querySelector("#dashboardContent");
     const companyTabs = Array.from(document.querySelectorAll(".company-tab"));
@@ -5641,6 +10241,10 @@ HTML = r"""<!doctype html>
     const companyCalendarRefresh = document.querySelector("#companyCalendarRefresh");
     const companyCalendarSelectedDate = document.querySelector("#companyCalendarSelectedDate");
     const companyCalendarSelectedList = document.querySelector("#companyCalendarSelectedList");
+    const companyCalendarSelectedCount = document.querySelector("#companyCalendarSelectedCount");
+    const companyCalendarMonthTotal = document.querySelector("#companyCalendarMonthTotal");
+    const companyCalendarTodayTotal = document.querySelector("#companyCalendarTodayTotal");
+    const companyCalendarPendingTotal = document.querySelector("#companyCalendarPendingTotal");
     const companyCalendarProjectCount = document.querySelector("#companyCalendarProjectCount");
     const companyCalendarTaskCount = document.querySelector("#companyCalendarTaskCount");
     const companyCalendarLeaveCount = document.querySelector("#companyCalendarLeaveCount");
@@ -5652,6 +10256,34 @@ HTML = r"""<!doctype html>
     const internalChatForm = document.querySelector("#internalChatForm");
     const internalChatBody = document.querySelector("#internalChatBody");
     const internalChatRefresh = document.querySelector("#internalChatRefresh");
+    const floatingMessenger = document.querySelector("#floatingMessenger");
+    const floatingMessengerPanel = document.querySelector("#floatingMessengerPanel");
+    const floatingMessengerToggle = document.querySelector("#floatingMessengerToggle");
+    const floatingMessengerClose = document.querySelector("#floatingMessengerClose");
+    const floatingMessengerRefresh = document.querySelector("#floatingMessengerRefresh");
+    const floatingMessengerOpenFull = document.querySelector("#floatingMessengerOpenFull");
+    const floatingMessengerRoomList = document.querySelector("#floatingMessengerRoomList");
+    const floatingMessengerThread = document.querySelector("#floatingMessengerThread");
+    const floatingMessengerThreadBack = document.querySelector("#floatingMessengerThreadBack");
+    const floatingMessengerTitle = document.querySelector("#floatingMessengerTitle");
+    const floatingMessengerKicker = document.querySelector("#floatingMessengerKicker");
+    const floatingMessengerList = document.querySelector("#floatingMessengerList");
+    const floatingMessengerForm = document.querySelector("#floatingMessengerForm");
+    const floatingMessengerBody = document.querySelector("#floatingMessengerBody");
+    const floatingMessengerSend = document.querySelector("#floatingMessengerSend");
+    const floatingMessengerHint = document.querySelector("#floatingMessengerHint");
+    const floatingMessengerBadge = document.querySelector("#floatingMessengerBadge");
+    const floatingMessengerScreens = document.querySelectorAll("[data-floating-messenger-screen]");
+    const floatingMessengerTabButtons = document.querySelectorAll("[data-floating-messenger-tab]");
+    const floatingMessengerTabDot = document.querySelector("#floatingMessengerTabDot");
+    const floatingMessengerHomeCta = document.querySelector("#floatingMessengerHomeCta");
+    const floatingMessengerNoticeCta = document.querySelector("#floatingMessengerNoticeCta");
+    const floatingMessengerReadAll = document.querySelector("#floatingMessengerReadAll");
+    const floatingMessengerChatReadAll = document.querySelector("#floatingMessengerChatReadAll");
+    const floatingMessengerUnreadSummary = document.querySelector("#floatingMessengerUnreadSummary");
+    const floatingMessengerChatNotice = document.querySelector("#floatingMessengerChatNotice");
+    const floatingMessengerHomePreview = document.querySelector("#floatingMessengerHomePreview");
+    const floatingMessengerProfileName = document.querySelector("#floatingMessengerProfileName");
     const noticeDateInput = document.querySelector("#noticeDateInput");
     const noticeTitleInput = document.querySelector("#noticeTitleInput");
     const noticeOwnerInput = document.querySelector("#noticeOwnerInput");
@@ -5659,9 +10291,28 @@ HTML = r"""<!doctype html>
     const noticeSaveButton = document.querySelector("#noticeSaveButton");
     const noticeClearButton = document.querySelector("#noticeClearButton");
     const noticePreview = document.querySelector("#noticePreview");
+    const noticeHistoryList = document.querySelector("#noticeHistoryList");
+    const noticeHistoryCount = document.querySelector("#noticeHistoryCount");
     const sidebarNoticePreview = document.querySelector("#sidebarNoticePreview");
     const noticePopup = document.querySelector("#noticePopup");
     const noticePopupClose = document.querySelector("#noticePopupClose");
+    const cargoShipmentInputOpen = document.querySelector("#cargoShipmentInputOpen");
+    const cargoInboundInputOpen = document.querySelector("#cargoInboundInputOpen");
+    const cargoShipmentPopup = document.querySelector("#cargoShipmentPopup");
+    const cargoShipmentPopupTitle = document.querySelector("#cargoShipmentPopupTitle");
+    const cargoShipmentClose = document.querySelector("#cargoShipmentClose");
+    const cargoShipmentSave = document.querySelector("#cargoShipmentSave");
+    const cargoShipmentReset = document.querySelector("#cargoShipmentReset");
+    const cargoVehicleReceiptLink = document.querySelector("#cargoVehicleReceiptLink");
+    const cargoShipmentId = document.querySelector("#cargoShipmentId");
+    let cargoShipmentMode = "outbound";
+    const cargoShipDate = document.querySelector("#cargoShipDate");
+    const cargoCustomer = document.querySelector("#cargoCustomer");
+    const cargoItem = document.querySelector("#cargoItem");
+    const cargoQuantity = document.querySelector("#cargoQuantity");
+    const cargoDestination = document.querySelector("#cargoDestination");
+    const cargoStatus = document.querySelector("#cargoStatus");
+    const cargoMemo = document.querySelector("#cargoMemo");
     const focusWidget = document.querySelector("#focusWidget");
     const focusWidgetKicker = document.querySelector("#focusWidgetKicker");
     const focusWidgetTitle = document.querySelector("#focusWidgetTitle");
@@ -5677,7 +10328,6 @@ HTML = r"""<!doctype html>
     const importShipmentWorkspaceOpen = document.querySelector("#importShipmentWorkspaceOpen");
     const dashboardImportScheduleBody = document.querySelector("#dashboardImportScheduleBody");
     const dashboardImportScheduleSummary = document.querySelector("#dashboardImportScheduleSummary");
-    const dashboardImportScheduleRefresh = document.querySelector("#dashboardImportScheduleRefresh");
     const dashboardImportScheduleOpen = document.querySelector("#dashboardImportScheduleOpen");
     const importShipmentPopup = document.querySelector("#importShipmentPopup");
     const importShipmentClose = document.querySelector("#importShipmentClose");
@@ -5688,8 +10338,10 @@ HTML = r"""<!doctype html>
     const importArrivalDate = document.querySelector("#importArrivalDate");
     const importLoadingPort = document.querySelector("#importLoadingPort");
     const importArrivalPort = document.querySelector("#importArrivalPort");
+    const importShipper = document.querySelector("#importShipper");
     const importItem = document.querySelector("#importItem");
     const importQuantity = document.querySelector("#importQuantity");
+    const importVesselName = document.querySelector("#importVesselName");
     const importHblNo = document.querySelector("#importHblNo");
     const importSize = document.querySelector("#importSize");
     const importProgressStatus = document.querySelector("#importProgressStatus");
@@ -5713,6 +10365,34 @@ HTML = r"""<!doctype html>
     const sharedFileRefresh = document.querySelector("#sharedFileRefresh");
     const sharedFileBody = document.querySelector("#sharedFileBody");
     const sharedFileMessage = document.querySelector("#sharedFileMessage");
+    const hermesWorkspace = document.querySelector("#hermesWorkspace");
+    const hermesRefresh = document.querySelector("#hermesRefresh");
+    const hermesStatusPill = document.querySelector("#hermesStatusPill");
+    const hermesTabs = Array.from(document.querySelectorAll("[data-hermes-tab-button]"));
+    const hermesPanels = Array.from(document.querySelectorAll("[data-hermes-panel]"));
+    const hermesChatInput = document.querySelector("#hermesChatInput");
+    const hermesChatSend = document.querySelector("#hermesChatSend");
+    const hermesChatResponse = document.querySelector("#hermesChatResponse");
+    const hermesAutomationTitle = document.querySelector("#hermesAutomationTitle");
+    const hermesAutomationBody = document.querySelector("#hermesAutomationBody");
+    const hermesAutomationSend = document.querySelector("#hermesAutomationSend");
+    const hermesAutomationResponse = document.querySelector("#hermesAutomationResponse");
+    const hermesHistoryFilter = document.querySelector("#hermesHistoryFilter");
+    const hermesSummaryCreate = document.querySelector("#hermesSummaryCreate");
+    const hermesSummaryList = document.querySelector("#hermesSummaryList");
+    const hermesHistoryList = document.querySelector("#hermesHistoryList");
+    const hermesEnabled = document.querySelector("#hermesEnabled");
+    const hermesBaseUrl = document.querySelector("#hermesBaseUrl");
+    const hermesHealthPath = document.querySelector("#hermesHealthPath");
+    const hermesChatPath = document.querySelector("#hermesChatPath");
+    const hermesAutomationPath = document.querySelector("#hermesAutomationPath");
+    const hermesApiKey = document.querySelector("#hermesApiKey");
+    const hermesTimeoutSeconds = document.querySelector("#hermesTimeoutSeconds");
+    const hermesSettingsSave = document.querySelector("#hermesSettingsSave");
+    const hermesConnectionTest = document.querySelector("#hermesConnectionTest");
+    const hermesSettingsMessage = document.querySelector("#hermesSettingsMessage");
+    const hermesPresetHelp = document.querySelector("#hermesPresetHelp");
+    const hermesPresetButtons = Array.from(document.querySelectorAll("[data-hermes-preset]"));
     const leaveWorkspace = document.querySelector("#leaveWorkspace");
     const userAdminWorkspace = document.querySelector("#userAdminWorkspace");
     const backupWorkspace = document.querySelector("#backupWorkspace");
@@ -5727,6 +10407,7 @@ HTML = r"""<!doctype html>
     const userAdminActive = document.querySelector("#userAdminActive");
     const userAdminSave = document.querySelector("#userAdminSave");
     const userAdminBody = document.querySelector("#userAdminBody");
+    const userAdminDeletedBody = document.querySelector("#userAdminDeletedBody");
     const userAdminMessage = document.querySelector("#userAdminMessage");
     const adminNaverEmailInput = document.querySelector("#adminNaverEmailInput");
     const adminNaverPasswordInput = document.querySelector("#adminNaverPasswordInput");
@@ -5760,6 +10441,8 @@ HTML = r"""<!doctype html>
     const leaveReasonInput = document.querySelector("#leaveReasonInput");
     const leaveRequestSubmit = document.querySelector("#leaveRequestSubmit");
     const leaveAdminUserSelect = document.querySelector("#leaveAdminUserSelect");
+    const leaveAdminUserSearch = document.querySelector("#leaveAdminUserSearch");
+    const leaveAdminUserList = document.querySelector("#leaveAdminUserList");
     const leaveAdminTotalInput = document.querySelector("#leaveAdminTotalInput");
     const leaveAdminUsedInput = document.querySelector("#leaveAdminUsedInput");
     const leaveBalanceSave = document.querySelector("#leaveBalanceSave");
@@ -5776,6 +10459,19 @@ HTML = r"""<!doctype html>
     const leaveTabs = Array.from(document.querySelectorAll("[data-leave-tab]"));
     const backupRefresh = document.querySelector("#backupRefresh");
     const backupCreate = document.querySelector("#backupCreate");
+    const backupCreateSelected = document.querySelector("#backupCreateSelected");
+    const backupSettingsSave = document.querySelector("#backupSettingsSave");
+    const backupAutoEnabled = document.querySelector("#backupAutoEnabled");
+    const backupAutoHour = document.querySelector("#backupAutoHour");
+    const backupRetentionDays = document.querySelector("#backupRetentionDays");
+    const backupDirInput = document.querySelector("#backupDirInput");
+    const backupExternalEnabled = document.querySelector("#backupExternalEnabled");
+    const backupRcloneExecutable = document.querySelector("#backupRcloneExecutable");
+    const backupRcloneRemote = document.querySelector("#backupRcloneRemote");
+    const backupRclonePath = document.querySelector("#backupRclonePath");
+    const backupExternalStatus = document.querySelector("#backupExternalStatus");
+    const backupAutoState = document.querySelector("#backupAutoState");
+    const backupRetentionState = document.querySelector("#backupRetentionState");
     const backupRestoreInput = document.querySelector("#backupRestoreInput");
     const backupPath = document.querySelector("#backupPath");
     const backupBody = document.querySelector("#backupBody");
@@ -5845,6 +10541,8 @@ HTML = r"""<!doctype html>
     const crmTaskSort = document.querySelector("#crmTaskSort");
     const crmTaskOpenOnly = document.querySelector("#crmTaskOpenOnly");
     const crmTaskSearchButton = document.querySelector("#crmTaskSearchButton");
+    const crmTaskAdvancedToggle = document.querySelector("#crmTaskAdvancedToggle");
+    const crmAdvancedFilters = document.querySelector("#crmAdvancedFilters");
     const crmTaskFilterReset = document.querySelector("#crmTaskFilterReset");
     const crmTaskBoardStats = document.querySelector("#crmTaskBoardStats");
     const crmTaskBody = document.querySelector("#crmTaskBody");
@@ -5868,15 +10566,22 @@ HTML = r"""<!doctype html>
     const crmMessengerUserBody = document.querySelector("#crmMessengerUserBody");
     const crmMessageEventBody = document.querySelector("#crmMessageEventBody");
     let currentMode = "dashboard";
+    let ledgerFollowupAlertLoading = false;
     let currentOrderMode = "delivery";
     let vendorContacts = [];
     let cachedMailSettings = {};
     let activeCsCaseId = "";
     let ledgerCases = [];
     let managementRecords = [];
+    let ledgerImportMode = "daily";
+    let managementImportMode = "daily";
+    let ledgerUploadInProgress = false;
+    let managementUploadInProgress = false;
+    let leaveAdminUsers = [];
     let managementPeriods = [];
     let importShipments = [];
     let userAccounts = [];
+    let deletedUserAccounts = [];
     let crmAccounts = [];
     let crmTasks = [];
     let crmMineTasks = [];
@@ -5884,12 +10589,24 @@ HTML = r"""<!doctype html>
     let crmUsers = [];
     let internalChatUsers = [];
     let internalChatRoom = { type: "global", userId: "" };
+    let floatingMessengerRoom = { type: "global", userId: "" };
+    let floatingMessengerOpen = false;
+    let floatingMessengerLastSeenId = 0;
+    let floatingMessengerUnread = 0;
+    let floatingMessengerPollTimer = null;
+    let floatingMessengerSending = false;
+    let floatingMessengerActiveTab = "home";
+    let floatingMessengerChatMode = "list";
+    let floatingMessengerMessagesCache = [];
     let companyActiveTab = "notice";
     let companyCalendarMonth = todayString().slice(0, 7);
     let companyCalendarSelectedDay = todayString();
     let companyCalendarEvents = [];
     let companyCalendarSummary = {};
+    let cargoShipments = [];
     let crmActiveTab = "dashboard";
+    let hermesActiveTab = "chat";
+    let hermesHistoryItems = [];
     let crmSelectedTaskId = "";
     const CRM_TASK_STATUSES = ["대기", "진행중", "보류", "완료"];
     const CRM_TASK_BUILTIN_VIEWS = [
@@ -5916,9 +10633,15 @@ HTML = r"""<!doctype html>
       ledger: null,
       management: null,
     };
+    const cellEditorAutoSaveTimers = {
+      ledger: null,
+      management: null,
+    };
     const ledgerFilters = {};
     const managementFilters = {};
     let isBulkSaving = false;
+    let isNavigationSaving = false;
+    let activeVendorManageType = "purchase";
 
     if (managementWorkspaceMount && managementFields) managementWorkspaceMount.appendChild(managementFields);
     if (ledgerWorkspaceMount && ledgerFields) ledgerWorkspaceMount.appendChild(ledgerFields);
@@ -5934,6 +10657,7 @@ HTML = r"""<!doctype html>
     applyStaticPermissions();
     loadNoticeTemplate();
     loadImportShipments();
+    loadCargoShipments();
 
     function addProductRow(productName = "", quantity = "", packQuantity = "") {
       const row = document.createElement("div");
@@ -5959,6 +10683,12 @@ HTML = r"""<!doctype html>
       const now = new Date();
       const offset = now.getTimezoneOffset() * 60000;
       return new Date(now.getTime() - offset).toISOString().slice(0, 10);
+    }
+
+    function localDatePlusDays(dateText, days) {
+      const base = parseLocalDate(dateText || todayString()) || new Date();
+      base.setDate(base.getDate() + Number(days || 0));
+      return localDateString(base);
     }
 
     function fillPeriodSelects(yearSelect, monthSelect) {
@@ -6110,7 +10840,8 @@ HTML = r"""<!doctype html>
     function renderUserAccounts() {
       if (!userAdminBody) return;
       if (!userAccounts.length) {
-        userAdminBody.innerHTML = `<tr><td colspan="8">등록된 사용자가 없습니다.</td></tr>`;
+        userAdminBody.innerHTML = `<tr><td colspan="9">등록된 사용자가 없습니다.</td></tr>`;
+        renderDeletedUserAccounts();
         return;
       }
       userAdminBody.innerHTML = userAccounts.map((user) => `
@@ -6122,7 +10853,29 @@ HTML = r"""<!doctype html>
           <td>${user.active ? "사용" : (user.approved_at ? "중지" : "승인대기")}</td>
           <td>${escapeHtml(user.created_at || "")}</td>
           <td>${escapeHtml(user.last_login_at || "없음")}</td>
-          <td><button class="admin-action" type="button" data-user-edit="${user.id}">${user.active ? "수정" : "승인/수정"}</button></td>
+          <td><button class="admin-action" type="button" data-user-edit="${user.id}">${user.active ? "권한 수정" : "승인/권한 수정"}</button></td>
+          <td>
+            <button class="admin-action danger" type="button" data-user-delete="${user.id}" ${String(user.id) === String(currentUser.id) ? "disabled" : ""}>삭제</button>
+          </td>
+        </tr>
+      `).join("");
+      renderDeletedUserAccounts();
+    }
+
+    function renderDeletedUserAccounts() {
+      if (!userAdminDeletedBody) return;
+      if (!deletedUserAccounts.length) {
+        userAdminDeletedBody.innerHTML = `<tr><td colspan="6">삭제된 계정 기록이 없습니다.</td></tr>`;
+        return;
+      }
+      userAdminDeletedBody.innerHTML = deletedUserAccounts.map((user) => `
+        <tr>
+          <td>${escapeHtml(user.username)}</td>
+          <td>${escapeHtml(user.display_name)}</td>
+          <td>${roleText(user.role)}</td>
+          <td>${user.active ? "삭제 전 사용" : "삭제 전 중지"}</td>
+          <td>${escapeHtml(user.deleted_at || "")}</td>
+          <td>${escapeHtml(user.deleted_by_username || "")}</td>
         </tr>
       `).join("");
     }
@@ -6142,6 +10895,7 @@ HTML = r"""<!doctype html>
         checkbox.checked = permissions.has(checkbox.value);
       });
       userAdminMessage.textContent = `${user.username} 계정 수정 중입니다. ${user.active ? "비밀번호는 변경할 때만 입력하세요." : "사용을 체크하고 저장하면 승인됩니다."}`;
+      userAdminWorkspace?.scrollTo({ top: 0, behavior: "smooth" });
       userAdminUsername?.focus();
     }
 
@@ -6153,6 +10907,7 @@ HTML = r"""<!doctype html>
         const data = await response.json();
         if (!response.ok) throw new Error(data.error || "사용자 목록을 불러오지 못했습니다.");
         userAccounts = data.users || [];
+        deletedUserAccounts = data.deleted_users || [];
         renderUserAccounts();
         if (!userAdminId.value) resetUserAdminForm();
       } catch (error) {
@@ -6182,6 +10937,7 @@ HTML = r"""<!doctype html>
         const data = await response.json();
         if (!response.ok) throw new Error(data.error || "사용자 계정을 저장하지 못했습니다.");
         userAccounts = data.users || [];
+        deletedUserAccounts = data.deleted_users || [];
         renderUserAccounts();
         resetUserAdminForm();
         userAdminMessage.textContent = data.message || "사용자 계정을 저장했습니다.";
@@ -6201,7 +10957,29 @@ HTML = r"""<!doctype html>
 
     function renderBackups(data) {
       if (!backupBody) return;
+      const settings = data.settings || {};
       backupPath.textContent = data.backup_dir || "-";
+      if (backupAutoState) {
+        backupAutoState.textContent = settings.auto_enabled === false
+          ? "사용 안 함"
+          : `매일 ${String(settings.auto_hour ?? data.auto_backup_hour ?? 3).padStart(2, "0")}:00`;
+      }
+      if (backupRetentionState) backupRetentionState.textContent = `최근 ${settings.retention_days || data.retention_days || 90}일`;
+      if (backupAutoEnabled) backupAutoEnabled.checked = settings.auto_enabled !== false;
+      if (backupAutoHour) backupAutoHour.value = String(settings.auto_hour ?? data.auto_backup_hour ?? 3);
+      if (backupRetentionDays) backupRetentionDays.value = String(settings.retention_days || data.retention_days || 90);
+      if (backupDirInput) backupDirInput.value = settings.backup_dir || data.backup_dir || "";
+      if (backupExternalEnabled) backupExternalEnabled.checked = settings.external_enabled === true;
+      if (backupRcloneExecutable) backupRcloneExecutable.value = settings.rclone_executable || "rclone";
+      if (backupRcloneRemote) backupRcloneRemote.value = settings.rclone_remote || "";
+      if (backupRclonePath) backupRclonePath.value = settings.rclone_path || "";
+      if (backupExternalStatus) {
+        const status = settings.last_external_status || (settings.external_enabled ? "대기" : "사용 안 함");
+        const uploadedAt = settings.last_external_uploaded_at ? ` / ${settings.last_external_uploaded_at}` : "";
+        const target = settings.last_external_target ? ` / ${settings.last_external_target}` : "";
+        const message = settings.last_external_message ? ` / ${settings.last_external_message}` : "";
+        backupExternalStatus.textContent = `Google Drive 업로드 상태: ${status}${uploadedAt}${target}${message}`;
+      }
       const backups = data.backups || [];
       if (!backups.length) {
         backupBody.innerHTML = `<tr><td colspan="4">생성된 백업 파일이 없습니다.</td></tr>`;
@@ -6245,7 +11023,10 @@ HTML = r"""<!doctype html>
         const response = await fetch("/api/backup-create", { method: "POST" });
         const data = await response.json();
         if (!response.ok) throw new Error(data.error || "백업 생성에 실패했습니다.");
-        backupMessage.textContent = data.message || "백업 파일을 생성했습니다.";
+        const external = data.backup?.external_backup;
+        backupMessage.textContent = external && external.status !== "disabled"
+          ? `${data.message || "백업 파일을 생성했습니다."} Google Drive 업로드: ${external.status}`
+          : data.message || "백업 파일을 생성했습니다.";
         await loadBackups();
       } catch (error) {
         backupMessage.textContent = error.message;
@@ -6260,7 +11041,13 @@ HTML = r"""<!doctype html>
     }
 
     async function deleteBackup(name) {
-      if (!confirm(`${name} 백업 파일을 삭제할까요?`)) return;
+      if (!await requestAppConfirm({
+        kicker: "백업 삭제",
+        title: "백업 파일을 삭제할까요?",
+        message: name,
+        okText: "삭제",
+        cancelText: "취소",
+      })) return;
       backupMessage.textContent = "백업 파일을 삭제하는 중입니다.";
       try {
         const response = await fetch("/api/backup-delete", {
@@ -6282,7 +11069,14 @@ HTML = r"""<!doctype html>
     }
 
     async function restoreBackupByName(name) {
-      if (!confirm(`${name} 백업 데이터로 현재 업무 데이터를 복원할까요?\n\n복원 전 현재 데이터는 자동으로 예비 백업됩니다.`)) return;
+      if (!await requestAppConfirm({
+        kicker: "백업 복원",
+        title: "백업 데이터로 현재 업무 데이터를 복원할까요?",
+        message: "복원 전 현재 데이터는 자동으로 예비 백업됩니다.",
+        highlight: name,
+        okText: "복원",
+        cancelText: "취소",
+      })) return;
       backupMessage.textContent = "백업 데이터를 복원하는 중입니다.";
       try {
         const response = await fetch("/api/backup-restore", {
@@ -6301,7 +11095,14 @@ HTML = r"""<!doctype html>
     async function restoreBackupFromUpload() {
       if (!backupRestoreInput || !backupRestoreInput.files[0]) return;
       const file = backupRestoreInput.files[0];
-      if (!confirm(`${file.name} 파일로 현재 업무 데이터를 복원할까요?\n\n복원 전 현재 데이터는 자동으로 예비 백업됩니다.`)) {
+      if (!await requestAppConfirm({
+        kicker: "백업 파일 복원",
+        title: "업로드한 파일로 현재 업무 데이터를 복원할까요?",
+        message: "복원 전 현재 데이터는 자동으로 예비 백업됩니다.",
+        highlight: file.name,
+        okText: "복원",
+        cancelText: "취소",
+      })) {
         backupRestoreInput.value = "";
         return;
       }
@@ -6385,7 +11186,13 @@ HTML = r"""<!doctype html>
     }
 
     async function applySystemUpdate() {
-      if (!confirm("업데이트 적용 전 현재 데이터를 자동 백업합니다.\nGitHub 최신 코드를 적용할까요?")) return;
+      if (!await requestAppConfirm({
+        kicker: "시스템 업데이트",
+        title: "GitHub 최신 코드를 적용할까요?",
+        message: "업데이트 적용 전 현재 데이터를 자동 백업합니다.",
+        okText: "적용",
+        cancelText: "취소",
+      })) return;
       systemUpdateApply.disabled = true;
       systemUpdateMessage.textContent = "업데이트 적용 중입니다. 창을 닫지 마세요.";
       try {
@@ -6409,6 +11216,41 @@ HTML = r"""<!doctype html>
     function renderLeaveSelectOptions(select, rows, valueField = "id", labelField = "name") {
       if (!select) return;
       select.innerHTML = rows.map((row) => `<option value="${row[valueField]}">${escapeHtml(row[labelField])}</option>`).join("");
+    }
+
+    function renderLeaveAdminUserList(query = "") {
+      if (!leaveAdminUserList) return;
+      const keyword = normalizeSearchKeyword(query);
+      const selectedId = String(leaveAdminUserSelect?.value || "");
+      const rows = leaveAdminUsers.filter((user) => {
+        if (!keyword) return true;
+        return normalizeSearchKeyword(`${user.display_name || ""} ${user.username || ""}`).includes(keyword);
+      });
+      if (!leaveAdminUsers.length) {
+        leaveAdminUserList.innerHTML = `<div class="leave-user-empty">표시할 직원 목록이 없습니다. 관리자 권한 또는 등록된 직원을 확인해주세요.</div>`;
+        return;
+      }
+      if (!rows.length) {
+        leaveAdminUserList.innerHTML = `<div class="leave-user-empty">검색 결과가 없습니다.</div>`;
+        return;
+      }
+      leaveAdminUserList.innerHTML = rows.map((user) => {
+        const id = String(user.id || "");
+        const name = user.display_name || user.username || "이름 없음";
+        const username = user.username || "";
+        return `
+          <button class="leave-user-option ${id === selectedId ? "active" : ""}" type="button" data-leave-admin-user="${escapeHtml(id)}">
+            ${escapeHtml(name)}
+            <span>${escapeHtml(username)}</span>
+          </button>
+        `;
+      }).join("");
+    }
+
+    function selectLeaveAdminUser(userId) {
+      if (!leaveAdminUserSelect) return;
+      leaveAdminUserSelect.value = String(userId || "");
+      renderLeaveAdminUserList(leaveAdminUserSearch?.value || "");
     }
 
     function setLeaveTab(tabName) {
@@ -6447,12 +11289,21 @@ HTML = r"""<!doctype html>
         `).join("")
         : `<tr><td colspan="5">연차 사용/신청 이력이 없습니다.</td></tr>`;
       renderLeaveSelectOptions(leaveTypeSelect, data.leave_types || []);
-      const userOptions = (data.users || []).map((user) => ({
+      leaveAdminUsers = (data.users || []).map((user) => ({
         id: user.id,
-        name: `${user.display_name} (${user.username})`,
+        display_name: user.display_name || user.name || user.username || "",
+        username: user.username || "",
+      }));
+      const userOptions = leaveAdminUsers.map((user) => ({
+        id: user.id,
+        name: `${user.display_name || user.username} (${user.username})`,
       }));
       renderLeaveSelectOptions(leaveAdminUserSelect, userOptions);
       renderLeaveSelectOptions(leaveUsageUserSelect, userOptions);
+      if (leaveAdminUserSelect && !leaveAdminUserSelect.value && userOptions.length) {
+        leaveAdminUserSelect.value = String(userOptions[0].id);
+      }
+      renderLeaveAdminUserList(leaveAdminUserSearch?.value || "");
       leaveApprovalBody.innerHTML = (data.pending_requests || []).length
         ? data.pending_requests.map((row) => `
           <tr>
@@ -6634,17 +11485,61 @@ HTML = r"""<!doctype html>
       }
     }
 
-    function loadNoticeTemplate() {
+    function legacyNoticeRecord() {
       let saved = {};
       try {
         saved = JSON.parse(localStorage.getItem("workhub_notice_template") || "{}");
       } catch {
         saved = {};
       }
-      noticeDateInput.value = saved.date || todayString();
-      noticeTitleInput.value = saved.title || "";
-      noticeOwnerInput.value = saved.owner || "";
-      noticeBodyInput.value = saved.body || "";
+      if (!saved || (!saved.title && !saved.body)) return null;
+      return {
+        id: saved.id || `legacy-${Date.now()}`,
+        date: saved.date || todayString(),
+        title: saved.title || "",
+        owner: saved.owner || "",
+        body: saved.body || "",
+        created_at: saved.created_at || new Date().toISOString(),
+      };
+    }
+
+    function noticeRecords() {
+      let rows = [];
+      try {
+        rows = JSON.parse(localStorage.getItem("workhub_notice_templates") || "[]");
+      } catch {
+        rows = [];
+      }
+      if (!Array.isArray(rows)) rows = [];
+      const legacy = legacyNoticeRecord();
+      if (legacy && !rows.some((row) => row.id === legacy.id || (row.title === legacy.title && row.body === legacy.body && row.date === legacy.date))) {
+        rows.unshift(legacy);
+        localStorage.setItem("workhub_notice_templates", JSON.stringify(rows));
+        localStorage.removeItem("workhub_notice_template");
+      }
+      return rows
+        .filter((row) => row && (row.title || row.body))
+        .sort((a, b) => String(b.created_at || b.date || "").localeCompare(String(a.created_at || a.date || "")));
+    }
+
+    function saveNoticeRecords(rows) {
+      localStorage.setItem("workhub_notice_templates", JSON.stringify(rows));
+      localStorage.removeItem("workhub_notice_template");
+    }
+
+    function latestNoticeRecord() {
+      return noticeRecords()[0] || null;
+    }
+
+    function resetNoticeInputs() {
+      noticeDateInput.value = todayString();
+      noticeTitleInput.value = "";
+      noticeOwnerInput.value = "";
+      noticeBodyInput.value = "";
+    }
+
+    function loadNoticeTemplate() {
+      resetNoticeInputs();
       renderNoticePreview();
     }
 
@@ -6657,28 +11552,131 @@ HTML = r"""<!doctype html>
       };
     }
 
+    function eventUpcomingScore(value) {
+      return importDateSortKey(value || "");
+    }
+
+    function noticeAutoEvents() {
+      const todayKey = todayString();
+      const tomorrowKey = localDatePlusDays(todayKey, 1);
+      const visibleDates = new Set([todayKey, tomorrowKey]);
+      const calendarItems = (companyCalendarEvents || [])
+        .filter((event) => ["leave", "pending"].includes(event.type) && visibleDates.has(event.date))
+        .map((event) => ({
+          type: event.type === "pending" ? "pending" : "leave",
+          badge: event.type === "pending" ? "승인대기" : "연차",
+          date: event.date,
+          title: `${shortKoreanDate(event.date)} ${event.title || ""}`,
+          detail: event.subtitle || "",
+        }));
+      const importItems = sortImportShipmentsByWarehouseDate((importShipments || []).filter((record) => !record.completed_at))
+        .filter((record) => visibleDates.has(record.warehouse_due_date || record.arrival_date || ""))
+        .slice(0, 4)
+        .map((record) => ({
+          type: "import",
+          sourceId: record.id,
+          badge: "컨테이너",
+          date: record.warehouse_due_date || record.arrival_date || "",
+          title: `${shortKoreanDate(record.warehouse_due_date || record.arrival_date)} ${record.item || "수입제품"}`,
+          detail: [record.shipper, record.progress_status || "진행중"].filter(Boolean).join(" · "),
+        }));
+      const cargoItems = sortCargoShipments((cargoShipments || []).filter((record) => !record.completed_at && !["출고 완료", "입고 완료"].includes(record.status)))
+        .filter((record) => visibleDates.has(record.ship_date || ""))
+        .slice(0, 4)
+        .map((record) => ({
+          type: record.cargo_type === "inbound" ? "cargo-inbound" : "cargo",
+          sourceId: record.id,
+          badge: record.cargo_type === "inbound" ? "화물입고" : "화물출고",
+          date: record.ship_date || "",
+          title: `${shortKoreanDate(record.ship_date)} ${record.customer || "거래처 미정"} · ${record.item || "품목 미정"}`,
+          detail: [record.quantity, record.destination, record.status].filter(Boolean).join(" · "),
+        }));
+      return [...calendarItems, ...importItems, ...cargoItems]
+        .sort((a, b) => eventUpcomingScore(a.date).localeCompare(eventUpcomingScore(b.date)) || a.badge.localeCompare(b.badge));
+    }
+
+    function noticeAutoHtml() {
+      const items = noticeAutoEvents();
+      const todayKey = todayString();
+      const tomorrowKey = localDatePlusDays(todayKey, 1);
+      const renderGroup = (title, dateText, emptyText) => {
+        const groupItems = items.filter((item) => item.date === dateText).slice(0, 6);
+        return `
+          <div class="notice-auto-panel">
+            <div class="notice-auto-head"><span>${escapeHtml(title)}</span><span class="notice-auto-count">${groupItems.length}</span></div>
+            ${groupItems.length ? `
+              <div class="notice-auto-list">
+                ${groupItems.map((item) => `
+              <div class="notice-auto-item" role="button" tabindex="0" data-notice-auto-type="${escapeHtml(item.type)}" data-notice-auto-id="${escapeHtml(item.sourceId || "")}" title="${escapeHtml([item.title, item.detail].filter(Boolean).join(" / "))}">
+                <span class="notice-auto-badge ${escapeHtml(item.type)}">${escapeHtml(item.badge)}</span>
+                <span class="notice-auto-text">${escapeHtml(item.title)}${item.detail ? ` · ${escapeHtml(item.detail)}` : ""}</span>
+              </div>
+                `).join("")}
+              </div>
+            ` : `<div class="notice-auto-empty">${escapeHtml(emptyText)}</div>`}
+          </div>
+        `;
+      };
+      return `
+        ${renderGroup("오늘 확인할 회사 일정", todayKey, "오늘 표시할 연차, 컨테이너 일정, 화물 입출고건이 없습니다.")}
+        ${renderGroup("내일 확인할 회사 일정", tomorrowKey, "내일 표시할 연차, 컨테이너 일정, 화물 입출고건이 없습니다.")}
+      `;
+    }
+
+    function renderNoticeHistory() {
+      if (!noticeHistoryList || !noticeHistoryCount) return;
+      const rows = noticeRecords();
+      noticeHistoryCount.textContent = String(rows.length);
+      if (!rows.length) {
+        noticeHistoryList.innerHTML = `<div class="notice-history-empty">등록된 기존 공지사항이 없습니다.</div>`;
+        return;
+      }
+      const canDelete = can("notice_manage");
+      noticeHistoryList.innerHTML = rows.map((row) => {
+        const meta = [shortKoreanDate(row.date), row.owner ? `담당 ${row.owner}` : ""].filter(Boolean).join(" / ");
+        return `
+          <div class="notice-history-item" data-notice-id="${escapeHtml(row.id)}">
+            <div>
+              <div class="notice-history-title">${escapeHtml(row.title || "제목 없음")}</div>
+              <div class="notice-history-meta">${escapeHtml(meta || "-")}</div>
+              <div class="notice-history-body">${escapeHtml(row.body || "내용 없음")}</div>
+            </div>
+            ${canDelete ? `<button class="notice-history-delete" type="button" data-notice-delete="${escapeHtml(row.id)}">삭제</button>` : ""}
+          </div>
+        `;
+      }).join("");
+    }
+
     function renderNoticePreview() {
-      const payload = noticePayload();
-      if (!payload.title && !payload.body) {
-        noticePreview.innerHTML = `<strong>저장된 공지사항이 없습니다.</strong>공지사항을 입력하고 저장하면 이곳에서 미리 볼 수 있습니다.`;
+      const draft = noticePayload();
+      const latest = latestNoticeRecord();
+      renderNoticeHistory();
+      if (!draft.title && !draft.body) {
+        noticePreview.innerHTML = `<strong>공지 입력 대기</strong>새 공지사항을 입력한 뒤 저장해주세요. 입력창은 항상 새 공지를 위해 비워둡니다.`;
+      } else {
+        const draftMeta = [shortKoreanDate(draft.date), draft.owner ? `담당 ${escapeHtml(draft.owner)}` : ""].filter(Boolean).join(" / ");
+        noticePreview.innerHTML = `
+          <strong>${escapeHtml(draft.title || "제목 없음")}</strong>
+          <div>${escapeHtml(draftMeta)}</div>
+          <div>${escapeHtml(draft.body).replaceAll("\n", "<br>")}</div>
+        `;
+      }
+      if (!latest) {
         sidebarNoticePreview.innerHTML = `
           <div class="notice-board-kicker">금일 공지사항</div>
           <div class="notice-board-title">등록된 공지 없음</div>
           <div class="notice-board-body">공지사항 입력 버튼을 눌러 내용을 입력해주세요.</div>
+          ${noticeAutoHtml()}
         `;
         return;
       }
-      const meta = [shortKoreanDate(payload.date), payload.owner ? `담당 ${escapeHtml(payload.owner)}` : ""].filter(Boolean).join(" / ");
-      noticePreview.innerHTML = `
-        <strong>${escapeHtml(payload.title || "제목 없음")}</strong>
-        <div>${escapeHtml(meta)}</div>
-        <div>${escapeHtml(payload.body).replaceAll("\n", "<br>")}</div>
-      `;
+      const meta = [shortKoreanDate(latest.date), latest.owner ? `담당 ${escapeHtml(latest.owner)}` : ""].filter(Boolean).join(" / ");
       sidebarNoticePreview.innerHTML = `
         <div class="notice-board-kicker">금일 공지사항</div>
-        <div class="notice-board-title">${escapeHtml(payload.title || "제목 없음")}</div>
+        <div class="notice-board-title">${escapeHtml(latest.title || "제목 없음")}</div>
         <div class="notice-board-meta">${escapeHtml(meta)}</div>
-        <div class="notice-board-body">${escapeHtml(payload.body || "내용 없음")}</div>
+        <div class="notice-board-body">${escapeHtml(latest.body || "내용 없음")}</div>
+        ${noticeAutoHtml()}
       `;
     }
 
@@ -6702,11 +11700,22 @@ HTML = r"""<!doctype html>
         return;
       }
       const payload = noticePayload();
-      localStorage.setItem("workhub_notice_template", JSON.stringify(payload));
+      if (!payload.title && !payload.body) {
+        notice.textContent = "공지 제목 또는 내용을 입력해주세요.";
+        noticeTitleInput?.focus();
+        return;
+      }
+      const rows = noticeRecords();
+      rows.unshift({
+        ...payload,
+        id: `notice-${Date.now()}`,
+        created_at: new Date().toISOString(),
+      });
+      saveNoticeRecords(rows);
+      resetNoticeInputs();
       renderNoticePreview();
       if (companyStaffNoticeTitle) companyStaffNoticeTitle.textContent = payload.title || "등록 전";
-      notice.textContent = "공지사항을 저장했습니다.";
-      closeNoticePopup();
+      notice.textContent = "공지사항을 저장했습니다. 입력칸은 새 공지를 위해 비워두었습니다.";
     }
 
     function clearNoticeTemplate() {
@@ -6714,14 +11723,139 @@ HTML = r"""<!doctype html>
         notice.textContent = "공지사항 관리 권한이 없습니다.";
         return;
       }
-      localStorage.removeItem("workhub_notice_template");
-      noticeTitleInput.value = "";
-      noticeOwnerInput.value = "";
-      noticeBodyInput.value = "";
-      noticeDateInput.value = todayString();
+      resetNoticeInputs();
       renderNoticePreview();
-      if (companyStaffNoticeTitle) companyStaffNoticeTitle.textContent = "등록 전";
       notice.textContent = "공지사항 입력 내용을 초기화했습니다.";
+    }
+
+    function deleteNoticeRecord(noticeId) {
+      if (!can("notice_manage")) {
+        notice.textContent = "공지사항 관리 권한이 없습니다.";
+        return;
+      }
+      const rows = noticeRecords().filter((row) => String(row.id) !== String(noticeId));
+      saveNoticeRecords(rows);
+      renderNoticePreview();
+      if (companyStaffNoticeTitle) companyStaffNoticeTitle.textContent = rows[0]?.title || "등록 전";
+      notice.textContent = "공지사항을 삭제했습니다.";
+    }
+
+    function resetCargoShipmentForm(record = null) {
+      cargoShipmentMode = record?.cargo_type || cargoShipmentMode || "outbound";
+      const isInbound = cargoShipmentMode === "inbound";
+      if (cargoShipmentPopupTitle) cargoShipmentPopupTitle.textContent = isInbound ? "화물 입고 예정건 입력" : "화물 출고건 입력";
+      if (cargoShipDate) cargoShipDate.placeholder = isInbound ? "입고예정일 예) 6/21" : "출고일 예) 6/21";
+      if (cargoCustomer) cargoCustomer.placeholder = isInbound ? "매입처/입고처" : "거래처/현장";
+      if (cargoDestination) cargoDestination.placeholder = isInbound ? "입고장소" : "도착지";
+      if (cargoStatus) {
+        cargoStatus.innerHTML = isInbound
+          ? `<option>입고 예정</option><option>입고 완료</option><option>보류</option>`
+          : `<option>출고 예정</option><option>배차 완료</option><option>출고 완료</option><option>보류</option>`;
+      }
+      if (cargoVehicleReceiptLink) cargoVehicleReceiptLink.classList.toggle("permission-hidden", isInbound);
+      cargoShipmentId.value = record?.id || "";
+      cargoShipDate.value = record?.ship_date || todayStatusDate();
+      cargoCustomer.value = record?.customer || "";
+      cargoItem.value = record?.item || "";
+      cargoQuantity.value = record?.quantity || "";
+      cargoDestination.value = record?.destination || "";
+      cargoStatus.value = record?.status || (isInbound ? "입고 예정" : "출고 예정");
+      cargoMemo.value = record?.memo || "";
+    }
+
+    function cargoShipmentPayload() {
+      return {
+        id: cargoShipmentId.value,
+        cargo_type: cargoShipmentMode,
+        ship_date: cargoShipDate.value.trim(),
+        customer: cargoCustomer.value.trim(),
+        item: cargoItem.value.trim(),
+        quantity: cargoQuantity.value.trim(),
+        destination: cargoDestination.value.trim(),
+        status: cargoStatus.value,
+        memo: cargoMemo.value.trim(),
+      };
+    }
+
+    function sortCargoShipments(rows) {
+      return [...rows].sort((a, b) => {
+        const completedCompare = Number(Boolean(a.completed_at) || ["출고 완료", "입고 완료"].includes(a.status)) - Number(Boolean(b.completed_at) || ["출고 완료", "입고 완료"].includes(b.status));
+        if (completedCompare) return completedCompare;
+        const dateCompare = importDateSortKey(a.ship_date).localeCompare(importDateSortKey(b.ship_date));
+        if (dateCompare) return dateCompare;
+        return Number(b.id || 0) - Number(a.id || 0);
+      });
+    }
+
+    function openCargoShipmentPopup(record = null, mode = "outbound") {
+      if (!canManageCargoShipments()) {
+        notice.textContent = "화물 입출고건 입력 권한이 없습니다.";
+        return;
+      }
+      cargoShipmentMode = record?.cargo_type || mode || "outbound";
+      resetCargoShipmentForm(record);
+      cargoShipmentPopup.classList.add("open");
+      setTimeout(() => cargoShipDate?.focus(), 0);
+    }
+
+    function closeCargoShipmentPopup() {
+      cargoShipmentPopup.classList.remove("open");
+    }
+
+    async function loadCargoShipments() {
+      try {
+        const response = await fetch("/api/cargo-shipments");
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "화물 입출고건을 불러오지 못했습니다.");
+        cargoShipments = data.shipments || [];
+        renderNoticePreview();
+      } catch (error) {
+        cargoShipments = [];
+        renderNoticePreview();
+        notice.textContent = error.message;
+      }
+    }
+
+    async function saveCargoShipment() {
+      if (!canManageCargoShipments()) {
+        notice.textContent = "화물 입출고건 입력 권한이 없습니다.";
+        return;
+      }
+      const payload = cargoShipmentPayload();
+      const hasContent = Object.entries(payload).some(([key, value]) => !["id", "cargo_type"].includes(key) && String(value || "").trim());
+      if (!hasContent) {
+        notice.textContent = "화물 입출고 내용을 입력해주세요.";
+        return;
+      }
+      const response = await fetch("/api/cargo-shipment-save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "화물 입출고건 저장에 실패했습니다.");
+      notice.textContent = data.message || "화물 입출고건을 저장했습니다.";
+      closeCargoShipmentPopup();
+      await loadCargoShipments();
+      if (companyActiveTab === "calendar") await loadCompanyCalendar().catch(() => {});
+    }
+
+    function linkCargoToVehicleReceipt() {
+      const payload = cargoShipmentPayload();
+      closeCargoShipmentPopup();
+      openModal("vehicle");
+      supplierInput.value = payload.customer || "";
+      receiptDateInput.value = fullDateForSave(payload.ship_date, todayString()) || todayString();
+      deliveryPlaceInput.value = payload.destination || "";
+      requestNoteInput.value = payload.memo || "";
+      managerInput.value = "";
+      resetProductRows();
+      const firstRow = productTable.querySelector(".product-row");
+      if (firstRow) {
+        firstRow.querySelector(".product-name").value = payload.item || "";
+        firstRow.querySelector(".product-quantity").value = payload.quantity || "";
+      }
+      notice.textContent = "화물 출고건 내용을 차량인수증에 연결했습니다.";
     }
 
     function resetImportShipmentForm(record = null) {
@@ -6730,8 +11864,10 @@ HTML = r"""<!doctype html>
       importArrivalDate.value = record?.arrival_date || "";
       importLoadingPort.value = record?.loading_port || "";
       importArrivalPort.value = record?.arrival_port || "";
+      importShipper.value = record?.shipper || "";
       importItem.value = record?.item || "";
       importQuantity.value = record?.quantity || "";
+      importVesselName.value = record?.vessel_name || "";
       importHblNo.value = record?.hbl_no || "";
       importSize.value = record?.size || "";
       importProgressStatus.value = record?.progress_status || "";
@@ -6746,10 +11882,10 @@ HTML = r"""<!doctype html>
         arrival_date: importArrivalDate.value.trim(),
         loading_port: importLoadingPort.value.trim(),
         arrival_port: importArrivalPort.value.trim(),
-        shipper: "",
+        shipper: importShipper.value.trim(),
         item: importItem.value.trim(),
         quantity: importQuantity.value.trim(),
-        vessel_name: "",
+        vessel_name: importVesselName.value.trim(),
         hbl_no: importHblNo.value.trim(),
         size: importSize.value.trim(),
         progress_status: importProgressStatus.value.trim(),
@@ -6772,21 +11908,32 @@ HTML = r"""<!doctype html>
       importShipmentPopup.classList.remove("open");
     }
 
+    function compactImportItemName(value, maxLength = 18) {
+      const text = String(value || "-").trim() || "-";
+      return text.length > maxLength ? `${text.slice(0, maxLength)}...` : text;
+    }
+
     function renderDashboardImportSchedule() {
       if (!dashboardImportScheduleBody || !dashboardImportScheduleSummary) return;
-      const activeRecords = importShipments.filter((record) => !record.completed_at);
+      const activeRecords = sortImportShipmentsByWarehouseDate(importShipments.filter((record) => !record.completed_at));
       dashboardImportScheduleSummary.textContent = `진행 ${activeRecords.length}건`;
       if (!activeRecords.length) {
-        dashboardImportScheduleBody.innerHTML = `<tr><td colspan="5"><div class="import-empty">등록된 수입제품 입고 일정이 없습니다.</div></td></tr>`;
+        dashboardImportScheduleBody.innerHTML = `<tr><td colspan="11"><div class="import-empty">등록된 수입제품 입고 일정이 없습니다.</div></td></tr>`;
         return;
       }
       dashboardImportScheduleBody.innerHTML = activeRecords.slice(0, 6).map((record) => `
         <tr>
-          <td>${escapeHtml(record.arrival_date || "-")}</td>
-          <td class="left">${escapeHtml(record.item || "-")}</td>
-          <td>${escapeHtml(record.quantity || "-")}</td>
+          <td>${escapeHtml(shortKoreanDate(record.warehouse_due_date) || "-")}</td>
+          <td>${escapeHtml(shortKoreanDate(record.departure_date) || "-")}</td>
+          <td>${escapeHtml(shortKoreanDate(record.arrival_date) || "-")}</td>
+          <td>${escapeHtml(record.loading_port || "-")}</td>
+          <td class="left" title="${escapeHtml(record.item || "-")}">${escapeHtml(compactImportItemName(record.item, 28))}</td>
+          <td class="${escapeHtml(quantityLevelClass(record.quantity))}">${escapeHtml(record.quantity || "-")}</td>
+          <td title="${escapeHtml(record.vessel_name || "-")}">${escapeHtml(compactImportItemName(record.vessel_name, 16))}</td>
+          <td title="${escapeHtml(record.hbl_no || "-")}">${escapeHtml(compactImportItemName(record.hbl_no, 14))}</td>
+          <td>${escapeHtml(record.size || "-")}</td>
           <td>${escapeHtml(record.progress_status || "진행중")}</td>
-          <td>${escapeHtml(record.warehouse_due_date || "-")}</td>
+          <td>${escapeHtml(record.free_time || "-")}</td>
         </tr>
       `).join("");
     }
@@ -6797,34 +11944,37 @@ HTML = r"""<!doctype html>
       importShipmentSummary.textContent = `진행 ${activeCount}건 / 완료 ${doneCount}건`;
       renderDashboardImportSchedule();
       if (!importShipments.length) {
-        importShipmentBody.innerHTML = `<tr><td colspan="11"><div class="import-empty">등록된 수입제품 출고 진행 건이 없습니다.</div></td></tr>`;
+        importShipmentBody.innerHTML = `<tr><td colspan="10"><div class="import-empty">등록된 수입제품 입고 진행 건이 없습니다.</div></td></tr>`;
         return;
       }
       importShipmentBody.innerHTML = "";
-      importShipments.forEach((record) => {
+      sortImportShipmentsByWarehouseDate(importShipments).forEach((record) => {
         const row = document.createElement("tr");
+        row.dataset.importRow = record.id;
         if (record.completed_at) row.classList.add("completed");
-        const progressCell = can("import_shipment_manage")
+        const canManageImportShipment = can("import_shipment_manage");
+        const canCompleteImportShipment = currentUser.role === "admin";
+        const progressCell = canManageImportShipment
           ? `<td>
               <span>${escapeHtml(record.completed_at ? "완료" : record.progress_status)}</span>
               <span class="import-row-actions">
                 <button type="button" data-import-edit="${record.id}">수정</button>
-                ${record.completed_at ? "" : `<button type="button" data-import-complete="${record.id}">완료</button>`}
+                ${record.completed_at || !canCompleteImportShipment ? "" : `<button type="button" data-import-complete="${record.id}">입고 완료</button>`}
               </span>
             </td>`
           : `<td>${escapeHtml(record.completed_at ? "완료" : record.progress_status)}</td>`;
         row.innerHTML = `
-          <td>${escapeHtml(record.departure_date)}</td>
-          <td>${escapeHtml(record.arrival_date)}</td>
+          <td>${escapeHtml(shortKoreanDate(record.warehouse_due_date))}</td>
+          <td>${escapeHtml(shortKoreanDate(record.departure_date))}</td>
+          <td>${escapeHtml(shortKoreanDate(record.arrival_date))}</td>
           <td>${escapeHtml(record.loading_port)}</td>
-          <td>${escapeHtml(record.arrival_port)}</td>
-          <td class="left">${escapeHtml(record.item)}</td>
-          <td>${escapeHtml(record.quantity)}</td>
+          <td class="left" title="${escapeHtml(record.item)}">${escapeHtml(compactImportItemName(record.item, 26))}</td>
+          <td class="${escapeHtml(quantityLevelClass(record.quantity))}">${escapeHtml(record.quantity)}</td>
+          <td>${escapeHtml(record.vessel_name)}</td>
           <td>${escapeHtml(record.hbl_no)}</td>
           <td>${escapeHtml(record.size)}</td>
           ${progressCell}
           <td>${escapeHtml(record.free_time)}</td>
-          <td>${escapeHtml(record.warehouse_due_date)}</td>
         `;
         importShipmentBody.appendChild(row);
       });
@@ -6837,9 +11987,11 @@ HTML = r"""<!doctype html>
         const data = await response.json();
         importShipments = data.shipments || [];
         renderImportShipments();
+        renderNoticePreview();
       } catch (error) {
         importShipments = [];
         renderImportShipments();
+        renderNoticePreview();
         notice.textContent = error.message;
       }
     }
@@ -6852,7 +12004,7 @@ HTML = r"""<!doctype html>
       const payload = importShipmentPayload();
       const hasContent = Object.entries(payload).some(([key, value]) => key !== "id" && String(value || "").trim());
       if (!hasContent) {
-        notice.textContent = "수입제품 출고 진행 내용을 입력해주세요.";
+        notice.textContent = "수입제품 입고 진행 내용을 입력해주세요.";
         return;
       }
       const response = await fetch("/api/import-shipment-save", {
@@ -6861,8 +12013,8 @@ HTML = r"""<!doctype html>
         body: JSON.stringify(payload),
       });
       const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "수입제품 출고 진행 저장에 실패했습니다.");
-      notice.textContent = data.message || "수입제품 출고 진행 상황을 저장했습니다.";
+      if (!response.ok) throw new Error(data.error || "수입제품 입고 진행 저장에 실패했습니다.");
+      notice.textContent = data.message || "수입제품 입고 진행 상황을 저장했습니다.";
       closeImportShipmentPopup();
       await loadImportShipments();
     }
@@ -6878,7 +12030,7 @@ HTML = r"""<!doctype html>
         body: JSON.stringify({ id }),
       });
       const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "수입제품 출고 진행 완료 처리에 실패했습니다.");
+      if (!response.ok) throw new Error(data.error || "수입제품 입고 진행 완료 처리에 실패했습니다.");
       notice.textContent = data.message || "완료 처리했습니다.";
       await loadImportShipments();
     }
@@ -6975,6 +12127,70 @@ HTML = r"""<!doctype html>
         return true;
       }
       return false;
+    }
+
+    function backupSettingsPayload() {
+      return {
+        backup_dir: backupDirInput?.value?.trim() || "",
+        auto_enabled: Boolean(backupAutoEnabled?.checked),
+        auto_hour: Number(backupAutoHour?.value || 3),
+        retention_days: Number(backupRetentionDays?.value || 90),
+        external_enabled: Boolean(backupExternalEnabled?.checked),
+        external_type: "rclone",
+        rclone_executable: backupRcloneExecutable?.value?.trim() || "rclone",
+        rclone_remote: backupRcloneRemote?.value?.trim() || "",
+        rclone_path: backupRclonePath?.value?.trim() || "",
+      };
+    }
+
+    async function saveBackupSettings() {
+      if (!backupSettingsSave) return;
+      backupSettingsSave.disabled = true;
+      backupMessage.textContent = "백업 설정을 저장하는 중입니다.";
+      try {
+        const response = await fetch("/api/backup-settings", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(backupSettingsPayload()),
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "백업 설정 저장에 실패했습니다.");
+        backupMessage.textContent = data.message || "백업 설정을 저장했습니다.";
+        await loadBackups();
+      } catch (error) {
+        backupMessage.textContent = error.message;
+      } finally {
+        backupSettingsSave.disabled = false;
+      }
+    }
+
+    async function createBackupAtSelectedPath() {
+      if (!backupCreateSelected) return;
+      const backupDir = backupDirInput?.value?.trim() || "";
+      if (!backupDir) {
+        backupMessage.textContent = "지정 백업을 만들 폴더 경로를 입력해주세요.";
+        return;
+      }
+      backupCreateSelected.disabled = true;
+      backupMessage.textContent = "지정 위치로 백업 파일을 생성하는 중입니다.";
+      try {
+        const response = await fetch("/api/backup-create", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ backup_dir: backupDir }),
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "지정 위치 백업 생성에 실패했습니다.");
+        const external = data.backup?.external_backup;
+        backupMessage.textContent = external && external.status !== "disabled"
+          ? `${data.message || "지정 위치에 백업 파일을 생성했습니다."} Google Drive 업로드: ${external.status}`
+          : data.message || "지정 위치에 백업 파일을 생성했습니다.";
+        await loadBackups();
+      } catch (error) {
+        backupMessage.textContent = error.message;
+      } finally {
+        backupCreateSelected.disabled = false;
+      }
     }
 
     async function loadMailSettings() {
@@ -7127,6 +12343,33 @@ HTML = r"""<!doctype html>
         vendorContactSelect.appendChild(option);
       });
       renderStockVendorContacts();
+      renderVendorManageContacts();
+    }
+
+    function vendorManageTypeLabelText(type = activeVendorManageType) {
+      return type === "sales" ? "매출처" : "매입처";
+    }
+
+    function renderVendorManageContacts() {
+      if (!vendorManageList) return;
+      const label = vendorManageTypeLabelText();
+      if (vendorManageTypeLabel) vendorManageTypeLabel.value = label;
+      if (vendorManageListTitle) vendorManageListTitle.textContent = `저장된 ${label}`;
+      if (vendorManageDropMain) vendorManageDropMain.textContent = `${label} 거래처명/메일주소 엑셀을 업로드해주세요.`;
+      const items = vendorContacts.filter((contact) => (contact.vendor_type || "purchase") === activeVendorManageType);
+      vendorManageList.innerHTML = items.length
+        ? items.map((contact) => `
+          <button class="vendor-picker-option" type="button" data-vendor-manage-name="${escapeHtml(contact.vendor_name)}">
+            ${escapeHtml(contact.vendor_name)} / ${escapeHtml(contact.email)}
+          </button>
+        `).join("")
+        : `<div class="vendor-picker-empty">저장된 ${label} 메일 리스트가 없습니다.</div>`;
+    }
+
+    function fillVendorManageForm(contact) {
+      if (!contact) return;
+      if (vendorManageNameInput) vendorManageNameInput.value = contact.vendor_name || "";
+      if (vendorManageEmailInput) vendorManageEmailInput.value = contact.email || "";
     }
 
     function renderStockVendorContacts() {
@@ -7202,6 +12445,22 @@ HTML = r"""<!doctype html>
       csSubjectInput.value = currentMode === "mail-stock" ? "입고 및 품절 공지" : defaultCsSubject(selected.vendor_name);
     }
 
+    function syncVendorEmailFromName({ overwrite = false } = {}) {
+      const vendorName = vendorNameInput?.value.trim() || "";
+      const vendorType = vendorTypeSelect?.value || "purchase";
+      if (!vendorName) return;
+      const targetKey = normalizeSearchKeyword(vendorName);
+      const selected = vendorContacts.find((contact) => (
+        (contact.vendor_type || "purchase") === vendorType
+        && normalizeSearchKeyword(contact.vendor_name) === targetKey
+      ));
+      if (!selected) return;
+      if (overwrite || !recipientEmailInput.value.trim()) {
+        recipientEmailInput.value = selected.email;
+      }
+      if (vendorContactSelect) vendorContactSelect.value = `${vendorType}::${selected.vendor_name}`;
+    }
+
     function setSelectedStockVendor(selected) {
       if (!selected) {
         stockVendorTypeSelect.value = "purchase";
@@ -7249,7 +12508,7 @@ HTML = r"""<!doctype html>
       const email = recipientEmailInput.value.trim();
       const vendorType = vendorTypeSelect.value || "purchase";
       if (!vendorName || !email) {
-        notice.textContent = "업체명과 받는 업체 메일을 입력해주세요.";
+        notice.textContent = "거래처명과 받는 거래처 메일을 입력해주세요.";
         return;
       }
       try {
@@ -7260,11 +12519,11 @@ HTML = r"""<!doctype html>
           body: JSON.stringify({ vendor_type: vendorType, vendor_name: vendorName, email }),
         });
         const data = await response.json();
-        if (!response.ok) throw new Error(data.error || "업체 메일 저장에 실패했습니다.");
+        if (!response.ok) throw new Error(data.error || "거래처 메일 저장에 실패했습니다.");
         vendorContacts = data.contacts || [];
         renderVendorContacts();
         vendorContactSelect.value = `${vendorType}::${vendorName}`;
-        notice.textContent = "업체 메일 주소를 저장했습니다.";
+        notice.textContent = "거래처 메일 주소를 저장했습니다.";
       } catch (error) {
         notice.textContent = error.message;
       } finally {
@@ -7279,22 +12538,364 @@ HTML = r"""<!doctype html>
       if (vendorContactsDropMain) vendorContactsDropMain.textContent = file.name;
       const formData = new FormData();
       formData.append("file", file);
-      notice.textContent = "업체 메일 주소록을 저장 중입니다.";
+      notice.textContent = "거래처 메일 주소록을 저장 중입니다.";
       try {
         const response = await fetch("/api/vendor-contacts-import", {
           method: "POST",
           body: formData,
         });
         const data = await response.json();
-        if (!response.ok) throw new Error(data.error || "업체 메일 주소록 저장에 실패했습니다.");
+        if (!response.ok) throw new Error(data.error || "거래처 메일 주소록 저장에 실패했습니다.");
         vendorContacts = data.contacts || [];
         renderVendorContacts();
-        notice.textContent = data.message || "업체 메일 주소록을 저장했습니다.";
+        notice.textContent = data.message || "거래처 메일 주소록을 저장했습니다.";
       } catch (error) {
         notice.textContent = error.message;
       } finally {
         vendorContactsFileInput.value = "";
       }
+    }
+
+    function renderSalesReportUploads(files = []) {
+      if (!salesReportRecentList) return;
+      const recent = files.slice(0, 5);
+      if (!recent.length) {
+        salesReportRecentList.textContent = "업로드된 매출표가 없습니다.";
+        return;
+      }
+      salesReportRecentList.innerHTML = recent
+        .map((file) => `${escapeHtml(file.original_name || "")} · ${escapeHtml(file.uploaded_at || "")}`)
+        .join("<br />");
+    }
+
+    async function loadSalesReportUploads() {
+      if (!salesReportRecentList) return;
+      try {
+        const response = await fetch("/api/sales-report-uploads");
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "매출표 업로드 목록을 불러오지 못했습니다.");
+        renderSalesReportUploads(data.files || []);
+      } catch (error) {
+        salesReportRecentList.textContent = error.message;
+      }
+    }
+
+    function formatSalesNumber(value) {
+      const number = Number(value || 0);
+      return number.toLocaleString("ko-KR");
+    }
+
+    function formatSalesMillion(value, signed = false) {
+      const number = Number(value || 0);
+      const sign = signed && number > 0 ? "+" : "";
+      const absolute = Math.abs(number) / 1000000;
+      return `${number < 0 ? "-" : sign}${absolute.toLocaleString("ko-KR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}백만`;
+    }
+
+    function formatSalesCompactMoney(value, signed = false) {
+      const number = Number(value || 0);
+      return formatSalesMillion(number, signed);
+    }
+
+    function formatSalesPercent(value) {
+      const number = Number(value || 0);
+      return `${number.toLocaleString("ko-KR", { maximumFractionDigits: 1 })}%`;
+    }
+
+    async function saveVendorManageContact() {
+      const vendorName = vendorManageNameInput?.value.trim() || "";
+      const email = vendorManageEmailInput?.value.trim() || "";
+      if (!vendorName || !email) {
+        notice.textContent = "거래처명과 메일주소를 입력해주세요.";
+        return;
+      }
+      try {
+        if (vendorManageSave) vendorManageSave.disabled = true;
+        const response = await fetch("/api/vendor-contact", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ vendor_type: activeVendorManageType, vendor_name: vendorName, email }),
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "거래처 메일 저장에 실패했습니다.");
+        vendorContacts = data.contacts || [];
+        renderVendorContacts();
+        if (vendorContactSelect) vendorContactSelect.value = `${activeVendorManageType}::${vendorName}`;
+        notice.textContent = `${vendorManageTypeLabelText()} 메일 주소를 저장했습니다.`;
+      } catch (error) {
+        notice.textContent = error.message;
+      } finally {
+        if (vendorManageSave) vendorManageSave.disabled = false;
+      }
+    }
+
+    async function uploadVendorManageWorkbook() {
+      if (!vendorManageFileInput) return;
+      const file = vendorManageFileInput.files[0];
+      if (!file) return;
+      if (vendorManageDropMain) vendorManageDropMain.textContent = file.name;
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("vendor_type", activeVendorManageType);
+      notice.textContent = `${vendorManageTypeLabelText()} 메일 주소록을 저장 중입니다.`;
+      try {
+        const response = await fetch("/api/vendor-contacts-import", {
+          method: "POST",
+          body: formData,
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "거래처 메일 주소록 저장에 실패했습니다.");
+        vendorContacts = data.contacts || [];
+        renderVendorContacts();
+        notice.textContent = data.message || `${vendorManageTypeLabelText()} 메일 주소록을 저장했습니다.`;
+      } catch (error) {
+        notice.textContent = error.message;
+      } finally {
+        vendorManageFileInput.value = "";
+      }
+    }
+
+    function formatSignedSalesNumber(value, suffix = "") {
+      const number = Number(value || 0);
+      const sign = number > 0 ? "+" : "";
+      return `${sign}${number.toLocaleString("ko-KR")}${suffix}`;
+    }
+
+    function formatSignedSalesPercent(value) {
+      const number = Number(value || 0);
+      const sign = number > 0 ? "+" : "";
+      return `${sign}${number.toLocaleString("ko-KR", { maximumFractionDigits: 1 })}%`;
+    }
+
+    function salesAmountClass(value) {
+      const number = Number(value || 0);
+      if (number > 0) return "sales-positive";
+      if (number < 0) return "sales-negative";
+      return "";
+    }
+
+    function renderSalesEmpty(tbody, colspan, message) {
+      if (!tbody) return;
+      tbody.innerHTML = `<tr><td class="empty" colspan="${colspan}">${escapeHtml(message)}</td></tr>`;
+    }
+
+    let activeSalesReportTab = "salesProduct";
+    let activeMonthlyCompareDetail = "daily";
+    let salesReportMonthlyCompareDetails = {};
+
+    function setSalesReportTab(tabName) {
+      activeSalesReportTab = tabName || "salesProduct";
+      salesReportTabButtons.forEach((button) => {
+        const active = button.dataset.salesTab === activeSalesReportTab;
+        button.classList.toggle("active", active);
+        button.setAttribute("aria-selected", active ? "true" : "false");
+      });
+      salesReportPanels.forEach((panel) => {
+        panel.classList.toggle("active", panel.dataset.salesGroup === activeSalesReportTab);
+      });
+      salesReportDashboard?.classList.toggle("monthly-compare-mode", activeSalesReportTab === "monthlyCompare");
+    }
+
+    function setSalesReportTabCount(tabName, count) {
+      const target = salesReportTabCounts[tabName];
+      if (target) target.textContent = formatSalesNumber(count || 0);
+    }
+
+    function setSalesReportLoading(isLoading) {
+      salesReportDashboard?.classList.toggle("loading", Boolean(isLoading));
+    }
+
+    function renderMonthlyCompareDetail(kind) {
+      activeMonthlyCompareDetail = kind || "daily";
+      salesReportMonthlyCompareDetailButtons.forEach((button) => {
+        const active = button.dataset.salesCompareDetail === activeMonthlyCompareDetail;
+        button.classList.toggle("active", active);
+        button.setAttribute("aria-selected", active ? "true" : "false");
+      });
+      const rows = salesReportMonthlyCompareDetails[activeMonthlyCompareDetail] || [];
+      if (!rows.length) {
+        renderSalesEmpty(salesReportMonthlyCompareDetailBody, 7, "상세 비교 데이터가 없습니다.");
+        return;
+      }
+      salesReportMonthlyCompareDetailBody.innerHTML = rows.map((row) => `
+        <tr>
+          <td>${escapeHtml(row.label || "")}</td>
+          <td>${formatSalesNumber(row.current_quantity)}</td>
+          <td>${formatSalesNumber(row.current)}</td>
+          <td>${formatSalesNumber(row.previous_quantity)}</td>
+          <td>${formatSalesNumber(row.previous)}</td>
+          <td class="${salesAmountClass(row.delta)}">${formatSalesNumber(row.delta)}</td>
+          <td class="${salesAmountClass(row.delta)}">${formatSalesPercent(row.delta_rate)}</td>
+        </tr>
+      `).join("");
+    }
+
+    function formatSalesPeriodLabel(period) {
+      const match = String(period || "").match(/^(20\d{2})-(\d{1,2})$/);
+      return match ? `${match[1]}년 ${Number(match[2])}월` : String(period || "");
+    }
+
+    function renderSalesReportDashboard(data) {
+      if (!salesReportKpiGrid) return;
+      const today = data.today || {};
+      const yesterday = data.yesterday || {};
+      const comparison = data.comparison || {};
+      const month = data.month || {};
+      const sellerTotal = data.seller_total || {};
+      const supplierPurchaseTotal = data.supplier_purchase_total || {};
+      const comparisonDelta = Number(comparison.profit_sales_amount_delta || 0);
+      const hasTodaySalesData = Boolean(data.today_data_uploaded);
+      const selectedDateLabel = shortKoreanDate(data.selected_date || today.report_date || "");
+      const previousDateLabel = shortKoreanDate(data.previous_business_date || yesterday.report_date || "");
+      const periodLabel = formatSalesPeriodLabel(data.period || "");
+      const kpiCards = [
+        { label: `${selectedDateLabel || "당일"} 손익 매출`, value: hasTodaySalesData ? formatSalesNumber(today.profit_sales_amount) : "미업로드", note: hasTodaySalesData ? `수량 ${formatSalesNumber(today.quantity)}` : "금일 매출금액이 업로드 되지 않음", variant: hasTodaySalesData ? "primary blue" : "muted", icon: "₩", badge: "당일", valueClass: hasTodaySalesData ? "" : "notice" },
+        { label: previousDateLabel ? `${previousDateLabel} 전영업일 매출` : "전영업일 매출", value: yesterday.report_date ? formatSalesNumber(yesterday.profit_sales_amount) : "데이터 없음", note: yesterday.report_date ? `수량 ${formatSalesNumber(yesterday.quantity)}` : "전영업일 매출 데이터가 없습니다.", variant: "slate", icon: "영", badge: "전영업일", valueClass: yesterday.report_date ? "" : "notice" },
+        { label: previousDateLabel ? `${previousDateLabel} 대비` : "전영업일 대비", value: hasTodaySalesData && yesterday.report_date ? formatSalesPercent(comparison.profit_sales_amount_delta_rate) : "비교 대기", note: hasTodaySalesData && yesterday.report_date ? formatSalesNumber(comparison.profit_sales_amount_delta) : "금일 데이터 업로드 후 비교 가능", variant: !hasTodaySalesData || !yesterday.report_date ? "muted" : (comparisonDelta < 0 ? "red" : "green"), icon: !hasTodaySalesData || !yesterday.report_date ? "-" : (comparisonDelta < 0 ? "↓" : "↑"), badge: "증감", valueClass: hasTodaySalesData && yesterday.report_date ? salesAmountClass(comparison.profit_sales_amount_delta) : "notice" },
+        { label: `${periodLabel || "월"} 누적 매출`, value: formatSalesNumber(month.profit_sales_amount), note: periodLabel || "", variant: "violet", icon: "월", badge: "누적" },
+        { label: "매출처별 합계", value: formatSalesNumber(sellerTotal.profit_sales_amount), note: `판매사 수량 ${formatSalesNumber(sellerTotal.quantity)}`, variant: "blue", icon: "매", badge: "매출처" },
+        { label: "매입처별 총합계 금액", value: formatSalesNumber(supplierPurchaseTotal.purchase_total), note: `공급사 수량 ${formatSalesNumber(supplierPurchaseTotal.quantity)}`, variant: "orange", icon: "입", badge: "매입처" },
+      ];
+      salesReportKpiGrid.innerHTML = kpiCards.map((card) => `
+        <div class="sales-kpi ${escapeHtml(card.variant)}">
+          <div class="sales-kpi-top">
+            <div class="sales-kpi-title">
+              <span class="sales-kpi-icon">${escapeHtml(card.icon)}</span>
+              <div class="sales-kpi-label">${escapeHtml(card.label)}</div>
+            </div>
+            <span class="sales-kpi-badge">${escapeHtml(card.badge)}</span>
+          </div>
+          <div class="sales-kpi-value ${escapeHtml(card.valueClass || "")}">${escapeHtml(card.value)}</div>
+          <div class="sales-kpi-note">${escapeHtml(card.note)}</div>
+        </div>
+      `).join("");
+
+      const dailyRows = data.daily_rows || [];
+      if (dailyRows.length) {
+        salesReportDailyBody.innerHTML = dailyRows.map((row) => `
+          <tr>
+            <td>${escapeHtml(row.label || row.report_date || "")}</td>
+            <td>${formatSalesNumber(row.quantity)}</td>
+            <td>${formatSalesNumber(row.profit_sales_amount)}</td>
+            <td>${formatSalesNumber(row.sales_total)}</td>
+            <td class="${salesAmountClass(row.profit_margin)}">${formatSalesNumber(row.profit_margin)}</td>
+          </tr>
+        `).join("");
+      } else {
+        renderSalesEmpty(salesReportDailyBody, 5, "일자별 매출 데이터를 업로드해주세요.");
+      }
+
+      const sellerRows = data.seller_top || [];
+      if (sellerRows.length) {
+        salesReportSellerBody.innerHTML = sellerRows.map((row) => `
+          <tr>
+            <td>${escapeHtml(row.name || "")}</td>
+            <td>${formatSalesNumber(row.quantity)}</td>
+            <td>${formatSalesNumber(row.profit_sales_amount)}</td>
+            <td class="${salesAmountClass(row.profit_margin)}">${formatSalesNumber(row.profit_margin)}</td>
+          </tr>
+        `).join("");
+      } else {
+        renderSalesEmpty(salesReportSellerBody, 4, "매출처별 데이터를 업로드해주세요.");
+      }
+
+      const productRows = data.product_top || [];
+      if (productRows.length) {
+        salesReportProductBody.innerHTML = productRows.map((row) => `
+          <tr>
+            <td>${escapeHtml(row.name || "")}</td>
+            <td>${formatSalesNumber(row.quantity)}</td>
+            <td>${formatSalesNumber(row.profit_sales_amount)}</td>
+            <td class="${salesAmountClass(row.profit_margin)}">${formatSalesNumber(row.profit_margin)}</td>
+          </tr>
+        `).join("");
+      } else {
+        renderSalesEmpty(salesReportProductBody, 4, "상품별 데이터를 업로드해주세요.");
+      }
+
+      const purchaseRows = data.supplier_purchase_totals || [];
+      if (purchaseRows.length) {
+        salesReportReviewBody.innerHTML = purchaseRows.map((row) => `
+          <tr>
+            <td>${escapeHtml(row.name || "")}</td>
+            <td>${formatSalesNumber(row.purchase_total)}</td>
+            <td>${formatSalesNumber(row.quantity)}</td>
+          </tr>
+        `).join("");
+      } else {
+        renderSalesEmpty(salesReportReviewBody, 3, "업체별 매입금액 데이터를 업로드해주세요.");
+      }
+      const monthlyCompareRows = data.monthly_comparison_rows || [];
+      if (monthlyCompareRows.length) {
+        salesReportMonthlyCompareBody.innerHTML = monthlyCompareRows.map((row) => `
+          <tr>
+            <td>${escapeHtml(row.label || "")}</td>
+            <td>${escapeHtml(row.metric || "")}</td>
+            <td>${formatSalesNumber(row.current)}</td>
+            <td>${formatSalesNumber(row.previous)}</td>
+            <td class="${salesAmountClass(row.delta)}">${formatSalesNumber(row.delta)}</td>
+            <td class="${salesAmountClass(row.delta)}">${formatSalesPercent(row.delta_rate)}</td>
+          </tr>
+        `).join("");
+      } else {
+        renderSalesEmpty(salesReportMonthlyCompareBody, 6, "전월 비교 데이터가 없습니다.");
+      }
+      salesReportMonthlyCompareDetails = data.monthly_comparison_details || {};
+      renderMonthlyCompareDetail(activeMonthlyCompareDetail);
+      setSalesReportTabCount("salesProduct", dailyRows.length + productRows.length);
+      setSalesReportTabCount("partner", sellerRows.length + purchaseRows.length);
+      setSalesReportTabCount("monthlyCompare", monthlyCompareRows.length);
+      setSalesReportTab(activeSalesReportTab);
+    }
+
+    async function loadSalesReportDashboard() {
+      if (!salesReportKpiGrid) return;
+      setSalesReportLoading(true);
+      try {
+        const response = await fetch("/api/sales-report-dashboard");
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "매출현황을 불러오지 못했습니다.");
+        renderSalesReportDashboard(data);
+      } catch (error) {
+        salesReportKpiGrid.innerHTML = `<div class="admin-message">${escapeHtml(error.message)}</div>`;
+        renderSalesEmpty(salesReportDailyBody, 5, "매출현황을 불러오지 못했습니다.");
+        renderSalesEmpty(salesReportSellerBody, 4, "매출현황을 불러오지 못했습니다.");
+        renderSalesEmpty(salesReportProductBody, 4, "매출현황을 불러오지 못했습니다.");
+        renderSalesEmpty(salesReportReviewBody, 3, "매출현황을 불러오지 못했습니다.");
+        renderSalesEmpty(salesReportMonthlyCompareBody, 6, "매출현황을 불러오지 못했습니다.");
+        renderSalesEmpty(salesReportMonthlyCompareDetailBody, 7, "매출현황을 불러오지 못했습니다.");
+      } finally {
+        setSalesReportLoading(false);
+      }
+    }
+
+    async function uploadSalesReportWorkbook() {
+      if (!salesReportFileInput) return;
+      const file = salesReportFileInput.files[0];
+      if (!file) return;
+      const formData = new FormData();
+      formData.append("file", file);
+      if (salesReportUploadMessage) salesReportUploadMessage.textContent = "매출표를 업로드하는 중입니다.";
+      try {
+        const response = await fetch("/api/sales-report-upload", {
+          method: "POST",
+          body: formData,
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "매출표 업로드에 실패했습니다.");
+        renderSalesReportUploads(data.files || []);
+        loadSalesReportDashboard();
+        if (salesReportUploadMessage) salesReportUploadMessage.textContent = data.message || "매출표를 저장했습니다.";
+      } catch (error) {
+        if (salesReportUploadMessage) salesReportUploadMessage.textContent = error.message;
+      } finally {
+        salesReportFileInput.value = "";
+      }
+    }
+
+    function openSalesReportUploadPicker() {
+      if (!salesReportFileInput || !can("sales_report_manage")) return;
+      salesReportFileInput.click();
     }
 
     function collectCsPayload() {
@@ -7313,6 +12914,52 @@ HTML = r"""<!doctype html>
         subject: csSubjectInput.value.trim(),
         body: csBodyInput.value.trim(),
       };
+    }
+
+    function updateCsAttachmentSummary() {
+      if (!csAttachmentInput || !csAttachmentSummary) return;
+      const files = Array.from(csAttachmentInput.files || []);
+      if (!files.length) {
+        csAttachmentSummary.textContent = "첨부파일 없음";
+        if (csAttachmentDropMain) csAttachmentDropMain.textContent = "파일을 드래그하거나 파일 선택 버튼을 눌러주세요.";
+        return;
+      }
+      const totalSize = files.reduce((sum, file) => sum + file.size, 0);
+      const sizeMb = Math.ceil((totalSize / 1024 / 1024) * 10) / 10;
+      if (csAttachmentDropMain) csAttachmentDropMain.textContent = files.length === 1 ? files[0].name : `${files.length}개 파일 선택됨`;
+      csAttachmentSummary.textContent = `${files.length}개 첨부 선택 / 약 ${sizeMb}MB`;
+    }
+
+    function appendCsMailPayload(formData, payload) {
+      formData.append("payload", JSON.stringify(payload));
+      Array.from(csAttachmentInput?.files || []).forEach((file, index) => {
+        formData.append(`cs_attachment_${index + 1}`, file, file.name);
+      });
+      return formData;
+    }
+
+    async function sendCurrentCsMail() {
+      refreshCsBody();
+      const payload = collectCsPayload();
+      if (!payload.recipient_email || !payload.subject || !payload.body) {
+        throw new Error("받는 업체 메일, 제목, 요청 내용을 입력해주세요.");
+      }
+      const response = await fetch("/api/cs-mail", {
+        method: "POST",
+        body: appendCsMailPayload(new FormData(), payload),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "메일 전송에 실패했습니다.");
+      notice.textContent = data.message || "메일 전송이 완료되었습니다.";
+      activeCsCaseId = "";
+      if (csAttachmentInput) csAttachmentInput.value = "";
+      updateCsAttachmentSummary();
+      if (currentMode === "ledger") {
+        closeLedgerCsPopup();
+        await loadLedgerCases();
+      } else {
+        await loadCsCases();
+      }
     }
 
     function collectStockNoticePayload() {
@@ -7403,6 +13050,292 @@ HTML = r"""<!doctype html>
       return data;
     }
 
+    async function hermesFetchJson(url, options = {}) {
+      const response = await fetch(url, {
+        credentials: "same-origin",
+        ...options,
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || "헤르메스 요청 처리에 실패했습니다.");
+      return data;
+    }
+
+    function hermesTextFromResult(data) {
+      const payload = data?.result?.data || data?.data || data?.result || data;
+      if (!payload) return "";
+      if (typeof payload === "string") return payload;
+      for (const key of ["answer", "message", "text", "content", "result", "reply"]) {
+        if (payload[key]) return String(payload[key]);
+      }
+      return JSON.stringify(payload, null, 2);
+    }
+
+    function setHermesStatus(ok, message) {
+      if (!hermesStatusPill) return;
+      hermesStatusPill.textContent = ok ? "연결됨" : (message ? "확인 필요" : "연결 대기");
+      hermesStatusPill.classList.toggle("ok", Boolean(ok));
+      hermesStatusPill.classList.toggle("error", Boolean(message && !ok));
+      hermesStatusPill.title = message || "";
+    }
+
+    const HERMES_PRESETS = {
+      vps: {
+        base_url: "http://hermes-agent:4860",
+        health_path: "/health",
+        chat_path: "/api/chat",
+        automation_path: "/api/automation",
+        help: "VPS 배포 후 같은 Docker 네트워크 안에서 사용하는 운영 권장 주소입니다.",
+      },
+      local: {
+        base_url: "http://127.0.0.1:4860",
+        health_path: "/health",
+        chat_path: "/api/chat",
+        automation_path: "/api/automation",
+        help: "로컬 PC 또는 임시 테스트용 Hermes Agent 주소입니다. 실제 포트가 다르면 주소만 바꿔 저장하세요.",
+      },
+    };
+
+    function applyHermesPreset(name) {
+      const preset = HERMES_PRESETS[name];
+      if (!preset) return;
+      if (hermesEnabled) hermesEnabled.checked = true;
+      if (hermesBaseUrl) hermesBaseUrl.value = preset.base_url;
+      if (hermesHealthPath) hermesHealthPath.value = preset.health_path;
+      if (hermesChatPath) hermesChatPath.value = preset.chat_path;
+      if (hermesAutomationPath) hermesAutomationPath.value = preset.automation_path;
+      if (hermesPresetHelp) hermesPresetHelp.textContent = preset.help;
+      if (hermesSettingsMessage) hermesSettingsMessage.textContent = "프리셋을 적용했습니다. 저장 후 연결 테스트를 진행하세요.";
+    }
+
+    function renderHermesSettings(settings = {}) {
+      if (hermesEnabled) hermesEnabled.checked = settings.enabled === true;
+      if (hermesBaseUrl) hermesBaseUrl.value = settings.base_url || "";
+      if (hermesHealthPath) hermesHealthPath.value = settings.health_path || "/health";
+      if (hermesChatPath) hermesChatPath.value = settings.chat_path || "/api/chat";
+      if (hermesAutomationPath) hermesAutomationPath.value = settings.automation_path || "/api/automation";
+      if (hermesTimeoutSeconds) hermesTimeoutSeconds.value = String(settings.timeout_seconds || 20);
+      if (hermesPresetHelp) {
+        const profile = settings.profile || (String(settings.base_url || "").includes("hermes-agent") ? "vps" : "local");
+        hermesPresetHelp.textContent = HERMES_PRESETS[profile]?.help || "Hermes Agent 연결 설정을 확인하세요.";
+      }
+      if (hermesApiKey) {
+        hermesApiKey.value = "";
+        hermesApiKey.placeholder = settings.has_api_key ? "저장된 API 키 사용" : "API 키가 없으면 비워두세요";
+      }
+    }
+
+    async function deleteUserAccount(userId) {
+      const user = userAccounts.find((item) => String(item.id) === String(userId));
+      if (!user) return;
+      if (String(user.id) === String(currentUser.id)) {
+        userAdminMessage.textContent = "현재 로그인한 본인 계정은 삭제할 수 없습니다.";
+        return;
+      }
+      const label = user.display_name || user.username || "선택한 사용자";
+      if (!await requestAppConfirm({
+        kicker: "사용자 삭제",
+        title: "계정을 삭제할까요?",
+        message: "삭제 후 해당 아이디는 로그인할 수 없습니다.",
+        highlight: label,
+        okText: "삭제",
+        cancelText: "취소",
+      })) return;
+      userAdminMessage.textContent = "사용자 계정을 삭제하는 중입니다.";
+      try {
+        const response = await fetch("/api/users-delete", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: user.id }),
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "사용자 계정을 삭제하지 못했습니다.");
+        userAccounts = data.users || [];
+        deletedUserAccounts = data.deleted_users || [];
+        renderUserAccounts();
+        resetUserAdminForm();
+        userAdminMessage.textContent = data.message || "사용자 계정을 삭제했습니다.";
+      } catch (error) {
+        userAdminMessage.textContent = error.message;
+      }
+    }
+
+    function renderHermesHistoryLegacy(items = []) {
+      if (!hermesHistoryList) return;
+      hermesHistoryList.innerHTML = items.length ? items.map((item) => `
+        <div class="hermes-history-item">
+          <strong>${escapeHtml(item.title || item.kind || "헤르메스 작업")}</strong>
+          <span>${escapeHtml(item.created_at || "")} · ${escapeHtml(item.kind || "")} · ${escapeHtml(item.status || "")}</span>
+          <span>${escapeHtml(item.message || "")}</span>
+        </div>
+      `).join("") : `<div class="admin-message">아직 헤르메스 작업내역이 없습니다.</div>`;
+    }
+
+    function hermesHistoryCategory(item = {}) {
+      const category = String(item.category || "").toLowerCase();
+      if (category) return category;
+      const kind = String(item.kind || "").toLowerCase();
+      if (kind.includes("summary") || kind.includes("요약")) return "summary";
+      if (kind.includes("automation") || kind.includes("자동")) return "automation";
+      if (kind.includes("chat") || kind.includes("채팅")) return "chat";
+      return "other";
+    }
+
+    function renderHermesSummaries(items = []) {
+      if (!hermesSummaryList) return;
+      const summaries = items.filter((item) => hermesHistoryCategory(item) === "summary");
+      hermesSummaryList.innerHTML = summaries.length ? summaries.map((item) => `
+        <div class="hermes-summary-card">
+          <strong>${escapeHtml(item.title || "채팅 요약")}</strong>
+          <div>${escapeHtml(item.summary || item.message || "")}</div>
+          <span>${escapeHtml(item.created_at || "")} · ${escapeHtml(item.source_count || "0")}건 기준</span>
+        </div>
+      `).join("") : `<div class="admin-message">&#51200;&#51109;&#46108; &#50836;&#50557;&#51060; &#50630;&#49845;&#45768;&#45796;.</div>`;
+    }
+
+    function renderHermesHistory(items = []) {
+      if (!hermesHistoryList) return;
+      const filter = hermesHistoryFilter?.value || "all";
+      const filteredItems = filter === "all" ? items : items.filter((item) => hermesHistoryCategory(item) === filter);
+      renderHermesSummaries(items);
+      hermesHistoryList.innerHTML = filteredItems.length ? filteredItems.map((item) => `
+        <div class="hermes-history-item">
+          <strong>${escapeHtml(item.title || item.kind || "헤르메스 작업")}</strong>
+          <span>${escapeHtml(item.created_at || "")} · ${escapeHtml(item.kind || "")} · ${escapeHtml(item.status || "")}</span>
+          <span>${escapeHtml(item.message || "")}</span>
+        </div>
+      `).join("") : `<div class="admin-message">표시할 헤르메스 작업내역이 없습니다.</div>`;
+    }
+
+    async function loadHermesStatus() {
+      if (!can("hermes_use")) return;
+      const data = await hermesFetchJson("/api/hermes-status");
+      setHermesStatus(Boolean(data.ok), data.message || "");
+      renderHermesSettings(data.settings || {});
+      if (hermesSettingsMessage) hermesSettingsMessage.textContent = data.message || "헤르메스 상태를 확인했습니다.";
+    }
+
+    async function loadHermesHistory() {
+      if (!can("hermes_use")) return;
+      const data = await hermesFetchJson("/api/hermes-history");
+      hermesHistoryItems = data.history || [];
+      renderHermesHistory(hermesHistoryItems);
+    }
+
+    async function loadHermesAll() {
+      await Promise.all([
+        loadHermesStatus().catch((error) => {
+          setHermesStatus(false, error.message);
+          if (hermesSettingsMessage) hermesSettingsMessage.textContent = error.message;
+        }),
+        loadHermesHistory().catch(() => {}),
+      ]);
+    }
+
+    function setHermesTab(tabName) {
+      hermesActiveTab = ["chat", "automation", "history", "settings"].includes(tabName) ? tabName : "chat";
+      if (hermesActiveTab === "automation" && !can("hermes_automation")) hermesActiveTab = "chat";
+      if (hermesActiveTab === "settings" && !can("hermes_admin")) hermesActiveTab = "chat";
+      hermesTabs.forEach((button) => button.classList.toggle("active", button.dataset.hermesTabButton === hermesActiveTab));
+      hermesPanels.forEach((panel) => panel.classList.toggle("active", panel.dataset.hermesPanel === hermesActiveTab));
+      document.querySelectorAll("[data-hermes-tab]").forEach((button) => {
+        button.classList.toggle("active", button.dataset.hermesTab === hermesActiveTab);
+      });
+      if (hermesActiveTab === "history") loadHermesHistory().catch(() => {});
+    }
+
+    async function saveHermesSettings() {
+      if (!can("hermes_admin")) return;
+      const payload = {
+        enabled: Boolean(hermesEnabled?.checked),
+        base_url: hermesBaseUrl?.value.trim() || "",
+        health_path: hermesHealthPath?.value.trim() || "/health",
+        chat_path: hermesChatPath?.value.trim() || "/api/chat",
+        automation_path: hermesAutomationPath?.value.trim() || "/api/automation",
+        api_key: hermesApiKey?.value || "",
+        timeout_seconds: hermesTimeoutSeconds?.value || "20",
+        profile: String(hermesBaseUrl?.value || "").includes("hermes-agent") ? "vps" : "local",
+      };
+      if (hermesSettingsMessage) hermesSettingsMessage.textContent = "헤르메스 설정을 저장하는 중입니다.";
+      const data = await hermesFetchJson("/api/hermes-settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      renderHermesSettings(data.settings || {});
+      if (hermesSettingsMessage) hermesSettingsMessage.textContent = data.message || "헤르메스 설정을 저장했습니다.";
+      await loadHermesStatus();
+    }
+
+    async function testHermesConnection() {
+      if (!can("hermes_admin")) return;
+      if (hermesSettingsMessage) hermesSettingsMessage.textContent = "헤르메스 연결을 확인하는 중입니다.";
+      const data = await hermesFetchJson("/api/hermes-test", { method: "POST" });
+      setHermesStatus(Boolean(data.ok), data.message || "");
+      if (hermesSettingsMessage) hermesSettingsMessage.textContent = data.message || "연결 테스트를 완료했습니다.";
+    }
+
+    async function sendHermesChat() {
+      const message = (hermesChatInput?.value || "").trim();
+      if (!message) {
+        if (hermesChatResponse) hermesChatResponse.textContent = "보낼 내용을 입력해주세요.";
+        hermesChatInput?.focus();
+        return;
+      }
+      if (hermesChatResponse) hermesChatResponse.textContent = "헤르메스가 답변을 준비하는 중입니다.";
+      try {
+        const data = await hermesFetchJson("/api/hermes-chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ message }),
+        });
+        if (hermesChatResponse) hermesChatResponse.textContent = hermesTextFromResult(data) || "응답을 받았습니다.";
+        await loadHermesHistory();
+      } catch (error) {
+        if (hermesChatResponse) hermesChatResponse.textContent = error.message;
+      }
+    }
+
+    async function createHermesSummary() {
+      if (!can("hermes_use")) return;
+      if (hermesSummaryCreate) hermesSummaryCreate.disabled = true;
+      if (hermesSummaryList) hermesSummaryList.innerHTML = `<div class="admin-message">채팅내역을 요약하는 중입니다.</div>`;
+      try {
+        const data = await hermesFetchJson("/api/hermes-summary", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ kind: "summary" }),
+        });
+        await loadHermesHistory();
+        if (data.summary && hermesSummaryList) renderHermesSummaries([{ ...data.summary, category: "summary" }, ...hermesHistoryItems]);
+      } catch (error) {
+        if (hermesSummaryList) hermesSummaryList.innerHTML = `<div class="admin-message">${escapeHtml(error.message)}</div>`;
+      } finally {
+        if (hermesSummaryCreate) hermesSummaryCreate.disabled = false;
+      }
+    }
+
+    async function sendHermesAutomation() {
+      const title = (hermesAutomationTitle?.value || "").trim();
+      const body = (hermesAutomationBody?.value || "").trim();
+      if (!title && !body) {
+        if (hermesAutomationResponse) hermesAutomationResponse.textContent = "자동화 요청 내용을 입력해주세요.";
+        hermesAutomationBody?.focus();
+        return;
+      }
+      if (hermesAutomationResponse) hermesAutomationResponse.textContent = "자동화 요청을 보내는 중입니다.";
+      try {
+        const data = await hermesFetchJson("/api/hermes-automation", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ title, body }),
+        });
+        if (hermesAutomationResponse) hermesAutomationResponse.textContent = hermesTextFromResult(data) || "요청을 보냈습니다.";
+        await loadHermesHistory();
+      } catch (error) {
+        if (hermesAutomationResponse) hermesAutomationResponse.textContent = error.message;
+      }
+    }
+
     function syncCompanyNavState() {
       companyTabs.forEach((button) => button.classList.toggle("active", button.dataset.companyTab === companyActiveTab));
       companyNavTabs.forEach((button) => button.classList.toggle("active", button.dataset.companyTab === companyActiveTab));
@@ -7415,6 +13348,8 @@ HTML = r"""<!doctype html>
           || (companyActiveTab === "notice" && panel.dataset.companyPanel === "calendar");
         panel.classList.toggle("active", isActivePanel);
       });
+      dashboardContent?.classList.toggle("notice-calendar-mode", companyActiveTab === "notice");
+      dashboardContent?.classList.toggle("calendar-detail-mode", companyActiveTab === "calendar");
       syncCompanyNavState();
       if (companyActiveTab === "staff") {
         loadCompanyStaffDashboard().catch(() => {});
@@ -7461,6 +13396,9 @@ HTML = r"""<!doctype html>
 
     function calendarEventLabel(event) {
       if (event.type === "project") return `프로젝트 · ${event.subtitle || ""}`;
+      if (event.type === "import") return `컨테이너 · ${event.subtitle || ""}`;
+      if (event.type === "cargo-inbound") return `화물 입고 · ${event.subtitle || ""}`;
+      if (event.type === "cargo") return `화물 출고 · ${event.subtitle || ""}`;
       if (event.type === "leave") return `연차 · ${event.subtitle || ""}`;
       if (event.type === "pending") return `승인대기 · ${event.subtitle || ""}`;
       return `업무 · ${event.subtitle || ""}`;
@@ -7484,6 +13422,7 @@ HTML = r"""<!doctype html>
       const selected = parseLocalDate(companyCalendarSelectedDay);
       companyCalendarSelectedDate.textContent = selected ? shortKoreanDate(companyCalendarSelectedDay) : companyCalendarSelectedDay;
       const items = eventsForDay(companyCalendarSelectedDay);
+      if (companyCalendarSelectedCount) companyCalendarSelectedCount.textContent = `${formatSalesNumber(items.length)}건`;
       if (!items.length) {
         companyCalendarSelectedList.innerHTML = `<div class="calendar-empty">선택한 날짜에 표시할 일정이 없습니다.</div>`;
         return;
@@ -7494,7 +13433,7 @@ HTML = r"""<!doctype html>
             <div class="company-task-title">${escapeHtml(event.title || "일정")}</div>
             <div class="company-task-meta">${escapeHtml(calendarEventLabel(event))}</div>
           </div>
-          <span class="calendar-event ${escapeHtml(event.type || "task")}">${escapeHtml(event.type === "project" ? "프로젝트" : event.type === "task" ? "업무" : event.type === "pending" ? "대기" : "연차")}</span>
+          <span class="calendar-event ${escapeHtml(event.type || "task")}">${escapeHtml(event.type === "project" ? "프로젝트" : event.type === "import" ? "컨테이너" : event.type === "cargo-inbound" ? "입고" : event.type === "cargo" ? "출고" : event.type === "task" ? "업무" : event.type === "pending" ? "대기" : "연차")}</span>
         </div>
       `).join("");
     }
@@ -7514,6 +13453,12 @@ HTML = r"""<!doctype html>
       if (companyCalendarTaskCount) companyCalendarTaskCount.textContent = `${summary.task || 0}건`;
       if (companyCalendarLeaveCount) companyCalendarLeaveCount.textContent = `${summary.leave || 0}건`;
       if (companyCalendarRiskCount) companyCalendarRiskCount.textContent = `${summary.risk || 0}건`;
+      const monthTotal = (summary.project || 0) + (summary.task || 0) + (summary.leave || 0);
+      const todayTotal = companyCalendarEvents.filter((event) => event.date === today).length;
+      const pendingTotal = companyCalendarEvents.filter((event) => event.type === "pending").length;
+      if (companyCalendarMonthTotal) companyCalendarMonthTotal.textContent = `월 일정 ${formatSalesNumber(monthTotal)}건`;
+      if (companyCalendarTodayTotal) companyCalendarTodayTotal.textContent = `오늘 ${formatSalesNumber(todayTotal)}건`;
+      if (companyCalendarPendingTotal) companyCalendarPendingTotal.textContent = `대기 ${formatSalesNumber(pendingTotal)}건`;
       const cells = [];
       for (let index = 0; index < 42; index += 1) {
         const day = new Date(gridStart);
@@ -7553,10 +13498,373 @@ HTML = r"""<!doctype html>
       companyCalendarGrid.innerHTML = `<div class="calendar-empty">캘린더를 불러오는 중입니다.</div>`;
       const data = await crmFetchJson(`/api/company-calendar-events?month=${encodeURIComponent(companyCalendarMonth)}`);
       renderCompanyCalendar(data);
+      renderNoticePreview();
+    }
+
+    function setDashboardSalesMetric(labelElement, valueElement, label, value, className = "", title = "") {
+      if (labelElement) labelElement.textContent = label;
+      if (!valueElement) return;
+      valueElement.textContent = value;
+      valueElement.className = className;
+      if (title) valueElement.title = title;
+      else valueElement.removeAttribute("title");
+    }
+
+    function setDashboardSalesCompare(labelElement, valueElement, rateElement, label, value, rate, className = "", title = "") {
+      if (labelElement) labelElement.textContent = label;
+      if (valueElement) {
+        valueElement.textContent = value;
+        valueElement.className = className;
+        if (title) valueElement.title = title;
+        else valueElement.removeAttribute("title");
+      }
+      if (rateElement) {
+        rateElement.textContent = rate;
+        rateElement.className = `dashboard-sales-rate${className ? ` ${className}` : ""}`;
+      }
+    }
+
+    function setDashboardCompareWaiting(amountWaiting, quantityWaiting) {
+      dashboardSalesAmountCompareCard?.classList.toggle("waiting", Boolean(amountWaiting));
+      dashboardSalesQuantityCompareCard?.classList.toggle("waiting", Boolean(quantityWaiting));
+    }
+
+    function setDashboardDecisionChip(chipElement, valueElement, value, title = "", state = "") {
+      if (valueElement) {
+        valueElement.textContent = value;
+        if (title) valueElement.title = title;
+        else valueElement.removeAttribute("title");
+      }
+      if (!chipElement) return;
+      chipElement.classList.remove("good", "warn", "bad");
+      if (state) chipElement.classList.add(state);
+    }
+
+    function setDashboardSalesStatus(text, state = "") {
+      if (!dashboardSalesStatus) return;
+      dashboardSalesStatus.textContent = text;
+      dashboardSalesStatus.className = `dashboard-sales-status${state ? ` ${state}` : ""}`;
+    }
+
+    function renderDashboardSalesUnavailable(message) {
+      setDashboardSalesStatus("연동 대기");
+      setDashboardSalesMetric(dashboardTodaySalesLabel, dashboardTodaySales, "오늘 손익매출", "-");
+      setDashboardSalesMetric(dashboardTodayQuantityLabel, dashboardTodayQuantity, "오늘 판매수량", "-");
+      setDashboardSalesMetric(dashboardPreviousSalesLabel, dashboardPreviousSales, "직전 영업일 매출", "-");
+      setDashboardSalesMetric(dashboardPreviousQuantityLabel, dashboardPreviousQuantity, "직전 영업일 수량", "-");
+      setDashboardSalesMetric(dashboardMonthSalesLabel, dashboardMonthSales, "이번 달 누적매출", "-");
+      setDashboardSalesMetric(dashboardSalesQuantityLabel, dashboardSalesQuantity, "이번 달 판매수량", "-");
+      setDashboardSalesCompare(dashboardSalesAmountCompareLabel, dashboardSalesAmountCompare, dashboardSalesAmountRate, "매출금액 비교", "-", "-");
+      setDashboardSalesCompare(dashboardSalesQuantityCompareLabel, dashboardSalesQuantityCompare, dashboardSalesQuantityRate, "판매수량 비교", "-", "-");
+      setDashboardCompareWaiting(true, true);
+      setDashboardSalesMetric(null, dashboardSalesMargin, "", "-");
+      setDashboardSalesMetric(null, dashboardSellerTotal, "", "-");
+      setDashboardSalesMetric(null, dashboardSupplierPurchase, "", "-");
+      if (dashboardSalesDecisionTitle) dashboardSalesDecisionTitle.textContent = "매출현황 데이터 연결 대기 중";
+      if (dashboardSalesDecisionNote) dashboardSalesDecisionNote.textContent = "금일 매출 업로드 후 손익, 매입, 마진 기준을 바로 확인할 수 있습니다.";
+      [
+        dashboardDecisionTodayChip,
+        dashboardDecisionPurchaseChip,
+        dashboardDecisionMarginChip,
+      ].forEach((chip) => {
+        chip?.classList.remove("good", "warn", "bad");
+      });
+      if (dashboardDecisionTodaySales) dashboardDecisionTodaySales.textContent = "-";
+      if (dashboardDecisionPurchase) dashboardDecisionPurchase.textContent = "-";
+      if (dashboardDecisionMargin) dashboardDecisionMargin.textContent = "-";
+      if (dashboardSalesMessage) {
+        dashboardSalesMessage.classList.remove("has-chart");
+        dashboardSalesMessage.textContent = message || "매출현황 및 관리 데이터를 불러오는 중입니다.";
+      }
+    }
+
+    function dashboardRecentSalesRows(dailyRows = [], baseDateText = "") {
+      const rowsByDate = new Map();
+      dailyRows.forEach((row) => {
+        const date = parseLocalDate(row.report_date || "");
+        if (!date) return;
+        const key = localDateString(date);
+        rowsByDate.set(key, {
+          key,
+          amount: Number(row.profit_sales_amount || 0),
+          quantity: Number(row.quantity || 0),
+          hasData: true,
+        });
+      });
+      const fallbackDate = dailyRows
+        .map((row) => row.report_date || "")
+        .filter(Boolean)
+        .sort((left, right) => left.localeCompare(right, "ko"))
+        .at(-1);
+      const baseDate = parseLocalDate(baseDateText || fallbackDate || todayString());
+      if (!baseDate) return [];
+      const startDate = new Date(baseDate);
+      startDate.setDate(baseDate.getDate() - 6);
+      return Array.from({ length: 7 }, (_, index) => {
+        const day = new Date(startDate);
+        day.setDate(startDate.getDate() + index);
+        const key = localDateString(day);
+        const row = rowsByDate.get(key);
+        return {
+          key,
+          label: shortKoreanDate(key),
+          axisLabel: `${day.getMonth() + 1}/${day.getDate()}`,
+          amount: row?.amount || 0,
+          quantity: row?.quantity || 0,
+          hasData: Boolean(row?.hasData),
+        };
+      });
+    }
+
+    function renderDashboardRecentSalesChart(data, { comparisonDelta = 0, hasComparison = false } = {}) {
+      if (!dashboardSalesMessage) return;
+      const recentRows = dashboardRecentSalesRows(data.daily_rows || [], data.selected_date || data.today?.report_date || "");
+      const dataRows = recentRows.filter((row) => row.hasData);
+      if (!recentRows.length || !dataRows.length) {
+        dashboardSalesMessage.classList.remove("has-chart");
+        dashboardSalesMessage.textContent = "최근 7일 매출 추세는 매출현황 업로드 후 표시됩니다.";
+        return;
+      }
+      const values = dataRows.map((row) => row.amount);
+      const minAmount = Math.min(0, ...values);
+      const maxAmount = Math.max(1, ...values);
+      const range = Math.max(maxAmount - minAmount, 1);
+      const chartTop = 8;
+      const chartBottom = 64;
+      const pointForRow = (row, index) => {
+        const x = 4 + (index * (92 / 6));
+        const y = row.hasData
+          ? chartBottom - (((row.amount - minAmount) / range) * (chartBottom - chartTop))
+          : chartBottom;
+        return { x: Number(x.toFixed(2)), y: Number(y.toFixed(2)) };
+      };
+      const points = recentRows.map(pointForRow);
+      const dataPoints = recentRows
+        .map((row, index) => ({ row, ...points[index] }))
+        .filter((point) => point.row.hasData);
+      const linePoints = dataPoints.map((point) => `${point.x},${point.y}`).join(" ");
+      const areaPath = dataPoints.length > 1
+        ? `M ${dataPoints[0].x} ${chartBottom} L ${dataPoints.map((point) => `${point.x} ${point.y}`).join(" L ")} L ${dataPoints.at(-1).x} ${chartBottom} Z`
+        : "";
+      const totalAmount = dataRows.reduce((total, row) => total + row.amount, 0);
+      const totalQuantity = dataRows.reduce((total, row) => total + row.quantity, 0);
+      const latestRow = dataRows.at(-1);
+      const chartYPercent = (y) => `${Math.max(0, Math.min(100, (y / 72) * 100)).toFixed(2)}%`;
+      const pointYPercent = (point) => chartYPercent(point.y);
+      const summaryText = hasComparison
+        ? formatSalesMillion(comparisonDelta, true)
+        : "비교 대기";
+      const captionText = `${recentRows[0].label}~${recentRows.at(-1).label}`;
+      const scaleRows = [
+        { label: formatSalesMillion(maxAmount), y: chartTop },
+        { label: formatSalesMillion((maxAmount + minAmount) / 2), y: (chartTop + chartBottom) / 2 },
+        { label: formatSalesMillion(minAmount), y: chartBottom },
+      ];
+      dashboardSalesMessage.classList.add("has-chart");
+      dashboardSalesMessage.innerHTML = `
+        <div class="dashboard-recent-sales" aria-label="최근 7일 손익매출 추세">
+          <div class="dashboard-recent-sales-head">
+            <div class="dashboard-recent-sales-title">최근 7일 손익매출</div>
+            <div class="dashboard-recent-sales-caption">${escapeHtml(captionText)}</div>
+          </div>
+          <div class="dashboard-recent-summary" aria-label="최근 7일 매출 요약">
+            <div class="dashboard-recent-summary-card">
+              <span>최신</span>
+              <strong title="${escapeHtml(formatSalesNumber(latestRow.amount))}">${escapeHtml(formatSalesMillion(latestRow.amount))}</strong>
+            </div>
+            <div class="dashboard-recent-summary-card">
+              <span>7일 합계</span>
+              <strong title="${escapeHtml(formatSalesNumber(totalAmount))}">${escapeHtml(formatSalesMillion(totalAmount))}</strong>
+            </div>
+            <div class="dashboard-recent-summary-card delta${comparisonDelta < 0 ? " negative" : ""}">
+              <span>전영업일 대비</span>
+              <strong title="${escapeHtml(hasComparison ? formatSignedSalesNumber(comparisonDelta) : "비교 대기")}">${escapeHtml(summaryText)}</strong>
+            </div>
+          </div>
+          <div class="dashboard-recent-chart">
+            <div class="dashboard-recent-chart-frame">
+              <div class="dashboard-recent-scale" aria-hidden="true">
+                ${scaleRows.map((row) => `<span style="--scale-y: ${chartYPercent(row.y)}">${escapeHtml(row.label)}</span>`).join("")}
+              </div>
+              <svg viewBox="0 0 100 72" preserveAspectRatio="none" role="img" aria-label="${escapeHtml(`최근 7일 손익매출 합계 ${formatSalesMillion(totalAmount)}`)}">
+                <defs>
+                  <linearGradient id="dashboardRecentSalesGradient" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stop-color="#2563eb" stop-opacity=".20"></stop>
+                    <stop offset="100%" stop-color="#16a34a" stop-opacity=".02"></stop>
+                  </linearGradient>
+                </defs>
+                ${areaPath ? `<path class="dashboard-recent-area" d="${escapeHtml(areaPath)}"></path>` : ""}
+                ${linePoints ? `<polyline class="dashboard-recent-line" points="${escapeHtml(linePoints)}"></polyline>` : ""}
+              </svg>
+              <div class="dashboard-recent-points" aria-hidden="true">
+              ${recentRows.map((row, index) => {
+                const point = points[index];
+                const title = row.hasData
+                  ? `${row.label} · ${formatSalesMillion(row.amount)} (${formatSalesNumber(row.amount)}) · 수량 ${formatSalesNumber(row.quantity)}개`
+                  : `${row.label} · 데이터 없음`;
+                const isLatest = row.key === latestRow.key;
+                return `<span class="dashboard-recent-point${row.hasData ? "" : " missing"}${isLatest ? " latest" : ""}" style="--point-x: ${point.x}%; --point-y: ${pointYPercent(point)}" title="${escapeHtml(title)}"></span>`;
+              }).join("")}
+              </div>
+            </div>
+            <div class="dashboard-recent-axis">
+              ${recentRows.map((row) => `<span>${escapeHtml(row.axisLabel)}</span>`).join("")}
+            </div>
+          </div>
+          <div class="dashboard-recent-note">
+            <span>판매수량 합계 ${escapeHtml(formatSalesNumber(totalQuantity))}개</span>
+            <span>선택일 ${escapeHtml(latestRow.label)}</span>
+          </div>
+        </div>
+      `;
+    }
+
+    function renderDashboardSalesSummary(data) {
+      const today = data.today || {};
+      const yesterday = data.yesterday || {};
+      const month = data.month || {};
+      const comparison = data.comparison || {};
+      const sellerTotal = data.seller_total || {};
+      const supplierPurchaseTotal = data.supplier_purchase_total || {};
+      const hasTodaySalesData = Boolean(data.today_data_uploaded);
+      const selectedDateLabel = shortKoreanDate(data.selected_date || today.report_date || "");
+      const previousDateLabel = shortKoreanDate(data.previous_business_date || yesterday.report_date || "");
+      const periodLabel = formatSalesPeriodLabel(data.period || "");
+      const todaySalesAmount = Number(today.profit_sales_amount || 0);
+      const previousSalesAmount = Number(yesterday.profit_sales_amount || 0);
+      const monthSalesAmount = Number(month.profit_sales_amount || 0);
+      const sellerSalesAmount = Number(sellerTotal.profit_sales_amount || 0);
+      const purchaseAmount = Number(supplierPurchaseTotal.purchase_total || 0);
+      const comparisonDelta = Number(comparison.profit_sales_amount_delta || 0);
+      const quantityDelta = Number(comparison.quantity_delta || 0);
+      const marginAmount = Number(month.profit_margin || 0);
+      const marginRate = monthSalesAmount ? (marginAmount / monthSalesAmount) * 100 : 0;
+      const hasComparison = hasTodaySalesData && Boolean(yesterday.report_date);
+      setDashboardSalesStatus(hasTodaySalesData ? "연동 완료" : "금일 미업로드", hasTodaySalesData ? "connected" : "warning");
+      if (dashboardSalesDecisionTitle) {
+        dashboardSalesDecisionTitle.textContent = hasTodaySalesData
+          ? `${selectedDateLabel || "선택일"} 손익 ${formatSalesCompactMoney(todaySalesAmount)} · 전영업일 대비 ${hasComparison ? formatSalesCompactMoney(comparisonDelta, true) : "비교 대기"}`
+          : "금일 매출 업로드가 아직 필요합니다";
+      }
+      if (dashboardSalesDecisionNote) {
+        dashboardSalesDecisionNote.textContent = hasTodaySalesData
+          ? `월 마진 ${formatSalesCompactMoney(marginAmount)}(${formatSalesPercent(marginRate)}) 기준으로 매출·매입 흐름을 확인하세요.`
+          : "매출표 업로드 후 손익, 매입, 마진 기준을 바로 확인할 수 있습니다.";
+      }
+      setDashboardDecisionChip(
+        dashboardDecisionTodayChip,
+        dashboardDecisionTodaySales,
+        hasTodaySalesData ? formatSalesCompactMoney(todaySalesAmount) : "미업로드",
+        hasTodaySalesData ? formatSalesNumber(todaySalesAmount) : "",
+        hasTodaySalesData ? "good" : "warn",
+      );
+      setDashboardDecisionChip(
+        dashboardDecisionPurchaseChip,
+        dashboardDecisionPurchase,
+        formatSalesCompactMoney(purchaseAmount),
+        formatSalesNumber(purchaseAmount),
+        purchaseAmount > 0 ? "warn" : "",
+      );
+      setDashboardDecisionChip(
+        dashboardDecisionMarginChip,
+        dashboardDecisionMargin,
+        formatSalesCompactMoney(marginAmount),
+        formatSalesNumber(marginAmount),
+        marginAmount < 0 ? "bad" : "good",
+      );
+      setDashboardSalesMetric(
+        dashboardTodaySalesLabel,
+        dashboardTodaySales,
+        `${selectedDateLabel || "오늘"} 손익매출`,
+        hasTodaySalesData ? formatSalesCompactMoney(todaySalesAmount) : "미업로드",
+        hasTodaySalesData ? "" : "notice",
+        hasTodaySalesData ? formatSalesNumber(todaySalesAmount) : "",
+      );
+      setDashboardSalesMetric(
+        dashboardTodayQuantityLabel,
+        dashboardTodayQuantity,
+        `${selectedDateLabel || "오늘"} 판매수량`,
+        hasTodaySalesData ? `${formatSalesNumber(today.quantity)}개` : "미업로드",
+        hasTodaySalesData ? "" : "notice",
+      );
+      setDashboardSalesMetric(
+        dashboardPreviousSalesLabel,
+        dashboardPreviousSales,
+        previousDateLabel ? `${previousDateLabel} 직전 영업일 매출` : "직전 영업일 매출",
+        yesterday.report_date ? formatSalesCompactMoney(previousSalesAmount) : "데이터 없음",
+        yesterday.report_date ? "" : "notice",
+        yesterday.report_date ? formatSalesNumber(previousSalesAmount) : "",
+      );
+      setDashboardSalesMetric(
+        dashboardPreviousQuantityLabel,
+        dashboardPreviousQuantity,
+        previousDateLabel ? `${previousDateLabel} 직전 영업일 수량` : "직전 영업일 수량",
+        yesterday.report_date ? `${formatSalesNumber(yesterday.quantity)}개` : "데이터 없음",
+        yesterday.report_date ? "" : "notice",
+      );
+      setDashboardSalesMetric(
+        dashboardMonthSalesLabel,
+        dashboardMonthSales,
+        "이번 달 누적매출",
+        formatSalesCompactMoney(monthSalesAmount),
+        "",
+        formatSalesNumber(monthSalesAmount),
+      );
+      setDashboardSalesMetric(
+        dashboardSalesQuantityLabel,
+        dashboardSalesQuantity,
+        "이번 달 판매수량",
+        `${formatSalesNumber(month.quantity)}개`,
+      );
+      setDashboardSalesCompare(
+        dashboardSalesAmountCompareLabel,
+        dashboardSalesAmountCompare,
+        dashboardSalesAmountRate,
+        previousDateLabel ? `${previousDateLabel} 매출 대비` : "매출금액 비교",
+        hasComparison ? formatSalesCompactMoney(comparisonDelta, true) : "비교 대기",
+        hasComparison ? formatSignedSalesPercent(comparison.profit_sales_amount_delta_rate) : "-",
+        hasComparison ? salesAmountClass(comparisonDelta) : "notice",
+        hasComparison ? formatSignedSalesNumber(comparisonDelta) : "",
+      );
+      setDashboardSalesCompare(
+        dashboardSalesQuantityCompareLabel,
+        dashboardSalesQuantityCompare,
+        dashboardSalesQuantityRate,
+        previousDateLabel ? `${previousDateLabel} 수량 대비` : "판매수량 비교",
+        hasComparison ? formatSignedSalesNumber(quantityDelta, "개") : "비교 대기",
+        hasComparison ? formatSignedSalesPercent(comparison.quantity_delta_rate) : "-",
+        hasComparison ? salesAmountClass(quantityDelta) : "notice",
+      );
+      setDashboardCompareWaiting(!hasComparison, !hasComparison);
+      setDashboardSalesMetric(null, dashboardSalesMargin, "", formatSalesCompactMoney(marginAmount), salesAmountClass(marginAmount), formatSalesNumber(marginAmount));
+      setDashboardSalesMetric(null, dashboardSellerTotal, "", formatSalesCompactMoney(sellerSalesAmount), "", formatSalesNumber(sellerSalesAmount));
+      setDashboardSalesMetric(null, dashboardSupplierPurchase, "", formatSalesCompactMoney(purchaseAmount), "", formatSalesNumber(purchaseAmount));
+      renderDashboardRecentSalesChart(data, { comparisonDelta, hasComparison });
+    }
+
+    async function loadDashboardSalesSummary() {
+      if (!dashboardSalesStatus) return;
+      if (!can("sales_report_manage")) {
+        renderDashboardSalesUnavailable("매출현황 조회 권한이 없어 데이터를 표시할 수 없습니다.");
+        return;
+      }
+      renderDashboardSalesUnavailable("매출현황 및 관리 데이터를 불러오는 중입니다.");
+      try {
+        const response = await fetch("/api/sales-report-dashboard");
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.error || "매출현황을 불러오지 못했습니다.");
+        renderDashboardSalesSummary(data);
+      } catch (error) {
+        setDashboardSalesStatus("연동 오류", "warning");
+        if (dashboardSalesMessage) {
+          dashboardSalesMessage.classList.remove("has-chart");
+          dashboardSalesMessage.textContent = error.message || "매출현황을 불러오지 못했습니다.";
+        }
+      }
     }
 
     async function loadDashboardEntryData() {
-      const tasks = [loadImportShipments()];
+      const tasks = [loadImportShipments(), loadCargoShipments(), loadDashboardSalesSummary()];
       tasks.push(loadCompanyCalendar().catch(() => {
         if (companyCalendarGrid) companyCalendarGrid.innerHTML = `<div class="calendar-empty">캘린더를 불러오지 못했습니다.</div>`;
       }));
@@ -7575,13 +13883,24 @@ HTML = r"""<!doctype html>
         : event.type === "pending"
           ? "승인대기"
           : event.status || "승인";
+      const eventKind = event.type === "project"
+        ? "프로젝트"
+        : event.type === "import"
+          ? "컨테이너"
+          : event.type === "cargo-inbound"
+            ? "화물 입고"
+            : event.type === "cargo"
+              ? "화물 출고"
+              : event.type === "pending"
+                ? "승인대기"
+                : "연차";
       openFocusWidget({
-        kicker: event.type === "project" ? "프로젝트 일정" : event.type === "pending" ? "승인대기 연차" : "연차 일정",
+        kicker: event.type === "project" ? "프로젝트 일정" : event.type === "import" ? "컨테이너 일정" : event.type === "cargo-inbound" ? "화물 입고 일정" : event.type === "cargo" ? "화물 출고 일정" : event.type === "pending" ? "승인대기 연차" : "연차 일정",
         title: event.title || "일정",
         subtitle: [shortKoreanDate(event.date), event.subtitle].filter(Boolean).join(" · "),
         body: `
           <div class="focus-widget-grid">
-            ${focusWidgetMetric("구분", event.type === "project" ? "프로젝트" : event.type === "pending" ? "승인대기" : "연차")}
+            ${focusWidgetMetric("구분", eventKind)}
             ${focusWidgetMetric("일자", shortKoreanDate(event.date))}
             ${focusWidgetMetric("상태", stateText)}
           </div>
@@ -7662,13 +13981,8 @@ HTML = r"""<!doctype html>
     }
 
     async function loadCompanyStaffDashboard() {
-      let saved = {};
-      try {
-        saved = JSON.parse(localStorage.getItem("workhub_notice_template") || "{}");
-      } catch {
-        saved = {};
-      }
-      if (companyStaffNoticeTitle) companyStaffNoticeTitle.textContent = saved.title || "등록 전";
+      const saved = latestNoticeRecord();
+      if (companyStaffNoticeTitle) companyStaffNoticeTitle.textContent = saved?.title || "등록 전";
       if (!can("crm_view")) {
         renderCompanyStaffTasks([]);
         if (companyOrgBody) companyOrgBody.innerHTML = `<div class="company-org-empty">CRM 조회 권한이 없어 조직도 업무 현황을 볼 수 없습니다.</div>`;
@@ -7718,11 +14032,13 @@ HTML = r"""<!doctype html>
       if (!can("crm_view")) {
         internalChatUsers = [];
         renderInternalChatRooms();
+        renderFloatingMessengerRooms();
         return;
       }
       const data = await crmFetchJson("/api/company-staff-dashboard");
       internalChatUsers = data.staff || [];
       renderInternalChatRooms();
+      renderFloatingMessengerRooms();
     }
 
     function internalMessageClass(message) {
@@ -7788,6 +14104,7 @@ HTML = r"""<!doctype html>
       });
       internalChatBody.value = "";
       await loadInternalMessages();
+      loadFloatingMessengerMessages({ silent: true }).catch(() => {});
       if (body.startsWith("/업무")) {
         await Promise.all([
           loadCrmTasks().catch(() => {}),
@@ -7799,6 +14116,321 @@ HTML = r"""<!doctype html>
         ]);
       }
       internalChatBody?.focus();
+    }
+
+    function floatingMessengerRoomLabel(room = floatingMessengerRoom) {
+      if (room.type === "dm") {
+        const user = internalChatUsers.find((item) => String(item.id) === String(room.userId));
+        return user ? `${user.display_name || user.username} DM` : "직원 DM";
+      }
+      return "전체방";
+    }
+
+    function floatingMessengerRoomHint(room = floatingMessengerRoom) {
+      return room.type === "dm"
+        ? "DM에서도 /업무 @직원 내용 / 기한 형식으로 바로 업무를 만들 수 있어."
+        : "전체 공유와 /업무 @직원 내용 / 기한 업무 지시를 바로 남길 수 있어.";
+    }
+
+    function floatingMessengerDateLabel(value) {
+      const raw = String(value || "").trim();
+      if (!raw) return "";
+      const datePart = raw.split(" ")[0] || raw;
+      const currentYear = String(new Date().getFullYear());
+      if (datePart.startsWith(currentYear + "-")) return datePart.slice(5).replace("-", "/");
+      return datePart.replaceAll("-", ".");
+    }
+
+    function renderFloatingMessengerProfile() {
+      if (!floatingMessengerProfileName) return;
+      floatingMessengerProfileName.textContent = currentUser.display_name || currentUser.username || "사용자";
+    }
+
+    function renderFloatingMessengerHome(messages = floatingMessengerMessagesCache) {
+      renderFloatingMessengerProfile();
+      const rows = messages || [];
+      const latest = rows[rows.length - 1];
+      const unreadText = floatingMessengerUnread > 0
+        ? `${floatingMessengerUnread}개의 안 읽은 알림이 있어요`
+        : (rows.length ? "최근 알림" : "새 알림이 없어요");
+      if (floatingMessengerUnreadSummary) floatingMessengerUnreadSummary.textContent = unreadText;
+      if (floatingMessengerChatNotice) floatingMessengerChatNotice.textContent = unreadText;
+      if (!floatingMessengerHomePreview) return;
+      if (!latest) {
+        floatingMessengerHomePreview.innerHTML = `
+          <div>
+            <div class="floating-messenger-preview-title">아직 메시지가 없습니다</div>
+            <div class="floating-messenger-preview-body">첫 공유나 업무 지시를 남겨줘.</div>
+          </div>
+          <div class="floating-messenger-preview-badge">WORK</div>
+        `;
+        return;
+      }
+      const sender = latest.display_name || latest.username || "직원";
+      const body = String(latest.body || "").replace(/\s+/g, " ").trim();
+      floatingMessengerHomePreview.innerHTML = `
+        <div>
+          <div class="floating-messenger-preview-title">${escapeHtml(sender)} · ${escapeHtml(floatingMessengerDateLabel(latest.created_at))}</div>
+          <div class="floating-messenger-preview-body">${escapeHtml(body || "새 메시지가 도착했습니다.")}</div>
+        </div>
+        <div class="floating-messenger-preview-badge">WORK</div>
+      `;
+    }
+
+    function floatingMessengerRoomPreview(room) {
+      const isCurrent = floatingMessengerRoom.type === room.type && String(floatingMessengerRoom.userId || "") === String(room.userId || "");
+      const latest = isCurrent ? floatingMessengerMessagesCache[floatingMessengerMessagesCache.length - 1] : null;
+      const fallback = room.type === "global" ? "전체 공지와 업무 대화를 확인해줘." : "DM을 시작해줘.";
+      if (!latest) return { body: fallback, date: "" };
+      const body = String(latest.body || "").replace(/\s+/g, " ").trim();
+      return {
+        body: body || "새 메시지가 도착했습니다.",
+        date: floatingMessengerDateLabel(latest.created_at),
+      };
+    }
+
+    function setFloatingMessengerChatMode(mode = "list") {
+      floatingMessengerChatMode = mode === "thread" ? "thread" : "list";
+      const isThread = floatingMessengerChatMode === "thread";
+      if (floatingMessengerRoomList) floatingMessengerRoomList.hidden = isThread;
+      if (floatingMessengerThread) floatingMessengerThread.hidden = !isThread;
+      const noticeShell = floatingMessengerChatNotice?.closest(".floating-messenger-chat-notice");
+      if (noticeShell) noticeShell.hidden = isThread;
+      if (!isThread) {
+        renderFloatingMessengerRooms();
+      }
+    }
+
+    function setFloatingMessengerTab(tabName, { focusInput = false } = {}) {
+      const nextTab = ["home", "chat", "settings"].includes(tabName) ? tabName : "home";
+      floatingMessengerActiveTab = nextTab;
+      floatingMessengerScreens.forEach((screen) => {
+        screen.classList.toggle("active", screen.dataset.floatingMessengerScreen === nextTab);
+      });
+      floatingMessengerTabButtons.forEach((button) => {
+        const active = button.dataset.floatingMessengerTab === nextTab;
+        button.classList.toggle("active", active);
+        button.setAttribute("aria-selected", active ? "true" : "false");
+      });
+      if (nextTab === "chat") {
+        setFloatingMessengerChatMode(focusInput ? "thread" : "list");
+        if (focusInput) {
+          loadFloatingMessengerMessages({ silent: true }).then(() => {
+            setTimeout(() => floatingMessengerBody?.focus(), 0);
+          }).catch(() => {});
+        }
+      }
+    }
+
+    function renderFloatingMessengerRooms() {
+      renderFloatingMessengerProfile();
+      if (!floatingMessengerRoomList) {
+        renderFloatingMessengerHome();
+        return;
+      }
+      const rooms = [{ type: "global", userId: "", label: "전체방" }];
+      internalChatUsers.forEach((user) => {
+        if (String(user.id) === String(currentUser.id)) return;
+        rooms.push({ type: "dm", userId: String(user.id), label: user.display_name || user.username || "직원" });
+      });
+      const rows = rooms.map((room) => {
+        const active = floatingMessengerRoom.type === room.type && String(floatingMessengerRoom.userId || "") === String(room.userId || "");
+        const preview = floatingMessengerRoomPreview(room);
+        const unread = active && floatingMessengerUnread > 0;
+        return `
+          <button class="floating-messenger-room${active ? " active" : ""}" type="button" data-floating-chat-room="${escapeHtml(room.type)}"${room.userId ? ` data-floating-chat-user-id="${escapeHtml(room.userId)}"` : ""}>
+            <span class="floating-messenger-room-avatar" aria-hidden="true">${escapeHtml(room.type === "global" ? "W" : String(room.label || "직원").slice(0, 1))}</span>
+            <span class="floating-messenger-room-main">
+              <span class="floating-messenger-room-top">
+                <span class="floating-messenger-room-title">${escapeHtml(room.label)}</span>
+                ${preview.date ? `<span class="floating-messenger-room-date">${escapeHtml(preview.date)}</span>` : ""}
+              </span>
+              <span class="floating-messenger-room-preview">${escapeHtml(preview.body)}</span>
+            </span>
+            ${unread ? `<span class="floating-messenger-room-dot" aria-hidden="true"></span>` : `<span></span>`}
+          </button>
+        `;
+      });
+      floatingMessengerRoomList.innerHTML = rows.join("");
+      if (floatingMessengerTitle) floatingMessengerTitle.textContent = floatingMessengerRoomLabel();
+      if (floatingMessengerKicker) floatingMessengerKicker.textContent = floatingMessengerRoom.type === "dm" ? "직원 DM" : "빠른 대화";
+      if (floatingMessengerHint) floatingMessengerHint.textContent = floatingMessengerRoomHint();
+      renderFloatingMessengerHome();
+    }
+
+    function updateFloatingMessengerBadge() {
+      if (!floatingMessengerBadge) return;
+      const count = Math.max(0, Number(floatingMessengerUnread || 0));
+      floatingMessengerBadge.textContent = count > 99 ? "99+" : String(count);
+      floatingMessengerBadge.classList.toggle("visible", count > 0);
+      if (floatingMessengerTabDot) floatingMessengerTabDot.classList.toggle("visible", count > 0);
+      renderFloatingMessengerHome();
+    }
+
+    function renderFloatingMessengerMessages(messages = []) {
+      if (!floatingMessengerList) return;
+      const rows = messages || [];
+      floatingMessengerMessagesCache = rows;
+      renderFloatingMessengerHome(rows);
+      if (!rows.length) {
+        floatingMessengerList.innerHTML = `<div class="floating-messenger-empty">아직 메시지가 없습니다.<br>첫 공유나 DM을 남겨줘.</div>`;
+        return;
+      }
+      floatingMessengerList.innerHTML = rows.map((message) => {
+        const isMine = String(message.user_id) === String(currentUser.id);
+        const body = String(message.body || "").replace(/\s+/g, " ").trim();
+        const sender = message.display_name || message.username || "직원";
+        return `
+          <article class="floating-thread-message${isMine ? " mine" : ""}${internalMessageClass(message)}">
+            <div class="internal-message-meta">
+              <span class="internal-message-name">${escapeHtml(sender)}</span>
+              <span>${escapeHtml(floatingMessengerDateLabel(message.created_at))}</span>
+            </div>
+            <div class="internal-message-body">${escapeHtml(body || "새 메시지")}</div>
+            ${message.command_result ? `<div class="internal-message-meta"><span>${escapeHtml(message.command_result)}</span></div>` : ""}
+            ${message.command_error ? `<div class="internal-message-meta"><span>${escapeHtml(message.command_error)}</span></div>` : ""}
+          </article>
+        `;
+      }).join("");
+      floatingMessengerList.scrollTop = floatingMessengerList.scrollHeight;
+    }
+
+    async function loadFloatingMessengerMessages({ silent = false } = {}) {
+      if (!floatingMessengerList) return;
+      renderFloatingMessengerRooms();
+      if (!silent) {
+        floatingMessengerList.innerHTML = `<div class="floating-messenger-empty">메시지를 불러오는 중입니다.</div>`;
+      }
+      const params = new URLSearchParams({ limit: "80", room: floatingMessengerRoom.type });
+      if (floatingMessengerRoom.type === "dm" && floatingMessengerRoom.userId) params.set("user_id", floatingMessengerRoom.userId);
+      const data = await crmFetchJson(`/api/internal-messages?${params.toString()}`);
+      const messages = data.messages || [];
+      renderFloatingMessengerMessages(messages);
+      const latestId = messages.reduce((maxId, message) => Math.max(maxId, Number(message.id || 0)), 0);
+      if (floatingMessengerOpen) {
+        floatingMessengerLastSeenId = latestId;
+        floatingMessengerUnread = 0;
+      } else if (!floatingMessengerLastSeenId) {
+        floatingMessengerLastSeenId = latestId;
+      } else if (latestId > floatingMessengerLastSeenId) {
+        const incoming = messages.filter((message) =>
+          Number(message.id || 0) > floatingMessengerLastSeenId &&
+          String(message.user_id) !== String(currentUser.id)
+        ).length;
+        floatingMessengerUnread += incoming;
+        floatingMessengerLastSeenId = latestId;
+      }
+      updateFloatingMessengerBadge();
+    }
+
+    function startFloatingMessengerPolling() {
+      if (floatingMessengerPollTimer || !floatingMessenger) return;
+      floatingMessengerPollTimer = window.setInterval(() => {
+        loadFloatingMessengerMessages({ silent: true }).catch(() => {});
+      }, 30000);
+    }
+
+    async function refreshFloatingMessenger({ loadUsers = false, silent = false } = {}) {
+      if (loadUsers) await loadInternalChatUsers();
+      await loadFloatingMessengerMessages({ silent });
+    }
+
+    async function openFloatingMessenger() {
+      if (!floatingMessenger || !floatingMessengerPanel || !floatingMessengerToggle) return;
+      floatingMessengerOpen = true;
+      floatingMessenger.classList.add("open");
+      floatingMessengerPanel.setAttribute("aria-hidden", "false");
+      floatingMessengerToggle.setAttribute("aria-expanded", "true");
+      floatingMessengerUnread = 0;
+      updateFloatingMessengerBadge();
+      await refreshFloatingMessenger({ loadUsers: !internalChatUsers.length, silent: false }).catch((error) => {
+        if (floatingMessengerList) floatingMessengerList.innerHTML = `<div class="floating-messenger-empty">${escapeHtml(error.message || "메신저를 불러오지 못했습니다.")}</div>`;
+      });
+      startFloatingMessengerPolling();
+      if (floatingMessengerActiveTab === "chat" && floatingMessengerChatMode === "thread") setTimeout(() => floatingMessengerBody?.focus(), 0);
+    }
+
+    function closeFloatingMessenger() {
+      if (!floatingMessenger || !floatingMessengerPanel || !floatingMessengerToggle) return;
+      floatingMessengerOpen = false;
+      floatingMessenger.classList.remove("open");
+      floatingMessengerPanel.setAttribute("aria-hidden", "true");
+      floatingMessengerToggle.setAttribute("aria-expanded", "false");
+    }
+
+    async function toggleFloatingMessenger() {
+      if (floatingMessengerOpen) {
+        closeFloatingMessenger();
+      } else {
+        await openFloatingMessenger();
+      }
+    }
+
+    async function setFloatingMessengerRoom(type, userId = "") {
+      floatingMessengerRoom = { type: type === "dm" ? "dm" : "global", userId: type === "dm" ? String(userId || "") : "" };
+      floatingMessengerUnread = 0;
+      updateFloatingMessengerBadge();
+      setFloatingMessengerTab("chat", { focusInput: true });
+      await loadFloatingMessengerMessages({ silent: false });
+      floatingMessengerBody?.focus();
+    }
+
+    async function sendFloatingMessengerMessage(event) {
+      event.preventDefault();
+      if (!floatingMessengerBody || floatingMessengerSending) return;
+      const body = floatingMessengerBody.value.trim();
+      if (!body) {
+        floatingMessengerBody.focus();
+        return;
+      }
+      setFloatingMessengerTab("chat", { focusInput: true });
+      floatingMessengerSending = true;
+      if (floatingMessengerSend) floatingMessengerSend.disabled = true;
+      try {
+        await crmFetchJson("/api/internal-message-save", {
+          method: "POST",
+          body: JSON.stringify({
+            body,
+            room_type: floatingMessengerRoom.type,
+            recipient_user_id: floatingMessengerRoom.type === "dm" ? floatingMessengerRoom.userId : "",
+          }),
+        });
+        floatingMessengerBody.value = "";
+        await loadFloatingMessengerMessages({ silent: true });
+        if (internalChatList) {
+          internalChatRoom = { ...floatingMessengerRoom };
+          await loadInternalMessages().catch(() => {});
+        }
+        if (body.startsWith("/업무")) {
+          await Promise.all([
+            loadCrmTasks().catch(() => {}),
+            loadCrmMineTasks().catch(() => {}),
+            loadCrmStaffDashboard().catch(() => {}),
+            loadCompanyStaffDashboard().catch(() => {}),
+            loadCompanyCalendar().catch(() => {}),
+            loadCrmDashboard().catch(() => {}),
+          ]);
+        }
+      } catch (error) {
+        if (floatingMessengerList) {
+          floatingMessengerList.insertAdjacentHTML("beforeend", `<div class="floating-messenger-empty">${escapeHtml(error.message || "메시지를 저장하지 못했습니다.")}</div>`);
+          floatingMessengerList.scrollTop = floatingMessengerList.scrollHeight;
+        }
+      } finally {
+        floatingMessengerSending = false;
+        if (floatingMessengerSend) floatingMessengerSend.disabled = false;
+        floatingMessengerBody?.focus();
+      }
+    }
+
+    async function openFloatingMessengerFull() {
+      closeFloatingMessenger();
+      if (showWorkspace("dashboard") === false) return;
+      setCompanyTab("chat");
+      document.querySelector("#companyNavGroup")?.classList.add("open");
+      internalChatRoom = { ...floatingMessengerRoom };
+      await loadInternalChatUsers().catch(() => {});
+      await loadInternalMessages().catch(() => {});
     }
 
     function setCrmTab(tabName) {
@@ -7960,7 +14592,13 @@ HTML = r"""<!doctype html>
         setCrmMessage("삭제할 내 저장뷰를 선택해줘.", true);
         return;
       }
-      if (!confirm(`'${selected.name}' 저장뷰를 삭제할까요?`)) return;
+      if (!await requestAppConfirm({
+        kicker: "저장뷰 삭제",
+        title: "저장뷰를 삭제할까요?",
+        message: selected.name,
+        okText: "삭제",
+        cancelText: "취소",
+      })) return;
       const data = await crmFetchJson("/api/crm-saved-view-delete", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -8722,7 +15360,7 @@ HTML = r"""<!doctype html>
     }
 
     function openNoticeWidget() {
-      const payload = noticePayload();
+      const payload = latestNoticeRecord() || { date: todayString(), title: "", owner: "", body: "" };
       focusWidgetTaskId = "";
       focusWidgetEmployeeId = "";
       const meta = [shortKoreanDate(payload.date), payload.owner ? `담당 ${payload.owner}` : ""].filter(Boolean).join(" / ");
@@ -9044,7 +15682,13 @@ HTML = r"""<!doctype html>
 
     async function rotateCrmWebhookToken() {
       if (!can("crm_message_manage")) return;
-      if (!confirm("웹훅 토큰을 재발급할까요? 기존 카카오 스킬 헤더 값은 즉시 실패합니다.")) return;
+      if (!await requestAppConfirm({
+        kicker: "웹훅 토큰",
+        title: "웹훅 토큰을 재발급할까요?",
+        message: "기존 카카오 스킬 헤더 값은 즉시 실패합니다.",
+        okText: "재발급",
+        cancelText: "취소",
+      })) return;
       const data = await crmFetchJson("/api/crm-webhook-token-rotate", { method: "POST" });
       setCrmMessage(data.message || "웹훅 토큰을 재발급했습니다.");
       renderCrmWebhookSetup(data);
@@ -9115,6 +15759,42 @@ HTML = r"""<!doctype html>
       return parts ? `${Number(parts.month)}월 ${Number(parts.day)}일` : String(value || "");
     }
 
+    function quantityNumber(value) {
+      const match = String(value || "").replaceAll(",", "").match(/\d+(?:\.\d+)?/);
+      return match ? Number(match[0]) : 0;
+    }
+
+    function quantityLevelClass(value) {
+      const amount = quantityNumber(value);
+      if (amount >= 10) return "quantity-red";
+      if (amount >= 2) return "quantity-blue";
+      return "";
+    }
+
+    function applyQuantityClass(cell, value) {
+      if (!cell) return;
+      cell.classList.remove("quantity-blue", "quantity-red");
+      const className = quantityLevelClass(value);
+      if (className) cell.classList.add(className);
+    }
+
+    function importDateSortKey(value) {
+      const parts = parseDateParts(value);
+      if (!parts) return "9999-99-99";
+      const year = parts.year || String(new Date().getFullYear());
+      return `${year}-${parts.month}-${parts.day}`;
+    }
+
+    function sortImportShipmentsByWarehouseDate(rows) {
+      return [...rows].sort((a, b) => {
+        const completedCompare = Number(Boolean(a.completed_at)) - Number(Boolean(b.completed_at));
+        if (completedCompare) return completedCompare;
+        const dateCompare = importDateSortKey(a.warehouse_due_date).localeCompare(importDateSortKey(b.warehouse_due_date));
+        if (dateCompare) return dateCompare;
+        return Number(b.id || 0) - Number(a.id || 0);
+      });
+    }
+
     function fullDateForSave(displayValue, rawValue) {
       const displayParts = parseDateParts(displayValue);
       if (!displayParts) return String(displayValue || "").trim();
@@ -9136,7 +15816,7 @@ HTML = r"""<!doctype html>
       return statuses.includes(normalizedCurrent) ? statuses : [normalizedCurrent, ...statuses];
     }
 
-    const csTypeOptions = ["변심반품", "불량반품", "불량교환", "불량재출고(미회수)", "오출고(오배송)"];
+    const csTypeOptions = ["변심반품", "불량반품", "불량교환", "불량재출고(미회수)", "오출고(오배송)/회수진행", "오출고(오배송)/회수없음"];
 
     function selectOptions(options, currentValue = "") {
       const normalizedCurrent = currentValue || "";
@@ -9149,12 +15829,12 @@ HTML = r"""<!doctype html>
     }
 
     function isCompletedByValues(typeValue, statusValue) {
-      const type = String(typeValue || "").replaceAll(" ", "").trim();
-      const status = String(statusValue || "").replaceAll(" ", "").trim();
-      if (status.includes("전체처리완료")) return true;
+      const type = normalizedLedgerText(typeValue);
+      const status = normalizedLedgerText(statusValue);
+      if (isOverallCompletedStatus(statusValue)) return true;
       if ((type === "변심반품" || type === "변신반품" || type === "불량반품") && status.includes("회수완료")) return true;
-      if ((type === "불량교환" || type === "오출고(오배송)") && status.includes("전체처리완료")) return true;
-      if (type === "불량재출고(미회수)" && status.includes("재발송완료")) return true;
+      if ((type === "불량교환" || type === "오출고오배송" || type === "오출고오배송회수진행") && isOverallCompletedStatus(statusValue)) return true;
+      if ((type === "불량재출고미회수" || type === "오출고오배송회수없음") && status.includes("재발송완료")) return true;
       return false;
     }
 
@@ -9168,11 +15848,134 @@ HTML = r"""<!doctype html>
       return String(element.dataset.value ?? element.textContent ?? "").trim();
     }
 
+    function setEditableCellValue(cell, value) {
+      if (!cell) return;
+      const nextValue = String(value || "");
+      cell.dataset.value = nextValue;
+      if (cell.dataset.date === "1") cell.dataset.rawDate = nextValue;
+      const displayValue = cellDisplayValue(nextValue, { date: cell.dataset.date === "1" });
+      const valueNode = cell.querySelector(".ledger-cell-value");
+      if (valueNode) valueNode.textContent = displayValue;
+      else cell.textContent = displayValue;
+      if ((cell.dataset.field || cell.dataset.managementField) === "quantity") applyQuantityClass(cell, nextValue);
+    }
+
+    function syncReturnCheckButtonVisibility(row) {
+      const statusCell = row?.querySelector('[data-field="status"]');
+      const container = statusCell?.querySelector(".ledger-status-cell");
+      if (!container) return;
+      const button = container.querySelector("[data-return-check-row]");
+      const shouldHide = isFullyCompletedStatus(fieldValue(statusCell));
+      if (shouldHide) {
+        button?.remove();
+      } else if (!button) {
+        container.insertAdjacentHTML("beforeend", `<button class="ledger-row-return-check" type="button" data-return-check-row>회수확인</button>`);
+      }
+    }
+
     function updateLedgerRowCompletion(row) {
       if (!row) return;
       const status = fieldValue(row.querySelector('[data-field="status"]'));
       const csType = fieldValue(row.querySelector('[data-field="cs_type"]'));
       row.classList.toggle("completed-cs", isCompletedByValues(csType, status));
+      syncReturnCheckButtonVisibility(row);
+    }
+
+    function setLedgerRowStatus(row, status) {
+      const statusCell = row?.querySelector('[data-field="status"]');
+      setEditableCellValue(statusCell, status);
+      if (statusCell) statusCell.dataset.options = JSON.stringify(ledgerStatusOptions(status));
+      if (isFullyCompletedStatus(status) && row?.children?.[5] && !row.children[5].textContent.trim()) {
+        row.children[5].dataset.fullDate = todayString();
+        row.children[5].textContent = shortKoreanDate(todayString());
+      }
+      updateLedgerRowCompletion(row);
+      markRowDirty(row, true);
+      const checkbox = row?.querySelector("[data-row-check]");
+      if (checkbox) checkbox.checked = true;
+    }
+
+    function normalizedLedgerText(value) {
+      return String(value || "")
+        .replace(/[\s\u200B-\u200D\uFEFF]/g, "")
+        .replace(/[()（）\[\]{}·ㆍ.,:;\/\\|_-]+/g, "")
+        .trim();
+    }
+
+    function isOverallCompletedStatus(statusValue) {
+      const status = normalizedLedgerText(statusValue);
+      return status.includes("전체처리완료") || (status.includes("전체") && status.includes("처리") && status.includes("완료"));
+    }
+
+    function ledgerTypeCategory(row) {
+      const type = normalizedLedgerText(fieldValue(row?.querySelector('[data-field="cs_type"]')));
+      if (["변심반품", "변신반품", "불량반품"].includes(type)) return "returnOnly";
+      if (["불량교환", "오출고오배송", "오출고오배송회수진행"].includes(type)) return "exchange";
+      if (["불량재출고미회수", "오출고오배송회수없음"].includes(type)) return "reshipOnly";
+      return "unknown";
+    }
+
+    function isFullyCompletedStatus(status) {
+      return isOverallCompletedStatus(status);
+    }
+
+    function ledgerHasReturnCheck(row) {
+      return String(fieldValue(row?.querySelector('[data-field="cs_content"]')) || "").includes("[회수검수");
+    }
+
+    function ledgerOverallCompletionReason(row) {
+      if (!row) return "";
+      if (isFullyCompletedStatus(fieldValue(row.querySelector('[data-field="status"]')))) return "";
+      const category = ledgerTypeCategory(row);
+      const hasReturn = Boolean(fieldValue(row.querySelector('[data-field="return_invoice"]')));
+      const hasReship = Boolean(fieldValue(row.querySelector('[data-field="reship_invoice"]')));
+      const hasReturnCheck = ledgerHasReturnCheck(row);
+      if (category === "returnOnly" && hasReturn && hasReturnCheck) return "회수 송장과 검수 결과가 모두 입력되어 전체 처리완료로 변경했습니다.";
+      if (category === "exchange" && hasReturn && hasReship && hasReturnCheck) return "회수/재발송 송장과 검수 결과가 모두 입력되어 전체 처리완료로 변경했습니다.";
+      if (category === "reshipOnly" && hasReship) return "재발송 송장이 입력되어 전체 처리완료로 변경했습니다.";
+      return "";
+    }
+
+    function applyLedgerOverallCompletion(row, { announce = true } = {}) {
+      const reason = ledgerOverallCompletionReason(row);
+      if (!reason) return false;
+      setLedgerRowStatus(row, "전체 처리완료");
+      if (announce) notice.textContent = reason;
+      return true;
+    }
+
+    async function suggestLedgerStatusAfterInvoice(row, field, previousValue, nextValue) {
+      if (!row || !String(nextValue || "").trim() || String(previousValue || "").trim() === String(nextValue || "").trim()) return false;
+      const currentStatus = fieldValue(row.querySelector('[data-field="status"]'));
+      if (isFullyCompletedStatus(currentStatus)) return false;
+      if (applyLedgerOverallCompletion(row)) return true;
+      const category = ledgerTypeCategory(row);
+      const hasReturn = Boolean(fieldValue(row.querySelector('[data-field="return_invoice"]')));
+      const hasReship = Boolean(fieldValue(row.querySelector('[data-field="reship_invoice"]')));
+      const dateText = todayStatusDate();
+      let suggested = "";
+      if (category === "returnOnly" && field === "return_invoice") suggested = `회수지시(${dateText})`;
+      if (category === "reshipOnly" && field === "reship_invoice") suggested = `재발송 완료(${dateText})`;
+      if (category === "exchange") {
+        if (hasReturn && hasReship) suggested = `재발송 완료(${dateText})/회수지시(${dateText})`;
+        else if (field === "return_invoice") suggested = `회수지시(${dateText})`;
+        else if (field === "reship_invoice") suggested = `재발송 완료(${dateText})`;
+      }
+      if (!suggested || suggested === currentStatus) return false;
+      const label = field === "return_invoice" ? "회수 송장" : "재발송 송장";
+      const approved = await requestAppConfirm({
+        kicker: "CS 처리상태",
+        title: `${label}이 입력되었습니다.`,
+        message: "입력된 송장 기준으로 처리상태를 자동 변경할 수 있습니다.",
+        highlight: `${currentStatus || "현재 상태 없음"} → ${suggested}`,
+        okText: "상태 변경",
+        cancelText: "현재 상태 유지",
+      });
+      if (approved) {
+        setLedgerRowStatus(row, suggested);
+        return true;
+      }
+      return false;
     }
 
     function ledgerFieldValue(csCase, field) {
@@ -9212,6 +16015,129 @@ HTML = r"""<!doctype html>
         if (!value) return true;
         return String(managementFieldValue(record, field)).toLowerCase().includes(value);
       });
+    }
+
+    function normalizeSearchKeyword(value) {
+      return String(value || "").replace(/[\s-]/g, "").toLowerCase();
+    }
+
+    function searchTextIncludes(value, query) {
+      const normalizedQuery = normalizeSearchKeyword(query);
+      if (!normalizedQuery) return true;
+      return normalizeSearchKeyword(value).includes(normalizedQuery);
+    }
+
+    function recordSearchMatches(record, fields, query) {
+      return fields.some((field) => searchTextIncludes(record[field], query));
+    }
+
+    function searchResultMain(scope, row) {
+      if (scope === "management") {
+        return [
+          shortKoreanDate(row.order_date || row.ship_date),
+          row.receiver_name || row.orderer_name || "이름 없음",
+          row.product_name || "상품명 없음",
+        ].filter(Boolean).join(" · ");
+      }
+      return [
+        shortKoreanDate(row.occurred_at || row.order_date || row.created_at),
+        row.receiver_name || row.orderer_name || row.sales_vendor || "이름 없음",
+        row.product_name || "상품명 없음",
+      ].filter(Boolean).join(" · ");
+    }
+
+    function searchResultSub(scope, row) {
+      if (scope === "management") {
+        return [
+          row.receiver_phone || row.sender_phone || "",
+          row.receiver_address || "",
+          row.invoice_number ? `송장 ${row.invoice_number}` : "",
+        ].filter(Boolean).join(" / ");
+      }
+      return [
+        row.receiver_phone || row.orderer_phone || "",
+        row.receiver_address || "",
+        row.original_invoice || row.return_invoice || row.reship_invoice ? `송장 ${row.original_invoice || row.return_invoice || row.reship_invoice}` : "",
+        row.cs_content || "",
+      ].filter(Boolean).join(" / ");
+    }
+
+    let activeSearchResultResolver = null;
+    let activeSearchResultCleanup = null;
+
+    function closeSearchResultDialog(result = null) {
+      const cleanup = activeSearchResultCleanup;
+      activeSearchResultCleanup = null;
+      if (cleanup) cleanup();
+      searchResultDialog?.classList.remove("open");
+      searchResultDialog?.setAttribute("aria-hidden", "true");
+      if (searchResultList) searchResultList.innerHTML = "";
+      const resolver = activeSearchResultResolver;
+      activeSearchResultResolver = null;
+      if (resolver) resolver(result);
+    }
+
+    function showSearchResultDialog({ scope, rows, query }) {
+      if (!searchResultDialog || !searchResultList) return Promise.resolve(null);
+      const label = scope === "management" ? "통합관리대장" : "CS 처리대장";
+      searchResultTitle.textContent = `${label} 검색 결과 선택`;
+      searchResultDescription.textContent = `"${query}" 검색 결과 ${rows.length}건입니다. 이동할 데이터를 선택해주세요.`;
+      searchResultList.innerHTML = rows.slice(0, 80).map((row, index) => {
+        const id = scope === "management" ? row.id : row.id;
+        const badge = scope === "management" ? (row.invoice_number || `#${id}`) : (row.original_invoice || row.return_invoice || row.reship_invoice || `#${id}`);
+        return `
+          <button class="search-result-item" type="button" data-search-result-index="${index}">
+            <div class="search-result-main"><span class="search-result-badge">${escapeHtml(badge)}</span>${escapeHtml(searchResultMain(scope, row))}</div>
+            <div class="search-result-sub">${escapeHtml(searchResultSub(scope, row))}</div>
+          </button>
+        `;
+      }).join("");
+      searchResultDialog.classList.add("open");
+      searchResultDialog.setAttribute("aria-hidden", "false");
+      setTimeout(() => searchResultList.querySelector("button")?.focus(), 0);
+      return new Promise((resolve) => {
+        const finish = (row = null) => {
+          closeSearchResultDialog(row);
+        };
+        const handleClick = (event) => {
+          const button = event.target.closest("[data-search-result-index]");
+          if (!button) return;
+          finish(rows[Number(button.dataset.searchResultIndex)]);
+        };
+        const handleClose = () => finish(null);
+        const handleBackdrop = (event) => {
+          if (event.target === searchResultDialog) finish(null);
+        };
+        searchResultList.addEventListener("click", handleClick);
+        searchResultClose?.addEventListener("click", handleClose);
+        searchResultDialog.addEventListener("click", handleBackdrop);
+        activeSearchResultCleanup = () => {
+          searchResultList.removeEventListener("click", handleClick);
+          searchResultClose?.removeEventListener("click", handleClose);
+          searchResultDialog.removeEventListener("click", handleBackdrop);
+        };
+        activeSearchResultResolver = resolve;
+      });
+    }
+
+    function highlightTableRow(row) {
+      if (!row) return;
+      row.scrollIntoView({ block: "center", inline: "nearest", behavior: "smooth" });
+      row.classList.remove("search-target-highlight");
+      void row.offsetWidth;
+      row.classList.add("search-target-highlight");
+      setTimeout(() => row.classList.remove("search-target-highlight"), 1900);
+    }
+
+    async function maybeOpenSearchPicker(scope, query, rows) {
+      const normalizedQuery = normalizeSearchKeyword(query);
+      if (!normalizedQuery || !rows.length) return;
+      const selected = rows.length === 1 ? rows[0] : await showSearchResultDialog({ scope, rows, query });
+      if (!selected) return;
+      const selector = scope === "management"
+        ? `tr[data-record-id="${CSS.escape(String(selected.id))}"]`
+        : `tr[data-case-id="${CSS.escape(String(selected.id))}"]`;
+      highlightTableRow(document.querySelector(selector));
     }
 
     function applyManagementFilters() {
@@ -9329,7 +16255,7 @@ HTML = r"""<!doctype html>
       const className = `editable-cell ${align}`.trim();
       const dataAttr = scope === "management" ? "data-management-field" : "data-field";
       const optionData = options.length ? ` data-options="${escapeHtml(JSON.stringify(options))}"` : "";
-      return `<td class="${className}" ${dataAttr}="${escapeHtml(field)}" data-label="${escapeHtml(label)}" data-value="${escapeHtml(value)}" data-input="${escapeHtml(input)}"${date ? ` data-raw-date="${escapeHtml(value)}" data-date="1"` : ""}${optionData}>${escapeHtml(displayValue)}</td>`;
+      return `<td class="${className}" tabindex="0" ${dataAttr}="${escapeHtml(field)}" data-label="${escapeHtml(label)}" data-value="${escapeHtml(value)}" data-input="${escapeHtml(input)}" title="${escapeHtml(displayValue)}"${date ? ` data-raw-date="${escapeHtml(value)}" data-full-date="${escapeHtml(value)}" data-date="1"` : ""}${optionData}>${escapeHtml(displayValue)}</td>`;
     }
 
     function selectedEditorParts(scope) {
@@ -9349,12 +16275,112 @@ HTML = r"""<!doctype html>
 
     function closeCellEditor(scope) {
       const selected = activeCellEditors[scope];
+      if (cellEditorAutoSaveTimers[scope]) {
+        clearTimeout(cellEditorAutoSaveTimers[scope]);
+        cellEditorAutoSaveTimers[scope] = null;
+      }
       if (selected?.cell) selected.cell.classList.remove("selected-cell");
       activeCellEditors[scope] = null;
       const parts = selectedEditorParts(scope);
       parts.bar?.classList.remove("open");
       if (parts.mount) parts.mount.innerHTML = "";
       if (parts.label) parts.label.textContent = "셀 선택";
+      if (scope === "ledger" && ledgerReturnCheckButton) ledgerReturnCheckButton.hidden = true;
+    }
+
+    function selectEditableCell(scope, cell) {
+      if (!cell || cell.dataset.readonly === "1") return;
+      const previous = activeCellEditors[scope];
+      if (previous?.cell && previous.cell !== cell) previous.cell.classList.remove("selected-cell");
+      const parts = selectedEditorParts(scope);
+      const label = cell.dataset.label || cell.dataset.field || cell.dataset.managementField || "선택 셀";
+      const row = cell.closest("tr");
+      const rowHint = row && scope === "management"
+        ? [row.querySelector('[data-management-field="order_date"]')?.textContent.trim(), row.querySelector('[data-management-field="receiver_name"]')?.textContent.trim(), row.querySelector('[data-management-field="product_name"]')?.textContent.trim()].filter(Boolean).join(" / ")
+        : row ? [textFromCell(row, 1), textFromCell(row, 14), textFromCell(row, 16)].filter(Boolean).join(" / ") : "";
+      cell.classList.add("selected-cell");
+      activeCellEditors[scope] = { cell, control: null };
+      if (parts.label) parts.label.textContent = rowHint ? `${label} · ${rowHint}` : label;
+      if (parts.mount) parts.mount.innerHTML = "";
+      parts.bar?.classList.remove("open");
+      if (scope === "ledger" && ledgerReturnCheckButton) ledgerReturnCheckButton.hidden = true;
+    }
+
+    function editableSelectorForScope(scope) {
+      return scope === "management"
+        ? ".editable-cell[data-management-field]:not([data-readonly='1'])"
+        : ".editable-cell[data-field]:not([data-readonly='1'])";
+    }
+
+    function editableRowsForScope(scope) {
+      const body = scope === "management" ? managementBody : ledgerBody;
+      const rowSelector = scope === "management" ? "tr[data-record-id]" : "tr[data-case-id]";
+      return Array.from(body?.querySelectorAll(rowSelector) || []);
+    }
+
+    function editableCellsInRow(scope, row) {
+      return Array.from(row?.querySelectorAll(editableSelectorForScope(scope)) || []);
+    }
+
+    function moveEditableCell(scope, cell, rowDelta, colDelta) {
+      if (!cell) return false;
+      const row = cell.closest("tr");
+      const rows = editableRowsForScope(scope);
+      const rowIndex = rows.indexOf(row);
+      if (rowIndex < 0) return false;
+      const currentCells = editableCellsInRow(scope, row);
+      const colIndex = currentCells.indexOf(cell);
+      if (colIndex < 0) return false;
+      let nextCell = null;
+      if (colDelta) {
+        nextCell = currentCells[colIndex + colDelta] || null;
+      } else if (rowDelta) {
+        const nextRow = rows[rowIndex + rowDelta];
+        const nextCells = editableCellsInRow(scope, nextRow);
+        nextCell = nextCells[Math.min(colIndex, nextCells.length - 1)] || null;
+      }
+      if (!nextCell) return false;
+      selectEditableCell(scope, nextCell);
+      nextCell.focus({ preventScroll: false });
+      nextCell.scrollIntoView({ block: "nearest", inline: "nearest" });
+      return true;
+    }
+
+    function handleEditableCellNavigation(scope, event) {
+      if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey) return;
+      const editableCell = event.target.closest(editableSelectorForScope(scope));
+      if (!editableCell) return;
+      if (event.key === "F2") {
+        event.preventDefault();
+        openCellEditor(scope, editableCell);
+        return;
+      }
+      const keyMap = {
+        ArrowUp: [-1, 0],
+        ArrowDown: [1, 0],
+        ArrowLeft: [0, -1],
+        ArrowRight: [0, 1],
+      };
+      const delta = keyMap[event.key];
+      if (!delta) return;
+      event.preventDefault();
+      if (!moveEditableCell(scope, editableCell, delta[0], delta[1])) {
+        selectEditableCell(scope, editableCell);
+      }
+    }
+
+    function activeEditorHasChange(scope) {
+      const selected = activeCellEditors[scope];
+      if (!selected?.cell || !selected.control) return false;
+      return String(selected.control.value || "") !== fieldValue(selected.cell);
+    }
+
+    function hasPendingWorkspaceChanges(mode = currentMode) {
+      const scope = mode === "management" || mode === "ledger" ? mode : currentMode;
+      if (scope !== "management" && scope !== "ledger") return false;
+      const body = scope === "management" ? managementBody : ledgerBody;
+      const rowSelector = scope === "management" ? "tr[data-record-id]" : "tr[data-case-id]";
+      return activeEditorHasChange(scope) || dirtyRows(body, rowSelector).length > 0;
     }
 
     function editorOptionsFromCell(cell) {
@@ -9363,6 +16389,30 @@ HTML = r"""<!doctype html>
       } catch {
         return [];
       }
+    }
+
+    function resizeCellTextarea(textarea) {
+      if (!textarea || textarea.tagName !== "TEXTAREA") return;
+      textarea.style.height = "auto";
+      const nextHeight = Math.min(Math.max(textarea.scrollHeight, 36), 180);
+      textarea.style.height = `${nextHeight}px`;
+    }
+
+    function preferredCellEditorWidth(control) {
+      const value = String(control?.value || "");
+      const optionTexts = control?.tagName === "SELECT"
+        ? Array.from(control.options || []).map((option) => option.textContent || option.value || "")
+        : [];
+      const candidates = [value, ...optionTexts, control?.placeholder || ""]
+        .flatMap((text) => String(text || "").split(/\r?\n/));
+      const longest = candidates.reduce((max, text) => Math.max(max, text.length), 0);
+      const baseWidth = control?.tagName === "TEXTAREA" ? 260 : 190;
+      return Math.min(Math.max(baseWidth, longest * 11 + 44), 760);
+    }
+
+    function syncCellEditorWidth(parts, control) {
+      if (!parts?.bar || !control) return;
+      parts.bar.style.setProperty("--cell-editor-width", `${preferredCellEditorWidth(control)}px`);
     }
 
     function createCellEditorControl(cell) {
@@ -9384,6 +16434,13 @@ HTML = r"""<!doctype html>
         const textarea = document.createElement("textarea");
         textarea.className = "cell-edit-control";
         textarea.value = currentValue;
+        textarea.rows = 1;
+        textarea.addEventListener("input", () => {
+          resizeCellTextarea(textarea);
+          const scope = textarea.closest("#ledgerCellEditMount") ? "ledger" : "management";
+          syncCellEditorWidth(selectedEditorParts(scope), textarea);
+        });
+        setTimeout(() => resizeCellTextarea(textarea), 0);
         return textarea;
       }
       const input = document.createElement("input");
@@ -9407,31 +16464,101 @@ HTML = r"""<!doctype html>
       const control = createCellEditorControl(cell);
       parts.mount.innerHTML = "";
       parts.mount.appendChild(control);
+      syncCellEditorWidth(parts, control);
+      control.addEventListener("input", () => syncCellEditorWidth(parts, control));
+      control.addEventListener("input", () => scheduleCellEditorAutoApply(scope));
+      control.addEventListener("change", () => commitCellEditorOnChange(scope));
+      control.addEventListener("blur", () => commitCellEditorOnChange(scope));
       parts.label.textContent = rowHint ? `${label} · ${rowHint}` : label;
       parts.bar.classList.add("open");
+      if (scope === "ledger" && ledgerReturnCheckButton) {
+        ledgerReturnCheckButton.hidden = (cell.dataset.field || "") !== "status";
+      }
       cell.classList.add("selected-cell");
       activeCellEditors[scope] = { cell, control };
       setTimeout(() => {
         control?.focus();
-        if (control.select) control.select();
+        if (typeof control.setSelectionRange === "function") {
+          const endPosition = String(control.value || "").length;
+          control.setSelectionRange(endPosition, endPosition);
+        }
       }, 0);
     }
 
-    function applyCellEditor(scope) {
+    function scheduleCellEditorAutoApply(scope) {
+      if (cellEditorAutoSaveTimers[scope]) clearTimeout(cellEditorAutoSaveTimers[scope]);
+      cellEditorAutoSaveTimers[scope] = setTimeout(() => {
+        commitCellEditorOnChange(scope).catch((error) => {
+          notice.textContent = error.message || "선택 셀 값을 자동 반영하지 못했습니다.";
+        });
+      }, 700);
+    }
+
+    async function commitCellEditorOnChange(scope) {
+      if (cellEditorAutoSaveTimers[scope]) {
+        clearTimeout(cellEditorAutoSaveTimers[scope]);
+        cellEditorAutoSaveTimers[scope] = null;
+      }
+      if (!activeEditorHasChange(scope)) return;
+      await applyCellEditor(scope, { silent: true });
+    }
+
+    async function applyCellEditor(scope, { silent = false } = {}) {
+      if (cellEditorAutoSaveTimers[scope]) {
+        clearTimeout(cellEditorAutoSaveTimers[scope]);
+        cellEditorAutoSaveTimers[scope] = null;
+      }
       const selected = activeCellEditors[scope];
       if (!selected?.cell || !selected.control) return;
       const { cell, control } = selected;
       const row = cell.closest("tr");
+      const previousValue = fieldValue(cell);
       const value = control.value || "";
-      cell.dataset.value = value;
-      if (cell.dataset.date === "1") cell.dataset.rawDate = value;
-      cell.textContent = cellDisplayValue(value, { date: cell.dataset.date === "1" });
+      setEditableCellValue(cell, value);
       markRowDirty(row, true);
       const checkbox = row?.querySelector("[data-row-check]");
       if (checkbox) checkbox.checked = true;
+      if (scope === "ledger") syncLedgerSelectAll();
       if (scope === "ledger") updateLedgerRowCompletion(row);
+      let autoStatusApplied = false;
+      const editedField = cell.dataset.field || "";
+      if (scope === "ledger" && ["return_invoice", "reship_invoice"].includes(editedField)) {
+        autoStatusApplied = await suggestLedgerStatusAfterInvoice(row, editedField, previousValue, value);
+      } else if (scope === "ledger" && editedField !== "status") {
+        autoStatusApplied = applyLedgerOverallCompletion(row);
+      }
       if (activeLedgerFilterField || activeManagementFilterField) refreshActiveFilterOptions();
-      notice.textContent = `${cell.dataset.label || "선택 셀"} 값을 반영했습니다. 저장하려면 체크된 항목 저장 버튼을 눌러주세요.`;
+      await saveEditedCellRow(scope, row);
+      if (!autoStatusApplied && !silent) {
+        notice.textContent = scope === "management"
+          ? "통합관리대장 셀 수정 내용을 저장했습니다."
+          : "CS 처리대장 셀 수정 내용을 저장했습니다.";
+      }
+    }
+
+    async function saveEditedCellRow(scope, row) {
+      if (!row) return;
+      if (scope === "management") {
+        const payload = collectManagementRow(row);
+        await saveManagementPayload(payload);
+        updateManagementRecordCache(payload);
+        markRowDirty(row, false);
+        const checkbox = row.querySelector("[data-row-check]");
+        if (checkbox) checkbox.checked = false;
+        if (managementSelectAll) managementSelectAll.checked = false;
+        applyManagementFilters();
+        return;
+      }
+      applyLedgerOverallCompletion(row, { announce: false });
+      const payload = collectLedgerRow(row);
+      await saveLedgerPayload(payload);
+      updateLedgerCaseCache(payload);
+      updateLedgerRowCompletion(row);
+      markRowDirty(row, false);
+      const checkbox = row.querySelector("[data-row-check]");
+      if (checkbox) checkbox.checked = false;
+      syncLedgerSelectAll();
+      applyLedgerFilters();
     }
 
     function dirtyRows(container, rowSelector) {
@@ -9441,6 +16568,97 @@ HTML = r"""<!doctype html>
     function selectedRows(container, rowSelector) {
       return Array.from(container.querySelectorAll(rowSelector))
         .filter((row) => row.querySelector("[data-row-check]")?.checked);
+    }
+
+    async function applySelectedCellToCheckedRows(scope) {
+      const selected = activeCellEditors[scope];
+      if (!selected?.cell) {
+        notice.textContent = "일괄 적용할 기준 셀을 먼저 선택해주세요.";
+        return;
+      }
+      const isManagement = scope === "management";
+      const body = isManagement ? managementBody : ledgerBody;
+      const rowSelector = isManagement ? "tr[data-record-id]" : "tr[data-case-id]";
+      const field = isManagement ? selected.cell.dataset.managementField : selected.cell.dataset.field;
+      if (!field) {
+        notice.textContent = "일괄 적용할 컬럼을 확인할 수 없습니다.";
+        return;
+      }
+      const rows = selectedRows(body, rowSelector);
+      if (!rows.length) {
+        notice.textContent = "일괄 적용할 행을 체크해주세요.";
+        return;
+      }
+      const value = selected.control ? selected.control.value || "" : fieldValue(selected.cell);
+      const fieldSelector = scope === "management"
+        ? `.editable-cell[data-management-field="${CSS.escape(field)}"]:not([data-readonly='1'])`
+        : `.editable-cell[data-field="${CSS.escape(field)}"]:not([data-readonly='1'])`;
+      let appliedCount = 0;
+      rows.forEach((row) => {
+        const targetCell = row.querySelector(fieldSelector);
+        if (!targetCell || targetCell.dataset.readonly === "1") return;
+        setEditableCellValue(targetCell, value);
+        markRowDirty(row, true);
+        const checkbox = row.querySelector("[data-row-check]");
+        if (checkbox) checkbox.checked = true;
+        if (scope === "ledger") {
+          updateLedgerRowCompletion(row);
+          if (field !== "status") applyLedgerOverallCompletion(row, { announce: false });
+        }
+        appliedCount += 1;
+      });
+      if (!appliedCount) {
+        notice.textContent = "체크한 행에 적용 가능한 셀이 없습니다.";
+        return;
+      }
+      await saveCurrentWorkspaceRows({ mode: scope, selectedOnly: true });
+      if (scope === "management") {
+        applyManagementFilters();
+      } else {
+        syncLedgerSelectAll();
+        applyLedgerFilters();
+      }
+      notice.textContent = `${appliedCount}건에 선택한 값을 일괄 적용했습니다.`;
+    }
+
+    function clearActiveLedgerFilter() {
+      if (activeManagementFilterField) {
+        delete managementFilters[activeManagementFilterField];
+        ledgerFilterSearch.value = "";
+        renderManagementFilterOptions(activeManagementFilterField, "");
+        applyManagementFilters();
+        closeLedgerFilter();
+        return;
+      }
+      if (activeLedgerFilterField) {
+        delete ledgerFilters[activeLedgerFilterField];
+        ledgerFilterSearch.value = "";
+        renderLedgerFilterOptions(activeLedgerFilterField, "");
+        applyLedgerFilters();
+        closeLedgerFilter();
+      }
+    }
+
+    function clearAllLedgerFilters() {
+      Object.keys(ledgerFilters).forEach((field) => delete ledgerFilters[field]);
+      if (ledgerStatusFilter) ledgerStatusFilter.value = "";
+      ledgerFilterSearch.value = "";
+      applyLedgerFilters();
+    }
+
+    function clearAllManagementFilters() {
+      Object.keys(managementFilters).forEach((field) => delete managementFilters[field]);
+      ledgerFilterSearch.value = "";
+      applyManagementFilters();
+    }
+
+    function clearAllActivePopoverFilters() {
+      if (activeManagementFilterField) {
+        clearAllManagementFilters();
+      } else {
+        clearAllLedgerFilters();
+      }
+      closeLedgerFilter();
     }
 
     function setLedgerFilter(value) {
@@ -9479,6 +16697,8 @@ HTML = r"""<!doctype html>
       vendorTypeSelect.value = "purchase";
       recipientEmailInput.value = "";
       vendorNameInput.value = "";
+      if (csAttachmentInput) csAttachmentInput.value = "";
+      updateCsAttachmentSummary();
       csOriginInput.value = "";
       csProductInput.value = "";
       csReceiverInput.value = "";
@@ -9508,9 +16728,24 @@ HTML = r"""<!doctype html>
       activeCsCaseId = "";
     }
 
+    function restoreCsFieldsToModal() {
+      if (!uploadForm || !csFields || csFields.parentElement === uploadForm) return;
+      uploadForm.insertBefore(
+        csFields,
+        stockNoticeFields || vendorContactManageFields || uploadForm.querySelector(".modal-actions")
+      );
+    }
+
+    function mountCsFieldsInLedgerWorkspace() {
+      if (!ledgerWorkspaceMount || !csFields || csFields.parentElement === ledgerWorkspaceMount) return;
+      ledgerWorkspaceMount.appendChild(csFields);
+    }
+
     function openLedgerCsPopup() {
       closeLedgerFilter();
       resetCsFormInputs();
+      if (ledgerWorkspace?.classList.contains("active")) mountCsFieldsInLedgerWorkspace();
+      else restoreCsFieldsToModal();
       csFields.classList.add("ledger-cs-popup");
       csFields.style.display = "block";
       loadVendorContacts();
@@ -9524,9 +16759,70 @@ HTML = r"""<!doctype html>
       if (currentMode === "ledger") csFields.style.display = "none";
     }
 
+    function managementTransactionTypeFromVendor(value) {
+      return String(value || "").replace(/\s+/g, "").includes("소일브릿지") ? "매출" : "매입/매출";
+    }
+
+    function managementManualInput(field) {
+      return managementManualFields?.querySelector(`[data-management-manual-field="${field}"]`);
+    }
+
+    function syncManagementManualTransactionType() {
+      const transactionInput = managementManualInput("transaction_type");
+      if (!transactionInput) return;
+      transactionInput.value = managementTransactionTypeFromVendor(managementManualInput("purchase_vendor")?.value || "");
+    }
+
+    function resetManagementManualForm() {
+      if (!managementManualFields) return;
+      managementManualFields.querySelectorAll("[data-management-manual-field]").forEach((input) => {
+        input.value = "";
+      });
+      const today = new Date().toISOString().slice(0, 10);
+      const orderDate = managementManualInput("order_date");
+      const shipDate = managementManualInput("ship_date");
+      const ledgerChecked = managementManualInput("ledger_checked");
+      if (orderDate) orderDate.value = today;
+      if (shipDate) shipDate.value = today;
+      if (ledgerChecked) ledgerChecked.value = "입력 완료";
+      syncManagementManualTransactionType();
+    }
+
+    function mountManagementManualFieldsInWorkspace() {
+      if (!managementWorkspaceMount || !managementManualFields || managementManualFields.parentElement === managementWorkspaceMount) return;
+      managementWorkspaceMount.appendChild(managementManualFields);
+    }
+
+    function openManagementManualPopup() {
+      closeLedgerFilter();
+      showWorkspace("management");
+      resetManagementManualForm();
+      mountManagementManualFieldsInWorkspace();
+      managementManualFields.classList.add("ledger-cs-popup");
+      managementManualFields.style.display = "block";
+      notice.textContent = "통합관리대장 수기 추가 내용을 입력한 뒤 저장을 눌러주세요.";
+      setTimeout(() => managementManualInput("purchase_vendor")?.focus(), 0);
+    }
+
+    function closeManagementManualPopup() {
+      managementManualFields?.classList.remove("ledger-cs-popup");
+      if (currentMode === "management" && managementManualFields) managementManualFields.style.display = "none";
+    }
+
+    function syncLedgerSelectAll() {
+      if (!ledgerSelectAll) return;
+      const checks = Array.from(ledgerBody.querySelectorAll("tr[data-case-id] [data-row-check]"));
+      ledgerSelectAll.checked = checks.length > 0 && checks.every((checkbox) => checkbox.checked);
+      ledgerSelectAll.indeterminate = checks.some((checkbox) => checkbox.checked) && !ledgerSelectAll.checked;
+    }
+
     function renderLedger(cases) {
       closeCellEditor("ledger");
       ledgerBody.innerHTML = "";
+      if (ledgerSelectAll) {
+        ledgerSelectAll.checked = false;
+        ledgerSelectAll.indeterminate = false;
+      }
       if (!cases || cases.length === 0) {
         const row = document.createElement("tr");
         row.innerHTML = `<td colspan="21">조회된 CS건이 없습니다.</td>`;
@@ -9538,30 +16834,38 @@ HTML = r"""<!doctype html>
         row.dataset.caseId = csCase.id;
         const statusValue = csCase.status || ledgerStatusOptions()[0];
         const statusSelectOptions = ledgerStatusOptions(statusValue);
+        const returnCheckButtonHtml = isFullyCompletedStatus(statusValue)
+          ? ""
+          : `<button class="ledger-row-return-check" type="button" data-return-check-row>회수확인</button>`;
         const csTypeSelectOptions = ["", ...csTypeOptions];
         if (isCompletedCsCase(csCase)) row.classList.add("completed-cs");
         row.innerHTML = `
           <td><input class="ledger-check" type="checkbox" data-row-check /></td>
-          <td>${escapeHtml(csCase.occurred_at || csCase.created_at)}</td>
-          <td>${escapeHtml(csCase.sales_vendor)}</td>
-          <td>${escapeHtml(csCase.purchase_vendor || csCase.vendor_name)}</td>
-          ${editableCell({ scope: "ledger", field: "status", label: "처리진행상태", value: statusValue, input: "select", options: statusSelectOptions })}
-          <td>${escapeHtml(csCase.completed_at)}</td>
+          <td data-full-date="${escapeHtml(csCase.occurred_at || csCase.created_at)}">${escapeHtml(shortKoreanDate(csCase.occurred_at || csCase.created_at))}</td>
+          <td title="${escapeHtml(csCase.sales_vendor)}">${escapeHtml(csCase.sales_vendor)}</td>
+          <td title="${escapeHtml(csCase.purchase_vendor || csCase.vendor_name)}">${escapeHtml(csCase.purchase_vendor || csCase.vendor_name)}</td>
+          <td class="editable-cell" data-field="status" data-label="처리진행상태" data-value="${escapeHtml(statusValue)}" data-input="select" data-options="${escapeHtml(JSON.stringify(statusSelectOptions))}">
+            <span class="ledger-status-cell">
+              <span class="ledger-cell-value">${escapeHtml(cellDisplayValue(statusValue))}</span>
+              ${returnCheckButtonHtml}
+            </span>
+          </td>
+          <td data-full-date="${escapeHtml(csCase.completed_at)}">${escapeHtml(shortKoreanDate(csCase.completed_at))}</td>
           ${editableCell({ scope: "ledger", field: "cs_type", label: "처리내용", value: csCase.cs_type, input: "select", options: csTypeSelectOptions })}
-          <td class="left">${escapeHtml(csCase.cs_content)}</td>
-          ${editableCell({ scope: "ledger", field: "reship_invoice", label: "재발송운송장번호", value: csCase.reship_invoice })}
-          ${editableCell({ scope: "ledger", field: "return_invoice", label: "회수운송장번호", value: csCase.return_invoice })}
+          ${editableCell({ scope: "ledger", field: "cs_content", label: "C/S 내용", value: csCase.cs_content, align: "left", input: "textarea" })}
+          ${editableCell({ scope: "ledger", field: "reship_invoice", label: "재발송운송장번호", value: csCase.reship_invoice, align: "invoice-cell reship-cell" })}
+          ${editableCell({ scope: "ledger", field: "return_invoice", label: "회수운송장번호", value: csCase.return_invoice, align: "invoice-cell return-cell" })}
           <td data-full-date="${escapeHtml(csCase.order_date)}">${escapeHtml(shortKoreanDate(csCase.order_date))}</td>
           <td data-full-date="${escapeHtml(csCase.ship_date)}">${escapeHtml(shortKoreanDate(csCase.ship_date))}</td>
-          <td>${escapeHtml(csCase.orderer_name)}</td>
-          <td>${escapeHtml(csCase.orderer_phone)}</td>
-          <td>${escapeHtml(csCase.receiver_name)}</td>
-          <td>${escapeHtml(csCase.receiver_phone)}</td>
-          <td class="left">${escapeHtml(csCase.product_name)}</td>
-          <td>${escapeHtml(csCase.quantity)}</td>
-          <td class="left">${escapeHtml(csCase.receiver_address)}</td>
-          <td>${escapeHtml(csCase.courier)}</td>
-          <td>${escapeHtml(csCase.original_invoice || csCase.original_info)}</td>
+          <td title="${escapeHtml(csCase.orderer_name)}">${escapeHtml(csCase.orderer_name)}</td>
+          <td title="${escapeHtml(csCase.orderer_phone)}">${escapeHtml(csCase.orderer_phone)}</td>
+          <td title="${escapeHtml(csCase.receiver_name)}">${escapeHtml(csCase.receiver_name)}</td>
+          <td title="${escapeHtml(csCase.receiver_phone)}">${escapeHtml(csCase.receiver_phone)}</td>
+          <td class="left" title="${escapeHtml(csCase.product_name)}">${escapeHtml(csCase.product_name)}</td>
+          <td class="${escapeHtml(quantityLevelClass(csCase.quantity))}">${escapeHtml(csCase.quantity)}</td>
+          <td class="left" title="${escapeHtml(csCase.receiver_address)}">${escapeHtml(csCase.receiver_address)}</td>
+          <td title="${escapeHtml(csCase.courier)}">${escapeHtml(csCase.courier)}</td>
+          <td title="${escapeHtml(csCase.original_invoice || csCase.original_info)}">${escapeHtml(csCase.original_invoice || csCase.original_info)}</td>
         `;
         applyRowPermissions(row);
         ledgerBody.appendChild(row);
@@ -9579,9 +16883,9 @@ HTML = r"""<!doctype html>
       }
     }
 
-    async function loadLedgerCases() {
+    async function loadLedgerCases({ showPicker = false } = {}) {
       const query = ledgerSearchInput.value.trim();
-      const params = new URLSearchParams({ limit: ledgerPageSize.value || "100" });
+      const params = new URLSearchParams({ limit: ledgerPageSize.value || "1000" });
       if (query) params.set("q", query);
       if (ledgerYearFilter?.value) params.set("year", ledgerYearFilter.value);
       if (ledgerMonthFilter?.value) params.set("month", ledgerMonthFilter.value);
@@ -9592,6 +16896,28 @@ HTML = r"""<!doctype html>
         const data = await response.json();
         ledgerCases = data.cases || [];
         applyLedgerFilters();
+        if (showPicker && query) {
+          const searchableRows = ledgerCases
+            .filter(matchesLedgerFilters)
+            .filter((row) => recordSearchMatches(row, [
+              "sales_vendor",
+              "purchase_vendor",
+              "vendor_name",
+              "orderer_name",
+              "orderer_phone",
+              "receiver_name",
+              "receiver_phone",
+              "receiver_address",
+              "product_name",
+              "original_invoice",
+              "original_info",
+              "return_invoice",
+              "reship_invoice",
+              "cs_content",
+            ], query));
+          await maybeOpenSearchPicker("ledger", query, searchableRows);
+        }
+        showCsFollowupAlertsIfNeeded();
       } catch {
         ledgerCases = [];
         renderLedger([]);
@@ -9599,36 +16925,483 @@ HTML = r"""<!doctype html>
       }
     }
 
-    async function uploadLedgerWorkbook() {
-      const file = ledgerImportInput.files[0];
-      if (!file) return;
+    async function showCsFollowupAlertsIfNeeded() {
+      if (currentMode !== "ledger" || ledgerFollowupAlertLoading || !can("ledger_edit")) return;
+      const todayKey = todayString();
+      const storageKey = `workhub_cs_followup_alert_${todayKey}`;
+      if (localStorage.getItem(storageKey) === "1") return;
+      try {
+        ledgerFollowupAlertLoading = true;
+        const response = await fetch("/api/cs-followup-alerts");
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "미처리 CS 알림 조회에 실패했습니다.");
+        const alerts = data.alerts || [];
+        localStorage.setItem(storageKey, "1");
+        if (!alerts.length) return;
+        const lines = alerts.slice(0, 12).map((item) => {
+          const invoice = [item.return_invoice ? `회수 ${item.return_invoice}` : "", item.reship_invoice ? `재발송 ${item.reship_invoice}` : ""].filter(Boolean).join(" / ");
+          const owner = item.receiver_name || item.sales_vendor || item.purchase_vendor || `CS #${item.id}`;
+          return `- ${owner} · ${item.product_name || "상품명 없음"} · ${invoice || "송장번호 없음"} · ${item.status || "상태 없음"}`;
+        });
+        if (alerts.length > 12) lines.push(`외 ${alerts.length - 12}건`);
+        await requestAppConfirm({
+          kicker: "CS 확인",
+          title: `전체 처리완료가 아닌 CS건이 ${alerts.length}건 있습니다.`,
+          message: "전날 송장이 입력된 미처리 CS를 확인해주세요.",
+          highlight: lines.join("\n"),
+          okText: "확인",
+          cancelText: "닫기",
+        });
+      } catch (error) {
+        console.warn(error);
+      } finally {
+        ledgerFollowupAlertLoading = false;
+      }
+    }
+
+    function importModeLabel(mode) {
+      return mode === "replace" ? "전체 데이터 교체" : "중복 제외 신규만 업로드";
+    }
+
+    const importProgressStepOrder = ["prepare", "preview", "confirm", "saving", "correction", "done"];
+    const importProgressStepPercent = {
+      prepare: 8,
+      preview: 28,
+      confirm: 44,
+      saving: 70,
+      correction: 86,
+      done: 100,
+      error: 100,
+    };
+    const importProgressStepLabel = {
+      prepare: "파일 업로드 준비 중",
+      preview: "엑셀을 읽고 양식을 검사하는 중",
+      confirm: "업로드 방식을 확인하는 중",
+      saving: "DB에 저장하는 중",
+      correction: "수정 필요 데이터를 확인하는 중",
+      done: "업로드 완료",
+      error: "업로드 실패",
+    };
+
+    function setImportProgressOpen(open) {
+      if (!importProgressDialog) return;
+      importProgressDialog.classList.toggle("open", open);
+      importProgressDialog.setAttribute("aria-hidden", open ? "false" : "true");
+    }
+
+    function hideImportProgress() {
+      setImportProgressOpen(false);
+    }
+
+    function showImportProgress({ ledgerName, fileName, mode = "" } = {}) {
+      if (!importProgressDialog) return;
+      if (importProgressPanel) importProgressPanel.classList.remove("error");
+      if (importProgressTitle) importProgressTitle.textContent = `${ledgerName || "대장"} 업로드 진행상황`;
+      if (importProgressDescription) importProgressDescription.textContent = "창을 닫거나 새로고침하지 말고 잠시만 기다려주세요.";
+      if (importProgressFile) importProgressFile.textContent = `파일명: ${fileName || "-"}`;
+      if (importProgressMode) importProgressMode.textContent = `방식: ${mode ? importModeLabel(mode) : "검토 중"}`;
+      if (importProgressClose) importProgressClose.hidden = true;
+      setImportProgressOpen(true);
+      updateImportProgress("prepare");
+    }
+
+    function updateImportProgress(step, message = "", mode = "") {
+      if (!importProgressDialog) return;
+      const stepIndex = importProgressStepOrder.indexOf(step);
+      const activeIndex = stepIndex >= 0 ? stepIndex : importProgressStepOrder.length - 1;
+      if (mode && importProgressMode) importProgressMode.textContent = `방식: ${importModeLabel(mode)}`;
+      if (importProgressBar) importProgressBar.style.setProperty("--import-progress-width", `${importProgressStepPercent[step] || 8}%`);
+      if (importProgressStage) importProgressStage.textContent = message || importProgressStepLabel[step] || "처리 중";
+      importProgressSteps?.querySelectorAll("[data-import-progress-step]").forEach((item) => {
+        const itemIndex = importProgressStepOrder.indexOf(item.dataset.importProgressStep || "");
+        item.classList.toggle("done", itemIndex >= 0 && itemIndex < activeIndex);
+        item.classList.toggle("active", itemIndex === activeIndex);
+      });
+    }
+
+    function finishImportProgress(status, message = "") {
+      if (!importProgressDialog) return;
+      setImportProgressOpen(true);
+      if (importProgressPanel) importProgressPanel.classList.toggle("error", status === "error");
+      if (status === "error") updateImportProgress("error", message);
+      else updateImportProgress("done", message);
+      if (importProgressClose) importProgressClose.hidden = false;
+      importProgressClose?.focus();
+    }
+
+    function importPreviewText(preview) {
+      const lines = [
+        `전체 행: ${preview.total || 0}건`,
+        `추가 예정: ${preview.insertable || 0}건`,
+        `이미 DB에 있는 중복: ${preview.duplicate_existing || 0}건`,
+        `파일 안 중복: ${preview.duplicate_in_file || 0}건`,
+        `확인/수정 필요: ${preview.invalid_count || 0}건`,
+      ];
+      const duplicates = Array.isArray(preview.duplicates) ? preview.duplicates : [];
+      if (duplicates.length) {
+        lines.push("", "중복 예시");
+        duplicates.slice(0, 10).forEach((item) => {
+          lines.push(`- ${item.row || ""}행 · ${item.reason || "중복"} · ${item.summary || ""}`);
+        });
+      }
+      return lines.join("\n");
+    }
+
+    function requestImportWarningApproval({ title, description, previewText, proceedLabel = "진행" }) {
+      if (!importWarningDialog || !importWarningTitle || !importWarningDescription || !importWarningPreview || !importWarningCancel || !importWarningProceed) {
+        return Promise.resolve(false);
+      }
+      importWarningTitle.textContent = title;
+      importWarningDescription.textContent = description;
+      importWarningPreview.textContent = previewText;
+      importWarningProceed.textContent = proceedLabel;
+      importWarningDialog.classList.add("open");
+      importWarningDialog.setAttribute("aria-hidden", "false");
+      return new Promise((resolve) => {
+        const finish = (approved) => {
+          importWarningDialog.classList.remove("open");
+          importWarningDialog.setAttribute("aria-hidden", "true");
+          importWarningCancel.removeEventListener("click", cancel);
+          importWarningProceed.removeEventListener("click", proceed);
+          importWarningDialog.removeEventListener("click", backdropCancel);
+          resolve(approved);
+        };
+        const cancel = () => finish(false);
+        const proceed = () => finish(true);
+        const backdropCancel = (event) => {
+          if (event.target === importWarningDialog) finish(false);
+        };
+        importWarningCancel.addEventListener("click", cancel);
+        importWarningProceed.addEventListener("click", proceed);
+        importWarningDialog.addEventListener("click", backdropCancel);
+        importWarningProceed.focus();
+      });
+    }
+
+    function requestImportModeSelection({ ledgerName, preview }) {
+      if (!importModeDialog || !importModeTitle || !importModeDescription || !importModePreview || !importModeCancel || !importModeDaily || !importModeReplace) {
+        return Promise.resolve("");
+      }
+      importModeTitle.textContent = `${ledgerName} 업로드 방식 선택`;
+      importModeDescription.textContent = "최종 업로드 전에 처리 방식을 선택해주세요. 전체 교체는 기존 데이터를 삭제하고 파일 내용으로 다시 저장합니다.";
+      importModePreview.textContent = [
+        `선택 파일 기준`,
+        importPreviewText(preview),
+        "",
+        "중복 제외 신규만 업로드: 기존 데이터와 중복되는 건은 제외하고 신규 건만 추가",
+        "전체 데이터 교체: 현재 저장된 전체 데이터를 삭제하고 선택 파일로 교체",
+      ].join("\n");
+      importModeDialog.classList.add("open");
+      importModeDialog.setAttribute("aria-hidden", "false");
+      return new Promise((resolve) => {
+        const finish = (mode) => {
+          importModeDialog.classList.remove("open");
+          importModeDialog.setAttribute("aria-hidden", "true");
+          importModeCancel.removeEventListener("click", cancel);
+          importModeDaily.removeEventListener("click", daily);
+          importModeReplace.removeEventListener("click", replace);
+          importModeDialog.removeEventListener("click", backdropCancel);
+          resolve(mode);
+        };
+        const cancel = () => finish("");
+        const daily = () => finish("daily");
+        const replace = () => finish("replace");
+        const backdropCancel = (event) => {
+          if (event.target === importModeDialog) finish("");
+        };
+        importModeCancel.addEventListener("click", cancel);
+        importModeDaily.addEventListener("click", daily);
+        importModeReplace.addEventListener("click", replace);
+        importModeDialog.addEventListener("click", backdropCancel);
+        importModeDaily.focus();
+      });
+    }
+
+    async function previewLedgerImport(file, mode, corrections = []) {
       const formData = new FormData();
       formData.append("file", file);
-      notice.textContent = "CS 처리대장 데이터를 DB에 업로드 중입니다.";
+      formData.append("mode", mode);
+      if (corrections.length) formData.append("corrections", JSON.stringify(corrections));
+      const response = await fetch("/api/cs-cases-import-preview", {
+        method: "POST",
+        body: formData,
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "CS 처리대장 업로드 검토에 실패했습니다.");
+      return data;
+    }
+
+    async function previewManagementImport(file, mode, corrections = []) {
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("mode", mode);
+      if (file?.lastModified) formData.append("file_last_modified", String(file.lastModified));
+      if (corrections.length) formData.append("corrections", JSON.stringify(corrections));
+      const response = await fetch("/api/management-import-preview", {
+        method: "POST",
+        body: formData,
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "통합관리대장 업로드 검토에 실패했습니다.");
+      return data;
+    }
+
+    function correctionFieldsForRow(row) {
+      const fields = new Map();
+      (row.issues || []).forEach((issue) => {
+        if (!issue.field) return;
+        fields.set(issue.field, {
+          field: issue.field,
+          label: issue.label || issue.field,
+          inputType: issue.input_type || "text",
+          message: issue.message || "",
+          options: Array.isArray(issue.options) ? issue.options : [],
+          suggestedValue: issue.suggested_value || "",
+        });
+      });
+      return Array.from(fields.values());
+    }
+
+    function renderImportCorrectionRows(rows) {
+      if (!importCorrectionList) return;
+      importCorrectionList.innerHTML = rows.map((row, rowIndex) => {
+        const fields = correctionFieldsForRow(row);
+        const fieldHtml = fields.map((field) => {
+          const value = field.suggestedValue || row.record?.[field.field] || "";
+          const inputType = field.inputType === "number" ? "number" : "text";
+          const controlHtml = field.inputType === "select"
+            ? `<select
+                id="importCorrection_${rowIndex}_${escapeHtml(field.field)}"
+                data-correction-row="${rowIndex}"
+                data-correction-field="${escapeHtml(field.field)}"
+              >
+                ${field.options.map((option) => `<option value="${escapeHtml(option)}" ${option === value ? "selected" : ""}>${escapeHtml(option)}</option>`).join("")}
+              </select>`
+            : `<input
+                id="importCorrection_${rowIndex}_${escapeHtml(field.field)}"
+                type="${inputType}"
+                value="${escapeHtml(value)}"
+                data-correction-row="${rowIndex}"
+                data-correction-field="${escapeHtml(field.field)}"
+              />`;
+          return `
+            <div class="import-correction-field">
+              <label for="importCorrection_${rowIndex}_${escapeHtml(field.field)}">${escapeHtml(field.label)}</label>
+              ${controlHtml}
+              <div class="import-correction-message">${escapeHtml(field.message)}</div>
+            </div>
+          `;
+        }).join("");
+        return `
+          <section class="import-correction-row" data-correction-card="${rowIndex}">
+            <div class="import-correction-row-head">
+              <span>${escapeHtml(row.source_sheet || "")} ${escapeHtml(row.row || "")}행</span>
+              <span class="import-correction-summary">${escapeHtml(row.summary || "수정 후 적용할 데이터")}</span>
+            </div>
+            <div class="import-correction-fields">${fieldHtml}</div>
+          </section>
+        `;
+      }).join("");
+    }
+
+    function requestImportCorrectionApproval({ ledgerName, preview }) {
+      const rows = Array.isArray(preview?.invalid_rows) ? preview.invalid_rows : [];
+      if (!rows.length) return Promise.resolve([]);
+      if (!importCorrectionDialog || !importCorrectionTitle || !importCorrectionDescription || !importCorrectionList || !importCorrectionCancel || !importCorrectionApply) {
+        return Promise.resolve(null);
+      }
+      importCorrectionTitle.textContent = `${ledgerName} 업로드 데이터 수정`;
+      importCorrectionDescription.textContent = `업로드는 완료되었습니다. 기존 양식과 맞지 않는 행 ${rows.length}건만 수정한 뒤 저장해주세요.`;
+      renderImportCorrectionRows(rows);
+      importCorrectionDialog.classList.add("open");
+      importCorrectionDialog.setAttribute("aria-hidden", "false");
+      return new Promise((resolve) => {
+        const finish = (payload) => {
+          importCorrectionDialog.classList.remove("open");
+          importCorrectionDialog.setAttribute("aria-hidden", "true");
+          importCorrectionCancel.removeEventListener("click", cancel);
+          importCorrectionApply.removeEventListener("click", apply);
+          importCorrectionDialog.removeEventListener("click", backdropCancel);
+          resolve(payload);
+        };
+        const cancel = () => finish(null);
+        const apply = () => {
+          const corrections = rows.map((row, rowIndex) => {
+            const correction = {
+              id: row.id || row.record?.id || "",
+              source_file: row.source_file || row.record?.source_file || "",
+              source_sheet: row.source_sheet || row.record?.source_sheet || "",
+              source_row: row.source_row || row.record?.source_row || row.row || "",
+            };
+            importCorrectionList.querySelectorAll(`[data-correction-row="${rowIndex}"]`).forEach((input) => {
+              correction[input.dataset.correctionField] = input.value.trim();
+            });
+            return correction;
+          });
+          finish(corrections);
+        };
+        const backdropCancel = (event) => {
+          if (event.target === importCorrectionDialog) finish(null);
+        };
+        importCorrectionCancel.addEventListener("click", cancel);
+        importCorrectionApply.addEventListener("click", apply);
+        importCorrectionDialog.addEventListener("click", backdropCancel);
+        const firstInput = importCorrectionList.querySelector("input");
+        if (firstInput) firstInput.focus();
+      });
+    }
+
+    async function applyPostImportCorrections({ ledgerName, endpoint, invalidRows }) {
+      let rows = Array.isArray(invalidRows) ? invalidRows : [];
+      let updated = 0;
+      let canceled = false;
+      while (rows.length) {
+        const corrections = await requestImportCorrectionApproval({
+          ledgerName,
+          preview: { invalid_rows: rows },
+        });
+        if (corrections === null) {
+          notice.textContent = `${ledgerName} 업로드는 완료됐지만 데이터 수정은 취소했습니다.`;
+          canceled = true;
+          break;
+        }
+        notice.textContent = `${ledgerName} 업로드 데이터 수정 저장 중입니다.`;
+        const response = await fetch(endpoint, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ corrections }),
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || `${ledgerName} 업로드 데이터 수정에 실패했습니다.`);
+        updated += Number(data.updated || 0);
+        rows = Array.isArray(data.invalid_rows) ? data.invalid_rows : [];
+        if (rows.length) {
+          notice.textContent = `${ledgerName} 수정 후에도 확인이 필요한 행 ${rows.length}건이 남아 있습니다.`;
+        }
+      }
+      return { updated, canceled, remaining: rows.length };
+    }
+
+    async function confirmImportIfNeeded({ ledgerName, mode, preview }) {
+      if (mode === "replace") {
+        return requestImportWarningApproval({
+          title: `${ledgerName} 전체 데이터 교체 업로드`,
+          description: "현재 저장된 전체 데이터를 삭제하고 선택한 엑셀 파일 내용으로 다시 저장합니다. 승인된 관리자만 진행할 수 있습니다.",
+          previewText: "기존 데이터는 교체 후 되돌릴 수 없습니다. 필요한 경우 먼저 백업을 만들어주세요.",
+          proceedLabel: "전체 교체 진행",
+        });
+      }
+      if (Number(preview?.duplicate_existing || 0) > 0) {
+        return requestImportWarningApproval({
+          title: `${ledgerName} 중복 업로드 경고`,
+          description: "이미 DB에 올라간 것으로 보이는 데이터가 있습니다. 진행하면 기존 중복 건과 파일 내부 중복 건은 제외하고 새 데이터만 추가합니다.",
+          previewText: importPreviewText(preview),
+          proceedLabel: "새 데이터만 추가",
+        });
+      }
+      return true;
+    }
+
+    async function uploadLedgerWorkbook() {
+      if (ledgerUploadInProgress) return;
+      const file = ledgerImportInput.files[0];
+      if (!file) return;
+      ledgerUploadInProgress = true;
       try {
+        showImportProgress({ ledgerName: "CS 처리대장", fileName: file.name });
+        updateImportProgress("preview", "CS 처리대장 엑셀 파일을 검토하는 중입니다.");
+        notice.textContent = "CS 처리대장 업로드 파일 검토 중입니다.";
+        const preview = await previewLedgerImport(file, "daily");
+        updateImportProgress("confirm", "업로드 방식과 중복 데이터를 확인해주세요.");
+        hideImportProgress();
+        const mode = await requestImportModeSelection({ ledgerName: "CS 처리대장", preview });
+        if (!mode) {
+          notice.textContent = "CS 처리대장 업로드를 취소했습니다.";
+          return;
+        }
+        showImportProgress({ ledgerName: "CS 처리대장", fileName: file.name, mode });
+        updateImportProgress("saving", `CS 처리대장 ${importModeLabel(mode)} 처리 중입니다.`, mode);
+        const formData = new FormData();
+        formData.append("file", file);
+        formData.append("mode", mode);
+        notice.textContent = `CS 처리대장 ${importModeLabel(mode)} 진행 중입니다.`;
         const response = await fetch("/api/cs-cases-import", {
           method: "POST",
           body: formData,
         });
         const data = await response.json();
         if (!response.ok) throw new Error(data.error || "CS 처리대장 업로드에 실패했습니다.");
-        notice.textContent = data.message || "CS 처리대장 데이터를 업로드했습니다.";
+        updateImportProgress("correction", "수정이 필요한 데이터가 있는지 확인하는 중입니다.", mode);
+        hideImportProgress();
+        const correctionResult = await applyPostImportCorrections({
+          ledgerName: "CS 처리대장",
+          endpoint: "/api/cs-cases-import-corrections",
+          invalidRows: data.invalid_rows || [],
+        });
+        notice.textContent = correctionResult.canceled
+          ? `${data.message || "CS 처리대장 데이터를 업로드했습니다."} 수정이 필요한 행 ${correctionResult.remaining}건이 남아 있습니다.`
+          : correctionResult.updated
+          ? `${data.message || "CS 처리대장 데이터를 업로드했습니다."} 수정 ${correctionResult.updated}건을 저장했습니다.`
+          : data.message || "CS 처리대장 데이터를 업로드했습니다.";
         if (currentMode !== "ledger") {
           showWorkspace("ledger");
         } else {
           await loadLedgerCases();
         }
+        finishImportProgress("done", "CS 처리대장 업로드가 완료되었습니다.");
       } catch (error) {
         notice.textContent = error.message;
+        finishImportProgress("error", error.message || "CS 처리대장 업로드에 실패했습니다.");
       } finally {
         ledgerImportInput.value = "";
+        ledgerImportMode = "daily";
+        ledgerUploadInProgress = false;
       }
+    }
+
+    function visibleTextLength(value) {
+      return String(value || "").replace(/\s+/g, " ").trim().length;
+    }
+
+    function updateManagementColumnWidths(records) {
+      const configs = {
+        select: { min: 28, max: 28, header: "" },
+        order_date: { min: 74, max: 94, header: "주문일자" },
+        ship_date: { min: 74, max: 94, header: "출고일" },
+        purchase_vendor: { min: 108, max: 190, header: "매입거래처" },
+        sales_vendor: { min: 108, max: 190, header: "매출거래처" },
+        transaction_type: { min: 74, max: 116, header: "거래구분" },
+        ledger_checked: { min: 88, max: 128, header: "장부입력확인" },
+        orderer_name: { min: 56, max: 86, header: "주문자" },
+        sender_phone: { min: 88, max: 112, header: "발신자연락처" },
+        receiver_name: { min: 56, max: 86, header: "수령자" },
+        receiver_phone: { min: 88, max: 112, header: "수령자연락처" },
+        product_name: { min: 170, max: 250, header: "제품명" },
+        quantity: { min: 54, max: 72, header: "수량" },
+        receiver_address: { min: 190, max: 280, header: "상세주소" },
+        courier: { min: 70, max: 112, header: "택배사" },
+        invoice_number: { min: 104, max: 170, header: "운송장번호" },
+        memo: { min: 120, max: 210, header: "특이사항" },
+        cs_action: { min: 74, max: 86, header: "CS접수" },
+      };
+      const sample = (records || []).slice(0, 500);
+      document.querySelectorAll('.management-wrap col[data-management-col]').forEach((col) => {
+        const field = col.dataset.managementCol;
+        const config = configs[field] || { min: 90, max: 180, header: field };
+        const maxLength = Math.max(
+          visibleTextLength(config.header),
+          ...sample.map((record) => visibleTextLength(record[field]))
+        );
+        const width = Math.max(config.min, Math.min(config.max, Math.round(38 + maxLength * 8.2)));
+        col.style.setProperty("--management-col-width", `${width}px`);
+      });
     }
 
     function renderManagement(records) {
       closeCellEditor("management");
       managementBody.innerHTML = "";
       if (managementSelectAll) managementSelectAll.checked = false;
+      updateManagementColumnWidths(records || []);
       if (!records || records.length === 0) {
         const row = document.createElement("tr");
         row.innerHTML = `<td colspan="18">조회된 통합관리대장 데이터가 없습니다.</td>`;
@@ -9687,7 +17460,7 @@ HTML = r"""<!doctype html>
           ${editableCell({ scope: "management", field: "receiver_name", label: "수령자", value: record.receiver_name })}
           ${editableCell({ scope: "management", field: "receiver_phone", label: "수령자연락처", value: record.receiver_phone })}
           ${editableCell({ scope: "management", field: "product_name", label: "제품명", value: record.product_name, align: "left", input: "textarea" })}
-          ${editableCell({ scope: "management", field: "quantity", label: "수량", value: record.quantity })}
+          ${editableCell({ scope: "management", field: "quantity", label: "수량", value: record.quantity, align: quantityLevelClass(record.quantity) })}
           ${editableCell({ scope: "management", field: "receiver_address", label: "상세주소", value: record.receiver_address, align: "left", input: "textarea" })}
           ${editableCell({ scope: "management", field: "courier", label: "택배사", value: record.courier })}
           ${editableCell({ scope: "management", field: "invoice_number", label: "운송장번호", value: record.invoice_number })}
@@ -9699,9 +17472,9 @@ HTML = r"""<!doctype html>
       });
     }
 
-    async function loadManagementRecords() {
+    async function loadManagementRecords({ showPicker = false } = {}) {
       const query = managementSearchInput.value.trim();
-      const params = new URLSearchParams({ limit: managementPageSize.value || "500" });
+      const params = new URLSearchParams({ limit: managementPageSize.value || "1000" });
       const period = selectedManagementPeriod();
       if (query) params.set("q", query);
       if (period.year) params.set("year", period.year);
@@ -9713,6 +17486,24 @@ HTML = r"""<!doctype html>
         const data = await response.json();
         managementRecords = data.records || [];
         applyManagementFilters();
+        if (showPicker && query) {
+          const searchableRows = managementRecords
+            .filter(matchesManagementFilters)
+            .filter((row) => recordSearchMatches(row, [
+              "purchase_vendor",
+              "sales_vendor",
+              "orderer_name",
+              "sender_phone",
+              "receiver_name",
+              "receiver_phone",
+              "receiver_address",
+              "product_name",
+              "courier",
+              "invoice_number",
+              "memo",
+            ], query));
+          await maybeOpenSearchPicker("management", query, searchableRows);
+        }
       } catch {
         managementRecords = [];
         applyManagementFilters();
@@ -9740,28 +17531,60 @@ HTML = r"""<!doctype html>
     }
 
     async function uploadManagementWorkbook() {
+      if (managementUploadInProgress) return;
       const file = managementImportInput.files[0];
       if (!file) return;
-      const formData = new FormData();
-      formData.append("file", file);
-      notice.textContent = "통합관리대장 데이터를 DB에 업로드 중입니다.";
+      managementUploadInProgress = true;
       try {
+        showImportProgress({ ledgerName: "통합관리대장", fileName: file.name });
+        updateImportProgress("preview", "통합관리대장 엑셀 파일을 검토하는 중입니다.");
+        notice.textContent = "통합관리대장 업로드 파일 검토 중입니다.";
+        const preview = await previewManagementImport(file, "daily");
+        updateImportProgress("confirm", "업로드 방식과 중복 데이터를 확인해주세요.");
+        hideImportProgress();
+        const mode = await requestImportModeSelection({ ledgerName: "통합관리대장", preview });
+        if (!mode) {
+          notice.textContent = "통합관리대장 업로드를 취소했습니다.";
+          return;
+        }
+        showImportProgress({ ledgerName: "통합관리대장", fileName: file.name, mode });
+        updateImportProgress("saving", `통합관리대장 ${importModeLabel(mode)} 처리 중입니다.`, mode);
+        const formData = new FormData();
+        formData.append("file", file);
+        formData.append("mode", mode);
+        if (file?.lastModified) formData.append("file_last_modified", String(file.lastModified));
+        notice.textContent = `통합관리대장 ${importModeLabel(mode)} 진행 중입니다.`;
         const response = await fetch("/api/management-import", {
           method: "POST",
           body: formData,
         });
         const data = await response.json();
         if (!response.ok) throw new Error(data.error || "통합관리대장 업로드에 실패했습니다.");
-        notice.textContent = data.message || "통합관리대장 데이터를 업로드했습니다.";
+        updateImportProgress("correction", "수정이 필요한 데이터가 있는지 확인하는 중입니다.", mode);
+        hideImportProgress();
+        const correctionResult = await applyPostImportCorrections({
+          ledgerName: "통합관리대장",
+          endpoint: "/api/management-import-corrections",
+          invalidRows: data.invalid_rows || [],
+        });
+        notice.textContent = correctionResult.canceled
+          ? `${data.message || "통합관리대장 데이터를 업로드했습니다."} 수정이 필요한 행 ${correctionResult.remaining}건이 남아 있습니다.`
+          : correctionResult.updated
+          ? `${data.message || "통합관리대장 데이터를 업로드했습니다."} 수정 ${correctionResult.updated}건을 저장했습니다.`
+          : data.message || "통합관리대장 데이터를 업로드했습니다.";
         if (currentMode !== "management") {
           showWorkspace("management");
         } else {
           await loadManagementWorkspaceData();
         }
+        finishImportProgress("done", "통합관리대장 업로드가 완료되었습니다.");
       } catch (error) {
         notice.textContent = error.message;
+        finishImportProgress("error", error.message || "통합관리대장 업로드에 실패했습니다.");
       } finally {
         managementImportInput.value = "";
+        managementImportMode = "daily";
+        managementUploadInProgress = false;
       }
     }
 
@@ -9771,10 +17594,47 @@ HTML = r"""<!doctype html>
         const field = cell.dataset.managementField;
         const value = fieldValue(cell);
         payload[field] = field === "order_date" || field === "ship_date"
-          ? fullDateForSave(value, cell.dataset.rawDate || "")
+          ? fullDateForSave(value, cell.dataset.rawDate || cell.dataset.fullDate || "")
           : value;
       });
       return payload;
+    }
+
+    function collectManagementManualPayload() {
+      const payload = {};
+      managementManualFields?.querySelectorAll("[data-management-manual-field]").forEach((input) => {
+        payload[input.dataset.managementManualField] = input.value || "";
+      });
+      payload.transaction_type = managementTransactionTypeFromVendor(payload.purchase_vendor);
+      if (!payload.ship_date && payload.order_date) payload.ship_date = payload.order_date;
+      if (!payload.ledger_checked) payload.ledger_checked = "입력 완료";
+      return payload;
+    }
+
+    async function saveManagementManualRecord() {
+      const payload = collectManagementManualPayload();
+      if (!payload.purchase_vendor && !payload.sales_vendor && !payload.receiver_name && !payload.product_name && !payload.invoice_number) {
+        notice.textContent = "매입처, 매출처, 수령자, 제품명, 운송장번호 중 하나 이상 입력해주세요.";
+        return;
+      }
+      try {
+        saveManagementManualButton.disabled = true;
+        const response = await fetch("/api/management-record-create", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "통합관리대장 수기 추가에 실패했습니다.");
+        notice.textContent = data.message || "통합관리대장 수기 추가를 저장했습니다.";
+        closeManagementManualPopup();
+        await loadManagementPeriods();
+        await loadManagementRecords();
+      } catch (error) {
+        notice.textContent = error.message;
+      } finally {
+        saveManagementManualButton.disabled = false;
+      }
     }
 
     async function saveManagementPayload(payload) {
@@ -9874,6 +17734,7 @@ HTML = r"""<!doctype html>
         id: row.dataset.caseId,
         status: fieldValue(row.querySelector('[data-field="status"]')),
         cs_type: fieldValue(row.querySelector('[data-field="cs_type"]')),
+        cs_content: fieldValue(row.querySelector('[data-field="cs_content"]')),
         return_invoice: fieldValue(row.querySelector('[data-field="return_invoice"]')),
         reship_invoice: fieldValue(row.querySelector('[data-field="reship_invoice"]')),
       };
@@ -9895,13 +17756,119 @@ HTML = r"""<!doctype html>
       if (!savedCase) return;
       savedCase.status = payload.status;
       savedCase.cs_type = payload.cs_type;
+      savedCase.cs_content = payload.cs_content;
       savedCase.return_invoice = payload.return_invoice;
       savedCase.reship_invoice = payload.reship_invoice;
+    }
+
+    function activeLedgerRow() {
+      return activeCellEditors.ledger?.cell?.closest("tr") || null;
+    }
+
+    function ledgerRowByCaseId(caseId) {
+      return Array.from(ledgerBody.querySelectorAll("tr[data-case-id]"))
+        .find((item) => String(item.dataset.caseId) === String(caseId));
+    }
+
+    function returnCheckSuggestedStatus(row) {
+      const dateText = todayStatusDate();
+      const category = ledgerTypeCategory(row);
+      const hasReturn = Boolean(fieldValue(row?.querySelector('[data-field="return_invoice"]')));
+      const hasReship = Boolean(fieldValue(row?.querySelector('[data-field="reship_invoice"]')));
+      if (category === "exchange") return hasReturn && hasReship ? "전체 처리완료" : `회수 완료(${dateText})`;
+      if (category === "returnOnly") return hasReturn ? "전체 처리완료" : `회수 완료(${dateText})`;
+      if (category === "reshipOnly") return hasReship ? "전체 처리완료" : `회수 완료(${dateText})`;
+      return `회수 완료(${dateText})`;
+    }
+
+    function openReturnCheckPopup(rowOverride = null) {
+      const row = rowOverride || activeLedgerRow();
+      if (!row) {
+        notice.textContent = "회수확인할 CS 행을 선택해주세요.";
+        return;
+      }
+      returnCheckCaseId.value = row.dataset.caseId || "";
+      returnCheckDate.value = todayStatusDate();
+      returnCheckMemo.value = "";
+      returnCheckResult.value = "정상 입고";
+      returnCheckNextStatus.innerHTML = "";
+      const currentStatus = fieldValue(row.querySelector('[data-field="status"]'));
+      [returnCheckSuggestedStatus(row), "전체 처리완료", `회수 완료(${todayStatusDate()})`, currentStatus]
+        .filter((value, index, values) => value && values.indexOf(value) === index)
+        .forEach((value) => {
+          const option = document.createElement("option");
+          option.value = value;
+          option.textContent = value;
+          returnCheckNextStatus.appendChild(option);
+        });
+      returnCheckPopup?.classList.add("open");
+      returnCheckResult?.focus();
+    }
+
+    function closeReturnCheckPopup() {
+      returnCheckPopup?.classList.remove("open");
+    }
+
+    let activeAppConfirmResolver = null;
+
+    function closeAppConfirmDialog(result = false) {
+      appConfirmDialog?.classList.remove("open");
+      appConfirmDialog?.setAttribute("aria-hidden", "true");
+      const resolver = activeAppConfirmResolver;
+      activeAppConfirmResolver = null;
+      if (resolver) resolver(Boolean(result));
+    }
+
+    function requestAppConfirm({
+      kicker = "상태 변경 확인",
+      title = "처리상태를 변경할까요?",
+      message = "",
+      highlight = "",
+      okText = "변경",
+      cancelText = "유지",
+    } = {}) {
+      if (!appConfirmDialog) return Promise.resolve(false);
+      if (activeAppConfirmResolver) closeAppConfirmDialog(false);
+      appConfirmKicker.textContent = kicker;
+      appConfirmTitle.textContent = title;
+      appConfirmMessage.textContent = message;
+      appConfirmHighlight.textContent = highlight;
+      appConfirmHighlight.hidden = !highlight;
+      appConfirmOk.textContent = okText;
+      appConfirmCancel.textContent = cancelText;
+      appConfirmDialog.classList.add("open");
+      appConfirmDialog.setAttribute("aria-hidden", "false");
+      setTimeout(() => appConfirmOk?.focus(), 0);
+      return new Promise((resolve) => {
+        activeAppConfirmResolver = resolve;
+      });
+    }
+
+    function applyReturnCheckPopup() {
+      const caseId = returnCheckCaseId.value || "";
+      const row = ledgerRowByCaseId(caseId);
+      if (!row) {
+        closeReturnCheckPopup();
+        notice.textContent = "회수확인할 CS 행을 찾지 못했습니다.";
+        return;
+      }
+      const dateText = returnCheckDate.value.trim() || todayStatusDate();
+      const resultText = returnCheckResult.value.trim();
+      const memoText = returnCheckMemo.value.trim();
+      const historyLine = `[회수검수 ${dateText}] ${resultText}${memoText ? ` - ${memoText}` : ""}`;
+      const contentCell = row.querySelector('[data-field="cs_content"]');
+      const previousContent = fieldValue(contentCell);
+      setEditableCellValue(contentCell, previousContent ? `${previousContent}\n${historyLine}` : historyLine);
+      setLedgerRowStatus(row, returnCheckNextStatus.value || returnCheckSuggestedStatus(row));
+      applyLedgerOverallCompletion(row, { announce: false });
+      closeReturnCheckPopup();
+      notice.textContent = "회수확인/검수 결과를 반영했습니다. 저장하려면 체크된 항목 저장 버튼을 눌러주세요.";
     }
 
     async function saveLedgerRow(button) {
       const row = button.closest("tr");
       if (!row) return;
+      applyLedgerOverallCompletion(row, { announce: false });
       const payload = collectLedgerRow(row);
       try {
         button.disabled = true;
@@ -9946,6 +17913,7 @@ HTML = r"""<!doctype html>
         return 0;
       }
       for (const row of rows) {
+        applyLedgerOverallCompletion(row, { announce: false });
         const payload = collectLedgerRow(row);
         await saveLedgerPayload(payload);
         updateLedgerCaseCache(payload);
@@ -9973,6 +17941,46 @@ HTML = r"""<!doctype html>
       }
     }
 
+    function confirmSaveBeforeLeaving(nextMode, resumeAction) {
+      const sourceMode = currentMode;
+      if (isNavigationSaving) return false;
+      if ((sourceMode !== "management" && sourceMode !== "ledger") || nextMode === sourceMode) return true;
+      if (!hasPendingWorkspaceChanges(sourceMode)) return true;
+      const sourceLabel = sourceMode === "management" ? "통합관리대장" : "CS 처리대장";
+      isNavigationSaving = true;
+      requestAppConfirm({
+        kicker: "저장 확인",
+        title: `${sourceLabel} 변경 내용을 저장할까요?`,
+        message: "저장하지 않은 셀 수정 내용이 있습니다. 저장 후 이동하면 변경 내용 누락을 막을 수 있습니다.",
+        highlight: `${sourceLabel} 저장 후 이동`,
+        okText: "저장 후 이동",
+        cancelText: "현재 화면 유지",
+      })
+        .then(async (approved) => {
+          if (!approved) {
+            notice.textContent = "이동을 취소했습니다. 변경 내용을 저장하거나 취소 후 다시 이동해주세요.";
+            return;
+          }
+          if (activeEditorHasChange(sourceMode)) {
+            await applyCellEditor(sourceMode);
+          }
+          notice.textContent = "변경 내용을 저장한 뒤 이동합니다.";
+          await saveCurrentWorkspaceRows({ mode: sourceMode, silent: false, selectedOnly: false });
+          if (hasPendingWorkspaceChanges(sourceMode)) {
+            notice.textContent = "저장하지 못한 변경 내용이 있어 이동하지 않았습니다.";
+            return;
+          }
+          resumeAction();
+        })
+        .catch((error) => {
+          notice.textContent = error.message || "변경 내용 저장에 실패했습니다.";
+        })
+        .finally(() => {
+          isNavigationSaving = false;
+        });
+      return false;
+    }
+
     function selectedIds(container, rowSelector, idName) {
       return selectedRows(container, rowSelector)
         .map((row) => row.dataset[idName])
@@ -9989,7 +17997,13 @@ HTML = r"""<!doctype html>
         return;
       }
       const label = isManagement ? "통합관리대장" : "CS 처리대장";
-      if (!window.confirm(`${label} 선택 주문 ${ids.length}건을 삭제할까요?`)) return;
+      if (!await requestAppConfirm({
+        kicker: "선택 삭제",
+        title: `${label} 선택 주문 ${ids.length}건을 삭제할까요?`,
+        message: "삭제 후에는 목록에서 제외됩니다.",
+        okText: "삭제",
+        cancelText: "취소",
+      })) return;
       const endpoint = isManagement ? "/api/management-records-delete" : "/api/cs-cases-delete";
       try {
         const response = await fetch(endpoint, {
@@ -10025,11 +18039,11 @@ HTML = r"""<!doctype html>
 
     function collectLedgerExportRows() {
       return Array.from(ledgerBody.querySelectorAll("tr[data-case-id]")).map((row) => ({
-        occurred_at: textFromCell(row, 1),
+        occurred_at: fullDateFromCell(row, 1),
         sales_vendor: textFromCell(row, 2),
         purchase_vendor: textFromCell(row, 3),
         status: fieldValue(row.querySelector('[data-field="status"]')),
-        completed_at: textFromCell(row, 5),
+        completed_at: fullDateFromCell(row, 5),
         cs_type: fieldValue(row.querySelector('[data-field="cs_type"]')),
         cs_content: textFromCell(row, 7),
         reship_invoice: fieldValue(row.querySelector('[data-field="reship_invoice"]')),
@@ -10421,15 +18435,27 @@ HTML = r"""<!doctype html>
     const mailPopupTitles = {
       cs: "CS 요청",
       stock: "입고 및 품절 공지",
+      purchaseContacts: "매입처 관리",
+      salesContacts: "매출처 관리",
     };
 
     function openMailMessagePopup(type) {
-      const title = mailPopupTitles[type] || "유통사 업무관련 메일 발송";
+      if (type === "purchaseContacts" || type === "salesContacts") {
+        activeVendorManageType = type === "salesContacts" ? "sales" : "purchase";
+        openModal("vendor-contacts");
+        modalTitle.textContent = mailPopupTitles[type];
+        renderVendorManageContacts();
+        loadVendorContacts();
+        return;
+      }
+      const title = mailPopupTitles[type] || "거래처 업무관련";
       openModal(type === "stock" ? "mail-stock" : "cs");
       modalTitle.textContent = title;
     }
 
     function openModal(mode) {
+      if (!confirmSaveBeforeLeaving(mode, () => openModal(mode))) return false;
+      restoreCsFieldsToModal();
       currentMode = mode;
       closeLedgerCsPopup();
       modal.classList.add("open");
@@ -10455,6 +18481,9 @@ HTML = r"""<!doctype html>
       vendorTypeSelect.value = "purchase";
       recipientEmailInput.value = "";
       vendorNameInput.value = "";
+      if (vendorContactManageFields) vendorContactManageFields.style.display = "none";
+      if (vendorManageNameInput) vendorManageNameInput.value = "";
+      if (vendorManageEmailInput) vendorManageEmailInput.value = "";
       csOriginInput.value = "";
       csProductInput.value = "";
       csReceiverInput.value = "";
@@ -10546,7 +18575,7 @@ HTML = r"""<!doctype html>
         fileInput.required = false;
         templateInput.required = false;
       } else if (mode === "cs") {
-        modalTitle.textContent = "업체 CS 요청";
+        modalTitle.textContent = "거래처 CS 요청";
         submitButton.textContent = "메일 전송";
         submitButton.className = "btn primary";
         deliveryOptions.style.display = "none";
@@ -10561,6 +18590,23 @@ HTML = r"""<!doctype html>
         templateInput.required = false;
         loadVendorContacts();
         loadCsCases();
+      } else if (mode === "vendor-contacts") {
+        modalTitle.textContent = `${vendorManageTypeLabelText()} 관리`;
+        submitButton.textContent = "닫기";
+        submitButton.className = "btn";
+        deliveryOptions.style.display = "none";
+        templateUpload.style.display = "none";
+        vehicleFields.style.display = "none";
+        csFields.style.display = "none";
+        if (stockNoticeFields) stockNoticeFields.style.display = "none";
+        if (vendorContactManageFields) vendorContactManageFields.style.display = "block";
+        ledgerFields.style.display = "none";
+        managementFields.style.display = "none";
+        messagePlaceholder.style.display = "none";
+        fileInput.required = false;
+        templateInput.required = false;
+        renderVendorManageContacts();
+        loadVendorContacts();
       } else if (mode === "mail-stock") {
         modalTitle.textContent = "입고 및 품절 공지";
         submitButton.textContent = "공지 메일 발송";
@@ -10627,7 +18673,7 @@ HTML = r"""<!doctype html>
         managementSearchInput.value = "";
         managementYearFilter.value = "";
         managementMonthFilter.value = "";
-        managementPageSize.value = "500";
+        managementPageSize.value = "1000";
         managementImportInput.value = "";
         Object.keys(managementFilters).forEach((key) => delete managementFilters[key]);
         closeLedgerFilter();
@@ -10635,8 +18681,14 @@ HTML = r"""<!doctype html>
       }
 
       const fileDrop = document.querySelector("label[for='fileInput']");
-      fileDrop.style.display = mode === "vehicle" || mode === "cs" || mode === "ledger" || mode === "management" || mode.startsWith("mail-") ? "none" : "grid";
-      fileLabel.style.display = mode === "vehicle" || mode === "cs" || mode === "ledger" || mode === "management" || mode.startsWith("mail-") ? "none" : "block";
+      fileDrop.style.display = mode === "vehicle" || mode === "cs" || mode === "vendor-contacts" || mode === "ledger" || mode === "management" || mode.startsWith("mail-") ? "none" : "grid";
+      fileLabel.style.display = mode === "vehicle" || mode === "cs" || mode === "vendor-contacts" || mode === "ledger" || mode === "management" || mode.startsWith("mail-") ? "none" : "block";
+    }
+
+    function requestCloseModal() {
+      if (!confirmSaveBeforeLeaving("modal-close", requestCloseModal)) return false;
+      closeModal();
+      return true;
     }
 
     function closeModal() {
@@ -10671,9 +18723,14 @@ HTML = r"""<!doctype html>
         syncCrmNavState();
         return;
       }
+      if (mode === "hermes") {
+        document.querySelector("#hermesNavToggle")?.classList.add("active");
+        document.querySelector("#hermesNavGroup")?.classList.add("open");
+        document.querySelector(`#hermesNavGroup [data-hermes-tab="${hermesActiveTab}"]`)?.classList.add("active");
+        return;
+      }
       if (mode === "dashboard") {
         document.querySelector("#companyNavToggle")?.classList.add("active");
-        document.querySelector("#companyNavGroup")?.classList.add("open");
         syncCompanyNavState();
         return;
       }
@@ -10686,29 +18743,55 @@ HTML = r"""<!doctype html>
         document.querySelector("#orderNavToggle")?.classList.add("active");
         return;
       }
+      if (mode === "management") {
+        document.querySelector("#managementNavToggle")?.classList.add("active");
+        document.querySelector("#managementNavGroup")?.classList.add("open");
+        return;
+      }
+      if (mode === "ledger") {
+        document.querySelector("#ledgerNavToggle")?.classList.add("active");
+        document.querySelector("#ledgerNavGroup")?.classList.add("open");
+        return;
+      }
+      if (mode === "salesReport") {
+        document.querySelector("#salesReportNavToggle")?.classList.add("active");
+        document.querySelector("#salesReportNavGroup")?.classList.add("open");
+        document.querySelector('#salesReportNavGroup [data-open="salesReport"]')?.classList.add("active");
+        return;
+      }
       const selector = `[data-open="${mode}"]`;
       const activeItem = document.querySelector(selector);
       if (activeItem) activeItem.classList.add("active");
     }
 
     function showWorkspace(mode) {
+      if (!confirmSaveBeforeLeaving(mode, () => showWorkspace(mode))) return false;
       closeModal();
       if (mode === "userAdmin" && !userAdminWorkspace) mode = "dashboard";
+      if (mode === "salesReport" && (!userAdminWorkspace || !can("sales_report_manage"))) mode = "dashboard";
       if (mode === "leave" && !leaveWorkspace) mode = "dashboard";
       if (mode === "backup" && !backupWorkspace) mode = "dashboard";
       if (mode === "systemUpdate" && !systemUpdateWorkspace) mode = "dashboard";
       if (mode === "fileLibrary" && !fileLibraryWorkspace) mode = "dashboard";
       if (mode === "crm" && !can("crm_view")) mode = "dashboard";
+      if (mode === "hermes" && (!hermesWorkspace || !can("hermes_use"))) mode = "dashboard";
       currentMode = mode;
+      updateTopbarSearchPlaceholder(mode);
       const showImport = mode === "import";
       const showManagement = mode === "management";
       const showLedger = mode === "ledger";
       const showCrm = mode === "crm";
+      const showHermes = mode === "hermes";
       const showLeave = mode === "leave";
       const showFileLibrary = mode === "fileLibrary" && Boolean(fileLibraryWorkspace);
       const showUserAdmin = mode === "userAdmin" && Boolean(userAdminWorkspace);
+      const showSalesReport = mode === "salesReport" && Boolean(userAdminWorkspace);
       const showBackup = mode === "backup" && Boolean(backupWorkspace);
       const showSystemUpdate = mode === "systemUpdate" && Boolean(systemUpdateWorkspace);
+      document.querySelector("main")?.classList.toggle(
+        "workspace-scroll-mode",
+        showUserAdmin || showBackup || showSystemUpdate
+      );
       dashboardContent.style.display = mode === "dashboard" ? "" : "none";
       if (importWorkspace) importWorkspace.classList.toggle("active", showImport);
       if (orderWorkspace) orderWorkspace.classList.toggle("active", false);
@@ -10716,8 +18799,12 @@ HTML = r"""<!doctype html>
       managementWorkspace.classList.toggle("active", showManagement);
       ledgerWorkspace.classList.toggle("active", showLedger);
       crmWorkspace.classList.toggle("active", showCrm);
+      if (hermesWorkspace) hermesWorkspace.classList.toggle("active", showHermes);
       if (leaveWorkspace) leaveWorkspace.classList.toggle("active", showLeave);
-      if (userAdminWorkspace) userAdminWorkspace.classList.toggle("active", showUserAdmin);
+      if (userAdminWorkspace) {
+        userAdminWorkspace.classList.toggle("active", showUserAdmin || showSalesReport);
+        userAdminWorkspace.classList.toggle("sales-report-only", showSalesReport);
+      }
       if (backupWorkspace) backupWorkspace.classList.toggle("active", showBackup);
       if (systemUpdateWorkspace) systemUpdateWorkspace.classList.toggle("active", showSystemUpdate);
       setActiveNav(mode);
@@ -10726,7 +18813,7 @@ HTML = r"""<!doctype html>
         managementSearchInput.value = "";
         managementYearFilter.value = "";
         managementMonthFilter.value = "";
-        managementPageSize.value = "500";
+        managementPageSize.value = "1000";
         managementImportInput.value = "";
         closeLedgerFilter();
         loadManagementWorkspaceData();
@@ -10742,8 +18829,16 @@ HTML = r"""<!doctype html>
         setPageTitle("업무관리");
         closeLedgerFilter();
         loadCrmAll().catch((error) => setCrmMessage(error.message, true));
+      } else if (showHermes) {
+        setPageTitle("헤르메스");
+        closeLedgerFilter();
+        setHermesTab(hermesActiveTab);
+        loadHermesAll().catch((error) => {
+          setHermesStatus(false, error.message);
+          if (hermesSettingsMessage) hermesSettingsMessage.textContent = error.message;
+        });
       } else if (showImport) {
-        setPageTitle("수출입 업무");
+        setPageTitle("수출입 업무 및 화물 입 출고 관리");
         closeLedgerFilter();
         loadImportShipments();
       } else if (showFileLibrary) {
@@ -10760,6 +18855,11 @@ HTML = r"""<!doctype html>
         resetUserAdminForm();
         loadAdminMailSettings();
         loadUserAccounts();
+      } else if (showSalesReport) {
+        setPageTitle("매출현황");
+        closeLedgerFilter();
+        loadSalesReportUploads();
+        loadSalesReportDashboard();
       } else if (showBackup) {
         setPageTitle("백업 관리");
         closeLedgerFilter();
@@ -10783,6 +18883,120 @@ HTML = r"""<!doctype html>
       url.searchParams.set("view", mode);
       url.searchParams.set("standalone", "1");
       window.open(url.toString(), "_blank", "width=1480,height=920");
+    }
+
+    function updateTopbarSearchPlaceholder(mode = currentMode) {
+      if (!topbarSearchInput) return;
+      if (mode === "management") topbarSearchInput.placeholder = "통합관리대장 검색";
+      else if (mode === "ledger") topbarSearchInput.placeholder = "수령인, 송장번호, CS내용 검색";
+      else if (mode === "crm") topbarSearchInput.placeholder = "업무명, 직원, 번호 검색";
+      else if (mode === "hermes") topbarSearchInput.placeholder = "헤르메스 업무채팅 내용 입력";
+      else topbarSearchInput.placeholder = "검색어 입력 시 CS 처리대장 조회";
+    }
+
+    async function submitTopbarSearch(event) {
+      event?.preventDefault();
+      const query = (topbarSearchInput?.value || "").trim();
+      if (!query) {
+        notice.textContent = "검색어를 입력해주세요.";
+        topbarSearchInput?.focus();
+        return;
+      }
+      if (currentMode === "management") {
+        managementSearchInput.value = query;
+        await loadManagementRecords();
+        return;
+      }
+      if (currentMode === "ledger") {
+        ledgerSearchInput.value = query;
+        await loadLedgerCases();
+        return;
+      }
+      if (currentMode === "crm") {
+        setCrmTab("tasks");
+        crmTaskSearch.value = query;
+        markCrmTaskFiltersDirty();
+        await loadCrmTasks();
+        return;
+      }
+      if (currentMode === "hermes") {
+        setHermesTab("chat");
+        if (hermesChatInput) hermesChatInput.value = query;
+        await sendHermesChat();
+        return;
+      }
+      if (showWorkspace("ledger") === false) return;
+      ledgerSearchInput.value = query;
+      await loadLedgerCases();
+      notice.textContent = `"${query}" 검색 결과를 CS 처리대장에서 조회했습니다.`;
+    }
+
+    async function refreshCurrentWorkspace() {
+      topbarRefreshButton?.classList.add("busy");
+      try {
+        if (currentMode === "management") await loadManagementWorkspaceData();
+        else if (currentMode === "ledger") await loadLedgerCases();
+        else if (currentMode === "crm") await loadCrmAll();
+        else if (currentMode === "hermes") await loadHermesAll();
+        else if (currentMode === "import") await loadImportShipments();
+        else if (currentMode === "fileLibrary") await loadSharedFiles();
+        else if (currentMode === "leave") await loadLeaveData();
+        else if (currentMode === "userAdmin") await loadUserAccounts();
+        else if (currentMode === "salesReport") {
+          await loadSalesReportUploads();
+          await loadSalesReportDashboard();
+        } else if (currentMode === "backup") await loadBackups();
+        else if (currentMode === "systemUpdate") await loadSystemUpdateStatus();
+        else if (companyActiveTab === "calendar") await loadCompanyCalendar();
+        else if (companyActiveTab === "staff") await loadCompanyStaffDashboard();
+        else await loadDashboardEntryData();
+        notice.textContent = "현재 화면을 새로고침했습니다.";
+      } catch (error) {
+        notice.textContent = error.message || "새로고침하지 못했습니다.";
+      } finally {
+        topbarRefreshButton?.classList.remove("busy");
+      }
+    }
+
+    async function openTopbarAlertPanel() {
+      const sections = [];
+      const leaveItems = leaveNotificationList
+        ? Array.from(leaveNotificationList.children).map((item) => item.textContent.trim()).filter(Boolean)
+        : [];
+      if (leaveItems.length) {
+        sections.push(`
+          <div class="focus-widget-section">
+            <h4>연차 알림</h4>
+            <ul>${leaveItems.slice(0, 5).map((text) => `<li>${escapeHtml(text)}</li>`).join("")}</ul>
+          </div>
+        `);
+      }
+      if (can("ledger_edit")) {
+        try {
+          const response = await fetch("/api/cs-followup-alerts");
+          const data = await response.json();
+          if (response.ok && Array.isArray(data.alerts) && data.alerts.length) {
+            sections.push(`
+              <div class="focus-widget-section">
+                <h4>미처리 CS 확인</h4>
+                <p>전날 송장이 입력됐지만 전체 처리완료가 아닌 CS건이 ${escapeHtml(data.alerts.length)}건 있습니다.</p>
+                <button class="crm-mini-button primary" type="button" data-topbar-open="ledger">CS 처리대장 보기</button>
+              </div>
+            `);
+          }
+        } catch {
+          sections.push(`<div class="focus-widget-section"><h4>CS 알림</h4><p>CS 알림을 불러오지 못했습니다.</p></div>`);
+        }
+      }
+      if (!sections.length) {
+        sections.push(`<div class="focus-widget-section"><h4>알림 없음</h4><p>현재 확인할 새 알림이 없습니다.</p></div>`);
+      }
+      openFocusWidget({
+        kicker: "업무 알림",
+        title: "확인할 알림",
+        subtitle: todayString(),
+        body: sections.join(""),
+      });
     }
 
     function applySidebarSearch() {
@@ -10810,9 +19024,10 @@ HTML = r"""<!doctype html>
         if (group.classList.contains("permission-hidden")) return;
         const toggle = group.querySelector(".nav-item");
         const groupText = (toggle?.innerText || "").toLowerCase();
-        let hasMatch = groupText.includes(query);
+        const groupMatched = groupText.includes(query);
+        let hasMatch = groupMatched;
         group.querySelectorAll(".nav-subitem").forEach((subitem) => {
-          const matched = subitem.innerText.toLowerCase().includes(query) || hasMatch;
+          const matched = subitem.innerText.toLowerCase().includes(query) || groupMatched;
           subitem.style.display = matched ? "" : "none";
           hasMatch = hasMatch || matched;
         });
@@ -10885,6 +19100,8 @@ HTML = r"""<!doctype html>
     };
     function showOrderWorkspace(mode) {
       if (ORDER_WORKFLOWS[mode]) currentOrderMode = mode;
+      currentMode = "order";
+      updateTopbarSearchPlaceholder("order");
       closeLedgerFilter();
       dashboardContent.style.display = "none";
       if (orderWorkspace) orderWorkspace.classList.toggle("active", true);
@@ -10893,6 +19110,7 @@ HTML = r"""<!doctype html>
       managementWorkspace.classList.toggle("active", false);
       ledgerWorkspace.classList.toggle("active", false);
       crmWorkspace.classList.toggle("active", false);
+      if (hermesWorkspace) hermesWorkspace.classList.toggle("active", false);
       if (leaveWorkspace) leaveWorkspace.classList.toggle("active", false);
       if (userAdminWorkspace) userAdminWorkspace.classList.toggle("active", false);
       if (backupWorkspace) backupWorkspace.classList.toggle("active", false);
@@ -10905,7 +19123,9 @@ HTML = r"""<!doctype html>
       loadOrderDownloads();
     }
     function openOrderModal(mode) {
-      currentOrderMode = ORDER_WORKFLOWS[mode] ? mode : "delivery";
+      const nextOrderMode = ORDER_WORKFLOWS[mode] ? mode : "delivery";
+      if (!confirmSaveBeforeLeaving(nextOrderMode, () => openOrderModal(mode))) return false;
+      currentOrderMode = nextOrderMode;
       showOrderWorkspace(currentOrderMode);
       setPageTitle(ORDER_MODAL_TITLES[currentOrderMode] || "발주업무");
       openModal(currentOrderMode);
@@ -10921,28 +19141,58 @@ HTML = r"""<!doctype html>
       openOrderModal(mode);
     }, true);
 
+    function navGroupForPrimaryToggle(button, mode) {
+      const groupByMode = {
+        dashboard: "#companyNavGroup",
+        import: "#importNavGroup",
+        management: "#managementNavGroup",
+        ledger: "#ledgerNavGroup",
+        crm: "#crmNavGroup",
+        hermes: "#hermesNavGroup",
+      };
+      if (!button.classList.contains("nav-item")) return null;
+      const selector = groupByMode[mode];
+      return selector ? document.querySelector(selector) : null;
+    }
+
+    function collapseCurrentPrimaryNav(button, mode) {
+      const group = navGroupForPrimaryToggle(button, mode);
+      if (!group || currentMode !== mode || !group.classList.contains("open")) return false;
+      group.classList.remove("open");
+      return true;
+    }
+
     document.querySelectorAll("[data-open]").forEach((button) => {
       button.addEventListener("click", () => {
         scheduleSidebarSearchAutofillGuard();
         const mode = button.dataset.open;
         if (mode === "crm") {
           const crmGroup = document.querySelector("#crmNavGroup");
-          const wasCrmGroupOpen = Boolean(crmGroup?.classList.contains("open"));
-          showWorkspace("crm");
+          if (button.id === "crmNavToggle" && collapseCurrentPrimaryNav(button, "crm")) return;
+          if (showWorkspace("crm") === false) return;
           if (button.dataset.crmNavTab) setCrmTab(button.dataset.crmNavTab);
-          if (button.id === "crmNavToggle") {
-            crmGroup?.classList.toggle("open", !wasCrmGroupOpen);
-          } else {
-            crmGroup?.classList.add("open");
-          }
+          crmGroup?.classList.add("open");
+          return;
+        }
+        if (mode === "hermes") {
+          const hermesGroup = document.querySelector("#hermesNavGroup");
+          if (button.id === "hermesNavToggle" && collapseCurrentPrimaryNav(button, "hermes")) return;
+          if (showWorkspace("hermes") === false) return;
+          if (button.dataset.hermesTab) setHermesTab(button.dataset.hermesTab);
+          hermesGroup?.classList.add("open");
           return;
         }
         if (mode === "order") {
+          if (!confirmSaveBeforeLeaving("order", () => showOrderWorkspace(currentOrderMode))) return;
           showOrderWorkspace();
           return;
         }
-        if (mode === "management" || mode === "ledger" || mode === "crm" || mode === "import" || mode === "fileLibrary" || mode === "userAdmin" || mode === "leave" || mode === "backup" || mode === "systemUpdate") {
-          showWorkspace(mode);
+        if (mode === "management" || mode === "ledger" || mode === "crm" || mode === "hermes" || mode === "import" || mode === "fileLibrary" || mode === "userAdmin" || mode === "salesReport" || mode === "leave" || mode === "backup" || mode === "systemUpdate") {
+          if (collapseCurrentPrimaryNav(button, mode)) return;
+          if (showWorkspace(mode) === false) return;
+          if (mode === "salesReport" && button.closest("#salesReportNavGroup")) {
+            openSalesReportUploadPicker();
+          }
           return;
         }
         openModal(mode);
@@ -10950,12 +19200,14 @@ HTML = r"""<!doctype html>
     });
     document.querySelectorAll("[data-view]").forEach((button) => {
       button.addEventListener("click", () => {
-        showWorkspace(button.dataset.view);
+        const companyGroup = document.querySelector("#companyNavGroup");
+        if (button.id === "companyNavToggle" && collapseCurrentPrimaryNav(button, "dashboard")) return;
+        if (showWorkspace(button.dataset.view) === false) return;
         if (button.dataset.companyTab) setCompanyTab(button.dataset.companyTab);
         if (button.id === "companyNavToggle") {
-          document.querySelector("#companyNavGroup").classList.toggle("open");
+          companyGroup?.classList.add("open");
         } else if (button.dataset.companyTab) {
-          document.querySelector("#companyNavGroup")?.classList.add("open");
+          companyGroup?.classList.add("open");
         }
       });
     });
@@ -10977,13 +19229,51 @@ HTML = r"""<!doctype html>
       try {
         await downloadSavedOrderFile(button.dataset.orderDownloadId);
       } catch (error) {
-        alert(error.message);
+        notice.textContent = error.message || "저장된 발주 파일을 다운로드하지 못했습니다.";
       } finally {
         button.disabled = false;
       }
     });
     sharedFileRefresh?.addEventListener("click", loadSharedFiles);
     sharedFileUpload?.addEventListener("click", uploadSharedFile);
+    hermesRefresh?.addEventListener("click", loadHermesAll);
+    hermesTabs.forEach((button) => {
+      button.addEventListener("click", () => setHermesTab(button.dataset.hermesTabButton || "chat"));
+    });
+    hermesChatSend?.addEventListener("click", sendHermesChat);
+    document.querySelectorAll("[data-hermes-quick]").forEach((button) => {
+      button.addEventListener("click", () => {
+        const action = button.dataset.hermesQuick || "";
+        if (action === "summary") {
+          createHermesSummary().catch((error) => {
+            if (hermesChatResponse) hermesChatResponse.textContent = error.message;
+          });
+        } else if (action === "history") {
+          setHermesTab("history");
+        } else if (action === "automation") {
+          setHermesTab("automation");
+        } else if (action === "settings") {
+          setHermesTab("settings");
+        }
+      });
+    });
+    hermesHistoryFilter?.addEventListener("change", () => renderHermesHistory(hermesHistoryItems));
+    hermesSummaryCreate?.addEventListener("click", createHermesSummary);
+    hermesAutomationSend?.addEventListener("click", sendHermesAutomation);
+    hermesPresetButtons.forEach((button) => {
+      button.addEventListener("click", () => applyHermesPreset(button.dataset.hermesPreset || "vps"));
+    });
+    hermesSettingsSave?.addEventListener("click", () => {
+      saveHermesSettings().catch((error) => {
+        if (hermesSettingsMessage) hermesSettingsMessage.textContent = error.message;
+      });
+    });
+    hermesConnectionTest?.addEventListener("click", () => {
+      testHermesConnection().catch((error) => {
+        setHermesStatus(false, error.message);
+        if (hermesSettingsMessage) hermesSettingsMessage.textContent = error.message;
+      });
+    });
     sharedFileBody?.addEventListener("click", async (event) => {
       const downloadButton = event.target.closest("[data-shared-file-download]");
       const deleteButton = event.target.closest("[data-shared-file-delete]");
@@ -10995,11 +19285,17 @@ HTML = r"""<!doctype html>
         if (downloadButton) {
           await downloadSharedFile(downloadButton.dataset.sharedFileDownload);
         } else if (deleteButton) {
-          if (!confirm("선택한 업무 파일을 삭제할까요?")) return;
+          if (!await requestAppConfirm({
+            kicker: "업무 파일 삭제",
+            title: "선택한 업무 파일을 삭제할까요?",
+            message: deleteButton.dataset.sharedFileDelete || "",
+            okText: "삭제",
+            cancelText: "취소",
+          })) return;
           await deleteSharedFile(deleteButton.dataset.sharedFileDelete);
         }
       } catch (error) {
-        alert(error.message);
+        notice.textContent = error.message || "업무 파일 작업을 완료하지 못했습니다.";
       } finally {
         button.disabled = false;
       }
@@ -11086,11 +19382,45 @@ HTML = r"""<!doctype html>
         if (companyOrgBody) companyOrgBody.innerHTML = `<div class="company-org-empty">${escapeHtml(error.message)}</div>`;
       }));
     }
-    sidebarNoticePreview?.addEventListener("click", () => openNoticeWidget());
+    function openNoticeAutoItem(element) {
+      const type = element?.dataset.noticeAutoType || "";
+      const id = element?.dataset.noticeAutoId || "";
+      if (type === "import" && id) {
+        if (!can("import_shipment_manage")) {
+          notice.textContent = "수입제품 진행 관리 권한이 없습니다.";
+          return;
+        }
+        const record = importShipments.find((item) => String(item.id) === String(id));
+        if (record) openImportShipmentPopup(record);
+        return;
+      }
+      if ((type === "cargo" || type === "cargo-inbound") && id) {
+        if (!canManageCargoShipments()) {
+          notice.textContent = "화물 입출고건 입력 권한이 없습니다.";
+          return;
+        }
+        const record = cargoShipments.find((item) => String(item.id) === String(id));
+        if (record) openCargoShipmentPopup(record);
+        return;
+      }
+      openNoticeWidget();
+    }
+
+    sidebarNoticePreview?.addEventListener("click", (event) => {
+      const autoItem = event.target.closest("[data-notice-auto-type]");
+      if (autoItem) {
+        event.stopPropagation();
+        openNoticeAutoItem(autoItem);
+        return;
+      }
+      openNoticeWidget();
+    });
     sidebarNoticePreview?.addEventListener("keydown", (event) => {
       if (!isCardActivationKey(event)) return;
       event.preventDefault();
-      openNoticeWidget();
+      const autoItem = event.target.closest("[data-notice-auto-type]");
+      if (autoItem) openNoticeAutoItem(autoItem);
+      else openNoticeWidget();
     });
     noticePreview?.addEventListener("click", () => openNoticeWidget());
     companyOrgBody?.addEventListener("click", (event) => {
@@ -11155,6 +19485,87 @@ HTML = r"""<!doctype html>
       internalChatRefresh.addEventListener("click", () => loadInternalChatUsers().then(() => loadInternalMessages()).catch(() => {
         if (internalChatList) internalChatList.innerHTML = `<div class="internal-chat-empty">메시지를 불러오지 못했습니다.</div>`;
       }));
+    }
+    floatingMessengerTabButtons.forEach((button) => {
+      button.addEventListener("click", () => {
+        setFloatingMessengerTab(button.dataset.floatingMessengerTab);
+      });
+    });
+    [floatingMessengerHomeCta, floatingMessengerNoticeCta].forEach((button) => {
+      button?.addEventListener("click", () => {
+        setFloatingMessengerTab("chat", { focusInput: true });
+      });
+    });
+    if (floatingMessengerThreadBack) {
+      floatingMessengerThreadBack.addEventListener("click", () => {
+        setFloatingMessengerChatMode("list");
+      });
+    }
+    [floatingMessengerReadAll, floatingMessengerChatReadAll].forEach((button) => {
+      button?.addEventListener("click", () => {
+        floatingMessengerUnread = 0;
+        updateFloatingMessengerBadge();
+      });
+    });
+    if (floatingMessengerToggle) {
+      floatingMessengerToggle.addEventListener("click", () => {
+        toggleFloatingMessenger().catch((error) => {
+          if (floatingMessengerList) floatingMessengerList.innerHTML = `<div class="floating-messenger-empty">${escapeHtml(error.message || "메신저를 불러오지 못했습니다.")}</div>`;
+        });
+      });
+    }
+    if (floatingMessengerClose) {
+      floatingMessengerClose.addEventListener("click", closeFloatingMessenger);
+    }
+    if (floatingMessengerRefresh) {
+      floatingMessengerRefresh.addEventListener("click", () => {
+        refreshFloatingMessenger({ loadUsers: true, silent: false }).catch((error) => {
+          if (floatingMessengerList) floatingMessengerList.innerHTML = `<div class="floating-messenger-empty">${escapeHtml(error.message || "메신저를 불러오지 못했습니다.")}</div>`;
+        });
+      });
+    }
+    if (floatingMessengerOpenFull) {
+      floatingMessengerOpenFull.addEventListener("click", () => {
+        openFloatingMessengerFull().catch((error) => {
+          if (floatingMessengerList) floatingMessengerList.innerHTML = `<div class="floating-messenger-empty">${escapeHtml(error.message || "사내 메신저 화면을 열지 못했습니다.")}</div>`;
+        });
+      });
+    }
+    if (floatingMessengerRoomList) {
+      floatingMessengerRoomList.addEventListener("click", (event) => {
+        const button = event.target.closest("[data-floating-chat-room]");
+        if (!button) return;
+        setFloatingMessengerRoom(button.dataset.floatingChatRoom, button.dataset.floatingChatUserId || "").catch((error) => {
+          if (floatingMessengerList) floatingMessengerList.innerHTML = `<div class="floating-messenger-empty">${escapeHtml(error.message || "메시지를 불러오지 못했습니다.")}</div>`;
+        });
+      });
+    }
+    if (floatingMessengerForm) {
+      floatingMessengerForm.addEventListener("submit", (event) => {
+        sendFloatingMessengerMessage(event).catch(() => {
+          if (floatingMessengerList) floatingMessengerList.innerHTML = `<div class="floating-messenger-empty">메시지를 저장하지 못했습니다.</div>`;
+        });
+      });
+    }
+    if (floatingMessengerBody) {
+      floatingMessengerBody.addEventListener("keydown", (event) => {
+        if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
+          event.preventDefault();
+          floatingMessengerForm?.requestSubmit();
+        }
+      });
+    }
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape" && floatingMessengerOpen) closeFloatingMessenger();
+    });
+    if (floatingMessenger) {
+      renderFloatingMessengerRooms();
+      updateFloatingMessengerBadge();
+      setFloatingMessengerTab("home");
+      window.setTimeout(() => {
+        refreshFloatingMessenger({ loadUsers: true, silent: true }).catch(() => {});
+      }, 1200);
+      startFloatingMessengerPolling();
     }
     if (sidebarSearchInput) {
       sidebarSearchInput.addEventListener("keydown", () => {
@@ -11262,6 +19673,12 @@ HTML = r"""<!doctype html>
       markCrmTaskFiltersDirty();
       loadCrmTasks().catch((error) => setCrmMessage(error.message, true));
     });
+    crmTaskAdvancedToggle?.addEventListener("click", () => {
+      const open = Boolean(crmAdvancedFilters?.hidden);
+      if (crmAdvancedFilters) crmAdvancedFilters.hidden = !open;
+      crmTaskAdvancedToggle.setAttribute("aria-expanded", open ? "true" : "false");
+      crmTaskAdvancedToggle.textContent = open ? "필터 닫기" : "고급 필터";
+    });
     crmTaskSearch.addEventListener("keydown", (event) => {
       if (event.key === "Enter") {
         event.preventDefault();
@@ -11270,6 +19687,19 @@ HTML = r"""<!doctype html>
       }
     });
     crmTaskSearch?.addEventListener("input", markCrmTaskFiltersDirty);
+    topbarSearchForm?.addEventListener("submit", (event) => {
+      submitTopbarSearch(event).catch((error) => {
+        notice.textContent = error.message || "검색하지 못했습니다.";
+      });
+    });
+    topbarRefreshButton?.addEventListener("click", () => {
+      refreshCurrentWorkspace();
+    });
+    topbarAlertButton?.addEventListener("click", () => {
+      openTopbarAlertPanel().catch((error) => {
+        notice.textContent = error.message || "알림을 불러오지 못했습니다.";
+      });
+    });
     [
       crmTaskStatusFilter,
       crmTaskAssigneeFilter,
@@ -11340,6 +19770,12 @@ HTML = r"""<!doctype html>
       if (event.target === focusWidget) closeFocusWidget();
     });
     focusWidgetBody?.addEventListener("click", (event) => {
+      const topbarOpenButton = event.target.closest("[data-topbar-open]");
+      if (topbarOpenButton) {
+        closeFocusWidget();
+        showWorkspace(topbarOpenButton.dataset.topbarOpen || "dashboard");
+        return;
+      }
       const openTaskButton = event.target.closest("[data-focus-open-task]");
       if (openTaskButton) {
         openCrmTaskWidget(openTaskButton.dataset.focusOpenTask).catch((error) => setCrmMessage(error.message, true));
@@ -11410,19 +19846,75 @@ HTML = r"""<!doctype html>
     document.querySelectorAll("[data-mail-popup]").forEach((button) => {
       button.addEventListener("click", () => openMailMessagePopup(button.dataset.mailPopup));
     });
+    csAttachmentInput?.addEventListener("change", updateCsAttachmentSummary);
     document.querySelector("#adminNavToggle")?.addEventListener("click", () => {
       document.querySelector("#adminNavGroup")?.classList.toggle("open");
     });
-    document.querySelector("#noticeInputOpen").addEventListener("click", openNoticePopup);
+    document.querySelector("#salesReportNavToggle")?.addEventListener("click", () => {
+      const salesReportGroup = document.querySelector("#salesReportNavGroup");
+      if (currentMode === "salesReport" && salesReportGroup?.classList.contains("open")) {
+        salesReportGroup.classList.remove("open");
+        return;
+      }
+      showWorkspace("salesReport");
+    });
+    salesReportTabButtons.forEach((button) => {
+      button.setAttribute("role", "tab");
+      button.addEventListener("click", () => setSalesReportTab(button.dataset.salesTab || "salesProduct"));
+    });
+    salesReportPanels.forEach((panel) => {
+      panel.setAttribute("role", "tabpanel");
+    });
+    setSalesReportTab(activeSalesReportTab);
+    salesReportMonthlyCompareDetailButtons.forEach((button) => {
+      button.setAttribute("role", "tab");
+      button.addEventListener("click", () => renderMonthlyCompareDetail(button.dataset.salesCompareDetail || "daily"));
+    });
+    document.querySelector("#noticeInputOpen")?.addEventListener("click", () => {
+      if (showWorkspace("dashboard") === false) return;
+      setCompanyTab("notice");
+      openNoticePopup();
+    });
     importShipmentInputOpen.addEventListener("click", () => {
-      showWorkspace("import");
+      if (showWorkspace("import") === false) return;
       openImportShipmentPopup();
     });
-    managementImportOpen?.addEventListener("click", () => managementImportInput.click());
-    ledgerImportOpen?.addEventListener("click", () => ledgerImportInput.click());
+    function openManagementImport(mode = "daily") {
+      managementImportMode = mode;
+      managementImportInput.value = "";
+      if (showWorkspace("management") === false) return;
+      managementImportInput.click();
+    }
+
+    function openLedgerImport(mode = "daily") {
+      ledgerImportMode = mode;
+      ledgerImportInput.value = "";
+      if (showWorkspace("ledger") === false) return;
+      ledgerImportInput.click();
+    }
+
+    document.querySelectorAll("[data-management-import-mode]").forEach((button) => {
+      button.addEventListener("click", () => openManagementImport(button.dataset.managementImportMode || "daily"));
+    });
+    document.querySelectorAll("[data-ledger-import-mode]").forEach((button) => {
+      button.addEventListener("click", () => openLedgerImport(button.dataset.ledgerImportMode || "daily"));
+    });
     noticePopupClose.addEventListener("click", closeNoticePopup);
     noticePopup.addEventListener("click", (event) => {
       if (event.target === noticePopup) closeNoticePopup();
+    });
+    cargoInboundInputOpen?.addEventListener("click", () => openCargoShipmentPopup(null, "inbound"));
+    cargoShipmentInputOpen?.addEventListener("click", () => openCargoShipmentPopup(null, "outbound"));
+    cargoShipmentClose?.addEventListener("click", closeCargoShipmentPopup);
+    cargoShipmentReset?.addEventListener("click", () => resetCargoShipmentForm());
+    cargoVehicleReceiptLink?.addEventListener("click", linkCargoToVehicleReceipt);
+    cargoShipmentSave?.addEventListener("click", () => {
+      saveCargoShipment().catch((error) => {
+        notice.textContent = error.message;
+      });
+    });
+    cargoShipmentPopup?.addEventListener("click", (event) => {
+      if (event.target === cargoShipmentPopup) closeCargoShipmentPopup();
     });
     document.addEventListener("keydown", (event) => {
       if (event.key === "Escape" && focusWidget?.classList.contains("open")) {
@@ -11430,9 +19922,8 @@ HTML = r"""<!doctype html>
       }
     });
     importShipmentRefresh.addEventListener("click", loadImportShipments);
-    dashboardImportScheduleRefresh?.addEventListener("click", loadImportShipments);
     dashboardImportScheduleOpen?.addEventListener("click", () => {
-      showWorkspace("import");
+      if (showWorkspace("import") === false) return;
       openImportShipmentPopup();
     });
     importShipmentWorkspaceOpen?.addEventListener("click", () => openImportShipmentPopup());
@@ -11452,20 +19943,23 @@ HTML = r"""<!doctype html>
     importShipmentBody.addEventListener("click", (event) => {
       const editButton = event.target.closest("[data-import-edit]");
       const completeButton = event.target.closest("[data-import-complete]");
-      if (editButton) {
-        const record = importShipments.find((item) => String(item.id) === String(editButton.dataset.importEdit));
-        if (record) openImportShipmentPopup(record);
-      }
       if (completeButton) {
         completeImportShipment(completeButton.dataset.importComplete).catch((error) => {
           notice.textContent = error.message;
         });
+        return;
+      }
+      const row = event.target.closest("[data-import-row]");
+      const recordId = editButton?.dataset.importEdit || row?.dataset.importRow;
+      if (recordId) {
+        const record = importShipments.find((item) => String(item.id) === String(recordId));
+        if (record) openImportShipmentPopup(record);
       }
     });
-    document.querySelector("#closeModal").addEventListener("click", closeModal);
-    document.querySelector("#cancel").addEventListener("click", closeModal);
+    document.querySelector("#closeModal").addEventListener("click", requestCloseModal);
+    document.querySelector("#cancel").addEventListener("click", requestCloseModal);
     modal.addEventListener("click", (event) => {
-      if (event.target === modal) closeModal();
+      if (event.target === modal) requestCloseModal();
     });
     fileInput.addEventListener("change", () => {
       dropMain.textContent = fileInput.files[0] ? fileInput.files[0].name : "파일을 선택하거나 여기에 올려주세요.";
@@ -11518,22 +20012,65 @@ HTML = r"""<!doctype html>
       "업체구분/업체명/메일주소 엑셀을 선택해주세요."
     );
     setupDropzone(
+      document.querySelector("label[for='vendorManageFileInput']"),
+      vendorManageFileInput,
+      vendorManageDropMain,
+      "거래처명/메일주소 엑셀을 업로드해주세요."
+    );
+    setupDropzone(
       document.querySelector("label[for='sharedFileInput']"),
       sharedFileInput,
       sharedFileDropMain,
       "업무 파일을 선택해주세요."
     );
+    setupDropzone(csAttachmentDropzone, csAttachmentInput, csAttachmentDropMain, "파일을 드래그하거나 파일 선택 버튼을 눌러주세요.");
+    csAttachmentChoose?.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      csAttachmentInput?.click();
+    });
     document.querySelector("#addProductRow").addEventListener("click", () => addProductRow());
     noticeSaveButton.addEventListener("click", saveNoticeTemplate);
     noticeClearButton.addEventListener("click", clearNoticeTemplate);
+    noticeHistoryList?.addEventListener("click", (event) => {
+      const deleteButton = event.target.closest("[data-notice-delete]");
+      if (!deleteButton) return;
+      deleteNoticeRecord(deleteButton.dataset.noticeDelete);
+    });
     [noticeDateInput, noticeTitleInput, noticeOwnerInput, noticeBodyInput]
       .forEach((input) => input.addEventListener("input", renderNoticePreview));
     receiptTypeSelect.addEventListener("change", resetProductRows);
     vendorContactSelect.addEventListener("change", applySelectedVendor);
     saveVendorContactButton.addEventListener("click", saveCurrentVendorContact);
     if (vendorContactsFileInput) vendorContactsFileInput.addEventListener("change", uploadVendorContactsWorkbook);
+    if (vendorManageSave) vendorManageSave.addEventListener("click", saveVendorManageContact);
+    if (vendorManageFileInput) vendorManageFileInput.addEventListener("change", uploadVendorManageWorkbook);
+    if (vendorManageList) {
+      vendorManageList.addEventListener("click", (event) => {
+        const button = event.target.closest("[data-vendor-manage-name]");
+        if (!button) return;
+        const selected = vendorContacts.find((contact) => (
+          (contact.vendor_type || "purchase") === activeVendorManageType
+          && contact.vendor_name === button.dataset.vendorManageName
+        ));
+        fillVendorManageForm(selected);
+      });
+    }
+    if (salesReportFileInput) salesReportFileInput.addEventListener("change", uploadSalesReportWorkbook);
     saveCsCaseButton.addEventListener("click", saveCurrentCsCase);
-    ledgerRefresh.addEventListener("click", loadLedgerCases);
+    sendCsMailButton?.addEventListener("click", async () => {
+      if (!can("mail_send")) return;
+      sendCsMailButton.disabled = true;
+      notice.textContent = "CS요청 메일을 발송하는 중입니다.";
+      try {
+        await sendCurrentCsMail();
+      } catch (error) {
+        notice.textContent = error.message;
+      } finally {
+        sendCsMailButton.disabled = false;
+      }
+    });
+    ledgerRefresh.addEventListener("click", () => loadLedgerCases({ showPicker: true }));
     ledgerStatusFilter.addEventListener("change", applyLedgerFilters);
     ledgerFilterButtons.forEach((button) => {
       button.addEventListener("click", (event) => {
@@ -11555,7 +20092,8 @@ HTML = r"""<!doctype html>
       if (event.key === "Escape") closeLedgerFilter();
     });
     ledgerFilterApply.addEventListener("click", () => setActivePopoverFilter(ledgerFilterSearch.value));
-    ledgerFilterClear.addEventListener("click", () => setActivePopoverFilter(""));
+    ledgerFilterClear.addEventListener("click", clearActiveLedgerFilter);
+    ledgerFilterResetAll.addEventListener("click", clearAllActivePopoverFilters);
     ledgerFilterOptions.addEventListener("click", (event) => {
       const option = event.target.closest("[data-filter-value]");
       if (option) setActivePopoverFilter(option.dataset.filterValue || "");
@@ -11571,11 +20109,22 @@ HTML = r"""<!doctype html>
     });
     ledgerAddCs.addEventListener("click", openLedgerCsPopup);
     ledgerCsPopupClose.addEventListener("click", closeLedgerCsPopup);
+    managementAddManual.addEventListener("click", openManagementManualPopup);
+    managementManualClose.addEventListener("click", closeManagementManualPopup);
+    saveManagementManualButton.addEventListener("click", saveManagementManualRecord);
+    managementManualInput("purchase_vendor")?.addEventListener("input", syncManagementManualTransactionType);
     ledgerImportInput.addEventListener("change", uploadLedgerWorkbook);
-    managementRefresh.addEventListener("click", loadManagementRecords);
+    managementRefresh.addEventListener("click", () => loadManagementRecords({ showPicker: true }));
     managementImportInput.addEventListener("change", uploadManagementWorkbook);
+    importProgressClose?.addEventListener("click", hideImportProgress);
     managementSaveAll.addEventListener("click", () => saveCurrentWorkspaceRows({ mode: "management", selectedOnly: true }));
     ledgerSaveAll.addEventListener("click", () => saveCurrentWorkspaceRows({ mode: "ledger", selectedOnly: true }));
+    managementBulkApply.addEventListener("click", () => applySelectedCellToCheckedRows("management").catch((error) => {
+      notice.textContent = error.message || "통합관리대장 일괄 적용에 실패했습니다.";
+    }));
+    ledgerBulkApply.addEventListener("click", () => applySelectedCellToCheckedRows("ledger").catch((error) => {
+      notice.textContent = error.message || "CS 처리대장 일괄 적용에 실패했습니다.";
+    }));
     managementDeleteSelected.addEventListener("click", () => deleteSelectedRows("management"));
     ledgerDeleteSelected.addEventListener("click", () => deleteSelectedRows("ledger"));
     if (userAdminRefresh) userAdminRefresh.addEventListener("click", loadUserAccounts);
@@ -11591,6 +20140,8 @@ HTML = r"""<!doctype html>
     if (userAdminRole) userAdminRole.addEventListener("change", syncPermissionChecksForRole);
     if (backupRefresh) backupRefresh.addEventListener("click", loadBackups);
     if (backupCreate) backupCreate.addEventListener("click", createBackupNow);
+    if (backupSettingsSave) backupSettingsSave.addEventListener("click", saveBackupSettings);
+    if (backupCreateSelected) backupCreateSelected.addEventListener("click", createBackupAtSelectedPath);
     if (backupRestoreInput) backupRestoreInput.addEventListener("change", restoreBackupFromUpload);
     if (systemUpdateRefresh) systemUpdateRefresh.addEventListener("click", loadSystemUpdateStatus);
     if (systemUpdateCheck) systemUpdateCheck.addEventListener("click", checkSystemUpdate);
@@ -11608,7 +20159,9 @@ HTML = r"""<!doctype html>
     if (userAdminBody) {
       userAdminBody.addEventListener("click", (event) => {
         const editButton = event.target.closest("[data-user-edit]");
+        const deleteButton = event.target.closest("[data-user-delete]");
         if (editButton) editUserAccount(editButton.dataset.userEdit);
+        if (deleteButton) deleteUserAccount(deleteButton.dataset.userDelete);
       });
     }
     leaveTabs.forEach((button) => {
@@ -11618,6 +20171,14 @@ HTML = r"""<!doctype html>
     if (leaveRequestSubmit) leaveRequestSubmit.addEventListener("click", submitLeaveRequest);
     if (leaveUnitSelect) leaveUnitSelect.addEventListener("change", syncHalfDayDates);
     if (leaveStartDate) leaveStartDate.addEventListener("change", syncHalfDayDates);
+    if (leaveAdminUserSearch) leaveAdminUserSearch.addEventListener("input", () => renderLeaveAdminUserList(leaveAdminUserSearch.value));
+    if (leaveAdminUserSelect) leaveAdminUserSelect.addEventListener("change", () => renderLeaveAdminUserList(leaveAdminUserSearch?.value || ""));
+    if (leaveAdminUserList) {
+      leaveAdminUserList.addEventListener("click", (event) => {
+        const button = event.target.closest("[data-leave-admin-user]");
+        if (button) selectLeaveAdminUser(button.dataset.leaveAdminUser);
+      });
+    }
     if (leaveBalanceSave) leaveBalanceSave.addEventListener("click", saveLeaveBalance);
     if (leaveAccrualApply) leaveAccrualApply.addEventListener("click", applyLeaveAccrual);
     if (leaveUsageSave) leaveUsageSave.addEventListener("click", saveHistoricalLeaveUsage);
@@ -11665,6 +20226,14 @@ HTML = r"""<!doctype html>
         });
       });
     }
+    if (ledgerSelectAll) {
+      ledgerSelectAll.addEventListener("change", () => {
+        ledgerBody.querySelectorAll("tr[data-case-id] [data-row-check]").forEach((checkbox) => {
+          checkbox.checked = ledgerSelectAll.checked;
+        });
+        ledgerSelectAll.indeterminate = false;
+      });
+    }
     function closeDownloadMenus() {
       ledgerDownloadMenu?.classList.remove("open");
       managementDownloadMenu?.classList.remove("open");
@@ -11697,7 +20266,8 @@ HTML = r"""<!doctype html>
     managementBody.addEventListener("click", (event) => {
       const editableCell = event.target.closest(".editable-cell[data-management-field]");
       if (editableCell) {
-        openCellEditor("management", editableCell);
+        selectEditableCell("management", editableCell);
+        editableCell.focus({ preventScroll: true });
         return;
       }
       if (event.target.closest("[data-row-check]") && managementSelectAll) {
@@ -11707,14 +20277,64 @@ HTML = r"""<!doctype html>
       const csButton = event.target.closest(".management-cs-button");
       if (csButton) receiveManagementCs(csButton);
     });
+    managementBody.addEventListener("dblclick", (event) => {
+      const editableCell = event.target.closest(".editable-cell[data-management-field]");
+      if (editableCell) openCellEditor("management", editableCell);
+    });
+    managementBody.addEventListener("keydown", (event) => {
+      handleEditableCellNavigation("management", event);
+    });
     ledgerBody.addEventListener("click", (event) => {
+      if (event.target.closest("[data-row-check]")) {
+        syncLedgerSelectAll();
+        return;
+      }
+      const returnCheckButton = event.target.closest("[data-return-check-row]");
+      if (returnCheckButton) {
+        event.preventDefault();
+        event.stopPropagation();
+        openReturnCheckPopup(returnCheckButton.closest("tr[data-case-id]"));
+        return;
+      }
       const editableCell = event.target.closest(".editable-cell[data-field]");
       if (editableCell) {
-        openCellEditor("ledger", editableCell);
+        selectEditableCell("ledger", editableCell);
+        editableCell.focus({ preventScroll: true });
       }
     });
+    ledgerBody.addEventListener("dblclick", (event) => {
+      const editableCell = event.target.closest(".editable-cell[data-field]");
+      if (editableCell) openCellEditor("ledger", editableCell);
+    });
+    ledgerBody.addEventListener("keydown", (event) => {
+      handleEditableCellNavigation("ledger", event);
+    });
     [ledgerCellApply, managementCellApply].forEach((button) => {
-      button?.addEventListener("click", () => applyCellEditor(button === ledgerCellApply ? "ledger" : "management"));
+      button?.addEventListener("click", () => {
+        applyCellEditor(button === ledgerCellApply ? "ledger" : "management").catch((error) => {
+          notice.textContent = error.message || "선택 셀 값을 반영하지 못했습니다.";
+        });
+      });
+    });
+    ledgerReturnCheckButton?.addEventListener("click", openReturnCheckPopup);
+    returnCheckClose?.addEventListener("click", closeReturnCheckPopup);
+    returnCheckCancel?.addEventListener("click", closeReturnCheckPopup);
+    returnCheckSave?.addEventListener("click", applyReturnCheckPopup);
+    returnCheckPopup?.addEventListener("click", (event) => {
+      if (event.target === returnCheckPopup) closeReturnCheckPopup();
+    });
+    appConfirmOk?.addEventListener("click", () => closeAppConfirmDialog(true));
+    appConfirmCancel?.addEventListener("click", () => closeAppConfirmDialog(false));
+    appConfirmDialog?.addEventListener("click", (event) => {
+      if (event.target === appConfirmDialog) closeAppConfirmDialog(false);
+    });
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape" && appConfirmDialog?.classList.contains("open")) {
+        closeAppConfirmDialog(false);
+      }
+      if (event.key === "Escape" && searchResultDialog?.classList.contains("open")) {
+        closeSearchResultDialog();
+      }
     });
     [ledgerCellCancel, managementCellCancel].forEach((button) => {
       button?.addEventListener("click", () => closeCellEditor(button === ledgerCellCancel ? "ledger" : "management"));
@@ -11724,24 +20344,28 @@ HTML = r"""<!doctype html>
         if (event.key !== "Enter") return;
         if (event.target.tagName === "TEXTAREA" && !event.ctrlKey) return;
         event.preventDefault();
-        applyCellEditor(mount === ledgerCellEditMount ? "ledger" : "management");
+        applyCellEditor(mount === ledgerCellEditMount ? "ledger" : "management").catch((error) => {
+          notice.textContent = error.message || "선택 셀 값을 반영하지 못했습니다.";
+        });
       });
     });
     ledgerSearchInput.addEventListener("keydown", (event) => {
       if (event.key === "Enter") {
         event.preventDefault();
-        loadLedgerCases();
+        loadLedgerCases({ showPicker: true });
       }
     });
     managementSearchInput.addEventListener("keydown", (event) => {
       if (event.key === "Enter") {
         event.preventDefault();
-        loadManagementRecords();
+        loadManagementRecords({ showPicker: true });
       }
     });
     vendorNameInput.addEventListener("input", () => {
       csSubjectInput.value = currentMode === "mail-stock" ? "입고 및 품절 공지" : defaultCsSubject(vendorNameInput.value.trim());
+      syncVendorEmailFromName();
     });
+    vendorTypeSelect.addEventListener("change", () => syncVendorEmailFromName({ overwrite: true }));
     [csOriginInput, csProductInput, csReceiverInput, csPhoneInput, csAddressInput, csContentInput]
       .forEach((input) => input.addEventListener("input", refreshCsBody));
     stockVendorPickerButton?.addEventListener("click", toggleStockVendorTree);
@@ -11766,30 +20390,22 @@ HTML = r"""<!doctype html>
       saveCurrentWorkspaceRows({ silent: true });
     }, 10 * 60 * 1000);
 
+    window.addEventListener("beforeunload", (event) => {
+      if (!hasPendingWorkspaceChanges(currentMode)) return;
+      event.preventDefault();
+      event.returnValue = "";
+    });
+
     uploadForm.addEventListener("submit", async (event) => {
       event.preventDefault();
       const formData = new FormData(uploadForm);
       notice.textContent = "처리 중입니다.";
       submitButton.disabled = true;
       try {
-        if (currentMode === "ledger" || currentMode === "management") {
+        if (currentMode === "ledger" || currentMode === "management" || currentMode === "vendor-contacts") {
           closeModal();
         } else if (currentMode === "cs") {
-          refreshCsBody();
-          const payload = collectCsPayload();
-          if (!payload.recipient_email || !payload.subject || !payload.body) {
-            throw new Error("받는 업체 메일, 제목, 요청 내용을 입력해주세요.");
-          }
-          const response = await fetch("/api/cs-mail", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(payload),
-          });
-          const data = await response.json();
-          if (!response.ok) throw new Error(data.error || "메일 전송에 실패했습니다.");
-          notice.textContent = data.message || "메일 전송이 완료되었습니다.";
-          activeCsCaseId = "";
-          await loadCsCases();
+          await sendCurrentCsMail();
         } else if (currentMode === "mail-stock") {
           refreshStockNoticeBody();
           const payload = collectStockNoticePayload();
@@ -11893,7 +20509,7 @@ HTML = r"""<!doctype html>
     });
 
     const initialView = new URLSearchParams(window.location.search).get("view");
-    showWorkspace(["management", "ledger", "crm", "import", "fileLibrary", "leave", "userAdmin", "backup", "systemUpdate"].includes(initialView) ? initialView : "dashboard");
+    showWorkspace(["management", "ledger", "crm", "hermes", "import", "fileLibrary", "leave", "userAdmin", "salesReport", "backup", "systemUpdate"].includes(initialView) ? initialView : "dashboard");
   </script>
 </body>
 </html>
@@ -12094,13 +20710,13 @@ LOGIN_HTML = r"""<!doctype html>
 
 ADMIN_TOOLS_NAV_HTML = r"""
       <div class="nav-group" id="adminNavGroup">
-        <button class="nav-item" id="adminNavToggle" type="button">
+        <button class="nav-item" id="adminNavToggle" type="button" data-nav-tone="admin">
           <span class="nav-label"><i data-lucide="settings"></i> <span>관리자</span></span>
           <i class="nav-chevron" data-lucide="chevron-right"></i>
         </button>
         <div class="nav-submenu">
-          <button class="nav-subitem" id="managementImportOpen" type="button">통합관리대장 업로드</button>
-          <button class="nav-subitem" id="ledgerImportOpen" type="button">CS처리대장 업로드</button>
+          <button class="nav-subitem" type="button" data-management-import-mode="replace">통합관리대장 전체 데이터 교체 업로드</button>
+          <button class="nav-subitem" type="button" data-ledger-import-mode="replace">CS처리대장 전체 데이터 교체 업로드</button>
           <button class="nav-subitem" type="button" data-open="systemUpdate">업데이트 관리</button>
           <button class="nav-subitem" type="button" data-open="backup">백업 관리</button>
           <button class="nav-subitem" type="button" data-open="userAdmin">권한설정</button>
@@ -12108,8 +20724,148 @@ ADMIN_TOOLS_NAV_HTML = r"""
       </div>
 """
 
+SALES_REPORT_NAV_HTML = r"""
+      <div class="nav-group" id="salesReportNavGroup">
+        <button class="nav-item" id="salesReportNavToggle" type="button" data-nav-tone="sales">
+          <span class="nav-label"><i data-lucide="bar-chart-3"></i> <span>매출현황 및 관리</span></span>
+          <i class="nav-chevron" data-lucide="chevron-right"></i>
+        </button>
+        <div class="nav-submenu">
+          <button class="nav-subitem" type="button" data-open="salesReport">매출표 업로드</button>
+        </div>
+      </div>
+"""
+
+SALES_REPORT_PRODUCT_EXCLUDE_PATTERN = "%★사입건★%"
+
+HERMES_ICON_HTML = r"""<span class="hermes-mark" aria-hidden="true"><img src="/static/hermes-icon.png" alt="" loading="lazy" /></span>"""
+
+HERMES_NAV_HTML = rf"""
+      <div class="nav-group" id="hermesNavGroup">
+        <button class="nav-item" id="hermesNavToggle" type="button" data-open="hermes" data-hermes-tab="chat" data-nav-tone="hermes">
+          <span class="nav-label">{HERMES_ICON_HTML} <span>헤르메스</span></span>
+          <i class="nav-chevron" data-lucide="chevron-right"></i>
+        </button>
+        <div class="nav-submenu">
+          <button class="nav-subitem" type="button" data-open="hermes" data-hermes-tab="chat">AI 업무채팅</button>
+          <button class="nav-subitem" type="button" data-open="hermes" data-hermes-tab="automation">자동화 요청</button>
+          <button class="nav-subitem" type="button" data-open="hermes" data-hermes-tab="history">작업내역</button>
+          <button class="nav-subitem" type="button" data-open="hermes" data-hermes-tab="settings">관리자 설정</button>
+        </div>
+      </div>
+"""
+
+HERMES_WORKSPACE_HTML = r"""
+      <section class="workspace-view" id="hermesWorkspace">
+        <div class="workspace-head">
+          <div class="workspace-title">헤르메스</div>
+          <div class="workspace-actions">
+            <button class="workspace-button" type="button" id="hermesRefresh">새로고침</button>
+          </div>
+        </div>
+        <div class="hermes-panel">
+          <section class="hermes-hero">
+            <div class="hermes-hero-icon">__HERMES_ICON__</div>
+            <div>
+              <div class="order-exec-kicker">Hermes Agent</div>
+              <h2>AI 업무 보조 연결</h2>
+              <p>같은 VPS에서 실행 중인 Hermes Agent와 연결해 업무채팅, 자동화 요청, 처리 이력을 관리합니다.</p>
+            </div>
+            <div class="hermes-status-pill" id="hermesStatusPill">연결 대기</div>
+          </section>
+          <div class="hermes-tabs">
+            <button class="hermes-tab active" type="button" data-hermes-tab-button="chat">AI 업무채팅</button>
+            <button class="hermes-tab" type="button" data-hermes-tab-button="automation">자동화 요청</button>
+            <button class="hermes-tab" type="button" data-hermes-tab-button="history">작업내역</button>
+            <button class="hermes-tab" type="button" data-hermes-tab-button="settings">관리자 설정</button>
+          </div>
+          <section class="hermes-tab-panel active" data-hermes-panel="chat">
+            <div class="hermes-chat-layout">
+              <div class="hermes-card">
+                <div class="admin-section-title">AI 업무채팅</div>
+                <textarea class="hermes-textarea" id="hermesChatInput" placeholder="예) 오늘 미처리 CS를 요약하고 우선순위를 추천해줘."></textarea>
+                <div class="hermes-actions">
+                  <button class="workspace-button" type="button" id="hermesChatSend">헤르메스에 보내기</button>
+                </div>
+              </div>
+              <div class="hermes-side-grid">
+                <div class="hermes-side-card">
+                  <strong>답변 내용</strong>
+                  <div class="hermes-response" id="hermesChatResponse">헤르메스 연결 후 답변이 여기에 표시됩니다.</div>
+                </div>
+                <div class="hermes-side-card">
+                  <strong>필요한 기능</strong>
+                  <div class="hermes-quick-actions">
+                    <button type="button" data-hermes-quick="summary">채팅 요약</button>
+                    <button type="button" data-hermes-quick="history">작업내역 보기</button>
+                    <button type="button" data-hermes-quick="automation">자동화 요청</button>
+                    <button type="button" data-hermes-quick="settings">연결 설정</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+          <section class="hermes-tab-panel" data-hermes-panel="automation">
+            <div class="hermes-card">
+              <div class="admin-section-title">자동화 요청</div>
+              <input class="hermes-input" id="hermesAutomationTitle" type="text" placeholder="요청 제목" />
+              <textarea class="hermes-textarea" id="hermesAutomationBody" placeholder="자동화하고 싶은 업무 흐름을 적어주세요."></textarea>
+              <div class="hermes-actions">
+                <button class="workspace-button" type="button" id="hermesAutomationSend">자동화 요청 보내기</button>
+              </div>
+              <div class="hermes-response" id="hermesAutomationResponse">요청 결과가 여기에 표시됩니다.</div>
+            </div>
+          </section>
+          <section class="hermes-tab-panel" data-hermes-panel="history">
+            <div class="hermes-card">
+              <div class="admin-section-title">작업내역</div>
+              <div class="hermes-history-tools">
+                <select class="hermes-history-filter" id="hermesHistoryFilter">
+                  <option value="all">&#51204;&#52404; &#45236;&#50669;</option>
+                  <option value="chat">&#52292;&#54021; &#45236;&#50669;</option>
+                  <option value="summary">&#50836;&#50557; &#47785;&#47197;</option>
+                  <option value="automation">&#51088;&#46041;&#54868; &#50836;&#52397;</option>
+                </select>
+                <button class="workspace-button" type="button" id="hermesSummaryCreate">&#52292;&#54021; &#50836;&#50557; &#49373;&#49457;</button>
+              </div>
+              <div class="hermes-summary-list" id="hermesSummaryList">
+                <div class="admin-message">&#51200;&#51109;&#46108; &#50836;&#50557;&#51060; &#50630;&#49845;&#45768;&#45796;.</div>
+              </div>
+              <div class="hermes-history-list" id="hermesHistoryList">
+                <div class="admin-message">아직 헤르메스 작업내역이 없습니다.</div>
+              </div>
+            </div>
+          </section>
+          <section class="hermes-tab-panel" data-hermes-panel="settings">
+            <div class="hermes-card">
+              <div class="admin-section-title">관리자 설정</div>
+              <div class="hermes-preset-row">
+                <button class="hermes-preset-button" type="button" data-hermes-preset="vps">VPS 내부 주소 적용</button>
+                <button class="hermes-preset-button" type="button" data-hermes-preset="local">로컬 테스트 주소 적용</button>
+              </div>
+              <div class="admin-message hermes-help" id="hermesPresetHelp">운영 배포 후에는 VPS 내부 Docker 주소를 사용하고, 로컬 개발 중에는 테스트 주소로 바꿔 확인할 수 있습니다.</div>
+              <div class="hermes-settings-grid">
+                <label class="admin-check"><input id="hermesEnabled" type="checkbox" /> Hermes Agent 사용</label>
+                <label>Agent 기본 주소<input id="hermesBaseUrl" type="url" placeholder="http://hermes-agent:4860" /></label>
+                <label>Health 경로<input id="hermesHealthPath" type="text" placeholder="/health" /></label>
+                <label>채팅 경로<input id="hermesChatPath" type="text" placeholder="/api/chat" /></label>
+                <label>자동화 경로<input id="hermesAutomationPath" type="text" placeholder="/api/automation" /></label>
+                <label>API 키<input id="hermesApiKey" type="password" placeholder="저장된 키를 유지하려면 비워두세요" autocomplete="new-password" /></label>
+                <label>요청 제한 시간(초)<input id="hermesTimeoutSeconds" type="number" min="3" max="120" value="20" /></label>
+              </div>
+              <div class="hermes-actions">
+                <button class="workspace-button" type="button" id="hermesSettingsSave">설정 저장</button>
+                <button class="workspace-button ghost" type="button" id="hermesConnectionTest">연결 테스트</button>
+              </div>
+              <div class="hermes-response" id="hermesSettingsMessage">VPS 내부 Docker 주소를 저장한 뒤 연결 테스트를 진행하세요.</div>
+            </div>
+          </section>
+        </div>
+      </section>
+""".replace("__HERMES_ICON__", HERMES_ICON_HTML)
+
 LEAVE_NAV_HTML = r"""
-      <button class="nav-item" type="button" data-open="leave"><i data-lucide="calendar-days"></i> <span>__LEAVE_TITLE__</span></button>
+      <button class="nav-item" type="button" data-open="leave" data-nav-tone="leave"><i data-lucide="calendar-days"></i> <span>__LEAVE_TITLE__</span></button>
 """
 
 LEAVE_WORKSPACE_HTML = r"""
@@ -12194,6 +20950,10 @@ LEAVE_WORKSPACE_HTML = r"""
                   <div class="leave-card-title">직원 연차 기준 설정</div>
                   <div class="leave-form">
                     <label>직원<select id="leaveAdminUserSelect"></select></label>
+                    <div class="leave-user-picker">
+                      <input id="leaveAdminUserSearch" type="search" placeholder="직원명 또는 아이디 검색" autocomplete="off" />
+                      <div class="leave-user-list" id="leaveAdminUserList"></div>
+                    </div>
                     <label>시작 연차<input id="leaveAdminTotalInput" type="number" min="0" step="0.5" value="10" /></label>
                     <label>기존 사용 연차<input id="leaveAdminUsedInput" type="number" min="0" step="0.5" value="0" /></label>
                     <button class="workspace-button" type="button" id="leaveBalanceSave">연차 기준 저장</button>
@@ -12297,6 +21057,106 @@ ADMIN_WORKSPACE_HTML = r"""
               </label>
               <div class="admin-message">매입처/매출처 업체 메일 주소록 엑셀을 업로드하면 DB에 저장됩니다.</div>
             </div>
+            <div class="admin-card" id="salesReportUploadCard">
+              <div class="admin-section-title">매출현황</div>
+              <input id="salesReportFileInput" name="sales_report" type="file" accept=".xlsx,.xlsm,.xls,.csv" hidden />
+              <div class="sales-dashboard" id="salesReportDashboard">
+                <div class="sales-kpi-grid" id="salesReportKpiGrid"></div>
+                <div class="sales-table-tabs" id="salesReportTabs" role="tablist">
+                  <button class="sales-table-tab active" type="button" data-sales-tab="salesProduct">
+                    <span>매출 흐름 · 상품 분석</span><span class="sales-table-tab-count" id="salesReportSalesProductCount">0</span>
+                  </button>
+                  <button class="sales-table-tab" type="button" data-sales-tab="partner">
+                    <span>거래처 매출 · 매입 분석</span><span class="sales-table-tab-count" id="salesReportPartnerCount">0</span>
+                  </button>
+                  <button class="sales-table-tab" type="button" data-sales-tab="monthlyCompare">
+                    <span>전월 비교 분석</span><span class="sales-table-tab-count" id="salesReportMonthlyCompareCount">0</span>
+                  </button>
+                </div>
+                <div class="sales-dashboard-grid sales-tab-panels">
+                  <div class="sales-panel daily active" data-sales-panel="daily" data-sales-group="salesProduct">
+                    <div class="sales-panel-head">
+                      <div class="sales-panel-title"><span class="sales-panel-icon">일</span>일자별 매출</div>
+                      <span class="sales-panel-badge">월 전체</span>
+                    </div>
+                    <div class="sales-table-scroll">
+                      <table class="sales-table">
+                        <thead><tr><th>일자</th><th>수량</th><th>손익매출</th><th>판매합계</th><th>손익마진</th></tr></thead>
+                        <tbody id="salesReportDailyBody"></tbody>
+                      </table>
+                    </div>
+                  </div>
+                  <div class="sales-panel seller" data-sales-panel="seller" data-sales-group="partner">
+                    <div class="sales-panel-head">
+                      <div class="sales-panel-title"><span class="sales-panel-icon">매</span>매출처별 현황</div>
+                      <span class="sales-panel-badge">월 전체</span>
+                    </div>
+                    <div class="sales-table-scroll">
+                      <table class="sales-table">
+                        <thead><tr><th>판매사</th><th>수량</th><th>손익매출</th><th>마진</th></tr></thead>
+                        <tbody id="salesReportSellerBody"></tbody>
+                      </table>
+                    </div>
+                  </div>
+                  <div class="sales-panel product active" data-sales-panel="product" data-sales-group="salesProduct">
+                    <div class="sales-panel-head">
+                      <div class="sales-panel-title"><span class="sales-panel-icon">상</span>상품별 매출 현황</div>
+                      <span class="sales-panel-badge">월 전체</span>
+                    </div>
+                    <div class="sales-table-scroll">
+                      <table class="sales-table">
+                        <thead><tr><th>상품명</th><th>수량</th><th>손익매출</th><th>마진</th></tr></thead>
+                        <tbody id="salesReportProductBody"></tbody>
+                      </table>
+                    </div>
+                  </div>
+                  <div class="sales-panel supplier" data-sales-panel="supplier" data-sales-group="partner">
+                    <div class="sales-panel-head">
+                      <div class="sales-panel-title"><span class="sales-panel-icon">입</span>매입처별 현황</div>
+                      <span class="sales-panel-badge">월 전체</span>
+                    </div>
+                    <div class="sales-table-scroll">
+                      <table class="sales-table">
+                        <thead><tr><th>매입처</th><th>총 매입금액</th><th>수량</th></tr></thead>
+                        <tbody id="salesReportReviewBody"></tbody>
+                      </table>
+                    </div>
+                  </div>
+                  <div class="sales-panel violet" data-sales-panel="monthlyCompare" data-sales-group="monthlyCompare">
+                    <div class="sales-panel-head">
+                      <div class="sales-panel-title"><span class="sales-panel-icon">전</span>전월 비교 분석</div>
+                      <span class="sales-panel-badge">전월 대비</span>
+                    </div>
+                    <div class="sales-compare-layout">
+                      <div>
+                        <div class="sales-compare-title">요약</div>
+                        <table class="sales-table">
+                          <thead><tr><th>구분</th><th>기준</th><th>이번 달</th><th>전월</th><th>증감</th><th>증감률</th></tr></thead>
+                          <tbody id="salesReportMonthlyCompareBody"></tbody>
+                        </table>
+                      </div>
+                      <div>
+                        <div class="sales-compare-detail-head">
+                          <div class="sales-compare-title">상세 비교</div>
+                          <div class="sales-compare-detail-tabs" role="tablist">
+                            <button class="sales-compare-detail-tab active" type="button" data-sales-compare-detail="daily">일별 비교</button>
+                            <button class="sales-compare-detail-tab" type="button" data-sales-compare-detail="product">상품별 비교</button>
+                            <button class="sales-compare-detail-tab" type="button" data-sales-compare-detail="seller">매출처별 비교</button>
+                            <button class="sales-compare-detail-tab" type="button" data-sales-compare-detail="supplier">매입처별 비교</button>
+                          </div>
+                        </div>
+                        <div class="sales-table-scroll sales-compare-detail-scroll">
+                          <table class="sales-table">
+                            <thead><tr><th>구분</th><th>이번 달 수량</th><th>이번 달 금액</th><th>전월 수량</th><th>전월 금액</th><th>증감</th><th>증감률</th></tr></thead>
+                            <tbody id="salesReportMonthlyCompareDetailBody"></tbody>
+                          </table>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
             <div class="admin-form">
               <input id="userAdminId" type="hidden" />
               <label>아이디
@@ -12334,10 +21194,27 @@ ADMIN_WORKSPACE_HTML = r"""
                     <th>상태</th>
                     <th>생성일</th>
                     <th>마지막 로그인</th>
-                    <th>수정</th>
+                    <th>권한 수정</th>
+                    <th>삭제</th>
                   </tr>
                 </thead>
                 <tbody id="userAdminBody"></tbody>
+              </table>
+            </div>
+            <div class="admin-message">삭제된 아이디 기록입니다. 비밀번호는 보안상 확인할 수 없으며, 다시 사용할 계정은 새 비밀번호로 재등록 또는 재설정하세요.</div>
+            <div class="admin-table-wrap">
+              <table class="admin-table">
+                <thead>
+                  <tr>
+                    <th>아이디</th>
+                    <th>표시 이름</th>
+                    <th>권한</th>
+                    <th>삭제 전 상태</th>
+                    <th>삭제일</th>
+                    <th>삭제자</th>
+                  </tr>
+                </thead>
+                <tbody id="userAdminDeletedBody"></tbody>
               </table>
             </div>
           </div>
@@ -12361,11 +21238,11 @@ BACKUP_WORKSPACE_HTML = r"""
             <div class="backup-summary-grid">
               <article class="backup-summary-card">
                 <span>자동 백업</span>
-                <strong>매일 03:00</strong>
+                <strong id="backupAutoState">매일 03:00</strong>
               </article>
               <article class="backup-summary-card">
                 <span>보관 기준</span>
-                <strong>최근 90일</strong>
+                <strong id="backupRetentionState">최근 90일</strong>
               </article>
               <article class="backup-summary-card">
                 <span>백업 위치</span>
@@ -12373,8 +21250,41 @@ BACKUP_WORKSPACE_HTML = r"""
               </article>
             </div>
             <div class="backup-card">
+              <div class="admin-section-title">자동백업 / 지정 백업 설정</div>
+              <div class="admin-form">
+                <label class="admin-check"><input id="backupAutoEnabled" type="checkbox" checked /> 자동 백업 사용</label>
+                <label>자동 백업 시간
+                  <input id="backupAutoHour" type="number" min="0" max="23" value="3" />
+                </label>
+                <label>보관 기간(일)
+                  <input id="backupRetentionDays" type="number" min="1" max="3650" value="90" />
+                </label>
+                <label>백업 저장 위치
+                  <input id="backupDirInput" type="text" placeholder="예) G:\내 드라이브\Soillbridge\Workhub_Backup" />
+                </label>
+                <button class="workspace-button" type="button" id="backupSettingsSave">백업 설정 저장</button>
+                <button class="workspace-button" type="button" id="backupCreateSelected">지정 위치로 지금 백업</button>
+              </div>
+            </div>
+            <div class="backup-card">
+              <div class="admin-section-title">Google Drive 외부 백업 연동(rclone)</div>
+              <div class="admin-form">
+                <label class="admin-check"><input id="backupExternalEnabled" type="checkbox" /> 백업 후 Google Drive 업로드 사용</label>
+                <label>rclone 실행 파일
+                  <input id="backupRcloneExecutable" type="text" placeholder="예) rclone 또는 /usr/bin/rclone" />
+                </label>
+                <label>rclone 원격 이름
+                  <input id="backupRcloneRemote" type="text" placeholder="예) gdrive" />
+                </label>
+                <label>Google Drive 저장 폴더
+                  <input id="backupRclonePath" type="text" placeholder="예) Soillbridge/Workhub_Backup" />
+                </label>
+              </div>
+              <div class="backup-message" id="backupExternalStatus">Google Drive 업로드 상태: 사용 안 함</div>
+            </div>
+            <div class="backup-card">
               <p class="backup-note">
-                백업에는 업무 DB, 메일 설정, 업체 주소록, 암호화 키가 포함됩니다. 나스에서는 이 백업 폴더를 Synology Hyper Backup 대상으로 잡으면 됩니다.
+                백업에는 업무 DB, 메일 설정, 업체 주소록, 암호화 키가 포함됩니다. VPS 운영 시에는 서버 내부 백업 폴더를 기본으로 두고, 필요하면 rclone/Google Drive 동기화 대상 폴더를 지정하면 됩니다.
                 복원 전에는 현재 데이터를 자동으로 한 번 더 백업합니다.
               </p>
               <div class="backup-message" id="backupMessage"></div>
@@ -12461,6 +21371,25 @@ def original_uploaded_filename(filename: str) -> str:
     return re.sub(r"^\d{10,}_", "", filename)
 
 
+def uploaded_file_modified_date(fields: dict[str, tuple[str, bytes] | str], path: Path) -> str:
+    raw = fields.get("file_last_modified", "")
+    text = str(raw or "").strip() if not isinstance(raw, tuple) else ""
+    if text:
+        try:
+            timestamp = float(text)
+            if timestamp > 10_000_000_000:
+                timestamp = timestamp / 1000
+            return datetime.fromtimestamp(timestamp).date().isoformat()
+        except (TypeError, ValueError, OSError):
+            parsed = parse_import_date_value(text)
+            if parsed:
+                return parsed
+    try:
+        return datetime.fromtimestamp(path.stat().st_mtime).date().isoformat()
+    except OSError:
+        return date.today().isoformat()
+
+
 def parse_multipart(headers, rfile) -> dict[str, tuple[str, bytes] | str]:
     content_type = headers.get("Content-Type", "")
     boundary_match = re.search(r"boundary=(.+)", content_type)
@@ -12502,6 +21431,27 @@ def parse_multipart(headers, rfile) -> dict[str, tuple[str, bytes] | str]:
     return fields
 
 
+def collect_mail_attachments(fields: dict[str, tuple[str, bytes] | str]) -> list[dict[str, object]]:
+    attachments: list[dict[str, object]] = []
+    total_size = 0
+    for field_name, value in fields.items():
+        if not field_name.startswith("cs_attachment_") or not isinstance(value, tuple):
+            continue
+        filename, data = value
+        if not filename or not data:
+            continue
+        total_size += len(data)
+        if total_size > MAX_MAIL_ATTACHMENT_BYTES:
+            raise ValueError("첨부파일 총 용량은 20MB 이하로 업로드해주세요.")
+        content_type = mimetypes.guess_type(filename)[0] or "application/octet-stream"
+        attachments.append({
+            "filename": filename,
+            "data": data,
+            "content_type": content_type,
+        })
+    return attachments
+
+
 def save_uploaded_file(fields: dict[str, tuple[str, bytes] | str], field_name: str = "file") -> Path:
     uploaded = fields.get(field_name)
     if not isinstance(uploaded, tuple):
@@ -12526,6 +21476,24 @@ def save_uploaded_shared_file(fields: dict[str, tuple[str, bytes] | str], field_
     filename = safe_filename(filename)
     if not filename or not data:
         raise ValueError("업무 파일을 다시 선택해주세요.")
+
+    UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    path = UPLOAD_DIR / f"{int(time.time() * 1000)}_{filename}"
+    path.write_bytes(data)
+    return path
+
+
+def save_uploaded_sales_report_file(fields: dict[str, tuple[str, bytes] | str], field_name: str = "file") -> Path:
+    uploaded = fields.get(field_name)
+    if not isinstance(uploaded, tuple):
+        raise ValueError("업로드된 매출표 파일이 없습니다.")
+
+    filename, data = uploaded
+    filename = safe_filename(filename)
+    if not filename.lower().endswith((".xlsx", ".xlsm", ".xls", ".csv")):
+        raise ValueError("매출표는 xlsx, xlsm, xls, csv 파일만 업로드할 수 있습니다.")
+    if not data:
+        raise ValueError("매출표 파일을 다시 선택해주세요.")
 
     UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
     path = UPLOAD_DIR / f"{int(time.time() * 1000)}_{filename}"
@@ -12784,6 +21752,1370 @@ def delete_shared_file(file_id: object) -> None:
     path.unlink(missing_ok=True)
 
 
+def _sales_report_public(row: sqlite3.Row | dict) -> dict[str, str | int]:
+    return {
+        "id": int(row["id"]),
+        "original_name": str(row["original_name"]),
+        "size": int(row["size"] or 0),
+        "uploaded_by": str(row["uploaded_by"] or ""),
+        "uploaded_at": str(row["uploaded_at"] or ""),
+    }
+
+
+def list_sales_report_uploads(limit: int = 5) -> list[dict[str, str | int]]:
+    init_db()
+    SALES_REPORT_DIR.mkdir(parents=True, exist_ok=True)
+    safe_limit = max(1, min(int(limit or 5), 20))
+    connection = connect_db()
+    try:
+        rows = connection.execute(
+            """
+            SELECT id, original_name, size, uploaded_by, uploaded_at
+              FROM sales_report_uploads
+             ORDER BY id DESC
+             LIMIT ?
+            """,
+            (safe_limit,),
+        ).fetchall()
+        return [_sales_report_public(row) for row in rows]
+    finally:
+        connection.close()
+
+
+class _SalesReportTableParser(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__()
+        self.rows: list[list[str]] = []
+        self._current_row: list[str] | None = None
+        self._current_cell: list[str] | None = None
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag.lower() == "tr":
+            self._current_row = []
+        elif tag.lower() in {"td", "th"} and self._current_row is not None:
+            self._current_cell = []
+
+    def handle_data(self, data: str) -> None:
+        if self._current_cell is not None:
+            self._current_cell.append(data)
+
+    def handle_endtag(self, tag: str) -> None:
+        lowered = tag.lower()
+        if lowered in {"td", "th"} and self._current_row is not None and self._current_cell is not None:
+            self._current_row.append("".join(self._current_cell).strip())
+            self._current_cell = None
+        elif lowered == "tr" and self._current_row is not None:
+            if any(str(cell).strip() for cell in self._current_row):
+                self.rows.append(self._current_row)
+            self._current_row = None
+
+
+def _sales_report_text(value: object) -> str:
+    return str(value or "").replace("\xa0", " ").strip()
+
+
+def _sales_report_number(value: object) -> float:
+    text = _sales_report_text(value).replace(",", "").replace("%", "")
+    if not text or text.lower() == "nan":
+        return 0.0
+    try:
+        return float(text)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _sales_report_int(value: object) -> int:
+    return int(round(_sales_report_number(value)))
+
+
+def _sales_report_percent(value: object) -> float:
+    text = _sales_report_text(value)
+    number = _sales_report_number(text)
+    if "%" in text:
+        return round(number / 100, 6)
+    return round(number, 6)
+
+
+def _sales_report_date(value: object) -> str:
+    if isinstance(value, datetime):
+        return value.date().isoformat()
+    if isinstance(value, date):
+        return value.isoformat()
+    match = re.search(r"(20\d{2})[-./](\d{1,2})[-./](\d{1,2})", _sales_report_text(value))
+    if not match:
+        return ""
+    year, month, day = match.groups()
+    return f"{int(year):04d}-{int(month):02d}-{int(day):02d}"
+
+
+def _sales_report_period(value: object) -> str:
+    parsed = _sales_report_date(value)
+    if parsed:
+        return parsed[:7]
+    match = re.search(r"(20\d{2})[-./](\d{1,2})", _sales_report_text(value))
+    if match:
+        year, month = match.groups()
+        return f"{int(year):04d}-{int(month):02d}"
+    return ""
+
+
+def _sales_report_rows_from_xlsx(path: str | Path) -> list[list[object]]:
+    workbook = load_workbook(path, data_only=True, read_only=True)
+    try:
+        worksheet = workbook.worksheets[0]
+        rows: list[list[object]] = []
+        for row in worksheet.iter_rows(values_only=True):
+            values = list(row)
+            if any(_sales_report_text(value) for value in values):
+                rows.append(values)
+        return rows
+    finally:
+        workbook.close()
+
+
+def _sales_report_xlsx_sheet_title(path: str | Path) -> str:
+    workbook = load_workbook(path, data_only=True, read_only=True)
+    try:
+        return str(workbook.worksheets[0].title or "")
+    finally:
+        workbook.close()
+
+
+def _sales_report_rows_from_html_table(path: str | Path) -> list[list[str]]:
+    data = Path(path).read_bytes()
+    text = ""
+    for encoding in ("utf-8", "euc-kr", "cp949"):
+        try:
+            text = data.decode(encoding)
+            break
+        except UnicodeDecodeError:
+            continue
+    if not text:
+        text = data.decode("utf-8", errors="ignore")
+    parser = _SalesReportTableParser()
+    parser.feed(text)
+    return parser.rows
+
+
+def _sales_report_table(path: str | Path) -> tuple[list[str], list[list[object]]]:
+    source = Path(path)
+    suffix = source.suffix.lower()
+    if suffix == ".xls" and source.read_bytes()[:32].lstrip().lower().startswith(b"<!doctype"):
+        rows = _sales_report_rows_from_html_table(source)
+    else:
+        rows = _sales_report_rows_from_xlsx(source)
+    if not rows:
+        return [], []
+    headers = [_sales_report_text(value) for value in rows[0]]
+    return headers, rows[1:]
+
+
+def detect_sales_report_type(path: str | Path, original_name: str = "") -> str:
+    try:
+        headers, _ = _sales_report_table(path)
+    except Exception:
+        return ""
+    header_set = {_sales_report_text(header) for header in headers}
+    if "일자" in header_set:
+        return "daily"
+    if "판매사" in header_set:
+        return "seller"
+    if "공급사" in header_set:
+        return "supplier"
+    if "상품코드" in header_set and "상품명" in header_set:
+        return "product"
+    lowered_name = str(original_name or Path(path).name).lower()
+    if "statistics_good" in lowered_name:
+        return "product"
+    return ""
+
+
+def _sales_report_row_dict(headers: list[str], row: list[object]) -> dict[str, object]:
+    return {header: row[index] if index < len(row) else "" for index, header in enumerate(headers)}
+
+
+def _sales_report_value(row: dict[str, object], key: str) -> object:
+    return row.get(key, "")
+
+
+def _parse_daily_sales_report(headers: list[str], rows: list[list[object]]) -> dict[str, object]:
+    parsed_rows: list[dict[str, object]] = []
+    for raw in rows:
+        row = _sales_report_row_dict(headers, raw)
+        report_date = _sales_report_date(_sales_report_value(row, "일자"))
+        if not report_date:
+            continue
+        parsed_rows.append({
+            "report_date": report_date,
+            "period": report_date[:7],
+            "label": _sales_report_text(_sales_report_value(row, "일자")),
+            "quantity": _sales_report_int(_sales_report_value(row, "판매-수량")),
+            "sales_amount": _sales_report_int(_sales_report_value(row, "판매-금액")),
+            "supply_amount": _sales_report_int(_sales_report_value(row, "판매-공급금액")),
+            "sales_total": _sales_report_int(_sales_report_value(row, "판매-판매합계")),
+            "supply_total": _sales_report_int(_sales_report_value(row, "판매-공급합계")),
+            "sales_margin": _sales_report_int(_sales_report_value(row, "판매-마진")),
+            "cs_margin": _sales_report_int(_sales_report_value(row, "CS-마진")),
+            "profit_quantity_sales": _sales_report_int(_sales_report_value(row, "손익-수량 판매사기준")),
+            "profit_quantity_supply": _sales_report_int(_sales_report_value(row, "손익-수량 공급사기준")),
+            "profit_sales_amount": _sales_report_int(_sales_report_value(row, "손익-판매금액")),
+            "profit_supply_amount": _sales_report_int(_sales_report_value(row, "손익-공급금액")),
+            "profit_sales_margin": _sales_report_int(_sales_report_value(row, "손익-판매마진")),
+            "profit_shipping_sales": _sales_report_int(_sales_report_value(row, "손익-판매배송비")),
+            "profit_shipping_supply": _sales_report_int(_sales_report_value(row, "손익-공급배송비")),
+            "profit_shipping": _sales_report_int(_sales_report_value(row, "손익-배송비")),
+            "profit_margin": _sales_report_int(_sales_report_value(row, "손익-마진")),
+            "margin_rate": _sales_report_percent(_sales_report_value(row, "손익-마진율")),
+        })
+    report_date = parsed_rows[0]["report_date"] if parsed_rows else ""
+    period = str(report_date)[:7] if report_date else ""
+    return {"report_type": "daily", "report_date": report_date, "period": period, "rows": parsed_rows}
+
+
+def _parse_seller_sales_report(headers: list[str], rows: list[list[object]], original_name: str = "") -> dict[str, object]:
+    parsed_rows: list[dict[str, object]] = []
+    for raw in rows:
+        row = _sales_report_row_dict(headers, raw)
+        name = _sales_report_text(_sales_report_value(row, "판매사"))
+        if not name:
+            continue
+        parsed_rows.append({
+            "name": name,
+            "quantity": _sales_report_int(_sales_report_value(row, "판매-수량")),
+            "sales_amount": _sales_report_int(_sales_report_value(row, "판매-금액")),
+            "supply_amount": _sales_report_int(_sales_report_value(row, "판매-공급금액")),
+            "sales_total": _sales_report_int(_sales_report_value(row, "판매-판매합계")),
+            "supply_total": _sales_report_int(_sales_report_value(row, "판매-공급합계")),
+            "sales_margin": _sales_report_int(_sales_report_value(row, "판매-마진")),
+            "cs_amount": _sales_report_int(_sales_report_value(row, "CS-금액")),
+            "cs_supply_amount": _sales_report_int(_sales_report_value(row, "CS-공급금액")),
+            "cs_margin": _sales_report_int(_sales_report_value(row, "CS-마진")),
+            "profit_quantity_sales": _sales_report_int(_sales_report_value(row, "손익-수량 판매사기준")),
+            "profit_quantity_supply": _sales_report_int(_sales_report_value(row, "손익-수량 공급사기준")),
+            "profit_sales_amount": _sales_report_int(_sales_report_value(row, "손익-판매금액")),
+            "profit_supply_amount": _sales_report_int(_sales_report_value(row, "손익-공급금액")),
+            "profit_sales_margin": _sales_report_int(_sales_report_value(row, "손익-판매마진")),
+            "profit_shipping": _sales_report_int(_sales_report_value(row, "손익-배송비")),
+            "profit_margin": _sales_report_int(_sales_report_value(row, "손익-마진")),
+            "margin_rate": _sales_report_percent(_sales_report_value(row, "손익-마진율")),
+        })
+    period = _sales_report_period(original_name)
+    return {"report_type": "seller", "report_date": _sales_report_date(original_name), "period": period, "rows": parsed_rows}
+
+
+def _parse_supplier_sales_report(headers: list[str], rows: list[list[object]], original_name: str = "") -> dict[str, object]:
+    parsed_rows: list[dict[str, object]] = []
+    for raw in rows:
+        row = _sales_report_row_dict(headers, raw)
+        name = _sales_report_text(_sales_report_value(row, "공급사"))
+        if not name:
+            continue
+        parsed_rows.append({
+            "name": name,
+            "quantity": _sales_report_int(_sales_report_value(row, "판매-수량")),
+            "sales_amount": _sales_report_int(_sales_report_value(row, "판매-금액")),
+            "supply_amount": _sales_report_int(_sales_report_value(row, "판매-공급금액")),
+            "sales_total": _sales_report_int(_sales_report_value(row, "판매-판매합계")),
+            "supply_total": _sales_report_int(_sales_report_value(row, "판매-공급합계")),
+            "sales_margin": _sales_report_int(_sales_report_value(row, "판매-마진")),
+            "cs_amount": _sales_report_int(_sales_report_value(row, "CS-금액")),
+            "cs_supply_amount": _sales_report_int(_sales_report_value(row, "CS-공급금액")),
+            "cs_margin": _sales_report_int(_sales_report_value(row, "CS-마진")),
+            "profit_quantity_sales": _sales_report_int(_sales_report_value(row, "손익-수량 판매사기준")),
+            "profit_quantity_supply": _sales_report_int(_sales_report_value(row, "손익-수량 공급사기준")),
+            "profit_sales_amount": _sales_report_int(_sales_report_value(row, "손익-판매금액")),
+            "profit_supply_amount": _sales_report_int(_sales_report_value(row, "손익-공급금액")),
+            "profit_sales_margin": _sales_report_int(_sales_report_value(row, "손익-판매마진")),
+            "profit_shipping": _sales_report_int(_sales_report_value(row, "손익-배송비")),
+            "profit_margin": _sales_report_int(_sales_report_value(row, "손익-마진")),
+            "margin_rate": _sales_report_percent(_sales_report_value(row, "손익-마진율")),
+        })
+    return {
+        "report_type": "supplier",
+        "report_date": _sales_report_date(original_name),
+        "period": _sales_report_period(original_name),
+        "rows": parsed_rows,
+    }
+
+
+def _parse_product_sales_report(headers: list[str], rows: list[list[object]], original_name: str = "") -> dict[str, object]:
+    parsed_rows: list[dict[str, object]] = []
+    for raw in rows:
+        row = _sales_report_row_dict(headers, raw)
+        code = _sales_report_text(_sales_report_value(row, "상품코드"))
+        name = _sales_report_text(_sales_report_value(row, "상품명"))
+        if not code and not name:
+            continue
+        parsed_rows.append({
+            "code": code,
+            "name": name,
+            "quantity": _sales_report_int(_sales_report_value(row, "판매-수량")),
+            "sales_amount": _sales_report_int(_sales_report_value(row, "판매-금액")),
+            "supply_amount": _sales_report_int(_sales_report_value(row, "판매-공급금액")),
+            "sales_total": _sales_report_int(_sales_report_value(row, "판매-판매합계")),
+            "sales_margin": _sales_report_int(_sales_report_value(row, "판매-마진")),
+            "cs_amount": _sales_report_int(_sales_report_value(row, "CS-금액")),
+            "cs_supply_amount": _sales_report_int(_sales_report_value(row, "CS-공급금액")),
+            "cs_margin": _sales_report_int(_sales_report_value(row, "CS-마진")),
+            "profit_quantity_sales": _sales_report_int(_sales_report_value(row, "손익-수량 판매사기준")),
+            "profit_quantity_supply": _sales_report_int(_sales_report_value(row, "손익-수량 공급사기준")),
+            "profit_sales_amount": _sales_report_int(_sales_report_value(row, "손익-판매금액")),
+            "profit_supply_amount": _sales_report_int(_sales_report_value(row, "손익-공급금액")),
+            "profit_margin": _sales_report_int(_sales_report_value(row, "손익-마진")),
+            "margin_rate": _sales_report_percent(_sales_report_value(row, "손익-마진율")),
+        })
+    return {
+        "report_type": "product",
+        "report_date": _sales_report_date(original_name),
+        "period": _sales_report_period(original_name),
+        "rows": parsed_rows,
+    }
+
+
+def parse_sales_report_file(path: str | Path, original_name: str = "") -> dict[str, object]:
+    headers, rows = _sales_report_table(path)
+    report_type = detect_sales_report_type(path, original_name)
+    if report_type == "daily":
+        return _parse_daily_sales_report(headers, rows)
+    if report_type == "seller":
+        parsed = _parse_seller_sales_report(headers, rows, original_name or Path(path).name)
+        if not parsed.get("period") and Path(path).suffix.lower() in {".xlsx", ".xlsm"}:
+            parsed["period"] = _sales_report_period(_sales_report_xlsx_sheet_title(path))
+        return parsed
+    if report_type == "supplier":
+        return _parse_supplier_sales_report(headers, rows, original_name or Path(path).name)
+    if report_type == "product":
+        return _parse_product_sales_report(headers, rows, original_name or Path(path).name)
+    raise ValueError("지원하는 매출표 형식이 아닙니다.")
+
+
+def _sales_row_sum(rows: list[dict[str, object]], key: str) -> int:
+    return int(sum(_sales_report_int(row.get(key, 0)) for row in rows))
+
+
+def save_sales_report_snapshot(file_id: int, parsed: dict[str, object]) -> None:
+    report_type = str(parsed.get("report_type") or "")
+    report_date = str(parsed.get("report_date") or "")
+    period = str(parsed.get("period") or report_date[:7] or "")
+    rows = [row for row in parsed.get("rows", []) if isinstance(row, dict)]
+    connection = connect_db()
+    try:
+        if report_type == "daily":
+            for row in rows:
+                connection.execute(
+                    """
+                    INSERT INTO sales_report_daily_rows (
+                        report_date, period, file_id, label, quantity, sales_amount, supply_amount,
+                        sales_total, supply_total, sales_margin, cs_margin, profit_quantity_sales,
+                        profit_quantity_supply, profit_sales_amount, profit_supply_amount,
+                        profit_sales_margin, profit_shipping_sales, profit_shipping_supply,
+                        profit_shipping, profit_margin, margin_rate
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(report_date) DO UPDATE SET
+                        period = excluded.period,
+                        file_id = excluded.file_id,
+                        label = excluded.label,
+                        quantity = excluded.quantity,
+                        sales_amount = excluded.sales_amount,
+                        supply_amount = excluded.supply_amount,
+                        sales_total = excluded.sales_total,
+                        supply_total = excluded.supply_total,
+                        sales_margin = excluded.sales_margin,
+                        cs_margin = excluded.cs_margin,
+                        profit_quantity_sales = excluded.profit_quantity_sales,
+                        profit_quantity_supply = excluded.profit_quantity_supply,
+                        profit_sales_amount = excluded.profit_sales_amount,
+                        profit_supply_amount = excluded.profit_supply_amount,
+                        profit_sales_margin = excluded.profit_sales_margin,
+                        profit_shipping_sales = excluded.profit_shipping_sales,
+                        profit_shipping_supply = excluded.profit_shipping_supply,
+                        profit_shipping = excluded.profit_shipping,
+                        profit_margin = excluded.profit_margin,
+                        margin_rate = excluded.margin_rate
+                    """,
+                    (
+                        row.get("report_date"),
+                        row.get("period"),
+                        file_id,
+                        row.get("label", ""),
+                        row.get("quantity", 0),
+                        row.get("sales_amount", 0),
+                        row.get("supply_amount", 0),
+                        row.get("sales_total", 0),
+                        row.get("supply_total", 0),
+                        row.get("sales_margin", 0),
+                        row.get("cs_margin", 0),
+                        row.get("profit_quantity_sales", 0),
+                        row.get("profit_quantity_supply", 0),
+                        row.get("profit_sales_amount", 0),
+                        row.get("profit_supply_amount", 0),
+                        row.get("profit_sales_margin", 0),
+                        row.get("profit_shipping_sales", 0),
+                        row.get("profit_shipping_supply", 0),
+                        row.get("profit_shipping", 0),
+                        row.get("profit_margin", 0),
+                        row.get("margin_rate", 0),
+                    ),
+                )
+        elif report_type == "seller":
+            connection.execute("DELETE FROM sales_report_seller_rows WHERE period = ?", (period,))
+            for row in rows:
+                connection.execute(
+                    """
+                    INSERT INTO sales_report_seller_rows (
+                        period, report_date, file_id, seller_name, quantity, sales_amount, supply_amount,
+                        sales_total, supply_total, sales_margin, cs_amount, cs_supply_amount, cs_margin,
+                        profit_quantity_sales, profit_quantity_supply, profit_sales_amount, profit_supply_amount,
+                        profit_sales_margin, profit_shipping, profit_margin, margin_rate
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        period,
+                        report_date,
+                        file_id,
+                        row.get("name", ""),
+                        row.get("quantity", 0),
+                        row.get("sales_amount", 0),
+                        row.get("supply_amount", 0),
+                        row.get("sales_total", 0),
+                        row.get("supply_total", 0),
+                        row.get("sales_margin", 0),
+                        row.get("cs_amount", 0),
+                        row.get("cs_supply_amount", 0),
+                        row.get("cs_margin", 0),
+                        row.get("profit_quantity_sales", 0),
+                        row.get("profit_quantity_supply", 0),
+                        row.get("profit_sales_amount", 0),
+                        row.get("profit_supply_amount", 0),
+                        row.get("profit_sales_margin", 0),
+                        row.get("profit_shipping", 0),
+                        row.get("profit_margin", 0),
+                        row.get("margin_rate", 0),
+                    ),
+                )
+        elif report_type == "supplier":
+            connection.execute("DELETE FROM sales_report_supplier_rows WHERE period = ?", (period,))
+            for row in rows:
+                connection.execute(
+                    """
+                    INSERT INTO sales_report_supplier_rows (
+                        period, report_date, file_id, supplier_name, quantity, sales_amount, supply_amount,
+                        sales_total, supply_total, sales_margin, cs_amount, cs_supply_amount, cs_margin,
+                        profit_quantity_sales, profit_quantity_supply, profit_sales_amount, profit_supply_amount,
+                        profit_sales_margin, profit_shipping, profit_margin, margin_rate
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        period,
+                        report_date,
+                        file_id,
+                        row.get("name", ""),
+                        row.get("quantity", 0),
+                        row.get("sales_amount", 0),
+                        row.get("supply_amount", 0),
+                        row.get("sales_total", 0),
+                        row.get("supply_total", 0),
+                        row.get("sales_margin", 0),
+                        row.get("cs_amount", 0),
+                        row.get("cs_supply_amount", 0),
+                        row.get("cs_margin", 0),
+                        row.get("profit_quantity_sales", 0),
+                        row.get("profit_quantity_supply", 0),
+                        row.get("profit_sales_amount", 0),
+                        row.get("profit_supply_amount", 0),
+                        row.get("profit_sales_margin", 0),
+                        row.get("profit_shipping", 0),
+                        row.get("profit_margin", 0),
+                        row.get("margin_rate", 0),
+                    ),
+                )
+        elif report_type == "product":
+            if report_date:
+                connection.execute("DELETE FROM sales_report_product_rows WHERE report_date = ?", (report_date,))
+            else:
+                connection.execute("DELETE FROM sales_report_product_rows WHERE file_id = ?", (file_id,))
+            for row in rows:
+                connection.execute(
+                    """
+                    INSERT INTO sales_report_product_rows (
+                        period, report_date, file_id, product_code, product_name, quantity, sales_amount,
+                        supply_amount, sales_total, sales_margin, cs_amount, cs_supply_amount, cs_margin,
+                        profit_quantity_sales, profit_quantity_supply, profit_sales_amount, profit_supply_amount,
+                        profit_margin, margin_rate
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        period,
+                        report_date,
+                        file_id,
+                        row.get("code", ""),
+                        row.get("name", ""),
+                        row.get("quantity", 0),
+                        row.get("sales_amount", 0),
+                        row.get("supply_amount", 0),
+                        row.get("sales_total", 0),
+                        row.get("sales_margin", 0),
+                        row.get("cs_amount", 0),
+                        row.get("cs_supply_amount", 0),
+                        row.get("cs_margin", 0),
+                        row.get("profit_quantity_sales", 0),
+                        row.get("profit_quantity_supply", 0),
+                        row.get("profit_sales_amount", 0),
+                        row.get("profit_supply_amount", 0),
+                        row.get("profit_margin", 0),
+                        row.get("margin_rate", 0),
+                    ),
+                )
+        connection.commit()
+    finally:
+        connection.close()
+
+
+def _sales_report_daily_public(row: sqlite3.Row | None) -> dict[str, object]:
+    if row is None:
+        return {}
+    return {
+        "report_date": str(row["report_date"] or ""),
+        "label": str(row["label"] or ""),
+        "quantity": int(row["quantity"] or 0),
+        "sales_amount": int(row["sales_amount"] or 0),
+        "sales_total": int(row["sales_total"] or 0),
+        "profit_sales_amount": int(row["profit_sales_amount"] or 0),
+        "profit_supply_amount": int(row["profit_supply_amount"] or 0),
+        "profit_margin": int(row["profit_margin"] or 0),
+        "margin_rate": float(row["margin_rate"] or 0),
+    }
+
+
+def _sales_report_named_public(row: sqlite3.Row) -> dict[str, object]:
+    name = row["name"] if "name" in row.keys() else row[0]
+    return {
+        "name": str(name or ""),
+        "quantity": int(row["quantity"] or 0),
+        "sales_amount": int(row["sales_amount"] or 0),
+        "profit_sales_amount": int(row["profit_sales_amount"] or 0),
+        "profit_margin": int(row["profit_margin"] or 0),
+        "margin_rate": float(row["margin_rate"] or 0),
+        "cs_amount": int(row["cs_amount"] or 0) if "cs_amount" in row.keys() else 0,
+        "cs_margin": int(row["cs_margin"] or 0) if "cs_margin" in row.keys() else 0,
+    }
+
+
+def _sales_report_purchase_public(row: sqlite3.Row) -> dict[str, object]:
+    return {
+        "name": str(row["name"] or ""),
+        "quantity": int(row["quantity"] or 0),
+        "purchase_total": int(row["purchase_total"] or 0),
+    }
+
+
+def previous_business_day(base_date: date) -> date:
+    target = base_date - timedelta(days=1)
+    while target.weekday() >= 5:
+        target -= timedelta(days=1)
+    return target
+
+
+def previous_sales_data_date(connection: sqlite3.Connection, base_date: date) -> str:
+    base_text = base_date.isoformat()
+    row = connection.execute(
+        """
+        SELECT MAX(report_date) AS report_date
+          FROM (
+                SELECT report_date
+                  FROM sales_report_daily_rows
+                 WHERE report_date != '' AND report_date < ?
+                UNION ALL
+                SELECT report_date
+                  FROM sales_report_seller_rows
+                 WHERE report_date != '' AND report_date < ?
+                UNION ALL
+                SELECT report_date
+                  FROM sales_report_supplier_rows
+                 WHERE report_date != '' AND report_date < ?
+                UNION ALL
+                SELECT report_date
+                  FROM sales_report_product_rows
+                 WHERE report_date != '' AND report_date < ?
+               )
+        """,
+        (base_text, base_text, base_text, base_text),
+    ).fetchone()
+    report_date = str(row["report_date"] or "") if row else ""
+    return report_date or previous_business_day(base_date).isoformat()
+
+
+def sales_report_day_summary_from_sources(connection: sqlite3.Connection, target_date: str) -> dict[str, object]:
+    if not target_date:
+        return {}
+    daily = connection.execute(
+        "SELECT * FROM sales_report_daily_rows WHERE report_date = ?",
+        (target_date,),
+    ).fetchone()
+    if daily:
+        return _sales_report_daily_public(daily)
+    for table_name in ("sales_report_seller_rows", "sales_report_product_rows", "sales_report_supplier_rows"):
+        row = connection.execute(
+            f"""
+            SELECT ? AS report_date,
+                   '' AS label,
+                   COALESCE(SUM(quantity), 0) AS quantity,
+                   COALESCE(SUM(sales_amount), 0) AS sales_amount,
+                   COALESCE(SUM(sales_total), 0) AS sales_total,
+                   COALESCE(SUM(profit_sales_amount), 0) AS profit_sales_amount,
+                   COALESCE(SUM(profit_supply_amount), 0) AS profit_supply_amount,
+                   COALESCE(SUM(profit_margin), 0) AS profit_margin
+              FROM {table_name}
+             WHERE report_date = ?
+            """,
+            (target_date, target_date),
+        ).fetchone()
+        if row and any(int(row[key] or 0) for key in ("quantity", "sales_amount", "sales_total", "profit_sales_amount", "profit_supply_amount", "profit_margin")):
+            profit_sales_amount = int(row["profit_sales_amount"] or 0)
+            profit_margin = int(row["profit_margin"] or 0)
+            margin_rate = round((profit_margin / profit_sales_amount) * 100, 1) if profit_sales_amount else 0
+            return {
+                "report_date": str(row["report_date"] or ""),
+                "label": "",
+                "quantity": int(row["quantity"] or 0),
+                "sales_amount": int(row["sales_amount"] or 0),
+                "sales_total": int(row["sales_total"] or 0),
+                "profit_sales_amount": profit_sales_amount,
+                "profit_supply_amount": int(row["profit_supply_amount"] or 0),
+                "profit_margin": profit_margin,
+                "margin_rate": margin_rate,
+            }
+    return {}
+
+
+def previous_sales_period(period: str) -> str:
+    match = re.match(r"^(20\d{2})-(\d{1,2})$", str(period or ""))
+    if not match:
+        return ""
+    year = int(match.group(1))
+    month = int(match.group(2))
+    if month <= 1:
+        return f"{year - 1}-12"
+    return f"{year}-{month - 1:02d}"
+
+
+def sales_report_delta(current_value: int, previous_value: int) -> dict[str, object]:
+    delta = int(current_value or 0) - int(previous_value or 0)
+    rate = round((delta / int(previous_value)) * 100, 1) if previous_value else 0
+    return {
+        "current": int(current_value or 0),
+        "previous": int(previous_value or 0),
+        "delta": delta,
+        "delta_rate": rate,
+    }
+
+
+def sales_report_compare_detail_public(row: sqlite3.Row) -> dict[str, object]:
+    current_value = int(row["current"] or 0)
+    previous_value = int(row["previous"] or 0)
+    delta = sales_report_delta(current_value, previous_value)
+    return {
+        "label": str(row["label"] or ""),
+        "current_quantity": int(row["current_quantity"] or 0),
+        "previous_quantity": int(row["previous_quantity"] or 0),
+        **delta,
+    }
+
+
+def sales_report_dashboard_payload(period: str = "", report_date: str = "") -> dict[str, object]:
+    init_db()
+    connection = connect_db()
+    try:
+        selected_date = report_date or ""
+        selected_period = period or selected_date[:7]
+        if not selected_period:
+            row = connection.execute(
+                """
+                SELECT period
+                  FROM (
+                        SELECT period FROM sales_report_daily_rows WHERE period != ''
+                        UNION ALL
+                        SELECT period FROM sales_report_seller_rows WHERE period != ''
+                        UNION ALL
+                        SELECT period FROM sales_report_supplier_rows WHERE period != ''
+                        UNION ALL
+                        SELECT period FROM sales_report_product_rows WHERE period != ''
+                       )
+                 ORDER BY period DESC
+                 LIMIT 1
+                """
+            ).fetchone()
+            selected_period = str(row["period"] or "") if row else ""
+        if not selected_date and selected_period:
+            row = connection.execute(
+                """
+                SELECT MAX(report_date) AS report_date
+                  FROM (
+                        SELECT report_date FROM sales_report_daily_rows WHERE period = ? AND report_date != ''
+                        UNION ALL
+                        SELECT report_date FROM sales_report_seller_rows WHERE period = ? AND report_date != ''
+                        UNION ALL
+                        SELECT report_date FROM sales_report_supplier_rows WHERE period = ? AND report_date != ''
+                        UNION ALL
+                        SELECT report_date FROM sales_report_product_rows WHERE period = ? AND report_date != ''
+                       )
+                """,
+                (selected_period, selected_period, selected_period, selected_period),
+            ).fetchone()
+            selected_date = str(row["report_date"] or "") if row else ""
+        if not selected_date:
+            selected_date = date.today().isoformat()
+        previous_date = previous_sales_data_date(connection, date.fromisoformat(selected_date))
+        previous_period = previous_sales_period(selected_period)
+        today = connection.execute(
+            "SELECT * FROM sales_report_daily_rows WHERE report_date = ?",
+            (selected_date,),
+        ).fetchone()
+        yesterday_public = sales_report_day_summary_from_sources(connection, previous_date)
+        month = connection.execute(
+            """
+            SELECT COALESCE(SUM(quantity), 0) AS quantity,
+                   COALESCE(SUM(sales_amount), 0) AS sales_amount,
+                   COALESCE(SUM(sales_total), 0) AS sales_total,
+                   COALESCE(SUM(profit_sales_amount), 0) AS profit_sales_amount,
+                   COALESCE(SUM(profit_supply_amount), 0) AS profit_supply_amount,
+                   COALESCE(SUM(profit_margin), 0) AS profit_margin
+              FROM sales_report_daily_rows
+             WHERE period = ?
+            """,
+            (selected_period,),
+        ).fetchone()
+        previous_month = connection.execute(
+            """
+            SELECT COALESCE(SUM(quantity), 0) AS quantity,
+                   COALESCE(SUM(sales_total), 0) AS sales_total,
+                   COALESCE(SUM(profit_sales_amount), 0) AS profit_sales_amount,
+                   COALESCE(SUM(profit_margin), 0) AS profit_margin
+              FROM sales_report_daily_rows
+             WHERE period = ?
+            """,
+            (previous_period,),
+        ).fetchone()
+        seller_total = connection.execute(
+            """
+            SELECT COALESCE(SUM(quantity), 0) AS quantity,
+                   COALESCE(SUM(sales_amount), 0) AS sales_amount,
+                   COALESCE(SUM(profit_sales_amount), 0) AS profit_sales_amount,
+                   COALESCE(SUM(profit_margin), 0) AS profit_margin
+              FROM sales_report_seller_rows
+             WHERE period = ?
+            """,
+            (selected_period,),
+        ).fetchone()
+        previous_seller_total = connection.execute(
+            """
+            SELECT COALESCE(SUM(quantity), 0) AS quantity,
+                   COALESCE(SUM(profit_sales_amount), 0) AS profit_sales_amount,
+                   COALESCE(SUM(profit_margin), 0) AS profit_margin
+              FROM sales_report_seller_rows
+             WHERE period = ?
+            """,
+            (previous_period,),
+        ).fetchone()
+        supplier_purchase_total = connection.execute(
+            """
+            SELECT COALESCE(SUM(quantity), 0) AS quantity,
+                   COALESCE(SUM(supply_total), 0) AS purchase_total
+              FROM sales_report_supplier_rows
+             WHERE period = ?
+            """,
+            (selected_period,),
+        ).fetchone()
+        previous_supplier_purchase_total = connection.execute(
+            """
+            SELECT COALESCE(SUM(quantity), 0) AS quantity,
+                   COALESCE(SUM(supply_total), 0) AS purchase_total
+              FROM sales_report_supplier_rows
+             WHERE period = ?
+            """,
+            (previous_period,),
+        ).fetchone()
+        product_total = connection.execute(
+            """
+            SELECT COALESCE(SUM(quantity), 0) AS quantity,
+                   COALESCE(SUM(profit_sales_amount), 0) AS profit_sales_amount,
+                   COALESCE(SUM(profit_margin), 0) AS profit_margin
+              FROM sales_report_product_rows
+             WHERE period = ? AND product_name NOT LIKE ?
+            """,
+            (selected_period, SALES_REPORT_PRODUCT_EXCLUDE_PATTERN),
+        ).fetchone()
+        previous_product_total = connection.execute(
+            """
+            SELECT COALESCE(SUM(quantity), 0) AS quantity,
+                   COALESCE(SUM(profit_sales_amount), 0) AS profit_sales_amount,
+                   COALESCE(SUM(profit_margin), 0) AS profit_margin
+              FROM sales_report_product_rows
+             WHERE period = ? AND product_name NOT LIKE ?
+            """,
+            (previous_period, SALES_REPORT_PRODUCT_EXCLUDE_PATTERN),
+        ).fetchone()
+        daily_rows = connection.execute(
+            """
+            SELECT report_date, label, quantity, sales_amount, sales_total, profit_sales_amount,
+                   profit_supply_amount, profit_margin, margin_rate
+              FROM sales_report_daily_rows
+             WHERE period = ?
+             ORDER BY report_date DESC
+            """,
+            (selected_period,),
+        ).fetchall()
+        seller_rows = connection.execute(
+            """
+            SELECT seller_name AS name, quantity, sales_amount, profit_sales_amount,
+                   profit_margin, margin_rate, cs_amount, cs_margin
+              FROM sales_report_seller_rows
+             WHERE period = ?
+             ORDER BY profit_sales_amount DESC, quantity DESC, seller_name COLLATE NOCASE
+            """,
+            (selected_period,),
+        ).fetchall()
+        product_rows = connection.execute(
+            """
+            SELECT product_name AS name,
+                   COALESCE(SUM(quantity), 0) AS quantity,
+                   COALESCE(SUM(sales_amount), 0) AS sales_amount,
+                   COALESCE(SUM(profit_sales_amount), 0) AS profit_sales_amount,
+                   COALESCE(SUM(profit_margin), 0) AS profit_margin,
+                   0 AS margin_rate,
+                   COALESCE(SUM(cs_amount), 0) AS cs_amount,
+                   COALESCE(SUM(cs_margin), 0) AS cs_margin
+              FROM sales_report_product_rows
+             WHERE period = ? AND product_name NOT LIKE ?
+             GROUP BY product_name
+             ORDER BY profit_sales_amount DESC, quantity DESC, product_name COLLATE NOCASE
+            """,
+            (selected_period, SALES_REPORT_PRODUCT_EXCLUDE_PATTERN),
+        ).fetchall()
+        supplier_purchase_rows = connection.execute(
+            """
+            SELECT supplier_name AS name,
+                   COALESCE(SUM(quantity), 0) AS quantity,
+                   COALESCE(SUM(supply_total), 0) AS purchase_total
+              FROM sales_report_supplier_rows
+             WHERE period = ?
+             GROUP BY supplier_name
+             ORDER BY purchase_total DESC, quantity DESC, supplier_name COLLATE NOCASE
+            """,
+            (selected_period,),
+        ).fetchall()
+        daily_compare_rows = connection.execute(
+            """
+            WITH current_rows AS (
+                SELECT CAST(substr(report_date, 9, 2) AS INTEGER) AS day_no,
+                       COALESCE(SUM(quantity), 0) AS current_quantity,
+                       COALESCE(SUM(profit_sales_amount), 0) AS current
+                  FROM sales_report_daily_rows
+                 WHERE period = ?
+                 GROUP BY day_no
+            ),
+            previous_rows AS (
+                SELECT CAST(substr(report_date, 9, 2) AS INTEGER) AS day_no,
+                       COALESCE(SUM(quantity), 0) AS previous_quantity,
+                       COALESCE(SUM(profit_sales_amount), 0) AS previous
+                  FROM sales_report_daily_rows
+                 WHERE period = ?
+                 GROUP BY day_no
+            ),
+            keys AS (
+                SELECT day_no FROM current_rows
+                UNION
+                SELECT day_no FROM previous_rows
+            )
+            SELECT printf('%d일', keys.day_no) AS label,
+                   COALESCE(current_rows.current_quantity, 0) AS current_quantity,
+                   COALESCE(current_rows.current, 0) AS current,
+                   COALESCE(previous_rows.previous_quantity, 0) AS previous_quantity,
+                   COALESCE(previous_rows.previous, 0) AS previous
+              FROM keys
+              LEFT JOIN current_rows ON current_rows.day_no = keys.day_no
+              LEFT JOIN previous_rows ON previous_rows.day_no = keys.day_no
+             ORDER BY keys.day_no
+            """,
+            (selected_period, previous_period),
+        ).fetchall()
+        product_compare_rows = connection.execute(
+            """
+            WITH current_rows AS (
+                SELECT product_name AS label,
+                       COALESCE(SUM(quantity), 0) AS current_quantity,
+                       COALESCE(SUM(profit_sales_amount), 0) AS current
+                  FROM sales_report_product_rows
+                 WHERE period = ? AND product_name NOT LIKE ?
+                 GROUP BY product_name
+            ),
+            previous_rows AS (
+                SELECT product_name AS label,
+                       COALESCE(SUM(quantity), 0) AS previous_quantity,
+                       COALESCE(SUM(profit_sales_amount), 0) AS previous
+                  FROM sales_report_product_rows
+                 WHERE period = ? AND product_name NOT LIKE ?
+                 GROUP BY product_name
+            ),
+            keys AS (
+                SELECT label FROM current_rows
+                UNION
+                SELECT label FROM previous_rows
+            )
+            SELECT keys.label AS label,
+                   COALESCE(current_rows.current_quantity, 0) AS current_quantity,
+                   COALESCE(current_rows.current, 0) AS current,
+                   COALESCE(previous_rows.previous_quantity, 0) AS previous_quantity,
+                   COALESCE(previous_rows.previous, 0) AS previous
+              FROM keys
+              LEFT JOIN current_rows ON current_rows.label = keys.label
+             LEFT JOIN previous_rows ON previous_rows.label = keys.label
+             ORDER BY current DESC, previous DESC, keys.label COLLATE NOCASE
+            """,
+            (
+                selected_period,
+                SALES_REPORT_PRODUCT_EXCLUDE_PATTERN,
+                previous_period,
+                SALES_REPORT_PRODUCT_EXCLUDE_PATTERN,
+            ),
+        ).fetchall()
+        seller_compare_rows = connection.execute(
+            """
+            WITH current_rows AS (
+                SELECT seller_name AS label,
+                       COALESCE(SUM(quantity), 0) AS current_quantity,
+                       COALESCE(SUM(profit_sales_amount), 0) AS current
+                  FROM sales_report_seller_rows
+                 WHERE period = ?
+                 GROUP BY seller_name
+            ),
+            previous_rows AS (
+                SELECT seller_name AS label,
+                       COALESCE(SUM(quantity), 0) AS previous_quantity,
+                       COALESCE(SUM(profit_sales_amount), 0) AS previous
+                  FROM sales_report_seller_rows
+                 WHERE period = ?
+                 GROUP BY seller_name
+            ),
+            keys AS (
+                SELECT label FROM current_rows
+                UNION
+                SELECT label FROM previous_rows
+            )
+            SELECT keys.label AS label,
+                   COALESCE(current_rows.current_quantity, 0) AS current_quantity,
+                   COALESCE(current_rows.current, 0) AS current,
+                   COALESCE(previous_rows.previous_quantity, 0) AS previous_quantity,
+                   COALESCE(previous_rows.previous, 0) AS previous
+              FROM keys
+              LEFT JOIN current_rows ON current_rows.label = keys.label
+              LEFT JOIN previous_rows ON previous_rows.label = keys.label
+             ORDER BY current DESC, previous DESC, keys.label COLLATE NOCASE
+            """,
+            (selected_period, previous_period),
+        ).fetchall()
+        supplier_compare_rows = connection.execute(
+            """
+            WITH current_rows AS (
+                SELECT supplier_name AS label,
+                       COALESCE(SUM(quantity), 0) AS current_quantity,
+                       COALESCE(SUM(supply_total), 0) AS current
+                  FROM sales_report_supplier_rows
+                 WHERE period = ?
+                 GROUP BY supplier_name
+            ),
+            previous_rows AS (
+                SELECT supplier_name AS label,
+                       COALESCE(SUM(quantity), 0) AS previous_quantity,
+                       COALESCE(SUM(supply_total), 0) AS previous
+                  FROM sales_report_supplier_rows
+                 WHERE period = ?
+                 GROUP BY supplier_name
+            ),
+            keys AS (
+                SELECT label FROM current_rows
+                UNION
+                SELECT label FROM previous_rows
+            )
+            SELECT keys.label AS label,
+                   COALESCE(current_rows.current_quantity, 0) AS current_quantity,
+                   COALESCE(current_rows.current, 0) AS current,
+                   COALESCE(previous_rows.previous_quantity, 0) AS previous_quantity,
+                   COALESCE(previous_rows.previous, 0) AS previous
+              FROM keys
+              LEFT JOIN current_rows ON current_rows.label = keys.label
+              LEFT JOIN previous_rows ON previous_rows.label = keys.label
+             ORDER BY current DESC, previous DESC, keys.label COLLATE NOCASE
+            """,
+            (selected_period, previous_period),
+        ).fetchall()
+        review_rows = connection.execute(
+            """
+            SELECT 'supplier' AS kind, supplier_name AS name, cs_amount, cs_margin,
+                   profit_sales_amount, profit_margin
+              FROM sales_report_supplier_rows
+             WHERE period = ? AND (cs_amount != 0 OR cs_margin != 0 OR profit_margin < 0)
+            UNION ALL
+            SELECT 'seller' AS kind, seller_name AS name, cs_amount, cs_margin,
+                   profit_sales_amount, profit_margin
+              FROM sales_report_seller_rows
+             WHERE period = ? AND (cs_amount != 0 OR cs_margin != 0 OR profit_margin < 0)
+            UNION ALL
+            SELECT 'product' AS kind, product_name AS name, cs_amount, cs_margin,
+                   profit_sales_amount, profit_margin
+              FROM sales_report_product_rows
+             WHERE (? = '' OR report_date = ? OR period = ?)
+               AND (cs_amount != 0 OR cs_margin != 0 OR profit_margin < 0)
+             LIMIT 10
+            """,
+            (selected_period, selected_period, selected_date, selected_date, selected_period),
+        ).fetchall()
+    finally:
+        connection.close()
+
+    today_public = _sales_report_daily_public(today)
+    today_amount = int(today_public.get("profit_sales_amount", 0) or 0)
+    yesterday_amount = int(yesterday_public.get("profit_sales_amount", 0) or 0)
+    delta = today_amount - yesterday_amount
+    delta_rate = round((delta / yesterday_amount) * 100, 1) if yesterday_amount else 0
+    today_quantity = int(today_public.get("quantity", 0) or 0)
+    yesterday_quantity = int(yesterday_public.get("quantity", 0) or 0)
+    quantity_delta = today_quantity - yesterday_quantity
+    quantity_delta_rate = round((quantity_delta / yesterday_quantity) * 100, 1) if yesterday_quantity else 0
+    month_total = {
+        "quantity": int(month["quantity"] or 0),
+        "sales_amount": int(month["sales_amount"] or 0),
+        "sales_total": int(month["sales_total"] or 0),
+        "profit_sales_amount": int(month["profit_sales_amount"] or 0),
+        "profit_supply_amount": int(month["profit_supply_amount"] or 0),
+        "profit_margin": int(month["profit_margin"] or 0),
+    }
+    previous_month_total = {
+        "quantity": int(previous_month["quantity"] or 0),
+        "sales_total": int(previous_month["sales_total"] or 0),
+        "profit_sales_amount": int(previous_month["profit_sales_amount"] or 0),
+        "profit_margin": int(previous_month["profit_margin"] or 0),
+    }
+    seller_total_public = {
+        "quantity": int(seller_total["quantity"] or 0),
+        "sales_amount": int(seller_total["sales_amount"] or 0),
+        "profit_sales_amount": int(seller_total["profit_sales_amount"] or 0),
+        "profit_margin": int(seller_total["profit_margin"] or 0),
+    }
+    previous_seller_total_public = {
+        "quantity": int(previous_seller_total["quantity"] or 0),
+        "profit_sales_amount": int(previous_seller_total["profit_sales_amount"] or 0),
+        "profit_margin": int(previous_seller_total["profit_margin"] or 0),
+    }
+    supplier_purchase_total_public = {
+        "quantity": int(supplier_purchase_total["quantity"] or 0),
+        "purchase_total": int(supplier_purchase_total["purchase_total"] or 0),
+    }
+    previous_supplier_purchase_total_public = {
+        "quantity": int(previous_supplier_purchase_total["quantity"] or 0),
+        "purchase_total": int(previous_supplier_purchase_total["purchase_total"] or 0),
+    }
+    product_total_public = {
+        "quantity": int(product_total["quantity"] or 0),
+        "profit_sales_amount": int(product_total["profit_sales_amount"] or 0),
+        "profit_margin": int(product_total["profit_margin"] or 0),
+    }
+    previous_product_total_public = {
+        "quantity": int(previous_product_total["quantity"] or 0),
+        "profit_sales_amount": int(previous_product_total["profit_sales_amount"] or 0),
+        "profit_margin": int(previous_product_total["profit_margin"] or 0),
+    }
+    difference = month_total["profit_sales_amount"] - seller_total_public["profit_sales_amount"]
+    return {
+        "period": selected_period,
+        "previous_period": previous_period,
+        "selected_date": selected_date,
+        "previous_business_date": previous_date,
+        "today_data_uploaded": bool(today),
+        "today": today_public,
+        "yesterday": yesterday_public,
+        "comparison": {
+            "profit_sales_amount_delta": delta,
+            "profit_sales_amount_delta_rate": delta_rate,
+            "quantity_delta": quantity_delta,
+            "quantity_delta_rate": quantity_delta_rate,
+        },
+        "month": month_total,
+        "previous_month": previous_month_total,
+        "seller_total": seller_total_public,
+        "previous_seller_total": previous_seller_total_public,
+        "product_total": product_total_public,
+        "previous_product_total": previous_product_total_public,
+        "supplier_purchase_total": supplier_purchase_total_public,
+        "previous_supplier_purchase_total": previous_supplier_purchase_total_public,
+        "monthly_comparison_rows": [
+            {
+                "label": "월 누적 매출",
+                "metric": "손익매출",
+                **sales_report_delta(month_total["profit_sales_amount"], previous_month_total["profit_sales_amount"]),
+            },
+            {
+                "label": "상품별 매출",
+                "metric": "손익매출",
+                **sales_report_delta(product_total_public["profit_sales_amount"], previous_product_total_public["profit_sales_amount"]),
+            },
+            {
+                "label": "매출처 합계",
+                "metric": "손익매출",
+                **sales_report_delta(seller_total_public["profit_sales_amount"], previous_seller_total_public["profit_sales_amount"]),
+            },
+            {
+                "label": "매입처 합계",
+                "metric": "총 매입금액",
+                **sales_report_delta(supplier_purchase_total_public["purchase_total"], previous_supplier_purchase_total_public["purchase_total"]),
+            },
+        ],
+        "monthly_comparison_details": {
+            "daily": [sales_report_compare_detail_public(row) for row in daily_compare_rows],
+            "product": [sales_report_compare_detail_public(row) for row in product_compare_rows],
+            "seller": [sales_report_compare_detail_public(row) for row in seller_compare_rows],
+            "supplier": [sales_report_compare_detail_public(row) for row in supplier_compare_rows],
+        },
+        "consistency": {
+            "difference": difference,
+            "ok": difference == 0,
+        },
+        "daily_rows": [_sales_report_daily_public(row) for row in daily_rows],
+        "seller_top": [_sales_report_named_public(row) for row in seller_rows],
+        "product_top": [_sales_report_named_public(row) for row in product_rows],
+        "supplier_purchase_totals": [_sales_report_purchase_public(row) for row in supplier_purchase_rows],
+        "reviews": [
+            {
+                "kind": str(row["kind"] or ""),
+                "name": str(row["name"] or ""),
+                "cs_amount": int(row["cs_amount"] or 0),
+                "cs_margin": int(row["cs_margin"] or 0),
+                "profit_sales_amount": int(row["profit_sales_amount"] or 0),
+                "profit_margin": int(row["profit_margin"] or 0),
+            }
+            for row in review_rows
+        ],
+    }
+
+
+def sales_report_daily_exists(connection: sqlite3.Connection, target_date: str) -> bool:
+    row = connection.execute(
+        "SELECT 1 FROM sales_report_daily_rows WHERE report_date = ? LIMIT 1",
+        (target_date,),
+    ).fetchone()
+    return bool(row)
+
+
+def sales_report_alert_recipients(connection: sqlite3.Connection) -> list[str]:
+    rows = connection.execute(
+        """
+        SELECT username, display_name, role
+          FROM users
+         WHERE active = 1
+           AND (
+                role = 'admin'
+                OR username = '신성환 실장'
+                OR display_name = '신성환 실장'
+                OR display_name LIKE '신성환%'
+           )
+         ORDER BY CASE role WHEN 'admin' THEN 0 ELSE 1 END,
+                  display_name COLLATE NOCASE,
+                  username COLLATE NOCASE
+        """
+    ).fetchall()
+    names: list[str] = []
+    seen: set[str] = set()
+    for row in rows:
+        name = str(row["display_name"] or row["username"] or "").strip()
+        if not name or name in seen:
+            continue
+        seen.add(name)
+        names.append(name)
+    return names
+
+
+def sales_report_alert_sender_id(connection: sqlite3.Connection) -> int | None:
+    row = connection.execute(
+        """
+        SELECT id
+          FROM users
+         WHERE active = 1
+           AND role = 'admin'
+         ORDER BY CASE
+                    WHEN display_name = '신성환 실장' THEN 0
+                    WHEN username = 'admin' THEN 1
+                    ELSE 2
+                  END,
+                  id
+         LIMIT 1
+        """
+    ).fetchone()
+    if not row:
+        return None
+    return int(row["id"])
+
+
+def maybe_send_sales_report_upload_alert(now: datetime | None = None) -> bool:
+    current = now or datetime.now()
+    if current.hour < SALES_REPORT_UPLOAD_ALERT_HOUR:
+        return False
+    target_date = current.date().isoformat()
+    connection = connect_db()
+    try:
+        if sales_report_daily_exists(connection, target_date):
+            return False
+        cutoff = (current - timedelta(minutes=SALES_REPORT_UPLOAD_ALERT_INTERVAL_MINUTES)).strftime("%Y-%m-%d %H:%M:%S")
+        marker = f"[매출현황 업로드 요청] {target_date}"
+        exists = connection.execute(
+            """
+            SELECT 1
+              FROM internal_messages
+             WHERE COALESCE(room_type, 'global') = 'global'
+               AND body LIKE ?
+               AND created_at >= ?
+             LIMIT 1
+            """,
+            (f"{marker}%", cutoff),
+        ).fetchone()
+        if exists:
+            return False
+        sender_id = sales_report_alert_sender_id(connection)
+        if sender_id is None:
+            return False
+        recipients = sales_report_alert_recipients(connection)
+        recipient_text = ", ".join(recipients) if recipients else "관리자"
+        message = (
+            f"{marker}\n"
+            f"대상: {recipient_text}\n"
+            f"{current.strftime('%H:%M')} 기준 금일 매출금액이 아직 업로드되지 않았습니다.\n"
+            "매출현황에 금일 매출 통계 파일을 업로드해주세요."
+        )
+        connection.execute(
+            """
+            INSERT INTO internal_messages
+                (user_id, recipient_user_id, room_type, body, created_at, task_id, command_result, command_error)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (sender_id, None, "global", message, current.strftime("%Y-%m-%d %H:%M:%S"), None, "", ""),
+        )
+        connection.commit()
+        return True
+    finally:
+        connection.close()
+
+
+def sales_report_alert_scheduler_loop() -> None:
+    while True:
+        try:
+            if maybe_send_sales_report_upload_alert():
+                print("매출현황 업로드 요청 알림 생성")
+        except Exception as exc:  # noqa: BLE001
+            print(f"매출현황 업로드 알림 실패: {exc}")
+        time.sleep(60)
+
+
+def start_sales_report_alert_scheduler() -> None:
+    global _SALES_REPORT_ALERT_SCHEDULER_STARTED
+    if _SALES_REPORT_ALERT_SCHEDULER_STARTED:
+        return
+    _SALES_REPORT_ALERT_SCHEDULER_STARTED = True
+    thread = threading.Thread(target=sales_report_alert_scheduler_loop, name="workhub-sales-report-alert", daemon=True)
+    thread.start()
+
+
+def latest_sales_report_context(connection: sqlite3.Connection, fallback_today: bool = True) -> tuple[str, str]:
+    row = connection.execute(
+        """
+        SELECT report_date, period
+          FROM sales_report_daily_rows
+         WHERE report_date != ''
+         ORDER BY report_date DESC
+         LIMIT 1
+        """
+    ).fetchone()
+    if row:
+        report_date = str(row["report_date"] or "")
+        period = str(row["period"] or report_date[:7] or "")
+        if report_date or period:
+            return report_date, period
+    if not fallback_today:
+        return "", ""
+    today = date.today().isoformat()
+    return today, today[:7]
+
+
+def save_sales_report_file(source_path: str | Path, original_name: str, uploaded_by: str = "") -> dict[str, str | int]:
+    source = Path(source_path)
+    if not source.is_file():
+        raise FileNotFoundError("매출표 파일을 찾지 못했습니다.")
+
+    init_db()
+    SALES_REPORT_DIR.mkdir(parents=True, exist_ok=True)
+    safe_original = _safe_shared_filename(original_name or source.name)
+    file_id = secrets.token_hex(10)
+    stored_name = f"{datetime.now().strftime('%Y%m%d%H%M%S')}_{file_id}_{safe_original}"
+    target = SALES_REPORT_DIR / stored_name
+    target.write_bytes(source.read_bytes())
+    uploaded_at = now_text()
+    report_type = detect_sales_report_type(target, safe_original)
+    parsed_report: dict[str, object] | None = None
+    report_date = ""
+    period = ""
+    if report_type:
+        parsed_report = parse_sales_report_file(target, safe_original)
+        report_date = str(parsed_report.get("report_date") or "")
+        period = str(parsed_report.get("period") or report_date[:7] or "")
+
+    connection = connect_db()
+    try:
+        if parsed_report and report_type in {"seller", "supplier", "product"} and (not report_date or not period):
+            inferred_date, inferred_period = latest_sales_report_context(connection, fallback_today=not period)
+            if not period:
+                period = inferred_period or report_date[:7]
+            if not report_date and inferred_date and (not inferred_period or inferred_period == period):
+                report_date = inferred_date
+            parsed_report["report_date"] = report_date
+            parsed_report["period"] = period
+        cursor = connection.execute(
+            """
+            INSERT INTO sales_report_uploads (
+                stored_name, original_name, size, uploaded_by, uploaded_at, report_type, report_date, period
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                stored_name,
+                safe_original,
+                target.stat().st_size,
+                str(uploaded_by or ""),
+                uploaded_at,
+                report_type,
+                report_date,
+                period,
+            ),
+        )
+        connection.commit()
+        row_id = int(cursor.lastrowid)
+    finally:
+        connection.close()
+    if parsed_report:
+        save_sales_report_snapshot(row_id, parsed_report)
+    return {
+        "id": row_id,
+        "original_name": safe_original,
+        "size": target.stat().st_size,
+        "uploaded_by": str(uploaded_by or ""),
+        "uploaded_at": uploaded_at,
+        "report_type": report_type,
+        "report_date": report_date,
+        "period": period,
+    }
+
+
 def crm_webhook_token() -> str:
     env_token = os.environ.get("WORKHUB_CRM_WEBHOOK_TOKEN", "").strip()
     return env_token or ensure_webhook_token(CRM_WEBHOOK_TOKEN_PATH)
@@ -12905,9 +23237,13 @@ def render_app_html(user: dict[str, str]) -> str:
     permissions = normalize_permissions(user.get("permissions", []), user.get("role", "user"))
     is_admin = user.get("role") == "admin"
     leave_enabled = any(permission in permissions for permission in ("leave_view", "leave_approve", "leave_manage"))
+    hermes_enabled = "hermes_use" in permissions
     leave_title = "연차 관리 및 신청" if any(permission in permissions for permission in ("leave_approve", "leave_manage")) else "연차 신청 및 확인"
     leave_nav = LEAVE_NAV_HTML.replace("__LEAVE_TITLE__", leave_title) if leave_enabled else ""
     leave_workspace = LEAVE_WORKSPACE_HTML.replace("__LEAVE_TITLE__", leave_title) if leave_enabled else ""
+    hermes_nav = HERMES_NAV_HTML if hermes_enabled else ""
+    hermes_workspace = HERMES_WORKSPACE_HTML if hermes_enabled else ""
+    sales_report_nav = SALES_REPORT_NAV_HTML if is_admin and "sales_report_manage" in permissions else ""
     admin_tools_nav = ADMIN_TOOLS_NAV_HTML if is_admin else ""
     admin_workspace = ADMIN_WORKSPACE_HTML.replace("__PERMISSION_CHECKBOXES__", permissions_html()) if is_admin else ""
     backup_workspace = BACKUP_WORKSPACE_HTML if is_admin else ""
@@ -12922,7 +23258,10 @@ def render_app_html(user: dict[str, str]) -> str:
             "role": user.get("role", "user"),
         }, ensure_ascii=False))
         .replace("__LEAVE_NAV__", leave_nav)
+        .replace("__HERMES_NAV__", hermes_nav)
+        .replace("__SALES_REPORT_NAV__", sales_report_nav)
         .replace("__LEAVE_WORKSPACE__", leave_workspace)
+        .replace("__HERMES_WORKSPACE__", hermes_workspace)
         .replace("__ADMIN_TOOLS_NAV__", admin_tools_nav)
         .replace("__ADMIN_WORKSPACE__", admin_workspace)
         .replace("__BACKUP_WORKSPACE__", backup_workspace)
@@ -12961,6 +23300,67 @@ def verify_password(password: str, stored_hash: str) -> bool:
         return hmac.compare_digest(digest.hex(), expected)
     except ValueError:
         return False
+
+
+def configured_initial_admin() -> tuple[str, str, str] | None:
+    password = os.environ.get("WORKHUB_INITIAL_ADMIN_PASSWORD", "").strip()
+    if not password:
+        return None
+    username = normalize_username(os.environ.get("WORKHUB_INITIAL_ADMIN_USERNAME", "admin"))
+    display_name = str(os.environ.get("WORKHUB_INITIAL_ADMIN_NAME", "관리자")).strip() or username
+    validate_username(username)
+    validate_password_policy(password, username, display_name)
+    return username, display_name, password
+
+
+def create_bootstrap_user(
+    connection: sqlite3.Connection,
+    username: str,
+    display_name: str,
+    role: str,
+    password: str,
+    timestamp: str,
+) -> None:
+    connection.execute(
+        """
+        INSERT INTO users (username, display_name, role, permissions, password_hash, active, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, 1, ?, ?)
+        """,
+        (
+            username,
+            display_name,
+            role,
+            json.dumps(default_permissions_for_role(role), ensure_ascii=False),
+            password_hash(password),
+            timestamp,
+            timestamp,
+        ),
+    )
+
+
+def bootstrap_initial_users(connection: sqlite3.Connection, timestamp: str) -> None:
+    user_count = int(connection.execute("SELECT COUNT(*) FROM users").fetchone()[0])
+    if user_count:
+        return
+
+    initial_admin = configured_initial_admin()
+    if initial_admin:
+        username, display_name, password = initial_admin
+        create_bootstrap_user(connection, username, display_name, "admin", password, timestamp)
+        return
+
+    if WORKHUB_PRODUCTION:
+        return
+
+    for username, display_name, role in DEFAULT_LOCAL_BOOTSTRAP_USERS:
+        create_bootstrap_user(
+            connection,
+            username,
+            display_name,
+            role,
+            secrets.token_urlsafe(32),
+            timestamp,
+        )
 
 
 def token_digest(token: str) -> str:
@@ -13115,6 +23515,27 @@ def init_db() -> None:
                 connection.execute(f"ALTER TABLE users ADD COLUMN {column} {column_type}")
         connection.execute(
             """
+            CREATE TABLE IF NOT EXISTS deleted_user_accounts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                original_user_id INTEGER NOT NULL,
+                username TEXT NOT NULL,
+                display_name TEXT NOT NULL,
+                role TEXT NOT NULL,
+                permissions TEXT,
+                active INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT,
+                updated_at TEXT,
+                last_login_at TEXT,
+                password_changed_at TEXT,
+                approved_at TEXT,
+                deleted_by INTEGER,
+                deleted_by_username TEXT,
+                deleted_at TEXT NOT NULL
+            )
+            """
+        )
+        connection.execute(
+            """
             CREATE TABLE IF NOT EXISTS shared_files (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 stored_name TEXT NOT NULL UNIQUE,
@@ -13125,6 +23546,146 @@ def init_db() -> None:
             )
             """
         )
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS sales_report_uploads (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                stored_name TEXT NOT NULL UNIQUE,
+                original_name TEXT NOT NULL,
+                size INTEGER NOT NULL DEFAULT 0,
+                uploaded_by TEXT,
+                uploaded_at TEXT NOT NULL
+            )
+            """
+        )
+        sales_upload_columns = {
+            row["name"] for row in connection.execute("PRAGMA table_info(sales_report_uploads)").fetchall()
+        }
+        for column, column_type in {
+            "report_type": "TEXT",
+            "report_date": "TEXT",
+            "period": "TEXT",
+        }.items():
+            if column not in sales_upload_columns:
+                connection.execute(f"ALTER TABLE sales_report_uploads ADD COLUMN {column} {column_type}")
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS sales_report_daily_rows (
+                report_date TEXT PRIMARY KEY,
+                period TEXT NOT NULL,
+                file_id INTEGER NOT NULL,
+                label TEXT,
+                quantity INTEGER NOT NULL DEFAULT 0,
+                sales_amount INTEGER NOT NULL DEFAULT 0,
+                supply_amount INTEGER NOT NULL DEFAULT 0,
+                sales_total INTEGER NOT NULL DEFAULT 0,
+                supply_total INTEGER NOT NULL DEFAULT 0,
+                sales_margin INTEGER NOT NULL DEFAULT 0,
+                cs_margin INTEGER NOT NULL DEFAULT 0,
+                profit_quantity_sales INTEGER NOT NULL DEFAULT 0,
+                profit_quantity_supply INTEGER NOT NULL DEFAULT 0,
+                profit_sales_amount INTEGER NOT NULL DEFAULT 0,
+                profit_supply_amount INTEGER NOT NULL DEFAULT 0,
+                profit_sales_margin INTEGER NOT NULL DEFAULT 0,
+                profit_shipping_sales INTEGER NOT NULL DEFAULT 0,
+                profit_shipping_supply INTEGER NOT NULL DEFAULT 0,
+                profit_shipping INTEGER NOT NULL DEFAULT 0,
+                profit_margin INTEGER NOT NULL DEFAULT 0,
+                margin_rate REAL NOT NULL DEFAULT 0
+            )
+            """
+        )
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS sales_report_seller_rows (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                period TEXT NOT NULL,
+                report_date TEXT,
+                file_id INTEGER NOT NULL,
+                seller_name TEXT NOT NULL,
+                quantity INTEGER NOT NULL DEFAULT 0,
+                sales_amount INTEGER NOT NULL DEFAULT 0,
+                supply_amount INTEGER NOT NULL DEFAULT 0,
+                sales_total INTEGER NOT NULL DEFAULT 0,
+                supply_total INTEGER NOT NULL DEFAULT 0,
+                sales_margin INTEGER NOT NULL DEFAULT 0,
+                cs_amount INTEGER NOT NULL DEFAULT 0,
+                cs_supply_amount INTEGER NOT NULL DEFAULT 0,
+                cs_margin INTEGER NOT NULL DEFAULT 0,
+                profit_quantity_sales INTEGER NOT NULL DEFAULT 0,
+                profit_quantity_supply INTEGER NOT NULL DEFAULT 0,
+                profit_sales_amount INTEGER NOT NULL DEFAULT 0,
+                profit_supply_amount INTEGER NOT NULL DEFAULT 0,
+                profit_sales_margin INTEGER NOT NULL DEFAULT 0,
+                profit_shipping INTEGER NOT NULL DEFAULT 0,
+                profit_margin INTEGER NOT NULL DEFAULT 0,
+                margin_rate REAL NOT NULL DEFAULT 0
+            )
+            """
+        )
+        connection.execute("CREATE INDEX IF NOT EXISTS idx_sales_report_seller_period ON sales_report_seller_rows(period)")
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS sales_report_supplier_rows (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                period TEXT NOT NULL,
+                report_date TEXT,
+                file_id INTEGER NOT NULL,
+                supplier_name TEXT,
+                quantity INTEGER DEFAULT 0,
+                sales_amount INTEGER DEFAULT 0,
+                supply_amount INTEGER DEFAULT 0,
+                sales_total INTEGER DEFAULT 0,
+                supply_total INTEGER DEFAULT 0,
+                sales_margin INTEGER DEFAULT 0,
+                cs_amount INTEGER DEFAULT 0,
+                cs_supply_amount INTEGER DEFAULT 0,
+                cs_margin INTEGER DEFAULT 0,
+                profit_quantity_sales INTEGER DEFAULT 0,
+                profit_quantity_supply INTEGER DEFAULT 0,
+                profit_sales_amount INTEGER DEFAULT 0,
+                profit_supply_amount INTEGER DEFAULT 0,
+                profit_sales_margin INTEGER DEFAULT 0,
+                profit_shipping INTEGER DEFAULT 0,
+                profit_margin INTEGER DEFAULT 0,
+                margin_rate REAL DEFAULT 0
+            )
+            """
+        )
+        connection.execute("CREATE INDEX IF NOT EXISTS idx_sales_report_supplier_period ON sales_report_supplier_rows(period)")
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS sales_report_product_rows (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                period TEXT,
+                report_date TEXT,
+                file_id INTEGER NOT NULL,
+                product_code TEXT,
+                product_name TEXT NOT NULL,
+                quantity INTEGER NOT NULL DEFAULT 0,
+                sales_amount INTEGER NOT NULL DEFAULT 0,
+                supply_amount INTEGER NOT NULL DEFAULT 0,
+                sales_total INTEGER NOT NULL DEFAULT 0,
+                sales_margin INTEGER NOT NULL DEFAULT 0,
+                cs_amount INTEGER NOT NULL DEFAULT 0,
+                cs_supply_amount INTEGER NOT NULL DEFAULT 0,
+                cs_margin INTEGER NOT NULL DEFAULT 0,
+                profit_quantity_sales INTEGER NOT NULL DEFAULT 0,
+                profit_quantity_supply INTEGER NOT NULL DEFAULT 0,
+                profit_sales_amount INTEGER NOT NULL DEFAULT 0,
+                profit_supply_amount INTEGER NOT NULL DEFAULT 0,
+                profit_margin INTEGER NOT NULL DEFAULT 0,
+                margin_rate REAL NOT NULL DEFAULT 0
+            )
+            """
+        )
+        product_columns = {
+            row["name"] for row in connection.execute("PRAGMA table_info(sales_report_product_rows)").fetchall()
+        }
+        if "sales_total" not in product_columns:
+            connection.execute("ALTER TABLE sales_report_product_rows ADD COLUMN sales_total INTEGER NOT NULL DEFAULT 0")
+        connection.execute("CREATE INDEX IF NOT EXISTS idx_sales_report_product_date ON sales_report_product_rows(report_date)")
+        connection.execute("CREATE INDEX IF NOT EXISTS idx_sales_report_product_period ON sales_report_product_rows(period)")
         connection.execute(
             """
             CREATE TABLE IF NOT EXISTS login_sessions (
@@ -13209,29 +23770,7 @@ def init_db() -> None:
             """
         )
         now = now_text()
-        for username, display_name, role, default_password in DEFAULT_USERS:
-            exists = connection.execute("SELECT id, permissions FROM users WHERE username = ?", (username,)).fetchone()
-            if not exists:
-                connection.execute(
-                    """
-                    INSERT INTO users (username, display_name, role, permissions, password_hash, active, created_at, updated_at)
-                    VALUES (?, ?, ?, ?, ?, 1, ?, ?)
-                    """,
-                    (
-                        username,
-                        display_name,
-                        role,
-                        json.dumps(default_permissions_for_role(role), ensure_ascii=False),
-                        password_hash(default_password),
-                        now,
-                        now,
-                    ),
-                )
-            elif not exists["permissions"]:
-                connection.execute(
-                    "UPDATE users SET permissions = ?, updated_at = ? WHERE username = ?",
-                    (json.dumps(default_permissions_for_role(role), ensure_ascii=False), now, username),
-                )
+        bootstrap_initial_users(connection, now)
         for row in connection.execute("SELECT username, role FROM users WHERE permissions IS NULL OR permissions = ''").fetchall():
             connection.execute(
                 "UPDATE users SET permissions = ?, updated_at = ? WHERE username = ?",
@@ -13309,6 +23848,11 @@ def init_db() -> None:
             "courier": "TEXT",
             "quantity": "TEXT",
             "cs_type": "TEXT",
+            "return_invoice_updated_at": "TEXT",
+            "reship_invoice_updated_at": "TEXT",
+            "return_checked_at": "TEXT",
+            "return_check_result": "TEXT",
+            "return_check_memo": "TEXT",
         }
         for column, column_type in extra_columns.items():
             if column not in existing_columns:
@@ -13431,6 +23975,30 @@ def init_db() -> None:
         }
         if "quantity" not in import_shipment_columns:
             connection.execute("ALTER TABLE import_shipments ADD COLUMN quantity TEXT")
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS cargo_shipments (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                cargo_type TEXT NOT NULL DEFAULT 'outbound',
+                ship_date TEXT,
+                customer TEXT,
+                item TEXT,
+                quantity TEXT,
+                destination TEXT,
+                status TEXT,
+                memo TEXT,
+                completed_at TEXT
+            )
+            """
+        )
+        cargo_columns = {
+            row["name"] for row in connection.execute("PRAGMA table_info(cargo_shipments)").fetchall()
+        }
+        if "cargo_type" not in cargo_columns:
+            connection.execute("ALTER TABLE cargo_shipments ADD COLUMN cargo_type TEXT NOT NULL DEFAULT 'outbound'")
+        connection.execute("CREATE INDEX IF NOT EXISTS idx_cargo_shipments_ship_date ON cargo_shipments(ship_date)")
         connection.execute(
             """
             CREATE TABLE IF NOT EXISTS leave_types (
@@ -13760,6 +24328,32 @@ def list_users() -> list[dict[str, str | int]]:
         connection.close()
 
 
+def list_deleted_user_accounts(limit: int = 100) -> list[dict[str, str | int]]:
+    init_db()
+    safe_limit = max(1, min(int(limit or 100), 500))
+    connection = connect_db()
+    try:
+        rows = connection.execute(
+            """
+            SELECT id, original_user_id, username, display_name, role, permissions, active,
+                   created_at, updated_at, last_login_at, password_changed_at, approved_at,
+                   deleted_by, deleted_by_username, deleted_at
+              FROM deleted_user_accounts
+             ORDER BY id DESC
+             LIMIT ?
+            """,
+            (safe_limit,),
+        ).fetchall()
+        deleted_users = []
+        for row in rows:
+            item = dict(row)
+            item["permissions"] = normalize_permissions(item.get("permissions"), str(item.get("role", "user")))
+            deleted_users.append(item)
+        return deleted_users
+    finally:
+        connection.close()
+
+
 def company_staff_dashboard_payload(current_user: dict[str, str]) -> dict:
     init_db()
     connection = connect_db()
@@ -13882,6 +24476,22 @@ def company_calendar_payload(user: dict[str, str], month_text: str) -> dict:
                 """,
                 tuple(leave_params),
             ).fetchall()
+        import_rows = connection.execute(
+            """
+            SELECT id, warehouse_due_date, arrival_date, shipper, item, quantity, progress_status, completed_at
+              FROM import_shipments
+             WHERE completed_at IS NULL OR completed_at = ''
+            """
+        ).fetchall()
+        cargo_rows = connection.execute(
+            """
+            SELECT id, COALESCE(cargo_type, 'outbound') AS cargo_type, ship_date, customer, item,
+                   quantity, destination, status, memo, completed_at
+              FROM cargo_shipments
+             WHERE (completed_at IS NULL OR completed_at = '')
+               AND COALESCE(status, '') NOT IN ('출고 완료', '입고 완료')
+            """
+        ).fetchall()
     finally:
         connection.close()
 
@@ -13935,6 +24545,34 @@ def company_calendar_payload(user: dict[str, str], month_text: str) -> dict:
                 "reason": row["reason"] or "",
             })
             cursor += timedelta(days=1)
+    for row in import_rows:
+        event_date = import_shipment_date_iso(row["warehouse_due_date"] or row["arrival_date"])
+        if not event_date or not (start_text <= event_date <= end_text):
+            continue
+        events.append({
+            "id": f"import:{row['id']}",
+            "type": "import",
+            "date": event_date,
+            "title": f"컨테이너 입고 {row['item'] or '수입제품'}",
+            "subtitle": " · ".join(str(value) for value in [row["quantity"], row["progress_status"] or "진행중"] if value),
+            "shipment_id": row["id"],
+            "status": row["progress_status"] or "진행중",
+        })
+    for row in cargo_rows:
+        event_date = import_shipment_date_iso(row["ship_date"])
+        if not event_date or not (start_text <= event_date <= end_text):
+            continue
+        is_inbound = row["cargo_type"] == "inbound"
+        events.append({
+            "id": f"cargo:{row['id']}",
+            "type": "cargo-inbound" if is_inbound else "cargo",
+            "date": event_date,
+            "title": f"{'화물 입고' if is_inbound else '화물 출고'} {row['customer'] or '거래처 미정'}",
+            "subtitle": " · ".join(str(value) for value in [row["item"], row["quantity"], row["destination"], row["status"] or ("입고 예정" if is_inbound else "출고 예정")] if value),
+            "cargo_id": row["id"],
+            "status": row["status"] or ("입고 예정" if is_inbound else "출고 예정"),
+            "memo": row["memo"] or "",
+        })
     summary = {
         "project": sum(1 for event in events if event["type"] == "project"),
         "task": sum(1 for event in events if event["type"] == "task"),
@@ -13948,7 +24586,7 @@ def company_calendar_payload(user: dict[str, str], month_text: str) -> dict:
         "today": today_text,
         "can_see_team_leave": can_see_team_leave,
         "summary": summary,
-        "events": sorted(events, key=lambda item: (str(item["date"]), {"project": 0, "leave": 1, "pending": 2, "task": 3}.get(str(item["type"]), 9), str(item["title"]))),
+        "events": sorted(events, key=lambda item: (str(item["date"]), {"project": 0, "import": 1, "cargo-inbound": 2, "cargo": 3, "leave": 4, "pending": 5, "task": 6}.get(str(item["type"]), 9), str(item["title"]))),
     }
 
 
@@ -14195,6 +24833,71 @@ def save_user_account(payload: dict, actor: dict[str, str]) -> int:
         connection.close()
 
 
+def delete_user_account(user_id: int | str, actor: dict[str, str]) -> int:
+    init_db()
+    target_id = int(user_id or 0)
+    actor_id = int(actor.get("id") or 0)
+    if not target_id:
+        raise ValueError("삭제할 사용자를 선택해주세요.")
+    if target_id == actor_id:
+        raise ValueError("현재 로그인한 본인 계정은 삭제할 수 없습니다.")
+    connection = connect_db()
+    try:
+        target = connection.execute(
+            """
+            SELECT id, username, display_name, role, permissions, active, created_at, updated_at,
+                   last_login_at, password_changed_at, approved_at
+              FROM users
+             WHERE id = ?
+            """,
+            (target_id,),
+        ).fetchone()
+        if not target:
+            raise ValueError("삭제할 사용자를 찾지 못했습니다.")
+        if str(target["role"] or "") == "admin" and int(target["active"] or 0):
+            remaining_admins = int(
+                connection.execute(
+                    "SELECT COUNT(*) FROM users WHERE role = 'admin' AND active = 1 AND id != ?",
+                    (target_id,),
+                ).fetchone()[0]
+                or 0
+            )
+            if remaining_admins < 1:
+                raise ValueError("마지막 활성 관리자 계정은 삭제할 수 없습니다.")
+        now = now_text()
+        connection.execute(
+            """
+            INSERT INTO deleted_user_accounts
+                (original_user_id, username, display_name, role, permissions, active,
+                 created_at, updated_at, last_login_at, password_changed_at, approved_at,
+                 deleted_by, deleted_by_username, deleted_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                int(target["id"]),
+                target["username"],
+                target["display_name"],
+                target["role"],
+                target["permissions"],
+                int(target["active"] or 0),
+                target["created_at"],
+                target["updated_at"],
+                target["last_login_at"],
+                target["password_changed_at"],
+                target["approved_at"],
+                actor_id or None,
+                actor.get("username", ""),
+                now,
+            ),
+        )
+        connection.execute("DELETE FROM login_sessions WHERE username = ?", (target["username"],))
+        connection.execute("DELETE FROM users WHERE id = ?", (target_id,))
+        connection.commit()
+        return target_id
+    finally:
+        connection.close()
+
+
 def register_user_request(payload: dict[str, str]) -> int:
     init_db()
     username = normalize_username(payload.get("username"))
@@ -14239,21 +24942,219 @@ RESTORE_ALLOWED_FILES = {
     "config/workhub.db": DB_PATH,
     "config/mail_settings.json": MAIL_SETTINGS_PATH,
     "config/vendor_contacts.json": VENDOR_CONTACTS_PATH,
+    "config/backup_settings.json": BACKUP_SETTINGS_PATH,
     "config/secret.key": SECRET_KEY_PATH,
     "config/crm_webhook_token.txt": CRM_WEBHOOK_TOKEN_PATH,
+    "config/hermes_settings.json": HERMES_SETTINGS_PATH,
+    "config/hermes_history.jsonl": HERMES_HISTORY_PATH,
 }
+
+BACKUP_DATA_DIRECTORIES = {
+    "output": OUTPUT_DIR,
+    "shared_files": SHARED_FILE_DIR,
+    "sales_reports": SALES_REPORT_DIR,
+}
+
+DEFAULT_BACKUP_SETTINGS = {
+    "backup_dir": "",
+    "auto_enabled": True,
+    "auto_hour": AUTO_BACKUP_HOUR,
+    "retention_days": BACKUP_RETENTION_DAYS,
+    "external_enabled": False,
+    "external_type": "rclone",
+    "rclone_remote": "",
+    "rclone_path": "",
+    "rclone_executable": "rclone",
+    "last_external_status": "",
+    "last_external_message": "",
+    "last_external_uploaded_at": "",
+    "last_external_backup_name": "",
+    "last_external_target": "",
+}
+
+
+def backup_default_dir() -> Path:
+    return BACKUP_DIR
+
+
+def clean_backup_dir(value: object) -> str:
+    text = str(value or "").strip().strip('"')
+    if not text:
+        return ""
+    path = Path(text).expanduser()
+    if not path.is_absolute():
+        path = RUNTIME_ROOT / path
+    return str(path)
+
+
+def normalize_backup_settings(payload: dict | None = None) -> dict[str, object]:
+    source = payload or {}
+    try:
+        auto_hour = int(source.get("auto_hour", DEFAULT_BACKUP_SETTINGS["auto_hour"]))
+    except (TypeError, ValueError):
+        auto_hour = int(DEFAULT_BACKUP_SETTINGS["auto_hour"])
+    auto_hour = min(max(auto_hour, 0), 23)
+    try:
+        retention_days = int(source.get("retention_days", DEFAULT_BACKUP_SETTINGS["retention_days"]))
+    except (TypeError, ValueError):
+        retention_days = int(DEFAULT_BACKUP_SETTINGS["retention_days"])
+    retention_days = min(max(retention_days, 1), 3650)
+    return {
+        "backup_dir": clean_backup_dir(source.get("backup_dir", DEFAULT_BACKUP_SETTINGS["backup_dir"])),
+        "auto_enabled": bool(source.get("auto_enabled", DEFAULT_BACKUP_SETTINGS["auto_enabled"])),
+        "auto_hour": auto_hour,
+        "retention_days": retention_days,
+        "external_enabled": bool(source.get("external_enabled", DEFAULT_BACKUP_SETTINGS["external_enabled"])),
+        "external_type": str(source.get("external_type") or DEFAULT_BACKUP_SETTINGS["external_type"]).strip() or "rclone",
+        "rclone_remote": str(source.get("rclone_remote") or "").strip(),
+        "rclone_path": str(source.get("rclone_path") or "").strip().strip("/"),
+        "rclone_executable": str(source.get("rclone_executable") or DEFAULT_BACKUP_SETTINGS["rclone_executable"]).strip() or "rclone",
+        "last_external_status": str(source.get("last_external_status") or "").strip(),
+        "last_external_message": str(source.get("last_external_message") or "").strip(),
+        "last_external_uploaded_at": str(source.get("last_external_uploaded_at") or "").strip(),
+        "last_external_backup_name": str(source.get("last_external_backup_name") or "").strip(),
+        "last_external_target": str(source.get("last_external_target") or "").strip(),
+    }
+
+
+def load_backup_settings() -> dict[str, object]:
+    if not BACKUP_SETTINGS_PATH.exists():
+        return normalize_backup_settings(DEFAULT_BACKUP_SETTINGS)
+    try:
+        raw = json.loads(BACKUP_SETTINGS_PATH.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        raw = {}
+    if not isinstance(raw, dict):
+        raw = {}
+    merged = {**DEFAULT_BACKUP_SETTINGS, **raw}
+    return normalize_backup_settings(merged)
+
+
+def save_backup_settings(payload: dict) -> dict[str, object]:
+    settings = normalize_backup_settings({**load_backup_settings(), **payload})
+    target_dir = backup_dir_path(settings)
+    target_dir.mkdir(parents=True, exist_ok=True)
+    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+    BACKUP_SETTINGS_PATH.write_text(json.dumps(settings, ensure_ascii=False, indent=2), encoding="utf-8")
+    return settings
+
+
+def update_backup_external_status(result: dict[str, str]) -> dict[str, object]:
+    settings = load_backup_settings()
+    updated = {
+        **settings,
+        "last_external_status": result.get("status", ""),
+        "last_external_message": result.get("message", ""),
+        "last_external_uploaded_at": result.get("uploaded_at", ""),
+        "last_external_backup_name": result.get("backup_name", ""),
+        "last_external_target": result.get("target", ""),
+    }
+    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+    BACKUP_SETTINGS_PATH.write_text(json.dumps(normalize_backup_settings(updated), ensure_ascii=False, indent=2), encoding="utf-8")
+    return normalize_backup_settings(updated)
+
+
+def backup_dir_path(settings: dict[str, object] | None = None, backup_dir: str | Path | None = None) -> Path:
+    if backup_dir:
+        return Path(clean_backup_dir(str(backup_dir))).resolve()
+    current = settings or load_backup_settings()
+    configured = clean_backup_dir(current.get("backup_dir", ""))
+    return Path(configured).resolve() if configured else backup_default_dir().resolve()
+
+
+def rclone_target(settings: dict[str, object]) -> str:
+    remote = str(settings.get("rclone_remote") or "").strip().rstrip(":")
+    target_path = str(settings.get("rclone_path") or "").strip().strip("/")
+    if not remote:
+        raise ValueError("rclone 원격 이름을 입력해주세요.")
+    return f"{remote}:{target_path}" if target_path else f"{remote}:"
+
+
+def upload_backup_to_external_storage(backup_path: Path, settings: dict[str, object] | None = None, runner=None) -> dict[str, str]:
+    current = settings or load_backup_settings()
+    if not current.get("external_enabled"):
+        return {
+            "status": "disabled",
+            "message": "외부 백업 업로드를 사용하지 않습니다.",
+            "backup_name": backup_path.name,
+            "target": "",
+            "uploaded_at": "",
+        }
+    if str(current.get("external_type") or "rclone") != "rclone":
+        return {
+            "status": "fail",
+            "message": "지원하지 않는 외부 백업 방식입니다.",
+            "backup_name": backup_path.name,
+            "target": "",
+            "uploaded_at": now_text(),
+        }
+    try:
+        target = rclone_target(current)
+    except ValueError as exc:
+        return {
+            "status": "fail",
+            "message": str(exc),
+            "backup_name": backup_path.name,
+            "target": "",
+            "uploaded_at": now_text(),
+        }
+    command = [str(current.get("rclone_executable") or "rclone"), "copy", str(backup_path), target]
+    run = runner or subprocess.run
+    try:
+        completed = run(
+            command,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=300,
+            check=False,
+        )
+    except FileNotFoundError:
+        return {
+            "status": "fail",
+            "message": "rclone 실행 파일을 찾지 못했습니다. VPS에 rclone 설치 및 PATH 설정을 확인해주세요.",
+            "backup_name": backup_path.name,
+            "target": target,
+            "uploaded_at": now_text(),
+        }
+    except subprocess.TimeoutExpired:
+        return {
+            "status": "fail",
+            "message": "rclone 업로드 시간이 초과되었습니다.",
+            "backup_name": backup_path.name,
+            "target": target,
+            "uploaded_at": now_text(),
+        }
+    output = (getattr(completed, "stderr", "") or getattr(completed, "stdout", "") or "").strip()
+    if int(getattr(completed, "returncode", 1)) != 0:
+        return {
+            "status": "fail",
+            "message": output or "rclone 업로드에 실패했습니다.",
+            "backup_name": backup_path.name,
+            "target": target,
+            "uploaded_at": now_text(),
+        }
+    return {
+        "status": "success",
+        "message": output or "Google Drive 업로드가 완료되었습니다.",
+        "backup_name": backup_path.name,
+        "target": target,
+        "uploaded_at": now_text(),
+    }
 
 
 def valid_backup_name(name: str) -> bool:
     return bool(re.fullmatch(r"workhub_backup_\d{8}_\d{6}(?:_\d+)?\.zip", name))
 
 
-def backup_path_from_name(name: str) -> Path:
+def backup_path_from_name(name: str, backup_dir: str | Path | None = None) -> Path:
     name = Path(name).name
     if not valid_backup_name(name):
         raise ValueError("백업 파일명이 올바르지 않습니다.")
-    path = (BACKUP_DIR / name).resolve()
-    if BACKUP_DIR.resolve() not in path.parents:
+    root = backup_dir_path(backup_dir=backup_dir)
+    path = (root / name).resolve()
+    if root not in path.parents:
         raise ValueError("백업 파일 경로가 올바르지 않습니다.")
     return path
 
@@ -14267,17 +25168,21 @@ def backup_file_info(path: Path) -> dict[str, str | int]:
     }
 
 
-def list_backup_files() -> list[dict[str, str | int]]:
-    BACKUP_DIR.mkdir(parents=True, exist_ok=True)
-    files = [path for path in BACKUP_DIR.glob("workhub_backup_*.zip") if path.is_file() and valid_backup_name(path.name)]
+def list_backup_files(backup_dir: str | Path | None = None) -> list[dict[str, str | int]]:
+    root = backup_dir_path(backup_dir=backup_dir)
+    root.mkdir(parents=True, exist_ok=True)
+    files = [path for path in root.glob("workhub_backup_*.zip") if path.is_file() and valid_backup_name(path.name)]
     files.sort(key=lambda path: path.stat().st_mtime, reverse=True)
     return [backup_file_info(path) for path in files]
 
 
-def cleanup_backup_retention() -> None:
-    BACKUP_DIR.mkdir(parents=True, exist_ok=True)
-    cutoff = time.time() - (BACKUP_RETENTION_DAYS * 24 * 60 * 60)
-    for path in BACKUP_DIR.glob("workhub_backup_*.zip"):
+def cleanup_backup_retention(backup_dir: str | Path | None = None, retention_days: int | None = None) -> None:
+    settings = load_backup_settings()
+    root = backup_dir_path(settings, backup_dir=backup_dir)
+    root.mkdir(parents=True, exist_ok=True)
+    days = retention_days if retention_days is not None else int(settings["retention_days"])
+    cutoff = time.time() - (days * 24 * 60 * 60)
+    for path in root.glob("workhub_backup_*.zip"):
         if path.is_file() and valid_backup_name(path.name) and path.stat().st_mtime < cutoff:
             path.unlink(missing_ok=True)
 
@@ -14294,22 +25199,52 @@ def safe_sqlite_copy(target_db: Path) -> None:
         source.close()
 
 
-def create_workhub_backup(reason: str = "manual") -> dict[str, str | int]:
-    BACKUP_DIR.mkdir(parents=True, exist_ok=True)
+def backup_arcname(path: Path, root: Path, prefix: str) -> str:
+    return str(Path(prefix) / path.relative_to(root)).replace("\\", "/")
+
+
+def write_backup_directory(archive: zipfile.ZipFile, root: Path, prefix: str, current_backup_root: Path) -> list[str]:
+    if not root.exists() or not root.is_dir():
+        return []
+    written: list[str] = []
+    for path in sorted(root.rglob("*")):
+        if not path.is_file():
+            continue
+        try:
+            resolved = path.resolve()
+            if resolved == current_backup_root or current_backup_root in resolved.parents:
+                continue
+        except OSError:
+            continue
+        arcname = backup_arcname(path, root, prefix)
+        archive.write(path, arcname)
+        written.append(arcname)
+    return written
+
+
+def create_workhub_backup(reason: str = "manual", backup_dir: str | Path | None = None) -> dict[str, str | int]:
+    settings = load_backup_settings()
+    root = backup_dir_path(settings, backup_dir=backup_dir)
+    root.mkdir(parents=True, exist_ok=True)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    output_path = BACKUP_DIR / f"workhub_backup_{timestamp}.zip"
+    output_path = root / f"workhub_backup_{timestamp}.zip"
     counter = 1
     while output_path.exists():
-        output_path = BACKUP_DIR / f"workhub_backup_{timestamp}_{counter}.zip"
+        output_path = root / f"workhub_backup_{timestamp}_{counter}.zip"
         counter += 1
-    with tempfile.TemporaryDirectory(prefix="workhub_backup_", dir=BACKUP_DIR) as temp_dir:
+    with tempfile.TemporaryDirectory(prefix="workhub_backup_", dir=root) as temp_dir:
         temp_db = Path(temp_dir) / "workhub.db"
         safe_sqlite_copy(temp_db)
         with zipfile.ZipFile(output_path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
             archive.write(temp_db, "config/workhub.db")
-            for path in (MAIL_SETTINGS_PATH, VENDOR_CONTACTS_PATH, SECRET_KEY_PATH, CRM_WEBHOOK_TOKEN_PATH):
+            included = ["config/workhub.db"]
+            for path in (MAIL_SETTINGS_PATH, VENDOR_CONTACTS_PATH, BACKUP_SETTINGS_PATH, SECRET_KEY_PATH, CRM_WEBHOOK_TOKEN_PATH, HERMES_SETTINGS_PATH, HERMES_HISTORY_PATH):
                 if path.exists() and path.is_file():
-                    archive.write(path, f"config/{path.name}")
+                    arcname = f"config/{path.name}"
+                    archive.write(path, arcname)
+                    included.append(arcname)
+            for prefix, directory in BACKUP_DATA_DIRECTORIES.items():
+                included.extend(write_backup_directory(archive, directory, prefix, root.resolve()))
             archive.writestr(
                 "manifest.json",
                 json.dumps(
@@ -14317,21 +25252,21 @@ def create_workhub_backup(reason: str = "manual") -> dict[str, str | int]:
                         "created_at": now_text(),
                         "reason": reason,
                         "data_dir": str(RUNTIME_ROOT),
-                        "backup_retention_days": BACKUP_RETENTION_DAYS,
-                        "included": [
-                            "config/workhub.db",
-                            "config/mail_settings.json",
-                            "config/vendor_contacts.json",
-                            "config/secret.key",
-                            "config/crm_webhook_token.txt",
-                        ],
+                        "backup_dir": str(root),
+                        "backup_retention_days": int(settings["retention_days"]),
+                        "included": included,
                     },
                     ensure_ascii=False,
                     indent=2,
                 ),
             )
-    cleanup_backup_retention()
-    return backup_file_info(output_path)
+    cleanup_backup_retention(backup_dir=root, retention_days=int(settings["retention_days"]))
+    info = backup_file_info(output_path)
+    external_result = upload_backup_to_external_storage(output_path, settings)
+    info["external_backup"] = external_result
+    if external_result["status"] != "disabled":
+        update_backup_external_status(external_result)
+    return info
 
 
 def validate_restored_db(path: Path) -> None:
@@ -14344,13 +25279,36 @@ def validate_restored_db(path: Path) -> None:
         connection.close()
 
 
+def restore_backup_directory(temp_root: Path, prefix: str, target: Path) -> int:
+    source_root = temp_root / prefix
+    if not source_root.exists() or not source_root.is_dir():
+        return 0
+    if target.exists():
+        for child in sorted(target.rglob("*"), reverse=True):
+            if child.is_file():
+                child.unlink()
+            elif child.is_dir():
+                child.rmdir()
+    restored = 0
+    for source in sorted(source_root.rglob("*")):
+        if not source.is_file():
+            continue
+        destination = target / source.relative_to(source_root)
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        source.replace(destination)
+        restored += 1
+    return restored
+
+
 def restore_workhub_backup(source_zip: Path) -> dict[str, object]:
     if not source_zip.exists() or not zipfile.is_zipfile(source_zip):
         raise ValueError("올바른 백업 zip 파일이 아닙니다.")
 
     pre_restore = create_workhub_backup("pre-restore")
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-    with tempfile.TemporaryDirectory(prefix="workhub_restore_", dir=BACKUP_DIR) as temp_dir:
+    restore_temp_dir = backup_dir_path()
+    restore_temp_dir.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix="workhub_restore_", dir=restore_temp_dir) as temp_dir:
         temp_root = Path(temp_dir)
         extracted: dict[str, Path] = {}
         with zipfile.ZipFile(source_zip) as archive:
@@ -14358,10 +25316,15 @@ def restore_workhub_backup(source_zip: Path) -> dict[str, object]:
             if "config/workhub.db" not in names:
                 raise ValueError("백업 파일 안에 config/workhub.db가 없습니다.")
             for member in archive.infolist():
+                if member.is_dir():
+                    continue
                 member_name = member.filename.replace("\\", "/").lstrip("/")
-                if member_name not in RESTORE_ALLOWED_FILES:
+                is_allowed_directory = any(member_name == prefix or member_name.startswith(f"{prefix}/") for prefix in BACKUP_DATA_DIRECTORIES)
+                if member_name not in RESTORE_ALLOWED_FILES and not is_allowed_directory:
                     continue
                 output = temp_root / member_name
+                if temp_root.resolve() not in output.resolve().parents:
+                    continue
                 output.parent.mkdir(parents=True, exist_ok=True)
                 output.write_bytes(archive.read(member))
                 extracted[member_name] = output
@@ -14375,24 +25338,35 @@ def restore_workhub_backup(source_zip: Path) -> dict[str, object]:
                 source.replace(target)
             elif target.exists():
                 target.unlink()
+        restored_directories = {
+            prefix: restore_backup_directory(temp_root, prefix, target)
+            for prefix, target in BACKUP_DATA_DIRECTORIES.items()
+        }
 
     return {
         "message": "백업 데이터 복원이 완료되었습니다.",
         "restored_from": source_zip.name,
         "pre_restore_backup": pre_restore,
+        "restored_directories": restored_directories,
     }
 
 
 def has_backup_for_date(date_token: str) -> bool:
-    BACKUP_DIR.mkdir(parents=True, exist_ok=True)
-    return any(BACKUP_DIR.glob(f"workhub_backup_{date_token}_*.zip"))
+    root = backup_dir_path()
+    root.mkdir(parents=True, exist_ok=True)
+    return any(root.glob(f"workhub_backup_{date_token}_*.zip"))
 
 
 def backup_scheduler_loop() -> None:
     while True:
         try:
             now = datetime.now()
-            if now.hour >= AUTO_BACKUP_HOUR and not has_backup_for_date(now.strftime("%Y%m%d")):
+            settings = load_backup_settings()
+            if (
+                settings.get("auto_enabled", True)
+                and now.hour >= int(settings.get("auto_hour", AUTO_BACKUP_HOUR))
+                and not has_backup_for_date(now.strftime("%Y%m%d"))
+            ):
                 created = create_workhub_backup("auto")
                 print(f"자동 백업 완료: {created['name']}")
         except Exception as exc:  # noqa: BLE001
@@ -15277,17 +26251,32 @@ def status_date_text(*values: object) -> str:
 
 def normalize_cs_type_value(cs_type: str, cs_content: str, status: str = "") -> str:
     existing = clean_cell(cs_type)
-    if existing in {"변심반품", "변신반품", "불량반품", "불량교환", "불량재출고(미회수)", "오출고(오배송)"}:
-        return "변심반품" if existing == "변신반품" else existing
+    if existing in {
+        "변심반품",
+        "변신반품",
+        "불량반품",
+        "불량교환",
+        "불량재출고(미회수)",
+        "오출고(오배송)",
+        "오출고(오배송)/회수진행",
+        "오출고(오배송)/회수없음",
+    }:
+        if existing == "변신반품":
+            return "변심반품"
+        if existing == "오출고(오배송)":
+            return "오출고(오배송)/회수진행"
+        return existing
 
     text = normalize_compact(f"{existing} {cs_content} {status}")
     if not text:
         return ""
 
     if any(keyword in text for keyword in ["오배송", "오출고", "오발주", "착오", "중복발주", "중복출고", "이중발주", "이중출고", "주소오류", "주소오기재"]):
-        return "오출고(오배송)"
+        if any(keyword in text for keyword in ["회수없음", "회수없이", "미회수", "회수안함", "회수불필요", "회수X", "회수x"]):
+            return "오출고(오배송)/회수없음"
+        return "오출고(오배송)/회수진행"
     if any(keyword in text for keyword in ["출고취소", "출고전취소", "출소취소"]):
-        return "오출고(오배송)"
+        return "오출고(오배송)/회수없음"
     if any(keyword in text for keyword in ["변심", "단순변심"]):
         return "변심반품"
     if any(keyword in text for keyword in ["맞교환", "맞효관", "불량교환", "제품불량교환", "교환요청", "교환원", "교환진행", "교환"]):
@@ -15465,7 +26454,9 @@ def list_cs_cases(query: str = "", status: str = "", limit: int = 20, year: str 
                    ship_date, sales_vendor, purchase_vendor, courier, quantity
               FROM cs_cases
               {where}
-             ORDER BY id DESC
+             ORDER BY CASE WHEN date(occurred_at) IS NULL THEN 1 ELSE 0 END,
+                      date(occurred_at) DESC,
+                      id DESC
              LIMIT ?
             """,
             params,
@@ -15473,6 +26464,27 @@ def list_cs_cases(query: str = "", status: str = "", limit: int = 20, year: str 
     finally:
         connection.close()
     return [dict(row) for row in rows]
+
+
+def normalized_cs_type(value: str) -> str:
+    normalized = re.sub(r"\s+", "", value or "")
+    if normalized == "오출고(오배송)":
+        return "오출고(오배송)/회수진행"
+    return normalized
+
+
+def should_mark_cs_case_complete(cs_type: str, cs_content: str, return_invoice: str, reship_invoice: str) -> bool:
+    normalized_type = normalized_cs_type(cs_type)
+    has_return = bool((return_invoice or "").strip())
+    has_reship = bool((reship_invoice or "").strip())
+    has_return_check = "[회수검수" in (cs_content or "")
+    if normalized_type in {"변심반품", "변신반품", "불량반품"}:
+        return has_return and has_return_check
+    if normalized_type in {"불량교환", "오출고(오배송)/회수진행"}:
+        return has_return and has_reship and has_return_check
+    if normalized_type in {"불량재출고(미회수)", "오출고(오배송)/회수없음"}:
+        return has_reship
+    return False
 
 
 def update_cs_case(case_id: int, payload: dict) -> None:
@@ -15484,23 +26496,85 @@ def update_cs_case(case_id: int, payload: dict) -> None:
     init_db()
     connection = connect_db()
     try:
+        previous = connection.execute(
+            "SELECT status, cs_type, cs_content, return_invoice, reship_invoice, completed_at FROM cs_cases WHERE id = ?",
+            (case_id,),
+        ).fetchone()
+        if not previous:
+            raise ValueError("수정할 CS건을 찾지 못했습니다.")
+        cs_type = cs_type if "cs_type" in payload else (previous["cs_type"] or "")
+        cs_content = clean_payload_text(payload, "cs_content") if "cs_content" in payload else (previous["cs_content"] or "")
+        return_invoice = return_invoice if "return_invoice" in payload else (previous["return_invoice"] or "")
+        reship_invoice = reship_invoice if "reship_invoice" in payload else (previous["reship_invoice"] or "")
+        status = status if status else (previous["status"] or "")
+        now = now_text()
+        return_invoice_updated_at = None
+        reship_invoice_updated_at = None
+        if return_invoice and return_invoice != (previous["return_invoice"] or ""):
+            return_invoice_updated_at = now
+        if reship_invoice and reship_invoice != (previous["reship_invoice"] or ""):
+            reship_invoice_updated_at = now
+        if "status" not in payload and should_mark_cs_case_complete(cs_type, cs_content, return_invoice, reship_invoice):
+            status = "전체 처리완료"
+        completion_date = date.today().isoformat() if "전체 처리완료" in status and not (previous["completed_at"] or "").strip() else None
         cursor = connection.execute(
             """
             UPDATE cs_cases
-               SET status = COALESCE(NULLIF(?, ''), status),
+               SET status = ?,
                    cs_type = ?,
+                   cs_content = ?,
                    return_invoice = ?,
                    reship_invoice = ?,
+                   completed_at = COALESCE(NULLIF(completed_at, ''), ?),
+                   return_invoice_updated_at = COALESCE(?, return_invoice_updated_at),
+                   reship_invoice_updated_at = COALESCE(?, reship_invoice_updated_at),
                    updated_at = ?
              WHERE id = ?
             """,
-            [status, cs_type, return_invoice, reship_invoice, now_text(), case_id],
+            [
+                status,
+                cs_type,
+                cs_content,
+                return_invoice,
+                reship_invoice,
+                completion_date,
+                return_invoice_updated_at,
+                reship_invoice_updated_at,
+                now,
+                case_id,
+            ],
         )
         connection.commit()
         if cursor.rowcount == 0:
             raise ValueError("수정할 CS건을 찾지 못했습니다.")
     finally:
         connection.close()
+
+
+def list_cs_followup_alerts() -> list[dict[str, str | int]]:
+    init_db()
+    target_date = (date.today() - timedelta(days=1)).isoformat()
+    connection = connect_db()
+    try:
+        rows = connection.execute(
+            """
+            SELECT id, status, cs_type, product_name, receiver_name, return_invoice,
+                   reship_invoice, sales_vendor, purchase_vendor, updated_at,
+                   return_invoice_updated_at, reship_invoice_updated_at
+              FROM cs_cases
+             WHERE COALESCE(status, '') NOT LIKE '%전체 처리완료%'
+               AND (
+                    substr(COALESCE(return_invoice_updated_at, ''), 1, 10) = ?
+                    OR substr(COALESCE(reship_invoice_updated_at, ''), 1, 10) = ?
+               )
+             ORDER BY updated_at DESC, id DESC
+             LIMIT 30
+            """,
+            (target_date, target_date),
+        ).fetchall()
+    finally:
+        connection.close()
+    return [dict(row) for row in rows]
 
 
 def delete_cs_cases(case_ids: list[int]) -> int:
@@ -15574,7 +26648,15 @@ def list_management_records(query: str = "", limit: int | None = 300, year: str 
                    product_code, order_number, customer_option, cs_received_at
               FROM management_records
               {where}
-             ORDER BY order_date DESC, id DESC
+             ORDER BY order_date DESC,
+                      CASE
+                        WHEN TRIM(quantity) GLOB '[0-9]*' THEN CAST(quantity AS REAL)
+                        ELSE 999999999
+                      END ASC,
+                      product_name ASC,
+                      purchase_vendor ASC,
+                      sales_vendor ASC,
+                      id ASC
              {limit_sql}
             """,
             params,
@@ -15650,6 +26732,43 @@ IMPORT_SHIPMENT_FIELDS = (
     "warehouse_due_date",
 )
 
+CARGO_SHIPMENT_FIELDS = (
+    "cargo_type",
+    "ship_date",
+    "customer",
+    "item",
+    "quantity",
+    "destination",
+    "status",
+    "memo",
+)
+
+
+def import_shipment_date_key(value: object) -> tuple[int, int, int]:
+    text = str(value or "").strip()
+    if not text:
+        return (9999, 99, 99)
+    match = re.search(r"(\d{4})[-./년\s]+(\d{1,2})[-./월\s]+(\d{1,2})", text)
+    if match:
+        return (int(match.group(1)), int(match.group(2)), int(match.group(3)))
+    match = re.search(r"(\d{1,2})\s*월\s*(\d{1,2})\s*일?", text)
+    if match:
+        return (date.today().year, int(match.group(1)), int(match.group(2)))
+    match = re.search(r"^(\d{1,2})[./-](\d{1,2})", text)
+    if match:
+        return (date.today().year, int(match.group(1)), int(match.group(2)))
+    return (9999, 99, 99)
+
+
+def import_shipment_date_iso(value: object) -> str:
+    year, month, day = import_shipment_date_key(value)
+    if year == 9999:
+        return ""
+    try:
+        return date(year, month, day).isoformat()
+    except ValueError:
+        return ""
+
 
 def list_import_shipments() -> list[dict[str, str | int]]:
     init_db()
@@ -15667,7 +26786,77 @@ def list_import_shipments() -> list[dict[str, str | int]]:
         ).fetchall()
     finally:
         connection.close()
-    return [dict(row) for row in rows]
+    records = [dict(row) for row in rows]
+    return sorted(
+        records,
+        key=lambda row: (
+            1 if row.get("completed_at") else 0,
+            import_shipment_date_key(row.get("warehouse_due_date")),
+            -int(row.get("id") or 0),
+        ),
+    )
+
+
+def list_cargo_shipments() -> list[dict[str, str | int]]:
+    init_db()
+    connection = connect_db()
+    try:
+        rows = connection.execute(
+            """
+            SELECT id, created_at, updated_at, COALESCE(cargo_type, 'outbound') AS cargo_type,
+                   ship_date, customer, item, quantity,
+                   destination, status, memo, completed_at
+              FROM cargo_shipments
+             ORDER BY CASE WHEN completed_at IS NULL OR completed_at = '' THEN 0 ELSE 1 END,
+                      id DESC
+            """
+        ).fetchall()
+    finally:
+        connection.close()
+    records = [dict(row) for row in rows]
+    return sorted(
+        records,
+        key=lambda row: (
+            1 if row.get("completed_at") or row.get("status") in {"출고 완료", "입고 완료"} else 0,
+            import_shipment_date_key(row.get("ship_date")),
+            -int(row.get("id") or 0),
+        ),
+    )
+
+
+def save_cargo_shipment(payload: dict) -> int:
+    init_db()
+    now = now_text()
+    values = {field: clean_payload_text(payload, field) for field in CARGO_SHIPMENT_FIELDS}
+    values["cargo_type"] = "inbound" if values.get("cargo_type") == "inbound" else "outbound"
+    if not any(value for key, value in values.items() if key != "cargo_type"):
+        raise ValueError("화물 입출고 내용을 입력해주세요.")
+    if not values["status"]:
+        values["status"] = "입고 예정" if values["cargo_type"] == "inbound" else "출고 예정"
+    cargo_id = int(payload.get("id") or 0)
+    completed_at = now if values["status"] in {"출고 완료", "입고 완료"} else ""
+    connection = connect_db()
+    try:
+        if cargo_id:
+            assignments = ", ".join(f"{field} = ?" for field in CARGO_SHIPMENT_FIELDS)
+            cursor = connection.execute(
+                f"UPDATE cargo_shipments SET {assignments}, completed_at = ?, updated_at = ? WHERE id = ?",
+                [values[field] for field in CARGO_SHIPMENT_FIELDS] + [completed_at, now, cargo_id],
+            )
+            if cursor.rowcount == 0:
+                raise ValueError("수정할 화물 입출고건을 찾지 못했습니다.")
+        else:
+            columns = ["created_at", "updated_at", *CARGO_SHIPMENT_FIELDS, "completed_at"]
+            placeholders = ", ".join("?" for _ in columns)
+            cursor = connection.execute(
+                f"INSERT INTO cargo_shipments ({', '.join(columns)}) VALUES ({placeholders})",
+                [now, now] + [values[field] for field in CARGO_SHIPMENT_FIELDS] + [completed_at],
+            )
+            cargo_id = int(cursor.lastrowid)
+        connection.commit()
+        return cargo_id
+    finally:
+        connection.close()
 
 
 def save_import_shipment(payload: dict) -> int:
@@ -15675,7 +26864,7 @@ def save_import_shipment(payload: dict) -> int:
     now = now_text()
     values = {field: clean_payload_text(payload, field) for field in IMPORT_SHIPMENT_FIELDS}
     if not any(values.values()):
-        raise ValueError("수입제품 출고 진행 내용을 입력해주세요.")
+        raise ValueError("수입제품 입고 진행 내용을 입력해주세요.")
     shipment_id = int(payload.get("id") or 0)
     connection = connect_db()
     try:
@@ -15744,6 +26933,29 @@ MANAGEMENT_EDIT_COLUMNS = [
     "memo",
 ]
 
+MANAGEMENT_MANUAL_COLUMNS = [
+    "purchase_vendor",
+    "sales_vendor",
+    "transaction_type",
+    "ledger_checked",
+    "order_date",
+    "ship_date",
+    "orderer_name",
+    "sender_phone",
+    "receiver_name",
+    "receiver_phone",
+    "product_name",
+    "quantity",
+    "receiver_address",
+    "courier",
+    "invoice_number",
+    "memo",
+    "order_item_id",
+    "product_code",
+    "order_number",
+    "customer_option",
+]
+
 
 def get_management_record(record_id: int) -> dict[str, str | int]:
     init_db()
@@ -15784,6 +26996,42 @@ def update_management_record(record_id: int, payload: dict) -> None:
         connection.close()
 
 
+def create_management_manual_record(payload: dict) -> int:
+    init_db()
+    timestamp = now_text()
+    record = {column: clean_payload_text(payload, column) for column in MANAGEMENT_MANUAL_COLUMNS}
+    if not any(record.values()):
+        raise ValueError("수기 추가할 통합관리대장 내용을 입력해주세요.")
+    record.update({
+        "created_at": timestamp,
+        "source_file": "수기입력",
+        "source_sheet": "수기추가",
+        "source_row": 0,
+    })
+    normalize_management_import_records([record])
+    columns = MANAGEMENT_IMPORT_COLUMNS
+    placeholders = ", ".join("?" for _ in columns)
+    connection = connect_db()
+    try:
+        next_row = connection.execute(
+            """
+            SELECT COALESCE(MAX(source_row), 0) + 1
+              FROM management_records
+             WHERE source_file = ? AND source_sheet = ?
+            """,
+            (record["source_file"], record["source_sheet"]),
+        ).fetchone()[0]
+        record["source_row"] = int(next_row or 1)
+        cursor = connection.execute(
+            f"INSERT INTO management_records ({', '.join(columns)}) VALUES ({placeholders})",
+            [record.get(column, "") for column in columns],
+        )
+        connection.commit()
+        return int(cursor.lastrowid)
+    finally:
+        connection.close()
+
+
 def delete_management_records(record_ids: list[int]) -> int:
     init_db()
     if not record_ids:
@@ -15801,6 +27049,7 @@ def delete_management_records(record_ids: list[int]) -> int:
 def create_cs_case_from_management(record_id: int) -> int:
     record = get_management_record(record_id)
     timestamp = now_text()
+    received_date = timestamp[:10]
     source_file = f"통합관리대장:{record.get('source_file', '')}"
     source_sheet = str(record.get("source_sheet", "") or "")
     source_row = int(record.get("source_row", 0) or 0)
@@ -15833,7 +27082,7 @@ def create_cs_case_from_management(record_id: int) -> int:
                 source_file,
                 source_sheet,
                 source_row,
-                record.get("order_date", "") or record.get("ship_date", ""),
+                received_date,
                 record.get("order_date", ""),
                 record.get("ship_date", ""),
                 record.get("sales_vendor", ""),
@@ -16196,41 +27445,589 @@ def find_management_header_row(worksheet, max_scan_rows: int = 10) -> tuple[int,
             return row_number, indexes
     return None
 
-def import_management_workbook(path: Path) -> tuple[int, int]:
-    init_db()
+MANAGEMENT_IMPORT_COLUMNS = [
+    "created_at",
+    "source_file",
+    "source_sheet",
+    "source_row",
+    "purchase_vendor",
+    "sales_vendor",
+    "transaction_type",
+    "ledger_checked",
+    "order_date",
+    "ship_date",
+    "orderer_name",
+    "sender_phone",
+    "receiver_name",
+    "receiver_phone",
+    "product_name",
+    "quantity",
+    "receiver_address",
+    "courier",
+    "invoice_number",
+    "memo",
+    "order_item_id",
+    "product_code",
+    "order_number",
+    "customer_option",
+]
+MANAGEMENT_IMPORT_EDITABLE_FIELDS = set(MANAGEMENT_IMPORT_COLUMNS) - {"created_at", "source_file", "source_sheet", "source_row"}
+
+
+def normalize_duplicate_token(value: object) -> str:
+    text = clean_cell(value)
+    return re.sub(r"[\s\-()._/]+", "", text).lower()
+
+
+def is_soilbridge_purchase_vendor(value: object) -> bool:
+    return "소일브릿지" in normalize_compact(clean_cell(value))
+
+
+def auto_management_transaction_type(purchase_vendor: object) -> str:
+    return "매출" if is_soilbridge_purchase_vendor(purchase_vendor) else "매입/매출"
+
+
+def management_import_quantity_sort_value(value: object) -> tuple[int, float | str]:
+    text = clean_cell(value).replace(",", "")
+    try:
+        return (0, float(text))
+    except ValueError:
+        return (1, text)
+
+
+def sort_management_import_records(records: list[dict[str, object]]) -> None:
+    records.sort(key=lambda record: (
+        management_import_quantity_sort_value(record.get("quantity")),
+        clean_cell(record.get("product_name")),
+        clean_cell(record.get("purchase_vendor")),
+        clean_cell(record.get("sales_vendor")),
+    ))
+
+
+def compact_duplicate_key(prefix: str, values: list[object]) -> str:
+    tokens = [normalize_duplicate_token(value) for value in values]
+    return f"{prefix}:" + "|".join(tokens)
+
+
+def management_duplicate_key(record: dict[str, object]) -> str:
+    order_item_id = normalize_duplicate_token(record.get("order_item_id"))
+    if order_item_id:
+        return f"management-order-item:{order_item_id}"
+    order_number = record.get("order_number")
+    invoice_number = record.get("invoice_number")
+    product_identity = record.get("product_code") or record.get("product_name")
+    if normalize_duplicate_token(order_number) or normalize_duplicate_token(invoice_number):
+        return compact_duplicate_key(
+            "management-order",
+            [
+                order_number,
+                invoice_number,
+                product_identity,
+                record.get("quantity"),
+                record.get("receiver_name"),
+                record.get("receiver_phone"),
+                record.get("receiver_address"),
+            ],
+        )
+    return compact_duplicate_key(
+        "management-fallback",
+        [
+            record.get("order_date"),
+            record.get("ship_date"),
+            record.get("product_name"),
+            record.get("quantity"),
+            record.get("receiver_name"),
+            record.get("receiver_phone"),
+            record.get("receiver_address"),
+        ],
+    )
+
+
+def cs_duplicate_key(record: dict[str, object]) -> str:
+    invoice = extract_invoice_number(record.get("original_invoice")) or record.get("original_invoice")
+    return compact_duplicate_key(
+        "cs-case",
+        [
+            record.get("occurred_at"),
+            invoice,
+            record.get("cs_type"),
+            record.get("cs_content"),
+            record.get("receiver_name"),
+            record.get("receiver_phone"),
+            record.get("product_name"),
+        ],
+    )
+
+
+def duplicate_summary(record: dict[str, object], fields: list[str]) -> str:
+    values = [clean_cell(record.get(field)) for field in fields]
+    return " / ".join(value for value in values if value)[:160]
+
+
+def digit_count(value: object) -> int:
+    return len(re.sub(r"\D+", "", clean_cell(value)))
+
+
+def is_quantity_text(value: object) -> bool:
+    text = clean_cell(value)
+    if not text:
+        return False
+    if not re.fullmatch(r"\d+(\.\d+)?", text):
+        return False
+    try:
+        return float(text) > 0
+    except ValueError:
+        return False
+
+
+def is_numeric_identifier(value: object, minimum_digits: int = 5) -> bool:
+    text = clean_cell(value)
+    if not text:
+        return False
+    return digit_count(text) >= minimum_digits and not re.search(r"[가-힣a-zA-Z]", text)
+
+
+def is_no_original_invoice_marker(value: object) -> bool:
+    text = normalize_compact(clean_cell(value))
+    if not text:
+        return False
+    markers = {
+        "기존송장없음",
+        "원송장없음",
+        "송장없음",
+        "운송장없음",
+        "기존운송장없음",
+        "없음",
+        "무송장",
+        "미출고",
+        "출고전",
+        "출고취소",
+    }
+    return text in markers or "기존송장없음" in text
+
+
+SPECIAL_INVOICE_OPTIONS = ["방문수령", "화물입고", "컨테이너 입고", "퀵배송", "직배송", "기존송장없음"]
+
+
+def classify_special_invoice_method(value: object) -> str:
+    text = clean_cell(value)
+    compact = normalize_compact(text)
+    if not compact or is_numeric_identifier(text, 5):
+        return ""
+    if is_no_original_invoice_marker(text):
+        return "기존송장없음"
+    if "컨테이너" in compact or ("수입" in compact and "입고" in compact):
+        return "컨테이너 입고"
+    if "화물" in compact or "경동" in compact or "대신" in compact:
+        return "화물입고"
+    if "퀵" in compact or "quick" in compact.lower():
+        return "퀵배송"
+    if "직배송" in compact or "직납" in compact or "직접배송" in compact:
+        return "직배송"
+    if "방문" in compact or "내방" in compact or "직접수령" in compact or "픽업" in compact:
+        return "방문수령"
+    return ""
+
+
+def management_invoice_issue(record: dict[str, object]) -> dict[str, object] | None:
+    value = clean_cell(record.get("invoice_number"))
+    if not value or is_numeric_identifier(value, 5):
+        return None
+    suggested = classify_special_invoice_method(value)
+    if suggested:
+        if value == suggested:
+            return None
+        return import_select_issue(
+            "invoice_number",
+            "운송장번호",
+            f"'{value}'은 특수 입고/배송 방식으로 보입니다. 표준 문구로 변경할지 확인해주세요.",
+            SPECIAL_INVOICE_OPTIONS,
+            suggested,
+        )
+    return import_issue(
+        "invoice_number",
+        "운송장번호",
+        "운송장번호는 숫자 송장 또는 방문수령/화물입고/컨테이너 입고 같은 표준 문구로 입력해주세요.",
+        "text",
+    )
+
+
+def import_issue(field: str, label: str, message: str, input_type: str = "text", suggested_value: str = "") -> dict[str, object]:
+    return {
+        "field": field,
+        "label": label,
+        "message": message,
+        "input_type": input_type,
+        "suggested_value": suggested_value,
+    }
+
+
+def import_select_issue(field: str, label: str, message: str, options: list[str], suggested_value: str = "") -> dict[str, object]:
+    return {
+        "field": field,
+        "label": label,
+        "message": message,
+        "input_type": "select",
+        "options": options,
+        "suggested_value": suggested_value,
+    }
+
+
+def require_text_issue(record: dict[str, object], field: str, label: str) -> dict[str, str] | None:
+    if clean_cell(record.get(field)):
+        return None
+    return import_issue(field, label, f"{label} 값을 입력해주세요.", "text")
+
+
+def quantity_issue(record: dict[str, object], field: str = "quantity", label: str = "수량") -> dict[str, str] | None:
+    if is_quantity_text(record.get(field)):
+        return None
+    return import_issue(field, label, f"{label}은 숫자로 입력해주세요.", "number")
+
+
+def optional_numeric_issue(record: dict[str, object], field: str, label: str, minimum_digits: int = 5) -> dict[str, str] | None:
+    value = clean_cell(record.get(field))
+    if not value or is_numeric_identifier(value, minimum_digits):
+        return None
+    return import_issue(field, label, f"{label} 형식이 숫자와 맞지 않습니다.", "text")
+
+
+def required_numeric_issue(record: dict[str, object], field: str, label: str, minimum_digits: int = 5) -> dict[str, str] | None:
+    if field == "original_invoice" and is_no_original_invoice_marker(record.get(field)):
+        return None
+    if is_numeric_identifier(record.get(field), minimum_digits):
+        return None
+    return import_issue(field, label, f"{label}을 숫자 형식으로 입력해주세요.", "text")
+
+
+def short_korean_date_for_message(value: object) -> str:
+    text = clean_cell(value)
+    try:
+        parsed = date.fromisoformat(text)
+        return f"{parsed.month}월 {parsed.day}일"
+    except ValueError:
+        return text or "오늘"
+
+
+def optional_date_issue(record: dict[str, object], field: str, label: str) -> dict[str, str] | None:
+    value = clean_cell(record.get(field))
+    if not value:
+        return None
+    if parse_import_date_value(value):
+        return None
+    return import_issue(field, label, f"{label}은 2026-06-21, 6/21, 6월 21일 형식으로 입력해주세요.", "text")
+
+
+def management_date_issue(record: dict[str, object], field: str, label: str) -> dict[str, object] | None:
+    value = clean_cell(record.get(field))
+    if not value:
+        return None
+    if parse_import_date_value(value, infer_import_year(record)):
+        return None
+    suggested = clean_cell(record.get("source_file_modified_at"))
+    if suggested:
+        return import_issue(
+            field,
+            label,
+            f"'{value}'은 날짜로 읽기 어렵습니다. 엑셀 파일 수정일 {short_korean_date_for_message(suggested)} 기준으로 변경할지 확인해주세요.",
+            "text",
+            suggested,
+        )
+    return import_issue(field, label, f"{label}은 2026-06-21, 6/21, 6월 21일 형식으로 입력해주세요.", "text")
+
+
+def is_valid_cs_status_text(value: object) -> bool:
+    text = normalize_compact(clean_cell(value))
+    if not text:
+        return True
+    if "전체처리완료" in text:
+        return True
+    if "재발송완료" in text and "회수지시" in text:
+        return True
+    return any(keyword in text for keyword in ["회수지시", "회수완료", "재발송완료"])
+
+
+def explicit_import_year(value: object) -> int | None:
+    text = clean_cell(value)
+    if not text:
+        return None
+    match = re.search(r"(?P<year>\d{4})[-./년\s]+(?P<month>\d{1,2})[-./월\s]+(?P<day>\d{1,2})", text)
+    if not match:
+        return None
+    try:
+        return int(match.group("year"))
+    except (TypeError, ValueError):
+        return None
+
+
+def year_month_from_text(value: object) -> tuple[int | None, int | None]:
+    text = clean_cell(value)
+    if not text:
+        return None, None
+    match = re.search(r"(?P<year>\d{4})\s*년\s*(?P<month>\d{1,2})?\s*월?", text)
+    if match:
+        try:
+            year = int(match.group("year"))
+        except (TypeError, ValueError):
+            year = None
+        try:
+            month = int(match.group("month")) if match.group("month") else None
+        except (TypeError, ValueError):
+            month = None
+        return year, month
+    return None, None
+
+
+def infer_import_year(record: dict[str, object]) -> int | None:
+    for key in ("source_sheet", "source_file"):
+        year, _month = year_month_from_text(record.get(key))
+        if year:
+            return year
+    for key in ("occurred_at", "completed_at", "order_date", "ship_date", "mail_sent_at"):
+        year = explicit_import_year(record.get(key))
+        if year:
+            return year
+    return None
+
+
+def parse_import_date_value(value: object, default_year: int | None = None) -> str:
+    text = clean_cell(value)
+    if not text:
+        return ""
+    patterns = [
+        r"(?P<year>\d{4})[-./년\s]+(?P<month>\d{1,2})[-./월\s]+(?P<day>\d{1,2})",
+        r"(?P<month>\d{1,2})\s*월\s*(?P<day>\d{1,2})\s*일?",
+        r"(?<!\d)(?P<month>\d{1,2})[./-](?P<day>\d{1,2})(?!\d)",
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, text)
+        if not match:
+            continue
+        year = int(match.groupdict().get("year") or default_year or date.today().year)
+        month = int(match.group("month"))
+        day = int(match.group("day"))
+        try:
+            return date(year, month, day).isoformat()
+        except ValueError:
+            return ""
+    return ""
+
+
+def management_import_issues(record: dict[str, object]) -> list[dict[str, str]]:
+    issues: list[dict[str, str]] = []
+    for field, label in (
+        ("receiver_name", "수령자"),
+        ("product_name", "제품명"),
+        ("receiver_address", "상세주소"),
+    ):
+        issue = require_text_issue(record, field, label)
+        if issue:
+            issues.append(issue)
+    issue = quantity_issue(record)
+    if issue:
+        issues.append(issue)
+    for field, label in (
+        ("order_date", "주문일자"),
+        ("ship_date", "출고일"),
+    ):
+        issue = management_date_issue(record, field, label)
+        if issue:
+            issues.append(issue)
+    for field, label, digits in (
+        ("receiver_phone", "수령자연락처", 7),
+        ("sender_phone", "발신자연락처", 7),
+    ):
+        issue = optional_numeric_issue(record, field, label, digits)
+        if issue:
+            issues.append(issue)
+    issue = management_invoice_issue(record)
+    if issue:
+        issues.append(issue)
+    return issues
+
+
+def cs_import_issues(record: dict[str, object]) -> list[dict[str, str]]:
+    issues: list[dict[str, str]] = []
+    for field, label in (
+        ("receiver_name", "수령자"),
+        ("product_name", "제품명"),
+        ("cs_content", "CS내용"),
+    ):
+        issue = require_text_issue(record, field, label)
+        if issue:
+            issues.append(issue)
+    for issue in (
+        required_numeric_issue(record, "original_invoice", "기존운송장번호", 5),
+        required_numeric_issue(record, "receiver_phone", "수령자연락처", 7),
+        quantity_issue(record),
+    ):
+        if issue:
+            issues.append(issue)
+    for field, label in (
+        ("occurred_at", "날짜"),
+        ("completed_at", "완료일"),
+        ("order_date", "주문일자"),
+        ("ship_date", "출고일"),
+    ):
+        issue = optional_date_issue(record, field, label)
+        if issue:
+            issues.append(issue)
+    valid_cs_types = [
+        "변심반품",
+        "불량반품",
+        "불량교환",
+        "불량재출고(미회수)",
+        "오출고(오배송)/회수진행",
+        "오출고(오배송)/회수없음",
+    ]
+    if clean_cell(record.get("cs_type")) not in valid_cs_types:
+        issues.append(import_select_issue("cs_type", "처리내용", "처리내용은 기존 CS 유형 중 하나로 선택해주세요.", valid_cs_types))
+    valid_statuses = [
+        "회수지시",
+        "회수 완료",
+        "재발송 완료",
+        "재발송 완료/회수지시",
+        "전체 처리완료",
+    ]
+    if not is_valid_cs_status_text(record.get("status")):
+        issues.append(import_select_issue("status", "처리진행상태", "처리진행상태는 기존 상태 형식으로 선택해주세요.", valid_statuses))
+    return issues
+
+
+def import_row_identity(record: dict[str, object]) -> tuple[str, int]:
+    try:
+        row_number = int(record.get("source_row") or 0)
+    except (TypeError, ValueError):
+        row_number = 0
+    return clean_cell(record.get("source_sheet")), row_number
+
+
+def apply_import_corrections(records: list[dict[str, object]], corrections: list[dict[str, object]] | None, allowed_fields: set[str]) -> None:
+    if not corrections:
+        return
+    correction_map: dict[tuple[str, int], dict[str, object]] = {}
+    for correction in corrections:
+        if not isinstance(correction, dict):
+            continue
+        key = import_row_identity(correction)
+        if not key[0] or not key[1]:
+            continue
+        correction_map[key] = correction
+    for record in records:
+        correction = correction_map.get(import_row_identity(record))
+        if not correction:
+            continue
+        for field in allowed_fields:
+            if field in correction:
+                record[field] = clean_cell(correction.get(field))
+
+
+def normalize_management_import_records(records: list[dict[str, object]]) -> None:
+    for record in records:
+        default_year = infer_import_year(record)
+        for field in ("order_date", "ship_date"):
+            normalized = parse_import_date_value(record.get(field), default_year)
+            if normalized:
+                record[field] = normalized
+        if not clean_cell(record.get("ship_date")) and parse_import_date_value(record.get("order_date"), default_year):
+            record["ship_date"] = clean_cell(record.get("order_date"))
+        record["transaction_type"] = auto_management_transaction_type(record.get("purchase_vendor"))
+        if not clean_cell(record.get("ledger_checked")):
+            record["ledger_checked"] = "입력 완료"
+
+
+def normalize_cs_import_records(records: list[dict[str, object]]) -> None:
+    for record in records:
+        default_year = infer_import_year(record)
+        for field in ("occurred_at", "completed_at", "order_date", "ship_date", "mail_sent_at"):
+            normalized = parse_import_date_value(record.get(field), default_year)
+            if normalized:
+                record[field] = normalized
+        record["cs_type"] = normalize_cs_type_value(
+            clean_cell(record.get("cs_type")),
+            clean_cell(record.get("cs_content")),
+            clean_cell(record.get("status")),
+        )
+        record["status"] = normalize_progress_status(
+            clean_cell(record.get("status")),
+            clean_cell(record.get("completed_at")),
+            clean_cell(record.get("occurred_at")),
+        )
+
+
+def invalid_import_rows(records: list[dict[str, object]], issue_func, summary_fields: list[str]) -> list[dict[str, object]]:
+    invalid_rows = []
+    for record in records:
+        issues = issue_func(record)
+        if not issues:
+            continue
+        invalid_rows.append({
+            "id": record.get("id", ""),
+            "source_file": record.get("source_file", ""),
+            "source_sheet": record.get("source_sheet", ""),
+            "source_row": record.get("source_row", ""),
+            "row": record.get("source_row", ""),
+            "summary": duplicate_summary(record, summary_fields),
+            "record": {key: clean_cell(value) for key, value in record.items() if key not in {"created_at", "updated_at"}},
+            "issues": issues,
+        })
+    return invalid_rows
+
+
+def valid_import_records(records: list[dict[str, object]], issue_func) -> list[dict[str, object]]:
+    return [record for record in records if not issue_func(record)]
+
+
+def import_preview_payload(records: list[dict[str, object]], existing_keys: set[str], key_func, summary_fields: list[str], issue_func=None) -> dict[str, object]:
+    invalid_rows = invalid_import_rows(records, issue_func, summary_fields) if issue_func else []
+    seen: set[str] = set()
+    duplicates: list[dict[str, object]] = []
+    duplicate_existing = 0
+    duplicate_in_file = 0
+    insertable = 0
+    for record in records:
+        key = key_func(record)
+        if key in existing_keys:
+            duplicate_existing += 1
+            if len(duplicates) < 20:
+                duplicates.append({
+                    "row": record.get("source_row", ""),
+                    "reason": "이미 DB에 있는 데이터",
+                    "summary": duplicate_summary(record, summary_fields),
+                })
+            continue
+        if key in seen:
+            duplicate_in_file += 1
+            if len(duplicates) < 20:
+                duplicates.append({
+                    "row": record.get("source_row", ""),
+                    "reason": "업로드 파일 안의 중복 데이터",
+                    "summary": duplicate_summary(record, summary_fields),
+                })
+            continue
+        seen.add(key)
+        insertable += 1
+    skipped = duplicate_existing + duplicate_in_file
+    return {
+        "total": len(records),
+        "insertable": insertable,
+        "invalid_count": len(invalid_rows),
+        "invalid_rows": invalid_rows,
+        "duplicate_existing": duplicate_existing,
+        "duplicate_in_file": duplicate_in_file,
+        "skipped": skipped,
+        "duplicates": duplicates,
+        "has_duplicates": skipped > 0,
+        "has_invalid_rows": len(invalid_rows) > 0,
+    }
+
+
+def parse_management_import_records(path: Path, file_modified_date: str = "") -> list[dict[str, object]]:
     workbook = load_workbook(path, data_only=True, read_only=True)
-    inserted = 0
-    skipped = 0
     timestamp = now_text()
     source_file = original_uploaded_filename(path.name)
-    columns = [
-        "created_at",
-        "source_file",
-        "source_sheet",
-        "source_row",
-        "purchase_vendor",
-        "sales_vendor",
-        "transaction_type",
-        "ledger_checked",
-        "order_date",
-        "ship_date",
-        "orderer_name",
-        "sender_phone",
-        "receiver_name",
-        "receiver_phone",
-        "product_name",
-        "quantity",
-        "receiver_address",
-        "courier",
-        "invoice_number",
-        "memo",
-        "order_item_id",
-        "product_code",
-        "order_number",
-        "customer_option",
-    ]
-    placeholders = ", ".join("?" for _ in columns)
-    connection = connect_db()
+    source_file_modified_at = file_modified_date or datetime.fromtimestamp(path.stat().st_mtime).date().isoformat()
+    records: list[dict[str, object]] = []
     try:
         for worksheet in workbook.worksheets:
             header_match = find_management_header_row(worksheet)
@@ -16242,6 +28039,7 @@ def import_management_workbook(path: Path) -> tuple[int, int]:
                 record = {
                     "created_at": timestamp,
                     "source_file": source_file,
+                    "source_file_modified_at": source_file_modified_at,
                     "source_sheet": worksheet.title,
                     "source_row": excel_row_number,
                     "purchase_vendor": row_value(row, indexes["purchase_vendor"]),
@@ -16267,40 +28065,110 @@ def import_management_workbook(path: Path) -> tuple[int, int]:
                 }
                 if not any(record[key] for key in ("receiver_name", "product_name", "invoice_number", "receiver_address")):
                     continue
-                cursor = connection.execute(
-                    f"INSERT OR IGNORE INTO management_records ({', '.join(columns)}) VALUES ({placeholders})",
-                    [record[column] for column in columns],
-                )
-                if cursor.rowcount:
-                    inserted += 1
-                else:
+                records.append(record)
+    finally:
+        workbook.close()
+
+    return records
+
+
+def existing_management_duplicate_keys(connection: sqlite3.Connection) -> set[str]:
+    rows = connection.execute(
+        """
+        SELECT order_date, ship_date, receiver_name, receiver_phone, product_name,
+               quantity, receiver_address, invoice_number, order_item_id,
+               product_code, order_number
+          FROM management_records
+        """
+    ).fetchall()
+    return {management_duplicate_key(dict(row)) for row in rows}
+
+
+def preview_management_import(path: Path, corrections: list[dict[str, object]] | None = None, file_modified_date: str = "") -> dict[str, object]:
+    init_db()
+    records = parse_management_import_records(path, file_modified_date=file_modified_date)
+    apply_import_corrections(records, corrections, MANAGEMENT_IMPORT_EDITABLE_FIELDS)
+    normalize_management_import_records(records)
+    sort_management_import_records(records)
+    connection = connect_db()
+    try:
+        existing_keys = existing_management_duplicate_keys(connection)
+    finally:
+        connection.close()
+    return import_preview_payload(
+        records,
+        existing_keys,
+        management_duplicate_key,
+        ["receiver_name", "receiver_phone", "product_name", "quantity", "invoice_number", "order_number"],
+        management_import_issues,
+    )
+
+
+def management_import_invalid_rows(records: list[dict[str, object]]) -> list[dict[str, object]]:
+    return invalid_import_rows(
+        records,
+        management_import_issues,
+        ["receiver_name", "receiver_phone", "product_name", "quantity", "invoice_number", "order_number"],
+    )
+
+
+def import_management_workbook(path: Path, mode: str = "daily", corrections: list[dict[str, object]] | None = None, file_modified_date: str = "") -> dict[str, object]:
+    init_db()
+    records = parse_management_import_records(path, file_modified_date=file_modified_date)
+    apply_import_corrections(records, corrections, MANAGEMENT_IMPORT_EDITABLE_FIELDS)
+    normalize_management_import_records(records)
+    sort_management_import_records(records)
+    placeholders = ", ".join("?" for _ in MANAGEMENT_IMPORT_COLUMNS)
+    insert_sql = f"INSERT OR IGNORE INTO management_records ({', '.join(MANAGEMENT_IMPORT_COLUMNS)}) VALUES ({placeholders})"
+    connection = connect_db()
+    inserted = 0
+    skipped = 0
+    inserted_records: list[dict[str, object]] = []
+    try:
+        if mode == "replace":
+            connection.execute("DELETE FROM management_records")
+            import_records = records
+        else:
+            existing_keys = existing_management_duplicate_keys(connection)
+            seen_keys: set[str] = set()
+            import_records = []
+            for record in records:
+                key = management_duplicate_key(record)
+                if key in existing_keys or key in seen_keys:
                     skipped += 1
+                    continue
+                seen_keys.add(key)
+                import_records.append(record)
+        for record in import_records:
+            cursor = connection.execute(
+                insert_sql,
+                [record[column] for column in MANAGEMENT_IMPORT_COLUMNS],
+            )
+            if cursor.rowcount:
+                inserted += 1
+                stored = dict(record)
+                stored["id"] = cursor.lastrowid
+                inserted_records.append(stored)
+            else:
+                skipped += 1
         connection.commit()
     finally:
         connection.close()
-        workbook.close()
-    return inserted, skipped
+    invalid_rows = management_import_invalid_rows(inserted_records)
+    return {
+        "inserted": inserted,
+        "skipped": skipped,
+        "invalid_rows": invalid_rows,
+        "invalid_count": len(invalid_rows),
+        "has_invalid_rows": bool(invalid_rows),
+    }
 
-def import_cs_cases_from_workbook(path: Path) -> tuple[int, int]:
-    init_db()
+
+def parse_cs_case_import_records(path: Path) -> list[dict[str, object]]:
     workbook = load_workbook(path, data_only=True, read_only=True)
-    inserted = 0
-    skipped = 0
     timestamp = now_text()
     source_file = path.name
-
-    insert_sql = """
-        INSERT OR IGNORE INTO cs_cases (
-            created_at, updated_at, status, vendor_name, vendor_email,
-            original_info, original_invoice, product_name, orderer_name, orderer_phone, receiver_name,
-            receiver_phone, receiver_address, cs_type, cs_content, return_invoice,
-            reship_invoice, mail_subject, mail_body, mail_sent_at,
-            source_file, source_sheet, source_row, occurred_at, completed_at,
-            order_date, ship_date, sales_vendor, purchase_vendor, courier, quantity
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    """
-
-    connection = connect_db()
+    records: list[dict[str, object]] = []
     try:
         for worksheet in workbook.worksheets:
             rows = worksheet.iter_rows(max_col=80, values_only=True)
@@ -16359,50 +28227,325 @@ def import_cs_cases_from_workbook(path: Path) -> tuple[int, int]:
                 if not any([vendor_name, original_invoice, product_name, receiver_name, receiver_phone, cs_content]):
                     continue
 
-                values = [
-                    timestamp,
-                    timestamp,
-                    normalize_progress_status(raw_status, row_value(row, completed_idx), row_value(row, date_idx)),
-                    vendor_name,
-                    "",
-                    original_info,
-                    extract_invoice_number(original_invoice) or original_invoice,
-                    product_name,
-                    orderer_name,
-                    orderer_phone,
-                    receiver_name,
-                    receiver_phone,
-                    row_value(row, address_idx),
-                    cs_type,
-                    cs_content,
-                    row_value(row, return_idx),
-                    row_value(row, reship_idx),
-                    "",
-                    "",
-                    "",
-                    source_file,
-                    worksheet.title,
-                    excel_row_number,
-                    row_value(row, date_idx),
-                    row_value(row, completed_idx),
-                    row_value(row, order_idx),
-                    row_value(row, ship_idx),
-                    sales_vendor,
-                    purchase_vendor,
-                    row_value(row, courier_idx),
-                    row_value(row, quantity_idx),
-                ]
-                cursor = connection.execute(insert_sql, values)
-                if cursor.rowcount:
-                    inserted += 1
-                else:
+                records.append({
+                    "created_at": timestamp,
+                    "updated_at": timestamp,
+                    "status": normalize_progress_status(raw_status, row_value(row, completed_idx), row_value(row, date_idx)),
+                    "vendor_name": vendor_name,
+                    "vendor_email": "",
+                    "original_info": original_info,
+                    "original_invoice": extract_invoice_number(original_invoice) or original_invoice,
+                    "product_name": product_name,
+                    "orderer_name": orderer_name,
+                    "orderer_phone": orderer_phone,
+                    "receiver_name": receiver_name,
+                    "receiver_phone": receiver_phone,
+                    "receiver_address": row_value(row, address_idx),
+                    "cs_type": cs_type,
+                    "cs_content": cs_content,
+                    "return_invoice": row_value(row, return_idx),
+                    "reship_invoice": row_value(row, reship_idx),
+                    "mail_subject": "",
+                    "mail_body": "",
+                    "mail_sent_at": "",
+                    "source_file": source_file,
+                    "source_sheet": worksheet.title,
+                    "source_row": excel_row_number,
+                    "occurred_at": row_value(row, date_idx),
+                    "completed_at": row_value(row, completed_idx),
+                    "order_date": row_value(row, order_idx),
+                    "ship_date": row_value(row, ship_idx),
+                    "sales_vendor": sales_vendor,
+                    "purchase_vendor": purchase_vendor,
+                    "courier": row_value(row, courier_idx),
+                    "quantity": row_value(row, quantity_idx),
+                })
+    finally:
+        workbook.close()
+
+    return records
+
+
+CS_IMPORT_COLUMNS = [
+    "created_at",
+    "updated_at",
+    "status",
+    "vendor_name",
+    "vendor_email",
+    "original_info",
+    "original_invoice",
+    "product_name",
+    "orderer_name",
+    "orderer_phone",
+    "receiver_name",
+    "receiver_phone",
+    "receiver_address",
+    "cs_type",
+    "cs_content",
+    "return_invoice",
+    "reship_invoice",
+    "mail_subject",
+    "mail_body",
+    "mail_sent_at",
+    "source_file",
+    "source_sheet",
+    "source_row",
+    "occurred_at",
+    "completed_at",
+    "order_date",
+    "ship_date",
+    "sales_vendor",
+    "purchase_vendor",
+    "courier",
+    "quantity",
+]
+CS_IMPORT_EDITABLE_FIELDS = set(CS_IMPORT_COLUMNS) - {"created_at", "updated_at", "source_file", "source_sheet", "source_row"}
+
+
+def existing_cs_duplicate_keys(connection: sqlite3.Connection) -> set[str]:
+    rows = connection.execute(
+        """
+        SELECT occurred_at, original_invoice, receiver_name, receiver_phone,
+               product_name, cs_type, cs_content
+          FROM cs_cases
+        """
+    ).fetchall()
+    return {cs_duplicate_key(dict(row)) for row in rows}
+
+
+def preview_cs_cases_import(path: Path, corrections: list[dict[str, object]] | None = None) -> dict[str, object]:
+    init_db()
+    records = parse_cs_case_import_records(path)
+    apply_import_corrections(records, corrections, CS_IMPORT_EDITABLE_FIELDS)
+    normalize_cs_import_records(records)
+    connection = connect_db()
+    try:
+        existing_keys = existing_cs_duplicate_keys(connection)
+    finally:
+        connection.close()
+    return import_preview_payload(
+        records,
+        existing_keys,
+        cs_duplicate_key,
+        ["occurred_at", "receiver_name", "product_name", "original_invoice", "cs_type", "cs_content"],
+        cs_import_issues,
+    )
+
+
+def cs_import_invalid_rows(records: list[dict[str, object]]) -> list[dict[str, object]]:
+    return invalid_import_rows(
+        records,
+        cs_import_issues,
+        ["occurred_at", "receiver_name", "product_name", "original_invoice", "cs_type", "cs_content"],
+    )
+
+
+def import_cs_cases_from_workbook(path: Path, mode: str = "daily", corrections: list[dict[str, object]] | None = None) -> dict[str, object]:
+    init_db()
+    records = parse_cs_case_import_records(path)
+    apply_import_corrections(records, corrections, CS_IMPORT_EDITABLE_FIELDS)
+    normalize_cs_import_records(records)
+    placeholders = ", ".join("?" for _ in CS_IMPORT_COLUMNS)
+    insert_sql = f"""
+        INSERT OR IGNORE INTO cs_cases ({', '.join(CS_IMPORT_COLUMNS)})
+        VALUES ({placeholders})
+    """
+    connection = connect_db()
+    inserted = 0
+    skipped = 0
+    inserted_records: list[dict[str, object]] = []
+    try:
+        if mode == "replace":
+            connection.execute("DELETE FROM cs_cases")
+            import_records = records
+        else:
+            existing_keys = existing_cs_duplicate_keys(connection)
+            seen_keys: set[str] = set()
+            import_records = []
+            for record in records:
+                key = cs_duplicate_key(record)
+                if key in existing_keys or key in seen_keys:
                     skipped += 1
+                    continue
+                seen_keys.add(key)
+                import_records.append(record)
+        for record in import_records:
+            cursor = connection.execute(insert_sql, [record[column] for column in CS_IMPORT_COLUMNS])
+            if cursor.rowcount:
+                inserted += 1
+                stored = dict(record)
+                stored["id"] = cursor.lastrowid
+                inserted_records.append(stored)
+            else:
+                skipped += 1
         connection.commit()
     finally:
         connection.close()
-        workbook.close()
+    invalid_rows = cs_import_invalid_rows(inserted_records)
+    return {
+        "inserted": inserted,
+        "skipped": skipped,
+        "invalid_rows": invalid_rows,
+        "invalid_count": len(invalid_rows),
+        "has_invalid_rows": bool(invalid_rows),
+    }
 
-    return inserted, skipped
+
+def import_correction_id(correction: dict[str, object]) -> int:
+    raw_id = clean_cell(correction.get("id"))
+    return int(raw_id) if raw_id.isdigit() else 0
+
+
+def fetch_management_import_rows(connection: sqlite3.Connection, record_ids: list[int]) -> list[dict[str, object]]:
+    if not record_ids:
+        return []
+    placeholders = ", ".join("?" for _ in record_ids)
+    order_case = " ".join(f"WHEN {record_id} THEN {index}" for index, record_id in enumerate(record_ids))
+    rows = connection.execute(
+        f"""
+        SELECT id, {', '.join(MANAGEMENT_IMPORT_COLUMNS)}
+          FROM management_records
+         WHERE id IN ({placeholders})
+         ORDER BY CASE id {order_case} END
+        """,
+        record_ids,
+    ).fetchall()
+    return [dict(row) for row in rows]
+
+
+def fetch_cs_import_rows(connection: sqlite3.Connection, case_ids: list[int]) -> list[dict[str, object]]:
+    if not case_ids:
+        return []
+    placeholders = ", ".join("?" for _ in case_ids)
+    order_case = " ".join(f"WHEN {case_id} THEN {index}" for index, case_id in enumerate(case_ids))
+    rows = connection.execute(
+        f"""
+        SELECT id, {', '.join(CS_IMPORT_COLUMNS)}
+          FROM cs_cases
+         WHERE id IN ({placeholders})
+         ORDER BY CASE id {order_case} END
+        """,
+        case_ids,
+    ).fetchall()
+    return [dict(row) for row in rows]
+
+
+def apply_management_import_corrections_to_db(corrections: list[dict[str, object]]) -> dict[str, object]:
+    init_db()
+    corrections_by_id = {
+        record_id: correction
+        for correction in corrections
+        if isinstance(correction, dict) and (record_id := import_correction_id(correction))
+    }
+    if not corrections_by_id:
+        return {"updated": 0, "invalid_rows": [], "invalid_count": 0, "has_invalid_rows": False}
+    record_ids = list(corrections_by_id.keys())
+    editable_columns = [column for column in MANAGEMENT_IMPORT_COLUMNS if column in MANAGEMENT_IMPORT_EDITABLE_FIELDS]
+    assignments = ", ".join(f"{column} = ?" for column in editable_columns)
+    connection = connect_db()
+    updated = 0
+    try:
+        rows = fetch_management_import_rows(connection, record_ids)
+        for row in rows:
+            correction = corrections_by_id.get(int(row["id"]))
+            if not correction:
+                continue
+            merged = dict(row)
+            for field in MANAGEMENT_IMPORT_EDITABLE_FIELDS:
+                if field in correction:
+                    merged[field] = clean_cell(correction.get(field))
+            normalize_management_import_records([merged])
+            cursor = connection.execute(
+                f"UPDATE management_records SET {assignments} WHERE id = ?",
+                [merged.get(column, "") for column in editable_columns] + [row["id"]],
+            )
+            updated += int(cursor.rowcount or 0)
+        connection.commit()
+        refreshed = fetch_management_import_rows(connection, record_ids)
+    finally:
+        connection.close()
+    invalid_rows = management_import_invalid_rows(refreshed)
+    return {
+        "updated": updated,
+        "invalid_rows": invalid_rows,
+        "invalid_count": len(invalid_rows),
+        "has_invalid_rows": bool(invalid_rows),
+    }
+
+
+def apply_cs_import_corrections_to_db(corrections: list[dict[str, object]]) -> dict[str, object]:
+    init_db()
+    corrections_by_id = {
+        case_id: correction
+        for correction in corrections
+        if isinstance(correction, dict) and (case_id := import_correction_id(correction))
+    }
+    if not corrections_by_id:
+        return {"updated": 0, "invalid_rows": [], "invalid_count": 0, "has_invalid_rows": False}
+    case_ids = list(corrections_by_id.keys())
+    editable_columns = [column for column in CS_IMPORT_COLUMNS if column in CS_IMPORT_EDITABLE_FIELDS]
+    assignments = ", ".join(f"{column} = ?" for column in editable_columns)
+    connection = connect_db()
+    updated = 0
+    now = now_text()
+    try:
+        rows = fetch_cs_import_rows(connection, case_ids)
+        for row in rows:
+            correction = corrections_by_id.get(int(row["id"]))
+            if not correction:
+                continue
+            merged = dict(row)
+            previous_return_invoice = clean_cell(row.get("return_invoice"))
+            previous_reship_invoice = clean_cell(row.get("reship_invoice"))
+            for field in CS_IMPORT_EDITABLE_FIELDS:
+                if field in correction:
+                    merged[field] = clean_cell(correction.get(field))
+            normalize_cs_import_records([merged])
+            if should_mark_cs_case_complete(
+                clean_cell(merged.get("cs_type")),
+                clean_cell(merged.get("cs_content")),
+                clean_cell(merged.get("return_invoice")),
+                clean_cell(merged.get("reship_invoice")),
+            ):
+                merged["status"] = "전체 처리완료"
+                if not clean_cell(merged.get("completed_at")):
+                    merged["completed_at"] = date.today().isoformat()
+            return_invoice_updated_at = now if clean_cell(merged.get("return_invoice")) and clean_cell(merged.get("return_invoice")) != previous_return_invoice else None
+            reship_invoice_updated_at = now if clean_cell(merged.get("reship_invoice")) and clean_cell(merged.get("reship_invoice")) != previous_reship_invoice else None
+            cursor = connection.execute(
+                f"""
+                UPDATE cs_cases
+                   SET {assignments},
+                       updated_at = ?,
+                       return_invoice_updated_at = COALESCE(?, return_invoice_updated_at),
+                       reship_invoice_updated_at = COALESCE(?, reship_invoice_updated_at)
+                 WHERE id = ?
+                """,
+                [merged.get(column, "") for column in editable_columns]
+                + [now, return_invoice_updated_at, reship_invoice_updated_at, row["id"]],
+            )
+            updated += int(cursor.rowcount or 0)
+        connection.commit()
+        refreshed = fetch_cs_import_rows(connection, case_ids)
+    finally:
+        connection.close()
+    invalid_rows = cs_import_invalid_rows(refreshed)
+    return {
+        "updated": updated,
+        "invalid_rows": invalid_rows,
+        "invalid_count": len(invalid_rows),
+        "has_invalid_rows": bool(invalid_rows),
+    }
+
+
+def parse_import_corrections(fields: dict[str, tuple[str, bytes] | str]) -> list[dict[str, object]] | None:
+    raw = fields.get("corrections")
+    if not isinstance(raw, str) or not raw.strip():
+        return None
+    parsed = json.loads(raw)
+    if not isinstance(parsed, list):
+        raise ValueError("수정 데이터 형식이 올바르지 않습니다.")
+    return [item for item in parsed if isinstance(item, dict)]
 
 
 class DataBlob(ctypes.Structure):
@@ -16617,6 +28760,234 @@ def save_mail_settings(
     MAIL_SETTINGS_PATH.write_text(json.dumps(settings, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
+DEFAULT_HERMES_SETTINGS = {
+    "enabled": env_bool("HERMES_ENABLED", False),
+    "profile": os.environ.get("HERMES_PROFILE", "vps"),
+    "base_url": os.environ.get("HERMES_BASE_URL", "http://hermes-agent:4860"),
+    "health_path": os.environ.get("HERMES_HEALTH_PATH", "/health"),
+    "chat_path": os.environ.get("HERMES_CHAT_PATH", "/api/chat"),
+    "automation_path": os.environ.get("HERMES_AUTOMATION_PATH", "/api/automation"),
+    "api_key": os.environ.get("HERMES_API_KEY", ""),
+    "timeout_seconds": env_int("HERMES_TIMEOUT_SECONDS", 20, minimum=3),
+}
+
+
+def normalize_hermes_settings(payload: dict | None = None) -> dict[str, object]:
+    source = {**DEFAULT_HERMES_SETTINGS, **(payload or {})}
+    base_url = str(source.get("base_url") or "").strip().rstrip("/")
+    if base_url and not base_url.startswith(("http://", "https://")):
+        base_url = f"http://{base_url}"
+
+    def clean_path(name: str, default: str) -> str:
+        value = str(source.get(name) or default).strip() or default
+        return value if value.startswith("/") else f"/{value}"
+
+    return {
+        "enabled": bool(source.get("enabled")),
+        "profile": str(source.get("profile") or "vps").strip() or "vps",
+        "base_url": base_url,
+        "health_path": clean_path("health_path", "/health"),
+        "chat_path": clean_path("chat_path", "/api/chat"),
+        "automation_path": clean_path("automation_path", "/api/automation"),
+        "api_key": str(source.get("api_key") or "").strip(),
+        "timeout_seconds": min(max(int(source.get("timeout_seconds") or 20), 3), 120),
+    }
+
+
+def load_hermes_settings(include_secret: bool = False) -> dict[str, object]:
+    raw: dict[str, object] = {}
+    if HERMES_SETTINGS_PATH.exists():
+        try:
+            raw = json.loads(HERMES_SETTINGS_PATH.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            raw = {}
+    settings = normalize_hermes_settings(raw)
+    if not include_secret:
+        settings["has_api_key"] = bool(settings.get("api_key"))
+        settings["api_key"] = ""
+    return settings
+
+
+def save_hermes_settings(payload: dict) -> dict[str, object]:
+    current = load_hermes_settings(include_secret=True)
+    merged = {**current, **payload}
+    if not str(payload.get("api_key") or "").strip():
+        merged["api_key"] = current.get("api_key", "")
+    settings = normalize_hermes_settings(merged)
+    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+    HERMES_SETTINGS_PATH.write_text(json.dumps(settings, ensure_ascii=False, indent=2), encoding="utf-8")
+    return load_hermes_settings(include_secret=False)
+
+
+def describe_hermes_connection_error(exc: Exception, url: str, base_url: str) -> str:
+    if isinstance(exc, urllib.error.HTTPError):
+        if exc.code in (401, 403):
+            return f"Hermes Agent 인증 실패({exc.code})입니다. API 키 설정을 확인해주세요. 요청 주소: {url}"
+        if exc.code == 404:
+            return f"Hermes Agent 경로를 찾지 못했습니다. Health/채팅/자동화 경로를 확인해주세요. 요청 주소: {url}"
+        return f"Hermes Agent 응답 오류({exc.code})입니다. 요청 주소: {url}"
+    reason = getattr(exc, "reason", exc)
+    reason_text = str(reason)
+    if "timed out" in reason_text.lower() or "timeout" in reason_text.lower():
+        return f"Hermes Agent 연결 시간이 초과됐습니다. Agent 실행 상태와 방화벽을 확인해주세요. 요청 주소: {url}"
+    if "refused" in reason_text.lower() or "10061" in reason_text:
+        return f"Hermes Agent가 응답하지 않습니다. Agent 컨테이너/포트가 실행 중인지 확인해주세요. 기본 주소: {base_url}"
+    if "name or service not known" in reason_text.lower() or "nodename" in reason_text.lower() or "11001" in reason_text:
+        return f"Hermes Agent 주소를 찾지 못했습니다. 로컬에서는 테스트 주소를, VPS에서는 같은 Docker 네트워크의 서비스명을 사용해주세요. 기본 주소: {base_url}"
+    return f"Hermes Agent 연결 실패: {reason_text}"
+
+
+def hermes_request(path_key: str, payload: dict | None = None) -> dict[str, object]:
+    settings = load_hermes_settings(include_secret=True)
+    if not settings.get("enabled"):
+        raise ValueError("Hermes Agent 사용 설정이 꺼져 있습니다.")
+    base_url = str(settings.get("base_url") or "").strip().rstrip("/")
+    if not base_url:
+        raise ValueError("Hermes Agent 기본 주소를 먼저 저장해주세요.")
+    path = str(settings.get(path_key) or "").strip()
+    url = f"{base_url}{path if path.startswith('/') else '/' + path}"
+    headers = {"Accept": "application/json"}
+    data = None
+    if payload is not None:
+        data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+        headers["Content-Type"] = "application/json; charset=utf-8"
+    api_key = str(settings.get("api_key") or "").strip()
+    if api_key:
+        if api_key.lower().startswith(("basic ", "bearer ")):
+            headers["Authorization"] = api_key
+        else:
+            headers["Authorization"] = f"Bearer {api_key}"
+        headers["X-Hermes-Api-Key"] = api_key
+    request = urllib.request.Request(url, data=data, headers=headers, method="POST" if payload is not None else "GET")
+    try:
+        with urllib.request.urlopen(request, timeout=int(settings.get("timeout_seconds") or 20)) as response:
+            body = response.read().decode("utf-8", errors="replace")
+            try:
+                parsed = json.loads(body) if body else {}
+            except json.JSONDecodeError:
+                parsed = {"text": body}
+            return {"ok": True, "status": response.status, "url": url, "data": parsed}
+    except urllib.error.HTTPError as exc:
+        body = exc.read().decode("utf-8", errors="replace")
+        message = describe_hermes_connection_error(exc, url, base_url)
+        if body:
+            message = f"{message} / 응답: {body[:500]}"
+        raise ValueError(message) from exc
+    except Exception as exc:
+        raise ValueError(describe_hermes_connection_error(exc, url, base_url)) from exc
+
+
+def append_hermes_history(kind: str, title: str, status: str, message: str, extra: dict | None = None) -> None:
+    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+    item = {
+        "created_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "kind": kind,
+        "title": title[:120],
+        "status": status,
+        "message": message[:1000],
+    }
+    if not extra:
+        if kind.startswith("AI "):
+            extra = {"category": "chat"}
+        elif "Hermes Agent" in title:
+            extra = {"category": "system"}
+        else:
+            extra = {"category": "automation"}
+    if extra:
+        item.update(extra)
+    with HERMES_HISTORY_PATH.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(item, ensure_ascii=False) + "\n")
+
+
+def list_hermes_history(limit: int = 80) -> list[dict[str, str]]:
+    if not HERMES_HISTORY_PATH.exists():
+        return []
+    rows: list[dict[str, str]] = []
+    for line in HERMES_HISTORY_PATH.read_text(encoding="utf-8").splitlines()[-limit:]:
+        try:
+            item = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        rows.append({key: str(item.get(key, "")) for key in ("created_at", "kind", "title", "status", "message", "category", "summary", "source_count")})
+    return list(reversed(rows))
+
+
+def hermes_result_text(result: dict[str, object]) -> str:
+    payload = result.get("data", result)
+    if isinstance(payload, str):
+        return payload
+    if isinstance(payload, dict):
+        for key in ("summary", "answer", "message", "text", "content", "result", "reply"):
+            value = payload.get(key)
+            if value:
+                return str(value)
+        return json.dumps(payload, ensure_ascii=False)
+    return str(payload or "")
+
+
+def summarize_hermes_chat_history(limit: int = 20) -> dict[str, str]:
+    history = list(reversed(list_hermes_history(limit=200)))
+    chat_items = [
+        item for item in history
+        if item.get("category") == "chat" or "채팅" in item.get("kind", "") or "chat" in item.get("kind", "").lower()
+    ]
+    chat_items = chat_items[-limit:]
+    if not chat_items:
+        raise ValueError("요약할 헤르메스 채팅내역이 없습니다.")
+    lines = []
+    for item in chat_items:
+        title = item.get("title", "").strip()
+        message = item.get("message", "").strip()
+        lines.append(f"- {item.get('created_at', '')} / 질문: {title} / 응답: {message[:300]}")
+    prompt = (
+        "다음 Workhub 헤르메스 업무채팅 내역을 업무 인계용으로 요약해주세요.\n"
+        "형식: 핵심요약, 결정사항, 해야 할 일, 확인 필요 항목.\n\n"
+        + "\n".join(lines)
+    )
+    summary_status = "기본요약"
+    try:
+        result = hermes_request("chat_path", {
+            "message": prompt,
+            "source": "workhub",
+            "task": "summarize_chat_history",
+            "history": chat_items,
+        })
+        summary_text = hermes_result_text(result)
+        summary_status = "성공"
+    except Exception:
+        topics = [item.get("title", "").strip() for item in chat_items if item.get("title", "").strip()]
+        summary_text = f"최근 헤르메스 채팅 {len(chat_items)}건 기준 요약 초안입니다.\n"
+        summary_text += "주요 질문: " + " / ".join(topics[:5])
+        if len(topics) > 5:
+            summary_text += f" 외 {len(topics) - 5}건"
+        summary_text += "\n헤르메스 Agent 연결 후 다시 요약하면 더 정교한 업무 요약을 생성할 수 있습니다."
+    summary = {
+        "title": f"헤르메스 채팅 요약 {datetime.now().strftime('%Y-%m-%d %H:%M')}",
+        "summary": summary_text[:2000],
+        "source_count": str(len(chat_items)),
+        "category": "summary",
+    }
+    append_hermes_history(
+        "채팅 요약",
+        summary["title"],
+        summary_status,
+        summary["summary"],
+        {"category": "summary", "summary": summary["summary"], "source_count": summary["source_count"]},
+    )
+    return summary
+
+
+def hermes_status_payload() -> dict[str, object]:
+    settings = load_hermes_settings(include_secret=False)
+    if not settings.get("enabled"):
+        return {"ok": False, "message": "Hermes Agent 사용 설정이 꺼져 있습니다.", "settings": settings}
+    try:
+        result = hermes_request("health_path")
+        return {"ok": True, "message": "Hermes Agent에 연결됐습니다.", "status": result.get("status"), "settings": settings}
+    except Exception as exc:
+        return {"ok": False, "message": str(exc), "settings": settings}
+
+
 def contact_from_row(row: sqlite3.Row) -> dict[str, str]:
     vendor_type = normalize_vendor_type(row["vendor_type"])
     return {
@@ -16715,7 +29086,7 @@ def header_text(value: object) -> str:
     return re.sub(r"\s+", "", str(value or "")).strip().lower()
 
 
-def import_vendor_contacts_from_workbook(path: Path) -> tuple[list[dict[str, str]], int]:
+def import_vendor_contacts_from_workbook(path: Path, default_vendor_type: str = "purchase") -> tuple[list[dict[str, str]], int]:
     workbook = load_workbook(path, data_only=True)
     worksheet = workbook[workbook.sheetnames[0]]
     rows = list(worksheet.iter_rows(values_only=True))
@@ -16724,10 +29095,23 @@ def import_vendor_contacts_from_workbook(path: Path) -> tuple[list[dict[str, str
 
     header = [header_text(value) for value in rows[0]]
     vendor_headers = {"업체명", "거래처명", "회사명", "업체", "거래처", "vendor", "vendorname", "vendor_name", "company", "companyname"}
-    email_headers = {"메일", "메일주소", "이메일", "email", "e-mail", "emailaddress"}
+    email_header_groups = [
+        {"cs이메일", "cs메일", "cs메일주소", "csemail", "cs_email"},
+        {"발주이메일", "발주메일", "발주메일주소", "송장회신이메일", "송장회신메일", "회신이메일", "회신메일"},
+        {"메일", "메일주소", "이메일", "email", "e-mail", "emailaddress"},
+        {"정산이메일", "정산메일", "정산메일주소"},
+    ]
     type_headers = {"구분", "업체구분", "거래처구분", "유형", "분류", "매입매출", "매입/매출", "type", "vendortype", "vendor_type", "category"}
     vendor_idx = next((idx for idx, value in enumerate(header) if value in vendor_headers), None)
-    email_idx = next((idx for idx, value in enumerate(header) if value in email_headers), None)
+    email_idx = next(
+        (
+            idx
+            for candidates in email_header_groups
+            for idx, value in enumerate(header)
+            if value in candidates
+        ),
+        None,
+    )
     type_idx = next((idx for idx, value in enumerate(header) if value in type_headers), None)
 
     data_rows = rows[1:] if vendor_idx is not None and email_idx is not None else rows
@@ -16740,7 +29124,7 @@ def import_vendor_contacts_from_workbook(path: Path) -> tuple[list[dict[str, str
     for row in data_rows:
         vendor_name = str(row[vendor_idx] or "").strip() if len(row) > vendor_idx else ""
         email = str(row[email_idx] or "").strip() if len(row) > email_idx else ""
-        vendor_type = normalize_vendor_type(row[type_idx]) if type_idx is not None and len(row) > type_idx else "purchase"
+        vendor_type = normalize_vendor_type(row[type_idx]) if type_idx is not None and len(row) > type_idx else normalize_vendor_type(default_vendor_type)
         if vendor_name and email and "@" in email:
             imported.append({"vendor_type": vendor_type, "vendor_name": vendor_name, "email": email})
 
@@ -16919,7 +29303,7 @@ def mark_cs_case_mail_sent(case_id: int, payload: dict) -> None:
         connection.close()
 
 
-def send_cs_mail(payload: dict) -> None:
+def send_cs_mail(payload: dict, attachments: list[dict[str, object]] | None = None) -> None:
     saved = load_mail_settings(include_password=True)
     naver_email = normalize_naver_email(payload.get("naver_email")) or str(saved.get("naver_email", ""))
     naver_password = str(payload.get("naver_password") or saved.get("naver_password", ""))
@@ -16948,6 +29332,7 @@ def send_cs_mail(payload: dict) -> None:
         body,
         smtp_port=int(saved.get("smtp_port") or NAVER_SMTP_PORT),
         smtp_security=str(saved.get("smtp_security") or "ssl"),
+        attachments=attachments,
     )
     return
 
@@ -16966,8 +29351,8 @@ def send_cs_mail(payload: dict) -> None:
         raise ValueError("네이버 메일 로그인에 실패했습니다. 아이디/비밀번호와 네이버 메일 SMTP 사용 설정을 확인해주세요.") from exc
 
 
-def send_general_mail(payload: dict) -> None:
-    send_cs_mail(payload)
+def send_general_mail(payload: dict, attachments: list[dict[str, object]] | None = None) -> None:
+    send_cs_mail(payload, attachments=attachments)
 
 
 def send_naver_mail(
@@ -16978,12 +29363,23 @@ def send_naver_mail(
     body: str,
     smtp_port: int = NAVER_SMTP_PORT,
     smtp_security: str = "ssl",
+    attachments: list[dict[str, object]] | None = None,
 ) -> None:
     message = EmailMessage()
     message["Subject"] = subject
     message["From"] = formataddr(("(주)소일브릿지", naver_email))
     message["To"] = recipient
     message.set_content(body)
+    for attachment in attachments or []:
+        filename = str(attachment.get("filename") or "attachment")
+        data = attachment.get("data") or b""
+        if not isinstance(data, (bytes, bytearray)):
+            continue
+        content_type = str(attachment.get("content_type") or "application/octet-stream")
+        maintype, _, subtype = content_type.partition("/")
+        if not maintype or not subtype:
+            maintype, subtype = "application", "octet-stream"
+        message.add_attachment(bytes(data), maintype=maintype, subtype=subtype, filename=filename)
 
     smtp_security = smtp_security if smtp_security in {"ssl", "tls"} else "ssl"
     context = ssl.create_default_context()
@@ -17042,7 +29438,11 @@ class WorkhubHandler(BaseHTTPRequestHandler):
         return forwarded or str(self.client_address[0] if self.client_address else "local")
 
     def is_secure_request(self) -> bool:
-        return isinstance(self.request, ssl.SSLSocket) or self.headers.get("X-Forwarded-Proto", "").lower() == "https"
+        return (
+            WORKHUB_COOKIE_SECURE
+            or isinstance(self.request, ssl.SSLSocket)
+            or self.headers.get("X-Forwarded-Proto", "").lower() == "https"
+        )
 
     def send_redirect(self, location: str, status: int = 303) -> None:
         self.send_response(status)
@@ -17057,14 +29457,14 @@ class WorkhubHandler(BaseHTTPRequestHandler):
         secure = "; Secure" if self.is_secure_request() else ""
         self.send_header(
             "Set-Cookie",
-            f"{SESSION_COOKIE_NAME}={quote(token)}; Path=/; Max-Age={SESSION_SECONDS}; HttpOnly; SameSite=Lax{secure}",
+            f"{SESSION_COOKIE_NAME}={quote(token)}; Path=/; Max-Age={SESSION_SECONDS}; HttpOnly; SameSite={WORKHUB_COOKIE_SAMESITE}{secure}",
         )
 
     def clear_session_cookie(self) -> None:
         secure = "; Secure" if self.is_secure_request() else ""
         self.send_header(
             "Set-Cookie",
-            f"{SESSION_COOKIE_NAME}=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax{secure}",
+            f"{SESSION_COOKIE_NAME}=; Path=/; Max-Age=0; HttpOnly; SameSite={WORKHUB_COOKIE_SAMESITE}{secure}",
         )
 
     def require_permission(self, user: dict[str, str], permission: str, label: str) -> bool:
@@ -17141,19 +29541,29 @@ class WorkhubHandler(BaseHTTPRequestHandler):
         if self.path == "/api/users":
             if not self.require_permission(user, "user_admin", "사용자 관리"):
                 return
-            self.send_json({"users": list_users()})
+            self.send_json({"users": list_users(), "deleted_users": list_deleted_user_accounts()})
             return
 
         if self.path == "/api/backups":
             if not self.require_permission(user, "backup_manage", "백업 관리"):
                 return
+            settings = load_backup_settings()
             backups = list_backup_files()
             self.send_json({
-                "backup_dir": str(BACKUP_DIR),
+                "backup_dir": str(backup_dir_path(settings)),
                 "backups": backups,
                 "last_backup": backups[0]["created_at"] if backups else "",
-                "retention_days": BACKUP_RETENTION_DAYS,
-                "auto_backup_hour": AUTO_BACKUP_HOUR,
+                "retention_days": settings["retention_days"],
+                "auto_backup_hour": settings["auto_hour"],
+                "settings": settings,
+                "backup_scope": [
+                    "config/workhub.db",
+                    "config/*.json",
+                    "config/*.key",
+                    "output/workhub_app",
+                    "shared_files",
+                    "sales_reports",
+                ],
             })
             return
 
@@ -17165,6 +29575,49 @@ class WorkhubHandler(BaseHTTPRequestHandler):
 
         if self.path == "/api/shared-files":
             self.send_json({"files": list_shared_files()})
+            return
+
+        if self.path == "/api/hermes-status":
+            if not self.require_permission(user, "hermes_use", "헤르메스"):
+                return
+            self.send_json(hermes_status_payload())
+            return
+
+        if self.path == "/api/hermes-history":
+            if not self.require_permission(user, "hermes_use", "헤르메스"):
+                return
+            self.send_json({"history": list_hermes_history()})
+            return
+
+        if self.path == "/api/hermes-summary":
+            if not self.require_permission(user, "hermes_use", "?ㅻⅤ硫붿뒪"):
+                return
+            summaries = [item for item in list_hermes_history(limit=200) if item.get("category") == "summary"]
+            self.send_json({"summaries": summaries})
+            return
+
+        if self.path == "/api/hermes-settings":
+            if not self.require_permission(user, "hermes_admin", "헤르메스 관리자 설정"):
+                return
+            self.send_json(load_hermes_settings(include_secret=False))
+            return
+
+        if self.path == "/api/sales-report-uploads":
+            if not self.require_permission(user, "sales_report_manage", "매출표 업로드"):
+                return
+            self.send_json({"files": list_sales_report_uploads()})
+            return
+
+        if self.path.startswith("/api/sales-report-dashboard"):
+            if not self.require_permission(user, "sales_report_manage", "매출현황"):
+                return
+            parsed = urlsplit(self.path)
+            params = parse_qs(parsed.query)
+            maybe_send_sales_report_upload_alert()
+            self.send_json(sales_report_dashboard_payload(
+                period=params.get("period", [""])[0],
+                report_date=params.get("date", [""])[0],
+            ))
             return
 
         if self.path.startswith("/api/shared-file-download"):
@@ -17258,6 +29711,12 @@ class WorkhubHandler(BaseHTTPRequestHandler):
             if not self.require_permission(user, "mail_send", "메일 발송"):
                 return
             self.send_json({"contacts": load_vendor_contacts()})
+            return
+
+        if self.path == "/api/cs-followup-alerts":
+            if not self.require_permission(user, "ledger_edit", "대장 수정"):
+                return
+            self.send_json({"alerts": list_cs_followup_alerts()})
             return
 
         if self.path.startswith("/api/cs-cases"):
@@ -17430,6 +29889,10 @@ class WorkhubHandler(BaseHTTPRequestHandler):
 
         if self.path == "/api/import-shipments":
             self.send_json({"shipments": list_import_shipments()})
+            return
+
+        if self.path == "/api/cargo-shipments":
+            self.send_json({"shipments": list_cargo_shipments()})
             return
 
         self.send_error(404)
@@ -17612,14 +30075,131 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                 length = int(self.headers.get("Content-Length", "0"))
                 payload = json.loads(self.rfile.read(length).decode("utf-8"))
                 user_id = save_user_account(payload, user)
-                self.send_json({"message": "사용자 계정을 저장했습니다.", "user_id": user_id, "users": list_users()})
+                self.send_json({
+                    "message": "사용자 계정을 저장했습니다.",
+                    "user_id": user_id,
+                    "users": list_users(),
+                    "deleted_users": list_deleted_user_accounts(),
+                })
+                return
+
+            if self.path == "/api/users-delete":
+                if not self.require_permission(user, "user_admin", "사용자 관리"):
+                    return
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(length).decode("utf-8") or "{}")
+                deleted_id = delete_user_account(payload.get("id"), user)
+                self.send_json({
+                    "message": "사용자 계정을 삭제했습니다.",
+                    "deleted_id": deleted_id,
+                    "users": list_users(),
+                    "deleted_users": list_deleted_user_accounts(),
+                })
+                return
+
+            if self.path == "/api/hermes-settings":
+                if not self.require_permission(user, "hermes_admin", "헤르메스 관리자 설정"):
+                    return
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(length).decode("utf-8") or "{}")
+                if not isinstance(payload, dict):
+                    raise ValueError("헤르메스 설정 형식이 올바르지 않습니다.")
+                settings = save_hermes_settings(payload)
+                self.send_json({"message": "헤르메스 설정을 저장했습니다.", "settings": settings})
+                return
+
+            if self.path == "/api/hermes-test":
+                if not self.require_permission(user, "hermes_admin", "헤르메스 관리자 설정"):
+                    return
+                payload = hermes_status_payload()
+                append_hermes_history("연결 테스트", "Hermes Agent 연결 테스트", "성공" if payload.get("ok") else "실패", str(payload.get("message") or ""))
+                self.send_json(payload)
+                return
+
+            if self.path == "/api/hermes-chat":
+                if not self.require_permission(user, "hermes_use", "헤르메스"):
+                    return
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(length).decode("utf-8") or "{}")
+                message = clean_payload_text(payload, "message")
+                if not message:
+                    raise ValueError("헤르메스에 보낼 내용을 입력해주세요.")
+                request_payload = {
+                    "message": message,
+                    "source": "workhub",
+                    "user": {
+                        "id": int(user.get("id") or 0),
+                        "username": user.get("username", ""),
+                        "display_name": user.get("display_name", ""),
+                    },
+                }
+                try:
+                    result = hermes_request("chat_path", request_payload)
+                    append_hermes_history("AI 업무채팅", message, "성공", json.dumps(result.get("data", {}), ensure_ascii=False)[:1000])
+                    self.send_json({"message": "헤르메스 응답을 받았습니다.", "result": result})
+                except Exception as exc:
+                    append_hermes_history("AI 업무채팅", message, "실패", str(exc))
+                    raise
+                return
+
+            if self.path == "/api/hermes-summary":
+                if not self.require_permission(user, "hermes_use", "?ㅻⅤ硫붿뒪"):
+                    return
+                summary = summarize_hermes_chat_history()
+                self.send_json({"message": "헤르메스 채팅 요약을 저장했습니다.", "summary": summary})
+                return
+
+            if self.path == "/api/hermes-automation":
+                if not self.require_permission(user, "hermes_automation", "헤르메스 자동화 요청"):
+                    return
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(length).decode("utf-8") or "{}")
+                title = clean_payload_text(payload, "title") or "자동화 요청"
+                body = clean_payload_text(payload, "body")
+                if not body and title == "자동화 요청":
+                    raise ValueError("자동화 요청 내용을 입력해주세요.")
+                request_payload = {
+                    "title": title,
+                    "body": body,
+                    "source": "workhub",
+                    "user": {
+                        "id": int(user.get("id") or 0),
+                        "username": user.get("username", ""),
+                        "display_name": user.get("display_name", ""),
+                    },
+                }
+                try:
+                    result = hermes_request("automation_path", request_payload)
+                    append_hermes_history("자동화 요청", title, "성공", json.dumps(result.get("data", {}), ensure_ascii=False)[:1000])
+                    self.send_json({"message": "자동화 요청을 보냈습니다.", "result": result})
+                except Exception as exc:
+                    append_hermes_history("자동화 요청", title, "실패", str(exc))
+                    raise
                 return
 
             if self.path == "/api/backup-create":
                 if not self.require_permission(user, "backup_manage", "백업 관리"):
                     return
-                backup = create_workhub_backup("manual")
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(length).decode("utf-8")) if length else {}
+                backup_dir = clean_payload_text(payload, "backup_dir") if isinstance(payload, dict) else ""
+                backup = create_workhub_backup("selected" if backup_dir else "manual", backup_dir=backup_dir or None)
                 self.send_json({"message": "백업 파일을 생성했습니다.", "backup": backup})
+                return
+
+            if self.path == "/api/backup-settings":
+                if not self.require_permission(user, "backup_manage", "백업 관리"):
+                    return
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(length).decode("utf-8")) if length else {}
+                if not isinstance(payload, dict):
+                    raise ValueError("백업 설정 형식이 올바르지 않습니다.")
+                settings = save_backup_settings(payload)
+                self.send_json({
+                    "message": "백업 설정을 저장했습니다.",
+                    "settings": settings,
+                    "backup_dir": str(backup_dir_path(settings)),
+                })
                 return
 
             if self.path == "/api/system-update-check":
@@ -17760,9 +30340,16 @@ class WorkhubHandler(BaseHTTPRequestHandler):
             if self.path == "/api/cs-mail":
                 if not self.require_permission(user, "mail_send", "메일 발송"):
                     return
-                length = int(self.headers.get("Content-Length", "0"))
-                payload = json.loads(self.rfile.read(length).decode("utf-8"))
-                send_cs_mail(payload)
+                attachments: list[dict[str, object]] = []
+                if self.headers.get("Content-Type", "").lower().startswith("multipart/form-data"):
+                    fields = parse_multipart(self.headers, self.rfile)
+                    raw_payload = fields.get("payload", "{}")
+                    payload = json.loads(str(raw_payload or "{}"))
+                    attachments = collect_mail_attachments(fields)
+                else:
+                    length = int(self.headers.get("Content-Length", "0"))
+                    payload = json.loads(self.rfile.read(length).decode("utf-8"))
+                send_cs_mail(payload, attachments=attachments)
                 case_id = int(payload.get("case_id") or 0)
                 if case_id:
                     mark_cs_case_mail_sent(case_id, payload)
@@ -17792,6 +30379,21 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                 self.send_json({"message": "CS 처리내용을 저장했습니다.", "case_id": case_id})
                 return
 
+            if self.path == "/api/cs-cases-import-corrections":
+                if not self.require_permission(user, "excel_upload", "엑셀 업로드"):
+                    return
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(length).decode("utf-8") or "{}")
+                corrections = payload.get("corrections", [])
+                if not isinstance(corrections, list):
+                    raise ValueError("수정 데이터 형식이 올바르지 않습니다.")
+                result = apply_cs_import_corrections_to_db([item for item in corrections if isinstance(item, dict)])
+                self.send_json({
+                    "message": f"CS 처리대장 보정 {result['updated']}건을 저장했습니다.",
+                    **result,
+                })
+                return
+
             if self.path == "/api/cs-cases-delete":
                 if not self.require_permission(user, "ledger_delete", "대장 삭제"):
                     return
@@ -17814,6 +30416,34 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                     raise ValueError("수정할 통합관리대장 행 ID가 없습니다.")
                 update_management_record(record_id, payload)
                 self.send_json({"message": "통합관리대장 행을 저장했습니다.", "record_id": record_id})
+                return
+
+            if self.path == "/api/management-record-create":
+                if not self.require_permission(user, "ledger_edit", "대장 수정"):
+                    return
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(length).decode("utf-8") or "{}")
+                record_id = create_management_manual_record(payload)
+                self.send_json({
+                    "message": "통합관리대장 수기 추가를 저장했습니다.",
+                    "record_id": record_id,
+                    "record": get_management_record(record_id),
+                })
+                return
+
+            if self.path == "/api/management-import-corrections":
+                if not self.require_permission(user, "excel_upload", "엑셀 업로드"):
+                    return
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(length).decode("utf-8") or "{}")
+                corrections = payload.get("corrections", [])
+                if not isinstance(corrections, list):
+                    raise ValueError("수정 데이터 형식이 올바르지 않습니다.")
+                result = apply_management_import_corrections_to_db([item for item in corrections if isinstance(item, dict)])
+                self.send_json({
+                    "message": f"통합관리대장 보정 {result['updated']}건을 저장했습니다.",
+                    **result,
+                })
                 return
 
             if self.path == "/api/management-records-delete":
@@ -17852,16 +30482,26 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                 length = int(self.headers.get("Content-Length", "0"))
                 payload = json.loads(self.rfile.read(length).decode("utf-8"))
                 shipment_id = save_import_shipment(payload)
-                self.send_json({"message": "수입제품 출고 진행 상황을 저장했습니다.", "shipment_id": shipment_id})
+                self.send_json({"message": "수입제품 입고 진행 상황을 저장했습니다.", "shipment_id": shipment_id})
+                return
+
+            if self.path == "/api/cargo-shipment-save":
+                if not (user_has_permission(user, "notice_manage") or user_has_permission(user, "import_shipment_manage")):
+                    self.send_json({"error": "화물 입출고건 입력 권한이 없습니다."}, status=403)
+                    return
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(length).decode("utf-8"))
+                cargo_id = save_cargo_shipment(payload)
+                self.send_json({"message": "화물 입출고건을 저장했습니다.", "shipment_id": cargo_id})
                 return
 
             if self.path == "/api/import-shipment-complete":
-                if not self.require_permission(user, "import_shipment_manage", "수입제품 진행 관리"):
+                if not self.require_admin(user, "수입제품 입고 완료"):
                     return
                 length = int(self.headers.get("Content-Length", "0"))
                 payload = json.loads(self.rfile.read(length).decode("utf-8"))
                 complete_import_shipment(int(payload.get("id") or 0))
-                self.send_json({"message": "수입제품 출고 진행 건을 완료 처리했습니다."})
+                self.send_json({"message": "수입제품 입고 완료 처리했습니다."})
                 return
 
             if self.path == "/api/management-export":
@@ -17910,7 +30550,7 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                     str(payload.get("email", "")),
                     str(payload.get("vendor_type", "purchase")),
                 )
-                self.send_json({"message": "업체 메일 주소를 저장했습니다.", "contacts": contacts})
+                self.send_json({"message": "거래처 메일 주소를 저장했습니다.", "contacts": contacts})
                 return
 
             if self.path == "/api/shared-file-delete":
@@ -17978,35 +30618,82 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                 if not self.require_permission(user, "excel_upload", "엑셀 업로드"):
                     return
                 upload_path = save_uploaded_file(fields, "file")
-                contacts, saved_count = import_vendor_contacts_from_workbook(upload_path)
+                default_vendor_type = fields.get("vendor_type", "purchase")
+                default_vendor_type = default_vendor_type if isinstance(default_vendor_type, str) else "purchase"
+                contacts, saved_count = import_vendor_contacts_from_workbook(upload_path, default_vendor_type=default_vendor_type)
                 self.send_json({
-                    "message": f"업체 메일 주소 {saved_count}건을 저장했습니다.",
+                    "message": f"거래처 메일 주소 {saved_count}건을 저장했습니다.",
                     "saved_count": saved_count,
                     "contacts": contacts,
                 })
                 return
 
-            if self.path == "/api/cs-cases-import":
-                if not self.require_admin(user, "CS처리대장 업로드"):
+            if self.path == "/api/sales-report-upload":
+                if not self.require_permission(user, "sales_report_manage", "매출표 업로드"):
                     return
-                upload_path = save_uploaded_file(fields, "file")
-                inserted, skipped = import_cs_cases_from_workbook(upload_path)
+                upload_path = save_uploaded_sales_report_file(fields, "file")
+                uploaded_by = str(user.get("display_name") or user.get("username") or "")
+                saved = save_sales_report_file(upload_path, original_uploaded_filename(upload_path.name), uploaded_by)
                 self.send_json({
-                    "message": f"CS 처리대장 {inserted}건 업로드 완료, 중복 {skipped}건 제외했습니다.",
-                    "inserted": inserted,
-                    "skipped": skipped,
+                    "message": "매출표를 저장했습니다.",
+                    "file": saved,
+                    "files": list_sales_report_uploads(),
                 })
                 return
 
-            if self.path == "/api/management-import":
-                if not self.require_admin(user, "통합관리대장 업로드"):
+            if self.path == "/api/cs-cases-import-preview":
+                if not self.require_permission(user, "excel_upload", "엑셀 업로드"):
                     return
                 upload_path = save_uploaded_file(fields, "file")
-                inserted, skipped = import_management_workbook(upload_path)
+                corrections = parse_import_corrections(fields)
+                self.send_json(preview_cs_cases_import(upload_path, corrections=corrections))
+                return
+
+            if self.path == "/api/cs-cases-import":
+                mode = fields.get("mode", "daily")
+                mode = mode if isinstance(mode, str) and mode == "replace" else "daily"
+                if mode == "replace":
+                    if not self.require_admin(user, "CS처리대장 전체 데이터 교체 업로드"):
+                        return
+                elif not self.require_permission(user, "excel_upload", "엑셀 업로드"):
+                    return
+                upload_path = save_uploaded_file(fields, "file")
+                corrections = parse_import_corrections(fields)
+                result = import_cs_cases_from_workbook(upload_path, mode=mode, corrections=corrections)
+                mode_label = "전체 교체" if mode == "replace" else "일일 추가"
                 self.send_json({
-                    "message": f"통합관리대장 {inserted}건 업로드 완료, 중복 {skipped}건 제외했습니다.",
-                    "inserted": inserted,
-                    "skipped": skipped,
+                    "message": f"CS 처리대장 {mode_label} {result['inserted']}건 완료, 중복 {result['skipped']}건 제외했습니다.",
+                    "mode": mode,
+                    **result,
+                })
+                return
+
+            if self.path == "/api/management-import-preview":
+                if not self.require_permission(user, "excel_upload", "엑셀 업로드"):
+                    return
+                upload_path = save_uploaded_file(fields, "file")
+                corrections = parse_import_corrections(fields)
+                file_modified_date = uploaded_file_modified_date(fields, upload_path)
+                self.send_json(preview_management_import(upload_path, corrections=corrections, file_modified_date=file_modified_date))
+                return
+
+            if self.path == "/api/management-import":
+                mode = fields.get("mode", "daily")
+                mode = mode if isinstance(mode, str) and mode == "replace" else "daily"
+                if mode == "replace":
+                    if not self.require_admin(user, "통합관리대장 전체 데이터 교체 업로드"):
+                        return
+                elif not self.require_permission(user, "excel_upload", "엑셀 업로드"):
+                    return
+                upload_path = save_uploaded_file(fields, "file")
+                corrections = parse_import_corrections(fields)
+                file_modified_date = uploaded_file_modified_date(fields, upload_path)
+                result = import_management_workbook(upload_path, mode=mode, corrections=corrections, file_modified_date=file_modified_date)
+                mode_label = "전체 교체" if mode == "replace" else "일일 추가"
+                self.send_json({
+                    "message": f"통합관리대장 {mode_label} {result['inserted']}건 완료, 중복 {result['skipped']}건 제외했습니다.",
+                    "mode": mode,
+                    **result,
                 })
                 return
 
@@ -18137,6 +30824,7 @@ def run(host: str = "127.0.0.1", port: int = 8765) -> None:
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     init_db()
     start_backup_scheduler()
+    start_sales_report_alert_scheduler()
     server = ThreadingHTTPServer((host, port), WorkhubHandler)
     print(f"(주)소일브릿지 발주 업무자동화 앱 실행 중: http://{host}:{port}")
     server.serve_forever()

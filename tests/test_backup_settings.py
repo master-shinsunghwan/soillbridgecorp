@@ -4,6 +4,7 @@ import importlib
 import os
 import sys
 import tempfile
+import zipfile
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -53,6 +54,27 @@ def test_create_backup_can_use_one_time_target_dir_without_changing_settings(tmp
     assert (selected_dir / backup["name"]).exists()
     assert not (configured_dir / backup["name"]).exists()
     assert app.load_backup_settings()["backup_dir"] == str(configured_dir)
+
+
+def test_create_backup_includes_runtime_work_files_for_full_restore(tmp_path: Path) -> None:
+    app = load_app(tmp_path)
+    configured_dir = tmp_path / "backups"
+    app.save_backup_settings({"backup_dir": str(configured_dir)})
+    (app.UPLOAD_DIR / "cs").mkdir(parents=True, exist_ok=True)
+    (app.UPLOAD_DIR / "cs" / "photo.png").write_bytes(b"image")
+    app.SHARED_FILE_DIR.mkdir(parents=True, exist_ok=True)
+    (app.SHARED_FILE_DIR / "guide.xlsx").write_bytes(b"shared")
+    app.SALES_REPORT_DIR.mkdir(parents=True, exist_ok=True)
+    (app.SALES_REPORT_DIR / "sales.xlsx").write_bytes(b"sales")
+
+    backup = app.create_workhub_backup("manual")
+
+    with zipfile.ZipFile(configured_dir / backup["name"]) as archive:
+        names = set(archive.namelist())
+    assert "config/workhub.db" in names
+    assert "output/uploads/cs/photo.png" in names
+    assert "shared_files/guide.xlsx" in names
+    assert "sales_reports/sales.xlsx" in names
 
 
 def test_rclone_external_backup_upload_builds_google_drive_copy_command(tmp_path: Path) -> None:
@@ -113,6 +135,8 @@ def main() -> None:
         test_backup_settings_control_auto_and_default_backup_dir(Path(directory) / "settings")
     with tempfile.TemporaryDirectory() as directory:
         test_create_backup_can_use_one_time_target_dir_without_changing_settings(Path(directory) / "selected")
+    with tempfile.TemporaryDirectory() as directory:
+        test_create_backup_includes_runtime_work_files_for_full_restore(Path(directory) / "full")
     with tempfile.TemporaryDirectory() as directory:
         test_rclone_external_backup_upload_builds_google_drive_copy_command(Path(directory) / "rclone")
     with tempfile.TemporaryDirectory() as directory:

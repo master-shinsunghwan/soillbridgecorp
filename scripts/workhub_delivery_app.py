@@ -2912,6 +2912,52 @@ HTML = r"""<!doctype html>
       background: white;
     }
     .leave-form textarea { min-height: 92px; resize: vertical; }
+    .leave-user-picker {
+      grid-column: 1 / -1;
+      display: grid;
+      gap: 8px;
+    }
+    .leave-user-list {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 6px;
+      max-height: 184px;
+      overflow-y: auto;
+      padding: 8px;
+      border: 1px solid #d8e1ef;
+      border-radius: 8px;
+      background: #f8fbff;
+    }
+    .leave-user-option {
+      border: 1px solid #d8e1ef;
+      border-radius: 7px;
+      background: white;
+      padding: 8px 10px;
+      color: #1f2937;
+      text-align: left;
+      font-size: 12px;
+      font-weight: 900;
+      cursor: pointer;
+    }
+    .leave-user-option.active {
+      border-color: var(--blue);
+      background: #eff6ff;
+      color: var(--blue);
+    }
+    .leave-user-option span {
+      display: block;
+      margin-top: 2px;
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 800;
+    }
+    .leave-user-empty {
+      grid-column: 1 / -1;
+      padding: 10px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 850;
+    }
     .leave-table {
       width: 100%;
       border-collapse: collapse;
@@ -10395,6 +10441,8 @@ HTML = r"""<!doctype html>
     const leaveReasonInput = document.querySelector("#leaveReasonInput");
     const leaveRequestSubmit = document.querySelector("#leaveRequestSubmit");
     const leaveAdminUserSelect = document.querySelector("#leaveAdminUserSelect");
+    const leaveAdminUserSearch = document.querySelector("#leaveAdminUserSearch");
+    const leaveAdminUserList = document.querySelector("#leaveAdminUserList");
     const leaveAdminTotalInput = document.querySelector("#leaveAdminTotalInput");
     const leaveAdminUsedInput = document.querySelector("#leaveAdminUsedInput");
     const leaveBalanceSave = document.querySelector("#leaveBalanceSave");
@@ -10529,6 +10577,7 @@ HTML = r"""<!doctype html>
     let managementImportMode = "daily";
     let ledgerUploadInProgress = false;
     let managementUploadInProgress = false;
+    let leaveAdminUsers = [];
     let managementPeriods = [];
     let importShipments = [];
     let userAccounts = [];
@@ -11169,6 +11218,41 @@ HTML = r"""<!doctype html>
       select.innerHTML = rows.map((row) => `<option value="${row[valueField]}">${escapeHtml(row[labelField])}</option>`).join("");
     }
 
+    function renderLeaveAdminUserList(query = "") {
+      if (!leaveAdminUserList) return;
+      const keyword = normalizeSearchKeyword(query);
+      const selectedId = String(leaveAdminUserSelect?.value || "");
+      const rows = leaveAdminUsers.filter((user) => {
+        if (!keyword) return true;
+        return normalizeSearchKeyword(`${user.display_name || ""} ${user.username || ""}`).includes(keyword);
+      });
+      if (!leaveAdminUsers.length) {
+        leaveAdminUserList.innerHTML = `<div class="leave-user-empty">표시할 직원 목록이 없습니다. 관리자 권한 또는 등록된 직원을 확인해주세요.</div>`;
+        return;
+      }
+      if (!rows.length) {
+        leaveAdminUserList.innerHTML = `<div class="leave-user-empty">검색 결과가 없습니다.</div>`;
+        return;
+      }
+      leaveAdminUserList.innerHTML = rows.map((user) => {
+        const id = String(user.id || "");
+        const name = user.display_name || user.username || "이름 없음";
+        const username = user.username || "";
+        return `
+          <button class="leave-user-option ${id === selectedId ? "active" : ""}" type="button" data-leave-admin-user="${escapeHtml(id)}">
+            ${escapeHtml(name)}
+            <span>${escapeHtml(username)}</span>
+          </button>
+        `;
+      }).join("");
+    }
+
+    function selectLeaveAdminUser(userId) {
+      if (!leaveAdminUserSelect) return;
+      leaveAdminUserSelect.value = String(userId || "");
+      renderLeaveAdminUserList(leaveAdminUserSearch?.value || "");
+    }
+
     function setLeaveTab(tabName) {
       leaveTabs.forEach((button) => button.classList.toggle("active", button.dataset.leaveTab === tabName));
       ["mine", "request", "approvals", "admin"].forEach((name) => {
@@ -11205,12 +11289,21 @@ HTML = r"""<!doctype html>
         `).join("")
         : `<tr><td colspan="5">연차 사용/신청 이력이 없습니다.</td></tr>`;
       renderLeaveSelectOptions(leaveTypeSelect, data.leave_types || []);
-      const userOptions = (data.users || []).map((user) => ({
+      leaveAdminUsers = (data.users || []).map((user) => ({
         id: user.id,
-        name: `${user.display_name} (${user.username})`,
+        display_name: user.display_name || user.name || user.username || "",
+        username: user.username || "",
+      }));
+      const userOptions = leaveAdminUsers.map((user) => ({
+        id: user.id,
+        name: `${user.display_name || user.username} (${user.username})`,
       }));
       renderLeaveSelectOptions(leaveAdminUserSelect, userOptions);
       renderLeaveSelectOptions(leaveUsageUserSelect, userOptions);
+      if (leaveAdminUserSelect && !leaveAdminUserSelect.value && userOptions.length) {
+        leaveAdminUserSelect.value = String(userOptions[0].id);
+      }
+      renderLeaveAdminUserList(leaveAdminUserSearch?.value || "");
       leaveApprovalBody.innerHTML = (data.pending_requests || []).length
         ? data.pending_requests.map((row) => `
           <tr>
@@ -15738,10 +15831,10 @@ HTML = r"""<!doctype html>
     function isCompletedByValues(typeValue, statusValue) {
       const type = normalizedLedgerText(typeValue);
       const status = normalizedLedgerText(statusValue);
-      if (status.includes("전체처리완료")) return true;
+      if (isOverallCompletedStatus(statusValue)) return true;
       if ((type === "변심반품" || type === "변신반품" || type === "불량반품") && status.includes("회수완료")) return true;
-      if ((type === "불량교환" || type === "오출고(오배송)" || type === "오출고(오배송)/회수진행") && status.includes("전체처리완료")) return true;
-      if ((type === "불량재출고(미회수)" || type === "오출고(오배송)/회수없음") && status.includes("재발송완료")) return true;
+      if ((type === "불량교환" || type === "오출고오배송" || type === "오출고오배송회수진행") && isOverallCompletedStatus(statusValue)) return true;
+      if ((type === "불량재출고미회수" || type === "오출고오배송회수없음") && status.includes("재발송완료")) return true;
       return false;
     }
 
@@ -15803,19 +15896,27 @@ HTML = r"""<!doctype html>
     }
 
     function normalizedLedgerText(value) {
-      return String(value || "").replace(/\s+/g, "").trim();
+      return String(value || "")
+        .replace(/[\s\u200B-\u200D\uFEFF]/g, "")
+        .replace(/[()（）\[\]{}·ㆍ.,:;\/\\|_-]+/g, "")
+        .trim();
+    }
+
+    function isOverallCompletedStatus(statusValue) {
+      const status = normalizedLedgerText(statusValue);
+      return status.includes("전체처리완료") || (status.includes("전체") && status.includes("처리") && status.includes("완료"));
     }
 
     function ledgerTypeCategory(row) {
       const type = normalizedLedgerText(fieldValue(row?.querySelector('[data-field="cs_type"]')));
       if (["변심반품", "변신반품", "불량반품"].includes(type)) return "returnOnly";
-      if (["불량교환", "오출고(오배송)", "오출고(오배송)/회수진행"].includes(type)) return "exchange";
-      if (["불량재출고(미회수)", "오출고(오배송)/회수없음"].includes(type)) return "reshipOnly";
+      if (["불량교환", "오출고오배송", "오출고오배송회수진행"].includes(type)) return "exchange";
+      if (["불량재출고미회수", "오출고오배송회수없음"].includes(type)) return "reshipOnly";
       return "unknown";
     }
 
     function isFullyCompletedStatus(status) {
-      return normalizedLedgerText(status).includes("전체처리완료");
+      return isOverallCompletedStatus(status);
     }
 
     function ledgerHasReturnCheck(row) {
@@ -20070,6 +20171,14 @@ HTML = r"""<!doctype html>
     if (leaveRequestSubmit) leaveRequestSubmit.addEventListener("click", submitLeaveRequest);
     if (leaveUnitSelect) leaveUnitSelect.addEventListener("change", syncHalfDayDates);
     if (leaveStartDate) leaveStartDate.addEventListener("change", syncHalfDayDates);
+    if (leaveAdminUserSearch) leaveAdminUserSearch.addEventListener("input", () => renderLeaveAdminUserList(leaveAdminUserSearch.value));
+    if (leaveAdminUserSelect) leaveAdminUserSelect.addEventListener("change", () => renderLeaveAdminUserList(leaveAdminUserSearch?.value || ""));
+    if (leaveAdminUserList) {
+      leaveAdminUserList.addEventListener("click", (event) => {
+        const button = event.target.closest("[data-leave-admin-user]");
+        if (button) selectLeaveAdminUser(button.dataset.leaveAdminUser);
+      });
+    }
     if (leaveBalanceSave) leaveBalanceSave.addEventListener("click", saveLeaveBalance);
     if (leaveAccrualApply) leaveAccrualApply.addEventListener("click", applyLeaveAccrual);
     if (leaveUsageSave) leaveUsageSave.addEventListener("click", saveHistoricalLeaveUsage);
@@ -20841,6 +20950,10 @@ LEAVE_WORKSPACE_HTML = r"""
                   <div class="leave-card-title">직원 연차 기준 설정</div>
                   <div class="leave-form">
                     <label>직원<select id="leaveAdminUserSelect"></select></label>
+                    <div class="leave-user-picker">
+                      <input id="leaveAdminUserSearch" type="search" placeholder="직원명 또는 아이디 검색" autocomplete="off" />
+                      <div class="leave-user-list" id="leaveAdminUserList"></div>
+                    </div>
                     <label>시작 연차<input id="leaveAdminTotalInput" type="number" min="0" step="0.5" value="10" /></label>
                     <label>기존 사용 연차<input id="leaveAdminUsedInput" type="number" min="0" step="0.5" value="0" /></label>
                     <button class="workspace-button" type="button" id="leaveBalanceSave">연차 기준 저장</button>
@@ -24832,6 +24945,14 @@ RESTORE_ALLOWED_FILES = {
     "config/backup_settings.json": BACKUP_SETTINGS_PATH,
     "config/secret.key": SECRET_KEY_PATH,
     "config/crm_webhook_token.txt": CRM_WEBHOOK_TOKEN_PATH,
+    "config/hermes_settings.json": HERMES_SETTINGS_PATH,
+    "config/hermes_history.jsonl": HERMES_HISTORY_PATH,
+}
+
+BACKUP_DATA_DIRECTORIES = {
+    "output": OUTPUT_DIR,
+    "shared_files": SHARED_FILE_DIR,
+    "sales_reports": SALES_REPORT_DIR,
 }
 
 DEFAULT_BACKUP_SETTINGS = {
@@ -25078,6 +25199,29 @@ def safe_sqlite_copy(target_db: Path) -> None:
         source.close()
 
 
+def backup_arcname(path: Path, root: Path, prefix: str) -> str:
+    return str(Path(prefix) / path.relative_to(root)).replace("\\", "/")
+
+
+def write_backup_directory(archive: zipfile.ZipFile, root: Path, prefix: str, current_backup_root: Path) -> list[str]:
+    if not root.exists() or not root.is_dir():
+        return []
+    written: list[str] = []
+    for path in sorted(root.rglob("*")):
+        if not path.is_file():
+            continue
+        try:
+            resolved = path.resolve()
+            if resolved == current_backup_root or current_backup_root in resolved.parents:
+                continue
+        except OSError:
+            continue
+        arcname = backup_arcname(path, root, prefix)
+        archive.write(path, arcname)
+        written.append(arcname)
+    return written
+
+
 def create_workhub_backup(reason: str = "manual", backup_dir: str | Path | None = None) -> dict[str, str | int]:
     settings = load_backup_settings()
     root = backup_dir_path(settings, backup_dir=backup_dir)
@@ -25093,9 +25237,14 @@ def create_workhub_backup(reason: str = "manual", backup_dir: str | Path | None 
         safe_sqlite_copy(temp_db)
         with zipfile.ZipFile(output_path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
             archive.write(temp_db, "config/workhub.db")
-            for path in (MAIL_SETTINGS_PATH, VENDOR_CONTACTS_PATH, BACKUP_SETTINGS_PATH, SECRET_KEY_PATH, CRM_WEBHOOK_TOKEN_PATH):
+            included = ["config/workhub.db"]
+            for path in (MAIL_SETTINGS_PATH, VENDOR_CONTACTS_PATH, BACKUP_SETTINGS_PATH, SECRET_KEY_PATH, CRM_WEBHOOK_TOKEN_PATH, HERMES_SETTINGS_PATH, HERMES_HISTORY_PATH):
                 if path.exists() and path.is_file():
-                    archive.write(path, f"config/{path.name}")
+                    arcname = f"config/{path.name}"
+                    archive.write(path, arcname)
+                    included.append(arcname)
+            for prefix, directory in BACKUP_DATA_DIRECTORIES.items():
+                included.extend(write_backup_directory(archive, directory, prefix, root.resolve()))
             archive.writestr(
                 "manifest.json",
                 json.dumps(
@@ -25105,14 +25254,7 @@ def create_workhub_backup(reason: str = "manual", backup_dir: str | Path | None 
                         "data_dir": str(RUNTIME_ROOT),
                         "backup_dir": str(root),
                         "backup_retention_days": int(settings["retention_days"]),
-                        "included": [
-                            "config/workhub.db",
-                            "config/mail_settings.json",
-                            "config/vendor_contacts.json",
-                            "config/backup_settings.json",
-                            "config/secret.key",
-                            "config/crm_webhook_token.txt",
-                        ],
+                        "included": included,
                     },
                     ensure_ascii=False,
                     indent=2,
@@ -25137,6 +25279,27 @@ def validate_restored_db(path: Path) -> None:
         connection.close()
 
 
+def restore_backup_directory(temp_root: Path, prefix: str, target: Path) -> int:
+    source_root = temp_root / prefix
+    if not source_root.exists() or not source_root.is_dir():
+        return 0
+    if target.exists():
+        for child in sorted(target.rglob("*"), reverse=True):
+            if child.is_file():
+                child.unlink()
+            elif child.is_dir():
+                child.rmdir()
+    restored = 0
+    for source in sorted(source_root.rglob("*")):
+        if not source.is_file():
+            continue
+        destination = target / source.relative_to(source_root)
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        source.replace(destination)
+        restored += 1
+    return restored
+
+
 def restore_workhub_backup(source_zip: Path) -> dict[str, object]:
     if not source_zip.exists() or not zipfile.is_zipfile(source_zip):
         raise ValueError("올바른 백업 zip 파일이 아닙니다.")
@@ -25153,10 +25316,15 @@ def restore_workhub_backup(source_zip: Path) -> dict[str, object]:
             if "config/workhub.db" not in names:
                 raise ValueError("백업 파일 안에 config/workhub.db가 없습니다.")
             for member in archive.infolist():
+                if member.is_dir():
+                    continue
                 member_name = member.filename.replace("\\", "/").lstrip("/")
-                if member_name not in RESTORE_ALLOWED_FILES:
+                is_allowed_directory = any(member_name == prefix or member_name.startswith(f"{prefix}/") for prefix in BACKUP_DATA_DIRECTORIES)
+                if member_name not in RESTORE_ALLOWED_FILES and not is_allowed_directory:
                     continue
                 output = temp_root / member_name
+                if temp_root.resolve() not in output.resolve().parents:
+                    continue
                 output.parent.mkdir(parents=True, exist_ok=True)
                 output.write_bytes(archive.read(member))
                 extracted[member_name] = output
@@ -25170,11 +25338,16 @@ def restore_workhub_backup(source_zip: Path) -> dict[str, object]:
                 source.replace(target)
             elif target.exists():
                 target.unlink()
+        restored_directories = {
+            prefix: restore_backup_directory(temp_root, prefix, target)
+            for prefix, target in BACKUP_DATA_DIRECTORIES.items()
+        }
 
     return {
         "message": "백업 데이터 복원이 완료되었습니다.",
         "restored_from": source_zip.name,
         "pre_restore_backup": pre_restore,
+        "restored_directories": restored_directories,
     }
 
 
@@ -29383,6 +29556,14 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                 "retention_days": settings["retention_days"],
                 "auto_backup_hour": settings["auto_hour"],
                 "settings": settings,
+                "backup_scope": [
+                    "config/workhub.db",
+                    "config/*.json",
+                    "config/*.key",
+                    "output/workhub_app",
+                    "shared_files",
+                    "sales_reports",
+                ],
             })
             return
 

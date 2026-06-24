@@ -222,7 +222,9 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
     def test_ledger_completed_rows_ignore_whitespace_variants_for_yellow_highlight(self) -> None:
         html_source = (ROOT / "scripts" / "workhub_delivery_app.py").read_text(encoding="utf-8")
 
-        self.assertIn('return String(value || "").replace(/\\s+/g, "").trim();', html_source)
+        self.assertIn("function isOverallCompletedStatus(statusValue)", html_source)
+        self.assertIn('status.includes("전체") && status.includes("처리") && status.includes("완료")', html_source)
+        self.assertIn("if (isOverallCompletedStatus(statusValue)) return true;", html_source)
         self.assertIn("const type = normalizedLedgerText(typeValue);", html_source)
         self.assertIn("const status = normalizedLedgerText(statusValue);", html_source)
         self.assertIn('row.classList.add("completed-cs")', html_source)
@@ -451,6 +453,11 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
             self.assertIn('id="leaveReservedDays"', html_source)
             self.assertIn('id="leaveNotificationList"', html_source)
             self.assertIn('id="leaveAccrualApply"', html_source)
+            self.assertIn('id="leaveAdminUserSearch"', html_source)
+            self.assertIn('id="leaveAdminUserList"', html_source)
+            self.assertIn("function renderLeaveAdminUserList", html_source)
+            self.assertIn("function selectLeaveAdminUser", html_source)
+            self.assertIn("data-leave-admin-user", html_source)
             self.assertIn('id="leaveHolidayDateInput"', html_source)
             self.assertIn('id="leaveHolidaySave"', html_source)
             self.assertIn('data-leave-comment="${row.id}"', html_source)
@@ -534,6 +541,10 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         self.assertIn("rclone_remote", html_source)
         self.assertIn("load_backup_settings", html_source)
         self.assertIn("save_backup_settings", html_source)
+        self.assertIn("BACKUP_DATA_DIRECTORIES", html_source)
+        self.assertIn("write_backup_directory", html_source)
+        self.assertIn("restore_backup_directory", html_source)
+        self.assertIn('"backup_scope"', html_source)
 
     def test_order_workspace_has_right_side_execution_cards(self) -> None:
         html_source = (SCRIPTS / "workhub_delivery_app.py").read_text(encoding="utf-8")

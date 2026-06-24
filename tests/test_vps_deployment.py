@@ -58,6 +58,9 @@ class VpsDeploymentTests(unittest.TestCase):
             self.assertTrue(script.startswith("#!/usr/bin/env bash"))
             self.assertIn("set -euo pipefail", script)
 
+        dockerfile = self.read("Dockerfile")
+        self.assertIn("apt-get install -y --no-install-recommends ca-certificates rclone", dockerfile)
+
     def test_env_example_is_not_ignored_but_real_env_files_are_ignored(self) -> None:
         gitignore = self.read(".gitignore")
         self.assertIn(".env", gitignore)

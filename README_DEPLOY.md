@@ -159,6 +159,15 @@ sudo apt install -y rclone
 rclone config
 ```
 
+Docker 배포에서는 Workhub 컨테이너 안에서 rclone을 실행하므로, VPS의 rclone 설정을 컨테이너에 읽기 전용으로 연결해야 합니다.
+
+```yaml
+volumes:
+  - /root/.config/rclone:/root/.config/rclone:ro
+```
+
+Workhub 백업 ZIP에는 `config/workhub.db`, 주요 설정 파일, `output/workhub_app`, `shared_files`, `sales_reports`가 포함됩니다. 장애 시 이 ZIP 하나로 업무 DB와 업로드/다운로드 산출물, 공유 자료, 매출 업로드 자료를 함께 복원할 수 있습니다.
+
 ## 9. 롤백
 
 코드 롤백은 아래처럼 실행합니다.
