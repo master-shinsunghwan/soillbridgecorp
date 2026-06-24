@@ -2679,9 +2679,12 @@ HTML = r"""<!doctype html>
     }
     .hermes-chat-layout {
       display: grid;
-      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      grid-template-columns: minmax(360px, 0.92fr) minmax(420px, 1.08fr);
       gap: 14px;
       align-items: stretch;
+    }
+    .hermes-chat-input-card {
+      align-content: start;
     }
     .hermes-input,
     .hermes-settings-grid input {
@@ -2717,15 +2720,80 @@ HTML = r"""<!doctype html>
       line-height: 1.55;
       white-space: pre-wrap;
     }
+    .hermes-latest-answer {
+      min-height: 240px;
+      max-height: 380px;
+      overflow: auto;
+      border-style: solid;
+      background: #f8fbff;
+      color: #111827;
+      font-size: 14px;
+    }
     .hermes-side-grid {
       display: grid;
       gap: 12px;
+      min-height: 0;
     }
     .hermes-side-card {
       border: 1px solid #e5e7eb;
       border-radius: 8px;
       background: #ffffff;
       padding: 12px;
+    }
+    .hermes-chat-log-card {
+      display: flex;
+      min-height: 0;
+      flex-direction: column;
+    }
+    .hermes-chat-transcript {
+      display: grid;
+      align-content: start;
+      gap: 10px;
+      min-height: 500px;
+      max-height: calc(100vh - 330px);
+      overflow: auto;
+      padding: 10px;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      background: #f8fafc;
+    }
+    .hermes-chat-message {
+      display: grid;
+      gap: 6px;
+      padding: 10px;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      background: #ffffff;
+      color: #111827;
+      line-height: 1.5;
+      overflow-wrap: anywhere;
+    }
+    .hermes-chat-message.user {
+      border-color: #bfdbfe;
+      background: #eff6ff;
+    }
+    .hermes-chat-message.assistant {
+      border-color: #bbf7d0;
+      background: #f0fdf4;
+    }
+    .hermes-chat-message.error {
+      border-color: #fecdd3;
+      background: #fff1f2;
+    }
+    .hermes-chat-message strong {
+      font-size: 12px;
+      font-weight: 950;
+      color: #0f172a;
+    }
+    .hermes-chat-message span {
+      font-size: 11px;
+      font-weight: 800;
+      color: #64748b;
+    }
+    .hermes-chat-message div {
+      white-space: pre-wrap;
+      font-size: 13px;
+      font-weight: 750;
     }
     .hermes-side-card strong {
       display: block;
@@ -10375,6 +10443,8 @@ HTML = r"""<!doctype html>
     const hermesChatInput = document.querySelector("#hermesChatInput");
     const hermesChatSend = document.querySelector("#hermesChatSend");
     const hermesChatResponse = document.querySelector("#hermesChatResponse");
+    const hermesChatTranscript = document.querySelector("#hermesChatTranscript");
+    const hermesChatClose = document.querySelector("#hermesChatClose");
     const hermesAutomationTitle = document.querySelector("#hermesAutomationTitle");
     const hermesAutomationBody = document.querySelector("#hermesAutomationBody");
     const hermesAutomationSend = document.querySelector("#hermesAutomationSend");
@@ -10610,6 +10680,9 @@ HTML = r"""<!doctype html>
     let crmActiveTab = "dashboard";
     let hermesActiveTab = "chat";
     let hermesHistoryItems = [];
+    let hermesChatMessages = [];
+    let hermesChatPending = false;
+    let hermesChatSessionId = 0;
     let crmSelectedTaskId = "";
     const CRM_TASK_STATUSES = ["대기", "진행중", "보류", "완료"];
     const CRM_TASK_BUILTIN_VIEWS = [
@@ -13095,11 +13168,11 @@ HTML = r"""<!doctype html>
 
     const HERMES_PRESETS = {
       vps: {
-        base_url: "http://hermes-agent:4860",
+        base_url: "http://hermes-agent:4871",
         health_path: "/health",
         chat_path: "/api/chat",
         automation_path: "/api/automation",
-        help: "VPS 배포 후 같은 Docker 네트워크 안에서 사용하는 운영 권장 주소입니다.",
+        help: "VPS 배포 후 Workhub-Hermes 브릿지를 통해 연결하는 운영 권장 주소입니다.",
       },
       local: {
         base_url: "http://127.0.0.1:4860",
@@ -13289,13 +13362,70 @@ HTML = r"""<!doctype html>
       if (hermesSettingsMessage) hermesSettingsMessage.textContent = data.message || "연결 테스트를 완료했습니다.";
     }
 
+    function renderHermesChatTranscript() {
+      if (!hermesChatTranscript) return;
+      if (!hermesChatMessages.length) {
+        hermesChatTranscript.innerHTML = `<div class="admin-message">아직 채팅내용이 없습니다.</div>`;
+        return;
+      }
+      hermesChatTranscript.innerHTML = hermesChatMessages.map((item) => {
+        const roleLabel = item.role === "user" ? "질문" : (item.role === "error" ? "오류" : "답변");
+        const statusLabel = item.status === "pending" ? "준비 중" : (item.status === "error" ? "실패" : "완료");
+        return `
+          <div class="hermes-chat-message ${escapeHtml(item.role)}">
+            <strong>${roleLabel}</strong>
+            <div>${escapeHtml(item.text || "")}</div>
+            <span>${escapeHtml(item.created_at || "")} · ${statusLabel}</span>
+          </div>
+        `;
+      }).join("");
+      hermesChatTranscript.scrollTop = hermesChatTranscript.scrollHeight;
+    }
+
+    function appendHermesChatMessage(role, text, status = "done") {
+      const id = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+      hermesChatMessages.push({
+        id,
+        role,
+        text,
+        status,
+        created_at: new Date().toLocaleString("ko-KR"),
+      });
+      renderHermesChatTranscript();
+      return id;
+    }
+
+    function updateHermesChatMessage(id, changes = {}) {
+      const item = hermesChatMessages.find((message) => message.id === id);
+      if (!item) return;
+      Object.assign(item, changes);
+      renderHermesChatTranscript();
+    }
+
+    function clearHermesChatWindow() {
+      hermesChatSessionId += 1;
+      hermesChatMessages = [];
+      hermesChatPending = false;
+      if (hermesChatInput) hermesChatInput.value = "";
+      if (hermesChatResponse) hermesChatResponse.textContent = "헤르메스 연결 후 답변이 여기에 표시됩니다.";
+      if (hermesChatSend) hermesChatSend.disabled = false;
+      renderHermesChatTranscript();
+      showWorkspace("dashboard");
+    }
+
     async function sendHermesChat() {
+      if (hermesChatPending) return;
       const message = (hermesChatInput?.value || "").trim();
       if (!message) {
         if (hermesChatResponse) hermesChatResponse.textContent = "보낼 내용을 입력해주세요.";
         hermesChatInput?.focus();
         return;
       }
+      appendHermesChatMessage("user", message);
+      const answerId = appendHermesChatMessage("assistant", "헤르메스가 답변을 준비하는 중입니다.", "pending");
+      const sessionId = hermesChatSessionId;
+      hermesChatPending = true;
+      if (hermesChatSend) hermesChatSend.disabled = true;
       if (hermesChatResponse) hermesChatResponse.textContent = "헤르메스가 답변을 준비하는 중입니다.";
       try {
         const data = await hermesFetchJson("/api/hermes-chat", {
@@ -13303,10 +13433,21 @@ HTML = r"""<!doctype html>
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ message }),
         });
-        if (hermesChatResponse) hermesChatResponse.textContent = hermesTextFromResult(data) || "응답을 받았습니다.";
+        const answer = hermesTextFromResult(data) || "응답을 받았습니다.";
+        if (sessionId !== hermesChatSessionId) return;
+        if (hermesChatResponse) hermesChatResponse.textContent = answer;
+        updateHermesChatMessage(answerId, { text: answer, status: "done" });
         await loadHermesHistory();
       } catch (error) {
+        if (sessionId !== hermesChatSessionId) return;
         if (hermesChatResponse) hermesChatResponse.textContent = error.message;
+        updateHermesChatMessage(answerId, { role: "error", text: error.message, status: "error" });
+      } finally {
+        if (sessionId === hermesChatSessionId) {
+          hermesChatPending = false;
+          if (hermesChatSend) hermesChatSend.disabled = false;
+          hermesChatInput?.focus();
+        }
       }
     }
 
@@ -19275,6 +19416,15 @@ HTML = r"""<!doctype html>
       button.addEventListener("click", () => setHermesTab(button.dataset.hermesTabButton || "chat"));
     });
     hermesChatSend?.addEventListener("click", sendHermesChat);
+    hermesChatInput?.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {
+        event.preventDefault();
+        sendHermesChat().catch((error) => {
+          if (hermesChatResponse) hermesChatResponse.textContent = error.message;
+        });
+      }
+    });
+    hermesChatClose?.addEventListener("click", clearHermesChatWindow);
     document.querySelectorAll("[data-hermes-quick]").forEach((button) => {
       button.addEventListener("click", () => {
         const action = button.dataset.hermesQuick || "";
@@ -20796,6 +20946,7 @@ HERMES_WORKSPACE_HTML = r"""
           <div class="workspace-title">헤르메스</div>
           <div class="workspace-actions">
             <button class="workspace-button" type="button" id="hermesRefresh">새로고침</button>
+            <button class="workspace-button ghost" type="button" id="hermesChatClose">창닫기</button>
           </div>
         </div>
         <div class="hermes-panel">
@@ -20816,17 +20967,23 @@ HERMES_WORKSPACE_HTML = r"""
           </div>
           <section class="hermes-tab-panel active" data-hermes-panel="chat">
             <div class="hermes-chat-layout">
-              <div class="hermes-card">
+              <div class="hermes-card hermes-chat-input-card">
                 <div class="admin-section-title">AI 업무채팅</div>
                 <textarea class="hermes-textarea" id="hermesChatInput" placeholder="예) 오늘 미처리 CS를 요약하고 우선순위를 추천해줘."></textarea>
                 <div class="hermes-actions">
                   <button class="workspace-button" type="button" id="hermesChatSend">헤르메스에 보내기</button>
                 </div>
+                <div>
+                  <div class="admin-section-title">답변 내용</div>
+                  <div class="hermes-response hermes-latest-answer" id="hermesChatResponse">헤르메스 연결 후 답변이 여기에 표시됩니다.</div>
+                </div>
               </div>
               <div class="hermes-side-grid">
-                <div class="hermes-side-card">
-                  <strong>답변 내용</strong>
-                  <div class="hermes-response" id="hermesChatResponse">헤르메스 연결 후 답변이 여기에 표시됩니다.</div>
+                <div class="hermes-side-card hermes-chat-log-card">
+                  <strong>전체 채팅내용</strong>
+                  <div class="hermes-chat-transcript" id="hermesChatTranscript">
+                    <div class="admin-message">아직 채팅내용이 없습니다.</div>
+                  </div>
                 </div>
                 <div class="hermes-side-card">
                   <strong>필요한 기능</strong>
@@ -20881,12 +21038,12 @@ HERMES_WORKSPACE_HTML = r"""
               <div class="admin-message hermes-help" id="hermesPresetHelp">운영 배포 후에는 VPS 내부 Docker 주소를 사용하고, 로컬 개발 중에는 테스트 주소로 바꿔 확인할 수 있습니다.</div>
               <div class="hermes-settings-grid">
                 <label class="admin-check"><input id="hermesEnabled" type="checkbox" /> Hermes Agent 사용</label>
-                <label>Agent 기본 주소<input id="hermesBaseUrl" type="url" placeholder="http://hermes-agent:4860" /></label>
+                <label>Agent 기본 주소<input id="hermesBaseUrl" type="url" placeholder="http://hermes-agent:4871" /></label>
                 <label>Health 경로<input id="hermesHealthPath" type="text" placeholder="/health" /></label>
                 <label>채팅 경로<input id="hermesChatPath" type="text" placeholder="/api/chat" /></label>
                 <label>자동화 경로<input id="hermesAutomationPath" type="text" placeholder="/api/automation" /></label>
                 <label>API 키<input id="hermesApiKey" type="password" placeholder="저장된 키를 유지하려면 비워두세요" autocomplete="new-password" /></label>
-                <label>요청 제한 시간(초)<input id="hermesTimeoutSeconds" type="number" min="3" max="120" value="20" /></label>
+                <label>요청 제한 시간(초)<input id="hermesTimeoutSeconds" type="number" min="3" max="240" value="20" /></label>
               </div>
               <div class="hermes-actions">
                 <button class="workspace-button" type="button" id="hermesSettingsSave">설정 저장</button>
@@ -28832,7 +28989,7 @@ def save_mail_settings(
 DEFAULT_HERMES_SETTINGS = {
     "enabled": env_bool("HERMES_ENABLED", False),
     "profile": os.environ.get("HERMES_PROFILE", "vps"),
-    "base_url": os.environ.get("HERMES_BASE_URL", "http://hermes-agent:4860"),
+    "base_url": os.environ.get("HERMES_BASE_URL", "http://hermes-agent:4871"),
     "health_path": os.environ.get("HERMES_HEALTH_PATH", "/health"),
     "chat_path": os.environ.get("HERMES_CHAT_PATH", "/api/chat"),
     "automation_path": os.environ.get("HERMES_AUTOMATION_PATH", "/api/automation"),
@@ -28859,7 +29016,7 @@ def normalize_hermes_settings(payload: dict | None = None) -> dict[str, object]:
         "chat_path": clean_path("chat_path", "/api/chat"),
         "automation_path": clean_path("automation_path", "/api/automation"),
         "api_key": str(source.get("api_key") or "").strip(),
-        "timeout_seconds": min(max(int(source.get("timeout_seconds") or 20), 3), 120),
+        "timeout_seconds": min(max(int(source.get("timeout_seconds") or 20), 3), 240),
     }
 
 
