@@ -10422,6 +10422,7 @@ HTML = r"""<!doctype html>
     const salesReportKpiGrid = document.querySelector("#salesReportKpiGrid");
     const salesReportMarginDiagnosis = document.querySelector("#salesReportMarginDiagnosis");
     const salesDetailPopup = document.querySelector("#salesDetailPopup");
+    const salesDetailPanel = document.querySelector("#salesDetailPopup .sales-detail-popup");
     const salesDetailTitle = document.querySelector("#salesDetailTitle");
     const salesDetailBody = document.querySelector("#salesDetailBody");
     const salesDetailClose = document.querySelector("#salesDetailClose");
@@ -13145,10 +13146,10 @@ HTML = r"""<!doctype html>
     }
 
     function setSalesDetailPopupMode(kind) {
-      if (!salesDetailPopup) return;
+      if (!salesDetailPanel) return;
       const compact = kind === "daily";
-      salesDetailPopup.classList.toggle("compact", compact);
-      salesDetailPopup.classList.toggle("expanded", !compact);
+      salesDetailPanel.classList.toggle("compact", compact);
+      salesDetailPanel.classList.toggle("expanded", !compact);
     }
 
     function renderSalesDetailTable(section = {}) {
@@ -13188,7 +13189,7 @@ HTML = r"""<!doctype html>
         product: "#7c3aed",
         supplier: "#f97316",
       };
-      salesDetailPopup?.style.setProperty("--detail-color", detailColors[data.kind] || "#2563eb");
+      salesDetailPanel?.style.setProperty("--detail-color", detailColors[data.kind] || "#2563eb");
       setSalesDetailPopupMode(data.kind);
       if (salesDetailTitle) salesDetailTitle.textContent = data.title || "매출 상세";
       const metrics = data.metrics || [];

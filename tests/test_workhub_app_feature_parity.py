@@ -824,9 +824,10 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         self.assertIn('salesDetailBody.innerHTML = `${metricHtml}${noteHtml}<div class="sales-detail-sections">${sectionsHtml}</div>`;', html_source)
         self.assertIn("height: calc(100vh - 40px);", html_source)
         self.assertIn("height: 100% !important;", html_source)
+        self.assertIn('const salesDetailPanel = document.querySelector("#salesDetailPopup .sales-detail-popup");', html_source)
         self.assertIn("function setSalesDetailPopupMode(kind)", html_source)
-        self.assertIn('salesDetailPopup.classList.toggle("compact", compact);', html_source)
-        self.assertIn('salesDetailPopup.classList.toggle("expanded", !compact);', html_source)
+        self.assertIn('salesDetailPanel.classList.toggle("compact", compact);', html_source)
+        self.assertIn('salesDetailPanel.classList.toggle("expanded", !compact);', html_source)
         self.assertIn("setSalesDetailPopupMode(data.kind);", html_source)
         self.assertIn("setSalesDetailPopupMode(kind);", html_source)
 
