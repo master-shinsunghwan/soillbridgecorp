@@ -2516,6 +2516,8 @@ HTML = r"""<!doctype html>
       line-height: 1.15;
     }
     .sales-detail-section {
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr);
       min-height: 0;
       overflow: hidden;
       border: 1px solid #d8e0ec;
@@ -2538,8 +2540,13 @@ HTML = r"""<!doctype html>
     .sales-detail-table-wrap {
       height: clamp(210px, calc(58vh - 260px), 420px);
       max-height: none;
-      overflow: auto;
+      min-height: 0;
+      overflow-x: auto;
+      overflow-y: scroll;
       scrollbar-gutter: stable;
+    }
+    .sales-detail-body.multi-section .sales-detail-table-wrap {
+      height: 170px;
     }
     .sales-detail-table {
       width: 100%;
@@ -13110,6 +13117,7 @@ HTML = r"""<!doctype html>
       ` : "";
       const noteHtml = data.note ? `<div class="sales-detail-note">${escapeHtml(data.note)}</div>` : "";
       if (salesDetailBody) {
+        salesDetailBody.classList.toggle("multi-section", sections.length > 1);
         salesDetailBody.innerHTML = `${metricHtml}${noteHtml}${sections.map(renderSalesDetailTable).join("") || `<div class="admin-message">상세 데이터가 없습니다.</div>`}`;
       }
       salesDetailPopup?.classList.add("open");
