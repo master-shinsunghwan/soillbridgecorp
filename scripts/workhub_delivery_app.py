@@ -2432,8 +2432,8 @@ HTML = r"""<!doctype html>
       box-shadow: 0 24px 70px rgba(15, 23, 42, .20);
     }
     .sales-detail-popup.compact {
-      height: min(520px, calc(100vh - 48px));
-      max-height: min(520px, calc(100vh - 48px));
+      height: calc(100vh - 40px);
+      max-height: calc(100vh - 40px);
       grid-template-rows: auto minmax(0, 1fr);
     }
     .sales-detail-popup.expanded {
@@ -2486,11 +2486,11 @@ HTML = r"""<!doctype html>
       background: #f8fafc;
     }
     .sales-detail-popup.compact .sales-detail-body {
-      max-height: min(464px, calc(100vh - 102px));
+      max-height: none;
       gap: 8px;
       align-content: stretch;
       overflow: hidden;
-      grid-template-rows: auto auto minmax(300px, 1fr);
+      grid-template-rows: auto auto minmax(0, 1fr);
     }
     .sales-detail-popup.expanded .sales-detail-body {
       align-content: stretch !important;
@@ -2611,7 +2611,7 @@ HTML = r"""<!doctype html>
     }
     .sales-detail-popup.compact .sales-detail-table-wrap {
       height: 100%;
-      min-height: 300px;
+      min-height: 0;
       max-height: none;
     }
     .sales-detail-popup.expanded .sales-detail-table-wrap {

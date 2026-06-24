@@ -811,15 +811,12 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         self.assertIn("매입처별 총합계 금액", html_source)
         self.assertNotIn('["파일 검증"', html_source)
 
-    def test_daily_sales_detail_popup_uses_compact_height(self) -> None:
+    def test_daily_sales_detail_popup_uses_full_height_with_compact_density(self) -> None:
         html_source = (ROOT / "scripts" / "workhub_delivery_app.py").read_text(encoding="utf-8")
 
         self.assertIn(".sales-detail-popup.compact", html_source)
         self.assertIn(".sales-detail-popup.expanded", html_source)
         self.assertIn(".sales-detail-popup.compact .sales-detail-table-wrap", html_source)
-        self.assertIn("height: min(520px, calc(100vh - 48px));", html_source)
-        self.assertIn("grid-template-rows: auto auto minmax(300px, 1fr);", html_source)
-        self.assertIn("min-height: 300px;", html_source)
         self.assertIn(".sales-detail-popup.expanded .sales-detail-table-wrap", html_source)
         self.assertIn(".sales-detail-sections", html_source)
         self.assertIn(".sales-detail-popup.compact .sales-detail-sections", html_source)
@@ -827,7 +824,8 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         self.assertIn('salesDetailBody.classList.toggle("has-note", Boolean(data.note));', html_source)
         self.assertIn('salesDetailBody.innerHTML = `${metricHtml}${noteHtml}<div class="sales-detail-sections">${sectionsHtml}</div>`;', html_source)
         self.assertIn("height: calc(100vh - 40px);", html_source)
-        self.assertIn("height: min(520px, calc(100vh - 48px));", html_source)
+        self.assertIn("grid-template-rows: auto auto minmax(0, 1fr);", html_source)
+        self.assertIn("min-height: 0;", html_source)
         self.assertIn("height: 100% !important;", html_source)
         self.assertIn('const salesDetailPanel = document.querySelector("#salesDetailPopup .sales-detail-popup");', html_source)
         self.assertIn("function setSalesDetailPopupMode(kind)", html_source)
