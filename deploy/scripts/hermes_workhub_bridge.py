@@ -13,7 +13,7 @@ HERMES_CWD = os.environ.get("HERMES_CWD", "/opt/hermes")
 BRIDGE_HOST = os.environ.get("HERMES_BRIDGE_HOST", "0.0.0.0")
 BRIDGE_PORT = int(os.environ.get("HERMES_BRIDGE_PORT", "4871"))
 BRIDGE_TOKEN = os.environ.get("WORKHUB_HERMES_BRIDGE_TOKEN", "").strip()
-REQUEST_TIMEOUT = int(os.environ.get("HERMES_BRIDGE_TIMEOUT", "180"))
+REQUEST_TIMEOUT = int(os.environ.get("HERMES_BRIDGE_TIMEOUT", "240"))
 
 
 def normalize_token(value: str) -> str:
@@ -41,7 +41,9 @@ def build_prompt(payload: dict[str, Any], mode: str) -> str:
         body = str(payload.get("body") or payload.get("message") or "").strip()
         return (
             "You are Hermes connected to Soillbridge Workhub.\n"
-            "Reply in Korean. Convert the request into actionable steps, risks, and next actions.\n\n"
+            "Reply in Korean. Convert the request into actionable steps, risks, and next actions.\n"
+            "Do not run tools, edit files, open browsers, or perform changes. This bridge is for Workhub chat only.\n"
+            "If the user asks you to implement a code or UI change, summarize the request and say Codex/developer work is needed.\n\n"
             f"Title: {title}\n"
             f"Request:\n{body}"
         )
@@ -50,6 +52,8 @@ def build_prompt(payload: dict[str, Any], mode: str) -> str:
         "You are Hermes connected to Soillbridge Workhub.\n"
         "Reply in Korean with a concise, practical business answer.\n"
         "When the request is ambiguous, list what should be checked next.\n\n"
+        "Do not run tools, edit files, open browsers, or perform changes. This bridge is for Workhub chat only.\n"
+        "If the user asks you to implement a code or UI change, summarize the request and say Codex/developer work is needed.\n\n"
         f"Workhub message:\n{message}"
     )
 
@@ -60,7 +64,7 @@ def run_hermes(prompt: str) -> str:
     env = os.environ.copy()
     env.setdefault("HERMES_ACCEPT_HOOKS", "1")
     completed = subprocess.run(
-        [HERMES_BIN, "-z", prompt],
+        [HERMES_BIN, "--ignore-rules", "-z", prompt],
         cwd=HERMES_CWD,
         env=env,
         text=True,
