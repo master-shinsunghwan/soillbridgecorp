@@ -278,6 +278,14 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         self.assertIn('row.classList.add("completed-cs")', html_source)
         self.assertIn('row.classList.toggle("completed-cs", isCompletedByValues(csType, status) || Boolean(completedAt));', html_source)
 
+    def test_management_duplicate_rows_override_even_row_striping(self) -> None:
+        html_source = (ROOT / "scripts" / "workhub_delivery_app.py").read_text(encoding="utf-8")
+
+        self.assertIn(".ledger-table tbody tr:nth-child(even) td", html_source)
+        self.assertIn(".ledger-table tbody tr.management-duplicate td", html_source)
+        self.assertIn("background-color: var(--duplicate-row-color, #eef6ff);", html_source)
+        self.assertIn('row.classList.add("management-duplicate")', html_source)
+
     def test_hermes_workspace_menu_and_configurable_agent_bridge_exist(self) -> None:
         html_source = (ROOT / "scripts" / "workhub_delivery_app.py").read_text(encoding="utf-8")
 

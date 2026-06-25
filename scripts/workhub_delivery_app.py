@@ -4268,8 +4268,8 @@ HTML = r"""<!doctype html>
     .ledger-table tr.row-dirty td {
       box-shadow: inset 0 0 0 9999px rgba(37, 99, 235, .035);
     }
-    .ledger-table tr.management-duplicate td {
-      background: var(--duplicate-row-color, #eef6ff);
+    .ledger-table tbody tr.management-duplicate td {
+      background-color: var(--duplicate-row-color, #eef6ff);
     }
     .ledger-table td.left { text-align: left; }
     .ledger-table td[data-field="cs_content"],
