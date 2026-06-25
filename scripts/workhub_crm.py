@@ -89,6 +89,26 @@ def init_crm_db(connection: sqlite3.Connection) -> None:
     )
     connection.execute(
         """
+        CREATE TABLE IF NOT EXISTS crm_daily_logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            log_date TEXT NOT NULL,
+            user_id INTEGER NOT NULL,
+            employee_name TEXT,
+            author_user_id INTEGER,
+            author_name TEXT,
+            work_summary TEXT,
+            completed_work TEXT,
+            ongoing_work TEXT,
+            blockers TEXT,
+            next_plan TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            UNIQUE(log_date, user_id)
+        )
+        """
+    )
+    connection.execute(
+        """
         CREATE TABLE IF NOT EXISTS crm_message_events (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             created_at TEXT NOT NULL,
@@ -126,6 +146,8 @@ def init_crm_db(connection: sqlite3.Connection) -> None:
     connection.execute("CREATE INDEX IF NOT EXISTS idx_crm_task_comments_task ON crm_task_comments(task_id)")
     connection.execute("CREATE INDEX IF NOT EXISTS idx_crm_message_events_created ON crm_message_events(created_at)")
     connection.execute("CREATE INDEX IF NOT EXISTS idx_crm_saved_views_user_scope ON crm_saved_views(user_id, scope)")
+    connection.execute("CREATE INDEX IF NOT EXISTS idx_crm_daily_logs_date ON crm_daily_logs(log_date)")
+    connection.execute("CREATE INDEX IF NOT EXISTS idx_crm_daily_logs_user_date ON crm_daily_logs(user_id, log_date)")
 
 
 def ensure_webhook_token(path: Path) -> str:
@@ -303,6 +325,253 @@ def user_can_touch_task(task: sqlite3.Row, user: dict[str, Any], can_manage: boo
         return True
     user_names = {_clean(user.get("username")), _clean(user.get("display_name"))}
     return bool(_clean(task["assignee_name"]) in user_names)
+
+
+def _normalize_log_date(value: object) -> str:
+    text = _clean(value)
+    if not text:
+        return date.today().isoformat()
+    try:
+        return date.fromisoformat(text[:10]).isoformat()
+    except ValueError as exc:
+        raise ValueError("일지 날짜는 YYYY-MM-DD 형식으로 입력해주세요.") from exc
+
+
+def _staff_display_name(row: sqlite3.Row | dict[str, Any]) -> str:
+    return _clean(row["display_name"]) or _clean(row["username"]) or f"직원 {row['id']}"
+
+
+def _daily_log_public(
+    row: sqlite3.Row | None,
+    staff: sqlite3.Row | dict[str, Any],
+    log_date: str,
+    task_counts: dict[int, dict[str, int]],
+) -> dict[str, Any]:
+    user_id = int(staff["id"])
+    counts = task_counts.get(user_id, {})
+    if row:
+        item = dict(row)
+    else:
+        item = {
+            "id": "",
+            "log_date": log_date,
+            "user_id": user_id,
+            "employee_name": _staff_display_name(staff),
+            "author_user_id": "",
+            "author_name": "",
+            "work_summary": "",
+            "completed_work": "",
+            "ongoing_work": "",
+            "blockers": "",
+            "next_plan": "",
+            "created_at": "",
+            "updated_at": "",
+        }
+    item["user_id"] = user_id
+    item["username"] = _clean(staff["username"])
+    item["display_name"] = _staff_display_name(staff)
+    item["role"] = _clean(staff["role"])
+    item["submitted"] = bool(item.get("id"))
+    item["open_tasks"] = int(counts.get("open_tasks", 0))
+    item["completed_today"] = int(counts.get("completed_today", 0))
+    item["due_today"] = int(counts.get("due_today", 0))
+    return item
+
+
+def _has_daily_log_issue(value: object) -> bool:
+    text = _clean(value)
+    if not text:
+        return False
+    normalized = re.sub(r"[\s./_-]+", "", text.lower())
+    no_issue_markers = {
+        "없음",
+        "이슈없음",
+        "특이사항없음",
+        "특이이슈없음",
+        "문제없음",
+        "해당없음",
+        "없습니다",
+        "none",
+        "no",
+        "na",
+        "n/a",
+    }
+    return normalized not in no_issue_markers
+
+
+def list_crm_daily_logs(db_path: Path, log_date: object = "", user_id: int | None = None) -> dict[str, Any]:
+    target_date = _normalize_log_date(log_date)
+    connection = _connect(db_path)
+    try:
+        staff_params: list[Any] = []
+        staff_where = "WHERE active = 1"
+        if user_id:
+            staff_where += " AND id = ?"
+            staff_params.append(int(user_id))
+        staff_rows = connection.execute(
+            f"""
+            SELECT id, username, display_name, role
+              FROM users
+             {staff_where}
+             ORDER BY CASE role WHEN 'admin' THEN 0 WHEN 'sub_admin' THEN 1 ELSE 2 END,
+                      display_name COLLATE NOCASE,
+                      username COLLATE NOCASE
+            """,
+            staff_params,
+        ).fetchall()
+        log_params: list[Any] = [target_date]
+        log_where = "WHERE logs.log_date = ?"
+        if user_id:
+            log_where += " AND logs.user_id = ?"
+            log_params.append(int(user_id))
+        log_rows = connection.execute(
+            f"""
+            SELECT logs.*
+              FROM crm_daily_logs logs
+             {log_where}
+             ORDER BY logs.updated_at DESC, logs.id DESC
+            """,
+            log_params,
+        ).fetchall()
+        counts_rows = connection.execute(
+            """
+            SELECT assignee_user_id AS user_id,
+                   SUM(CASE WHEN status != '완료' THEN 1 ELSE 0 END) AS open_tasks,
+                   SUM(CASE WHEN status = '완료' AND substr(completed_at, 1, 10) = ? THEN 1 ELSE 0 END) AS completed_today,
+                   SUM(CASE WHEN status != '완료' AND substr(due_at, 1, 10) = ? THEN 1 ELSE 0 END) AS due_today
+              FROM crm_tasks
+             WHERE assignee_user_id IS NOT NULL
+             GROUP BY assignee_user_id
+            """,
+            (target_date, target_date),
+        ).fetchall()
+        logs_by_user = {int(row["user_id"]): row for row in log_rows}
+        task_counts = {
+            int(row["user_id"]): {
+                "open_tasks": int(row["open_tasks"] or 0),
+                "completed_today": int(row["completed_today"] or 0),
+                "due_today": int(row["due_today"] or 0),
+            }
+            for row in counts_rows
+            if row["user_id"] is not None
+        }
+        logs = [_daily_log_public(logs_by_user.get(int(staff["id"])), staff, target_date, task_counts) for staff in staff_rows]
+        submitted = sum(1 for item in logs if item["submitted"])
+        issue_count = sum(1 for item in logs if _has_daily_log_issue(item.get("blockers")))
+        return {
+            "date": target_date,
+            "staff": [
+                {
+                    "id": int(staff["id"]),
+                    "username": _clean(staff["username"]),
+                    "display_name": _staff_display_name(staff),
+                    "role": _clean(staff["role"]),
+                }
+                for staff in staff_rows
+            ],
+            "logs": logs,
+            "summary": {
+                "total_staff": len(logs),
+                "submitted": submitted,
+                "missing": max(len(logs) - submitted, 0),
+                "issues": issue_count,
+                "completed_today": sum(int(item.get("completed_today") or 0) for item in logs),
+                "due_today": sum(int(item.get("due_today") or 0) for item in logs),
+            },
+        }
+    finally:
+        connection.close()
+
+
+def save_crm_daily_log(
+    db_path: Path,
+    payload: dict[str, Any],
+    user: dict[str, Any],
+    can_manage: bool = False,
+) -> int:
+    current_user_id = _user_id(user)
+    target_user_id = int(payload.get("user_id") or current_user_id or 0)
+    if not target_user_id:
+        raise ValueError("일지를 작성할 직원을 선택해주세요.")
+    if not can_manage and target_user_id != current_user_id:
+        raise PermissionError("본인 일지만 작성할 수 있습니다.")
+    log_date = _normalize_log_date(payload.get("log_date"))
+    fields = {
+        "work_summary": _clean(payload.get("work_summary")),
+        "completed_work": _clean(payload.get("completed_work")),
+        "ongoing_work": _clean(payload.get("ongoing_work")),
+        "blockers": _clean(payload.get("blockers")),
+        "next_plan": _clean(payload.get("next_plan")),
+    }
+    if not any(fields.values()):
+        raise ValueError("일지 내용을 하나 이상 입력해주세요.")
+    connection = _connect(db_path)
+    try:
+        employee = connection.execute(
+            "SELECT id, username, display_name FROM users WHERE id = ? AND active = 1",
+            (target_user_id,),
+        ).fetchone()
+        if not employee:
+            raise ValueError("일지를 작성할 직원을 찾지 못했습니다.")
+        now = now_text()
+        employee_name = _staff_display_name(employee)
+        author_name = _user_name(user)
+        existing = connection.execute(
+            "SELECT id FROM crm_daily_logs WHERE log_date = ? AND user_id = ?",
+            (log_date, target_user_id),
+        ).fetchone()
+        if existing:
+            log_id = int(existing["id"])
+            connection.execute(
+                """
+                UPDATE crm_daily_logs
+                   SET employee_name = ?, author_user_id = ?, author_name = ?,
+                       work_summary = ?, completed_work = ?, ongoing_work = ?,
+                       blockers = ?, next_plan = ?, updated_at = ?
+                 WHERE id = ?
+                """,
+                (
+                    employee_name,
+                    current_user_id,
+                    author_name,
+                    fields["work_summary"],
+                    fields["completed_work"],
+                    fields["ongoing_work"],
+                    fields["blockers"],
+                    fields["next_plan"],
+                    now,
+                    log_id,
+                ),
+            )
+        else:
+            cursor = connection.execute(
+                """
+                INSERT INTO crm_daily_logs
+                    (log_date, user_id, employee_name, author_user_id, author_name,
+                     work_summary, completed_work, ongoing_work, blockers, next_plan,
+                     created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    log_date,
+                    target_user_id,
+                    employee_name,
+                    current_user_id,
+                    author_name,
+                    fields["work_summary"],
+                    fields["completed_work"],
+                    fields["ongoing_work"],
+                    fields["blockers"],
+                    fields["next_plan"],
+                    now,
+                    now,
+                ),
+            )
+            log_id = int(cursor.lastrowid)
+        connection.commit()
+        return log_id
+    finally:
+        connection.close()
 
 
 def crm_dashboard_payload(db_path: Path) -> dict[str, Any]:

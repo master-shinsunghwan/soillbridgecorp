@@ -235,6 +235,23 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         self.assertIn('ledgerBody.addEventListener("mousemove"', html_source)
         self.assertIn('document.addEventListener("mouseup", finishSheetRangeSelection)', html_source)
 
+    def test_crm_daily_work_logs_are_available_from_work_management(self) -> None:
+        html_source = (ROOT / "scripts" / "workhub_delivery_app.py").read_text(encoding="utf-8")
+        crm_source = (ROOT / "scripts" / "workhub_crm.py").read_text(encoding="utf-8")
+
+        self.assertIn('data-crm-nav-tab="daily"', html_source)
+        self.assertIn('id="crmTabDaily"', html_source)
+        self.assertIn('id="crmPanelDaily"', html_source)
+        self.assertIn('id="crmDailyLogForm"', html_source)
+        self.assertIn('id="crmDailyLogBody"', html_source)
+        self.assertIn("/api/crm-daily-logs", html_source)
+        self.assertIn("/api/crm-daily-log-save", html_source)
+        self.assertIn("function renderCrmDailyLogs", html_source)
+        self.assertIn("function saveCrmDailyLogForm", html_source)
+        self.assertIn("crm_daily_logs", crm_source)
+        self.assertIn("def list_crm_daily_logs", crm_source)
+        self.assertIn("def save_crm_daily_log", crm_source)
+
     def test_ledger_completed_rows_ignore_whitespace_variants_for_yellow_highlight(self) -> None:
         html_source = (ROOT / "scripts" / "workhub_delivery_app.py").read_text(encoding="utf-8")
 
