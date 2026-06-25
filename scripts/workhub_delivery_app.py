@@ -7538,77 +7538,7 @@ HTML = r"""<!doctype html>
       gap: 10px;
     }
     .crm-daily-form .crm-textarea {
-      min-height: 68px;
-    }
-    .crm-daily-form-summary {
-      display: grid;
-      gap: 8px;
-      padding: 12px;
-      border: 1px solid #dbeafe;
-      border-radius: 8px;
-      background: linear-gradient(180deg, #f8fbff, #ffffff);
-    }
-    .crm-daily-form-person {
-      display: flex;
-      justify-content: space-between;
-      gap: 8px;
-      align-items: center;
-      font-size: 13px;
-      font-weight: 950;
-      color: #0f172a;
-    }
-    .crm-daily-form-person span {
-      color: #64748b;
-      font-size: 12px;
-      font-weight: 800;
-    }
-    .crm-daily-mini-metrics {
-      display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-      gap: 6px;
-    }
-    .crm-daily-mini-metric {
-      min-width: 0;
-      padding: 8px;
-      border: 1px solid #e5e7eb;
-      border-radius: 7px;
-      background: #fff;
-    }
-    .crm-daily-mini-metric span {
-      display: block;
-      color: #64748b;
-      font-size: 11px;
-      font-weight: 850;
-    }
-    .crm-daily-mini-metric strong {
-      display: block;
-      margin-top: 2px;
-      color: #0f172a;
-      font-size: 16px;
-      font-weight: 950;
-      font-variant-numeric: tabular-nums;
-    }
-    .crm-daily-task-tags {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 5px;
-      min-width: 0;
-    }
-    .crm-daily-task-tag {
-      max-width: 100%;
-      padding: 4px 7px;
-      border-radius: 999px;
-      background: #eff6ff;
-      color: #155bc8;
-      font-size: 11px;
-      font-weight: 850;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-    .crm-daily-task-tag.muted {
-      background: #f8fafc;
-      color: #94a3b8;
+      min-height: 132px;
     }
     .crm-daily-field {
       display: grid;
@@ -7661,44 +7591,15 @@ HTML = r"""<!doctype html>
       font-size: 13px;
       font-weight: 950;
     }
+    .crm-daily-report-title.empty {
+      color: #94a3b8;
+      font-weight: 800;
+    }
     .crm-daily-report-sub {
       color: #64748b;
       font-size: 12px;
       font-weight: 800;
       line-height: 1.4;
-    }
-    .crm-daily-pill-row {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 5px;
-    }
-    .crm-daily-pill {
-      display: inline-flex;
-      align-items: center;
-      min-height: 24px;
-      padding: 0 8px;
-      border-radius: 999px;
-      background: #f8fafc;
-      color: #334155;
-      border: 1px solid #e5e7eb;
-      font-size: 11px;
-      font-weight: 900;
-      font-variant-numeric: tabular-nums;
-    }
-    .crm-daily-pill.good {
-      background: #ecfdf3;
-      border-color: #bbf7d0;
-      color: #067647;
-    }
-    .crm-daily-pill.warn {
-      background: #fff7ed;
-      border-color: #fed7aa;
-      color: #b45309;
-    }
-    .crm-daily-pill.issue {
-      background: #fef2f2;
-      border-color: #fecaca;
-      color: #b42318;
     }
     .crm-card {
       border: 1px solid var(--line);
@@ -9416,34 +9317,20 @@ HTML = r"""<!doctype html>
           <div class="crm-daily-layout">
             <form class="crm-card crm-daily-form" id="crmDailyLogForm">
               <div class="crm-card-head">
-                <span>데일리 리포트</span>
+                <span>업무일지</span>
                 <span class="crm-mini-actions">
-                  <button class="crm-mini-button" type="button" id="crmDailyDraftButton">업무 초안</button>
                   <button class="crm-mini-button primary" type="submit">저장</button>
                 </span>
               </div>
               <div class="crm-card-body">
-                <div class="crm-daily-form-summary" id="crmDailyFormSummary"></div>
                 <select class="crm-select" id="crmDailyLogUser"></select>
-                <label class="crm-daily-field" for="crmDailyWorkSummary">
-                  <span>오늘 요약</span>
-                  <textarea class="crm-textarea" id="crmDailyWorkSummary" placeholder="한 줄로 핵심만 정리"></textarea>
-                </label>
                 <label class="crm-daily-field" for="crmDailyCompletedWork">
-                  <span>처리 완료</span>
-                  <textarea class="crm-textarea" id="crmDailyCompletedWork" placeholder="완료한 업무"></textarea>
-                </label>
-                <label class="crm-daily-field" for="crmDailyOngoingWork">
-                  <span>진행 중</span>
-                  <textarea class="crm-textarea" id="crmDailyOngoingWork" placeholder="진행 중인 업무"></textarea>
-                </label>
-                <label class="crm-daily-field" for="crmDailyBlockers">
-                  <span>이슈</span>
-                  <textarea class="crm-textarea" id="crmDailyBlockers" placeholder="없음 또는 지원이 필요한 내용"></textarea>
+                  <span>오늘 한 일</span>
+                  <textarea class="crm-textarea" id="crmDailyCompletedWork" placeholder="오늘 처리한 업무를 적어줘"></textarea>
                 </label>
                 <label class="crm-daily-field" for="crmDailyNextPlan">
-                  <span>다음 계획</span>
-                  <textarea class="crm-textarea" id="crmDailyNextPlan" placeholder="다음 업무 계획"></textarea>
+                  <span>내일 할 일</span>
+                  <textarea class="crm-textarea" id="crmDailyNextPlan" placeholder="내일 이어서 할 업무를 적어줘"></textarea>
                 </label>
               </div>
             </form>
@@ -9453,7 +9340,7 @@ HTML = r"""<!doctype html>
                 <div class="crm-card-head"><span>직원별 일일 업무일지</span><span id="crmDailyLogDateLabel">오늘</span></div>
                 <div class="crm-table-wrap">
                   <table class="crm-table">
-                    <thead><tr><th>직원</th><th>리포트</th><th>업무 현황</th><th>이슈/계획</th><th>관리</th></tr></thead>
+                    <thead><tr><th>직원</th><th>오늘 한 일</th><th>내일 할 일</th><th>관리</th></tr></thead>
                     <tbody id="crmDailyLogBody"></tbody>
                   </table>
                 </div>
@@ -11230,8 +11117,6 @@ HTML = r"""<!doctype html>
     const crmDailyLogRefresh = document.querySelector("#crmDailyLogRefresh");
     const crmDailyLogReset = document.querySelector("#crmDailyLogReset");
     const crmDailyLogForm = document.querySelector("#crmDailyLogForm");
-    const crmDailyDraftButton = document.querySelector("#crmDailyDraftButton");
-    const crmDailyFormSummary = document.querySelector("#crmDailyFormSummary");
     const crmDailyLogUser = document.querySelector("#crmDailyLogUser");
     const crmDailyWorkSummary = document.querySelector("#crmDailyWorkSummary");
     const crmDailyCompletedWork = document.querySelector("#crmDailyCompletedWork");
@@ -15572,98 +15457,9 @@ HTML = r"""<!doctype html>
       return crmDailyLogDate?.value || todayString();
     }
 
-    function crmDailySelectedLog() {
-      const userId = crmDailyLogUser?.value || currentUser.id || "";
-      const selectedOption = crmDailyLogUser?.selectedOptions?.[0];
-      const fallbackName = selectedOption?.textContent || currentUser.display_name || currentUser.username || "직원";
-      return crmDailyLogs.find((log) => String(log.user_id || "") === String(userId || "")) || {
-        user_id: userId,
-        username: currentUser.username || "",
-        display_name: fallbackName,
-        role: currentUser.role || "",
-        submitted: false,
-        work_summary: "",
-        completed_work: "",
-        ongoing_work: "",
-        blockers: "",
-        next_plan: "",
-        open_tasks: 0,
-        completed_today: 0,
-        due_today: 0,
-        completed_today_tasks: [],
-        due_today_tasks: [],
-        open_task_samples: [],
-      };
-    }
-
-    function crmDailyTaskLabel(task) {
-      return [task?.public_id, task?.title].filter(Boolean).join(" ");
-    }
-
-    function crmDailyTaskTags(tasks, emptyText = "참고 업무 없음") {
-      const rows = (tasks || []).map(crmDailyTaskLabel).filter(Boolean).slice(0, 4);
-      if (!rows.length) return `<span class="crm-daily-task-tag muted">${escapeHtml(emptyText)}</span>`;
-      return rows.map((text) => `<span class="crm-daily-task-tag">${escapeHtml(text)}</span>`).join("");
-    }
-
     function crmDailyCompactText(...values) {
       const text = values.find((value) => String(value || "").trim());
       return String(text || "").replace(/\s+/g, " ").trim();
-    }
-
-    function crmDailyHasIssue(log) {
-      const blockers = String(log?.blockers || "").trim();
-      if (!blockers) return false;
-      const normalized = blockers.toLowerCase().replace(/[\s./_-]+/g, "");
-      return !["없음", "이슈없음", "특이사항없음", "특이이슈없음", "문제없음", "해당없음", "없습니다", "none", "no", "na", "n/a"].includes(normalized);
-    }
-
-    function renderCrmDailyFormSummary() {
-      if (!crmDailyFormSummary) return;
-      const log = crmDailySelectedLog();
-      const person = log.display_name || log.employee_name || "직원";
-      const statusText = log.submitted ? "작성됨" : "미작성";
-      const pendingTasks = (log.due_today_tasks || []).length ? log.due_today_tasks : log.open_task_samples;
-      crmDailyFormSummary.innerHTML = `
-        <div class="crm-daily-form-person">
-          <strong>${escapeHtml(person)}</strong>
-          <span>${escapeHtml(statusText)}</span>
-        </div>
-        <div class="crm-daily-mini-metrics">
-          <div class="crm-daily-mini-metric"><span>오늘 완료</span><strong>${escapeHtml(log.completed_today || 0)}</strong></div>
-          <div class="crm-daily-mini-metric"><span>진행 중</span><strong>${escapeHtml(log.open_tasks || 0)}</strong></div>
-          <div class="crm-daily-mini-metric"><span>오늘 마감</span><strong>${escapeHtml(log.due_today || 0)}</strong></div>
-        </div>
-        <div class="crm-daily-task-tags">${crmDailyTaskTags(pendingTasks, "참고할 업무 없음")}</div>
-      `;
-    }
-
-    function draftCrmDailyFromTasks() {
-      const log = crmDailySelectedLog();
-      const completed = (log.completed_today_tasks || []).map(crmDailyTaskLabel).filter(Boolean);
-      const dueToday = (log.due_today_tasks || []).map(crmDailyTaskLabel).filter(Boolean);
-      const openTasks = (log.open_task_samples || []).map(crmDailyTaskLabel).filter(Boolean);
-      const summaryParts = [];
-      if (completed.length) summaryParts.push(`완료 ${completed.length}건`);
-      if (openTasks.length) summaryParts.push(`진행 ${openTasks.length}건`);
-      if (dueToday.length) summaryParts.push(`오늘 마감 ${dueToday.length}건`);
-      if (crmDailyWorkSummary && !crmDailyWorkSummary.value.trim()) {
-        crmDailyWorkSummary.value = summaryParts.join(" / ") || "일일 업무 점검";
-      }
-      if (crmDailyCompletedWork && !crmDailyCompletedWork.value.trim() && completed.length) {
-        crmDailyCompletedWork.value = completed.slice(0, 6).join("\n");
-      }
-      if (crmDailyOngoingWork && !crmDailyOngoingWork.value.trim() && openTasks.length) {
-        crmDailyOngoingWork.value = openTasks.slice(0, 6).join("\n");
-      }
-      if (crmDailyBlockers && !crmDailyBlockers.value.trim()) {
-        crmDailyBlockers.value = "없음";
-      }
-      if (crmDailyNextPlan && !crmDailyNextPlan.value.trim()) {
-        crmDailyNextPlan.value = (dueToday.length ? dueToday : openTasks).slice(0, 5).join("\n");
-      }
-      crmDailyWorkSummary?.focus();
-      renderCrmDailyFormSummary();
     }
 
     function clearCrmDailyLogFields() {
@@ -15678,8 +15474,7 @@ HTML = r"""<!doctype html>
       if (crmDailyLogDate) crmDailyLogDate.value = selectedCrmDailyDate();
       renderCrmDailyUserOptions();
       clearCrmDailyLogFields();
-      renderCrmDailyFormSummary();
-      crmDailyWorkSummary?.focus();
+      crmDailyCompletedWork?.focus();
     }
 
     function fillCrmDailyLogForm(log) {
@@ -15688,12 +15483,11 @@ HTML = r"""<!doctype html>
       renderCrmDailyUserOptions();
       if (crmDailyLogUser) crmDailyLogUser.value = String(log.user_id || currentUser.id || "");
       if (crmDailyWorkSummary) crmDailyWorkSummary.value = log.work_summary || "";
-      if (crmDailyCompletedWork) crmDailyCompletedWork.value = log.completed_work || "";
+      if (crmDailyCompletedWork) crmDailyCompletedWork.value = log.completed_work || log.ongoing_work || log.work_summary || "";
       if (crmDailyOngoingWork) crmDailyOngoingWork.value = log.ongoing_work || "";
       if (crmDailyBlockers) crmDailyBlockers.value = log.blockers || "";
       if (crmDailyNextPlan) crmDailyNextPlan.value = log.next_plan || "";
-      renderCrmDailyFormSummary();
-      crmDailyWorkSummary?.focus();
+      crmDailyCompletedWork?.focus();
     }
 
     function crmDailyPreviewText(log) {
@@ -15710,8 +15504,6 @@ HTML = r"""<!doctype html>
         crmDailyLogStats.innerHTML = [
           ["작성", summary.submitted || 0, "DONE"],
           ["미작성", summary.missing || 0, "MISS"],
-          ["이슈", summary.issues || 0, "ISSUE"],
-          ["오늘 완료", summary.completed_today || 0, "TASK"],
         ].map(([label, value, icon]) => `
           <article class="crm-board-stat">
             <div><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></div>
@@ -15720,17 +15512,13 @@ HTML = r"""<!doctype html>
         `).join("");
       }
       if (!logs.length) {
-        crmDailyLogBody.innerHTML = `<tr><td colspan="5">표시할 직원 일지가 없습니다.</td></tr>`;
+        crmDailyLogBody.innerHTML = `<tr><td colspan="4">표시할 직원 일지가 없습니다.</td></tr>`;
         return;
       }
       crmDailyLogBody.innerHTML = logs.map((log) => {
         const canWrite = can("crm_manage") || String(log.user_id || "") === String(currentUser.id || "");
-        const preview = crmDailyPreviewText(log);
-        const detailText = crmDailyCompactText(log.completed_work, log.ongoing_work) || "상세 내용 없음";
-        const hasIssue = crmDailyHasIssue(log);
-        const issueText = log.blockers || "이슈 없음";
-        const nextText = crmDailyCompactText(log.next_plan) || "다음 계획 없음";
-        const taskSamples = (log.open_task_samples || []).length ? log.open_task_samples : log.due_today_tasks;
+        const todayText = crmDailyPreviewText(log) || "아직 작성된 내용이 없습니다.";
+        const tomorrowText = crmDailyCompactText(log.next_plan) || "아직 작성된 내용이 없습니다.";
         return `
           <tr>
             <td class="left">
@@ -15743,34 +15531,15 @@ HTML = r"""<!doctype html>
               <div class="crm-daily-report">
                 <div class="crm-daily-report-top">
                   ${log.submitted ? `<span class="crm-status done">작성</span>` : `<span class="crm-status wait">미작성</span>`}
-                  <span class="crm-daily-report-title">${escapeHtml(preview || "작성된 업무 내용이 없습니다.")}</span>
+                  <span class="crm-daily-report-title ${log.submitted ? "" : "empty"}">${escapeHtml(todayText)}</span>
                 </div>
-                <div class="crm-daily-report-sub">${escapeHtml(detailText)}</div>
               </div>
             </td>
-            <td class="left">
-              <div class="crm-daily-report">
-                <div class="crm-daily-pill-row">
-                  <span class="crm-daily-pill good">완료 ${escapeHtml(log.completed_today || 0)}</span>
-                  <span class="crm-daily-pill">진행 ${escapeHtml(log.open_tasks || 0)}</span>
-                  <span class="crm-daily-pill warn">마감 ${escapeHtml(log.due_today || 0)}</span>
-                </div>
-                <div class="crm-daily-task-tags">${crmDailyTaskTags(taskSamples, "연결된 업무 없음")}</div>
-              </div>
-            </td>
-            <td class="left">
-              <div class="crm-daily-report">
-                <div class="crm-daily-pill-row">
-                  <span class="crm-daily-pill ${hasIssue ? "issue" : "good"}">${hasIssue ? "이슈 확인" : "이슈 없음"}</span>
-                </div>
-                <div class="crm-daily-report-sub">${escapeHtml(issueText)} · ${escapeHtml(nextText)}</div>
-              </div>
-            </td>
+            <td class="left"><div class="crm-daily-preview ${log.next_plan ? "" : "empty"}">${escapeHtml(tomorrowText)}</div></td>
             <td>${canWrite ? `<button class="crm-mini-button" type="button" data-crm-daily-load="${escapeHtml(log.user_id)}">${log.submitted ? "수정" : "작성"}</button>` : "-"}</td>
           </tr>
         `;
       }).join("");
-      renderCrmDailyFormSummary();
     }
 
     async function loadCrmDailyLogs() {
@@ -15783,24 +15552,26 @@ HTML = r"""<!doctype html>
       if (!crmDailyLogUserFilter?.value && data.staff?.length) crmUsers = data.staff;
       renderCrmDailyUserOptions();
       renderCrmDailyLogs(data);
-      renderCrmDailyFormSummary();
     }
 
     async function saveCrmDailyLogForm(event) {
       event.preventDefault();
       if (!can("crm_view")) return;
       const userId = crmDailyLogUser?.value || currentUser.id || "";
+      const todayWork = crmDailyCompletedWork?.value.trim() || "";
+      const tomorrowWork = crmDailyNextPlan?.value.trim() || "";
+      const summaryLine = todayWork.split(/\n+/).map((line) => line.trim()).find(Boolean) || todayWork;
       const data = await crmFetchJson("/api/crm-daily-log-save", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           log_date: selectedCrmDailyDate(),
           user_id: userId,
-          work_summary: crmDailyWorkSummary?.value.trim() || "",
-          completed_work: crmDailyCompletedWork?.value.trim() || "",
-          ongoing_work: crmDailyOngoingWork?.value.trim() || "",
-          blockers: crmDailyBlockers?.value.trim() || "",
-          next_plan: crmDailyNextPlan?.value.trim() || "",
+          work_summary: summaryLine,
+          completed_work: todayWork,
+          ongoing_work: "",
+          blockers: "",
+          next_plan: tomorrowWork,
         }),
       });
       setCrmMessage(data.message || "일일 업무일지를 저장했습니다.");
@@ -21033,15 +20804,13 @@ HTML = r"""<!doctype html>
       loadCrmDailyLogs().catch((error) => setCrmMessage(error.message, true));
     });
     crmDailyLogUser?.addEventListener("change", () => {
-      const log = crmDailySelectedLog();
+      const log = crmDailyLogs.find((item) => String(item.user_id || "") === String(crmDailyLogUser.value || ""));
       if (log?.submitted) {
         fillCrmDailyLogForm(log);
       } else {
         clearCrmDailyLogFields();
-        renderCrmDailyFormSummary();
       }
     });
-    crmDailyDraftButton?.addEventListener("click", draftCrmDailyFromTasks);
     crmDailyLogForm?.addEventListener("submit", (event) => {
       saveCrmDailyLogForm(event).catch((error) => setCrmMessage(error.message, true));
     });
