@@ -219,6 +219,22 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         self.assertNotIn('openCellEditor("management"', html_source[management_click_start:management_click_end])
         self.assertNotIn('openCellEditor("ledger"', html_source[ledger_click_start:ledger_click_end])
 
+    def test_sheet_like_tables_support_drag_selection_and_numeric_summary(self) -> None:
+        html_source = (ROOT / "scripts" / "workhub_delivery_app.py").read_text(encoding="utf-8")
+
+        self.assertIn("sheetRangeSelection", html_source)
+        self.assertIn("sheet-selection-summary", html_source)
+        self.assertIn("function applySheetRangeSelection(scope, anchor, current)", html_source)
+        self.assertIn("function updateSheetSelectionSummary(cells)", html_source)
+        self.assertIn("function numericValueFromSheetCell(cell)", html_source)
+        self.assertIn("합계 ${formatSheetNumber(sum)}", html_source)
+        self.assertIn("평균 ${formatSheetNumber(average)}", html_source)
+        self.assertIn('managementBody.addEventListener("mousedown"', html_source)
+        self.assertIn('ledgerBody.addEventListener("mousedown"', html_source)
+        self.assertIn('managementBody.addEventListener("mousemove"', html_source)
+        self.assertIn('ledgerBody.addEventListener("mousemove"', html_source)
+        self.assertIn('document.addEventListener("mouseup", finishSheetRangeSelection)', html_source)
+
     def test_ledger_completed_rows_ignore_whitespace_variants_for_yellow_highlight(self) -> None:
         html_source = (ROOT / "scripts" / "workhub_delivery_app.py").read_text(encoding="utf-8")
 

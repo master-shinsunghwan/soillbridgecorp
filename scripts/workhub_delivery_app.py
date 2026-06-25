@@ -4339,6 +4339,44 @@ HTML = r"""<!doctype html>
       outline-offset: -2px;
       background: #eef6ff;
     }
+    .ledger-table td.sheet-range-cell {
+      outline: 1px solid #60a5fa;
+      outline-offset: -1px;
+      background: #dbeafe !important;
+    }
+    .ledger-table td.sheet-range-anchor {
+      outline: 2px solid #155bc8;
+      outline-offset: -2px;
+      background: #bfdbfe !important;
+    }
+    .sheet-selection-summary {
+      position: fixed;
+      right: 18px;
+      bottom: 18px;
+      z-index: 80;
+      display: none;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+      max-width: min(520px, calc(100vw - 36px));
+      padding: 9px 12px;
+      border: 1px solid #93c5fd;
+      border-radius: 8px;
+      background: rgba(15, 23, 42, .94);
+      color: #e5f0ff;
+      box-shadow: 0 14px 34px rgba(15, 23, 42, .24);
+      font-size: 12px;
+      font-weight: 850;
+      pointer-events: none;
+    }
+    .sheet-selection-summary.open { display: flex; }
+    .sheet-selection-summary strong {
+      color: #ffffff;
+      font-weight: 950;
+    }
+    .sheet-selection-summary span {
+      white-space: nowrap;
+    }
     .ledger-status-cell {
       display: inline-flex;
       align-items: center;
@@ -11035,6 +11073,16 @@ HTML = r"""<!doctype html>
       ledger: null,
       management: null,
     };
+    const sheetRangeSelection = {
+      scope: "",
+      anchor: null,
+      current: null,
+      cells: [],
+      dragging: false,
+      moved: false,
+      suppressClick: false,
+      summary: null,
+    };
     const ledgerFilters = {};
     const managementFilters = {};
     let isBulkSaving = false;
@@ -16907,6 +16955,7 @@ HTML = r"""<!doctype html>
 
     function selectEditableCell(scope, cell) {
       if (!cell || cell.dataset.readonly === "1") return;
+      clearSheetRangeSelection();
       const previous = activeCellEditors[scope];
       if (previous?.cell && previous.cell !== cell) previous.cell.classList.remove("selected-cell");
       const parts = selectedEditorParts(scope);
@@ -16937,6 +16986,192 @@ HTML = r"""<!doctype html>
 
     function editableCellsInRow(scope, row) {
       return Array.from(row?.querySelectorAll(editableSelectorForScope(scope)) || []);
+    }
+
+    function sheetCellSelectorForScope(scope) {
+      return scope === "management"
+        ? "tr[data-record-id] td:not(:first-child):not(:last-child)"
+        : "tr[data-case-id] td:not(:first-child)";
+    }
+
+    function sheetRowsForScope(scope) {
+      const body = scope === "management" ? managementBody : ledgerBody;
+      const rowSelector = scope === "management" ? "tr[data-record-id]" : "tr[data-case-id]";
+      return Array.from(body?.querySelectorAll(rowSelector) || []);
+    }
+
+    function sheetCellsInRow(scope, row) {
+      return Array.from(row?.querySelectorAll(sheetCellSelectorForScope(scope)) || [])
+        .filter((cell) => !cell.querySelector(".management-cs-button"));
+    }
+
+    function sheetCellScope(cell) {
+      if (!cell) return "";
+      if (cell.closest("#managementBody")) return "management";
+      if (cell.closest("#ledgerBody")) return "ledger";
+      return "";
+    }
+
+    function sheetCellPosition(scope, cell) {
+      const row = cell?.closest("tr");
+      const rows = sheetRowsForScope(scope);
+      const rowIndex = rows.indexOf(row);
+      const cells = sheetCellsInRow(scope, row);
+      const columnIndex = cells.indexOf(cell);
+      if (rowIndex < 0 || columnIndex < 0) return null;
+      return { rowIndex, columnIndex };
+    }
+
+    function clearSheetRangeSelection({ hideSummary = true } = {}) {
+      sheetRangeSelection.cells.forEach((cell) => {
+        cell.classList.remove("sheet-range-cell", "sheet-range-anchor");
+      });
+      sheetRangeSelection.scope = "";
+      sheetRangeSelection.anchor = null;
+      sheetRangeSelection.current = null;
+      sheetRangeSelection.cells = [];
+      sheetRangeSelection.dragging = false;
+      sheetRangeSelection.moved = false;
+      if (hideSummary && sheetRangeSelection.summary) {
+        sheetRangeSelection.summary.classList.remove("open");
+        sheetRangeSelection.summary.innerHTML = "";
+      }
+    }
+
+    function ensureSheetSelectionSummary() {
+      if (!sheetRangeSelection.summary) {
+        const summary = document.createElement("div");
+        summary.className = "sheet-selection-summary";
+        summary.setAttribute("aria-live", "polite");
+        document.body.appendChild(summary);
+        sheetRangeSelection.summary = summary;
+      }
+      return sheetRangeSelection.summary;
+    }
+
+    function formatSheetNumber(value) {
+      return new Intl.NumberFormat("ko-KR", { maximumFractionDigits: 2 }).format(value);
+    }
+
+    function numericValueFromSheetCell(cell) {
+      const raw = String(fieldValue(cell) || cell?.textContent || "").trim();
+      if (!raw) return null;
+      const normalized = raw.replace(/,/g, "");
+      if (!/^[+-]?(?:\d+\.?\d*|\.\d+)$/.test(normalized)) return null;
+      const value = Number(normalized);
+      return Number.isFinite(value) ? value : null;
+    }
+
+    function updateSheetSelectionSummary(cells) {
+      const summary = ensureSheetSelectionSummary();
+      if (!cells.length) {
+        summary.classList.remove("open");
+        summary.innerHTML = "";
+        return;
+      }
+      const numbers = cells
+        .map(numericValueFromSheetCell)
+        .filter((value) => value !== null);
+      if (cells.length === 1 && numbers.length === 0) {
+        summary.classList.remove("open");
+        summary.innerHTML = "";
+        return;
+      }
+      const sum = numbers.reduce((total, value) => total + value, 0);
+      const average = numbers.length ? sum / numbers.length : 0;
+      summary.innerHTML = numbers.length
+        ? `<span>선택 ${formatSheetNumber(cells.length)}칸</span><span>숫자 ${formatSheetNumber(numbers.length)}개</span><strong>합계 ${formatSheetNumber(sum)}</strong><span>평균 ${formatSheetNumber(average)}</span>`
+        : `<span>선택 ${formatSheetNumber(cells.length)}칸</span><span>숫자 없음</span>`;
+      summary.classList.add("open");
+    }
+
+    function applySheetRangeSelection(scope, anchor, current) {
+      const start = sheetCellPosition(scope, anchor);
+      const end = sheetCellPosition(scope, current);
+      if (!start || !end) return;
+      sheetRangeSelection.cells.forEach((cell) => {
+        cell.classList.remove("sheet-range-cell", "sheet-range-anchor");
+      });
+      const rowStart = Math.min(start.rowIndex, end.rowIndex);
+      const rowEnd = Math.max(start.rowIndex, end.rowIndex);
+      const colStart = Math.min(start.columnIndex, end.columnIndex);
+      const colEnd = Math.max(start.columnIndex, end.columnIndex);
+      const rows = sheetRowsForScope(scope);
+      const nextCells = [];
+      for (let rowIndex = rowStart; rowIndex <= rowEnd; rowIndex += 1) {
+        const rowCells = sheetCellsInRow(scope, rows[rowIndex]);
+        for (let columnIndex = colStart; columnIndex <= colEnd; columnIndex += 1) {
+          const cell = rowCells[columnIndex];
+          if (cell) nextCells.push(cell);
+        }
+      }
+      nextCells.forEach((cell) => cell.classList.add("sheet-range-cell"));
+      anchor.classList.add("sheet-range-anchor");
+      sheetRangeSelection.scope = scope;
+      sheetRangeSelection.anchor = anchor;
+      sheetRangeSelection.current = current;
+      sheetRangeSelection.cells = nextCells;
+      updateSheetSelectionSummary(nextCells);
+    }
+
+    function isSheetSelectionIgnoredTarget(target) {
+      return Boolean(target?.closest("[data-row-check], button, a, input, textarea, select, label, [contenteditable='true']"));
+    }
+
+    function beginSheetRangeSelection(scope, cell, event) {
+      if (!cell || isSheetSelectionIgnoredTarget(event.target)) return;
+      if (event.button !== undefined && event.button !== 0) return;
+      if (event.shiftKey && sheetRangeSelection.anchor && sheetRangeSelection.scope === scope) {
+        event.preventDefault();
+        sheetRangeSelection.suppressClick = true;
+        applySheetRangeSelection(scope, sheetRangeSelection.anchor, cell);
+        return;
+      }
+      clearSheetRangeSelection();
+      sheetRangeSelection.scope = scope;
+      sheetRangeSelection.anchor = cell;
+      sheetRangeSelection.current = cell;
+      sheetRangeSelection.dragging = true;
+      sheetRangeSelection.moved = false;
+      applySheetRangeSelection(scope, cell, cell);
+      event.preventDefault();
+    }
+
+    function updateSheetRangeDrag(cell) {
+      const scope = sheetRangeSelection.scope;
+      if (!sheetRangeSelection.dragging || !scope || sheetCellScope(cell) !== scope) return;
+      if (cell === sheetRangeSelection.current) return;
+      sheetRangeSelection.moved = true;
+      applySheetRangeSelection(scope, sheetRangeSelection.anchor, cell);
+    }
+
+    function finishSheetRangeSelection() {
+      if (!sheetRangeSelection.dragging) return;
+      sheetRangeSelection.dragging = false;
+      if (sheetRangeSelection.moved && sheetRangeSelection.cells.length > 1) {
+        sheetRangeSelection.suppressClick = true;
+        setTimeout(() => {
+          sheetRangeSelection.suppressClick = false;
+        }, 0);
+      }
+    }
+
+    function shouldSuppressSheetSelectionClick(event) {
+      if (!sheetRangeSelection.suppressClick || isSheetSelectionIgnoredTarget(event.target)) return false;
+      sheetRangeSelection.suppressClick = false;
+      event.preventDefault();
+      event.stopPropagation();
+      return true;
+    }
+
+    function handleSheetBodyMouseDown(scope, event) {
+      const cell = event.target.closest(sheetCellSelectorForScope(scope));
+      if (cell) beginSheetRangeSelection(scope, cell, event);
+    }
+
+    function handleSheetBodyMouseOver(scope, event) {
+      const cell = event.target.closest(sheetCellSelectorForScope(scope));
+      if (cell) updateSheetRangeDrag(cell);
     }
 
     function moveEditableCell(scope, cell, rowDelta, colDelta) {
@@ -17069,6 +17304,7 @@ HTML = r"""<!doctype html>
 
     function openCellEditor(scope, cell) {
       if (!cell || cell.dataset.readonly === "1" || !can("ledger_edit")) return;
+      clearSheetRangeSelection();
       closeCellEditor(scope);
       closeLedgerFilter();
       const row = cell.closest("tr");
@@ -17435,6 +17671,7 @@ HTML = r"""<!doctype html>
 
     function renderLedger(cases) {
       closeCellEditor("ledger");
+      clearSheetRangeSelection();
       ledgerBody.innerHTML = "";
       if (ledgerSelectAll) {
         ledgerSelectAll.checked = false;
@@ -18016,6 +18253,7 @@ HTML = r"""<!doctype html>
 
     function renderManagement(records) {
       closeCellEditor("management");
+      clearSheetRangeSelection();
       managementBody.innerHTML = "";
       if (managementSelectAll) managementSelectAll.checked = false;
       updateManagementColumnWidths(records || []);
@@ -20901,7 +21139,12 @@ HTML = r"""<!doctype html>
     document.addEventListener("click", (event) => {
       if (!event.target.closest(".download-menu-wrap")) closeDownloadMenus();
     });
+    document.addEventListener("mouseup", finishSheetRangeSelection);
+    managementBody.addEventListener("mousedown", (event) => handleSheetBodyMouseDown("management", event));
+    managementBody.addEventListener("mouseover", (event) => handleSheetBodyMouseOver("management", event));
+    managementBody.addEventListener("mousemove", (event) => handleSheetBodyMouseOver("management", event));
     managementBody.addEventListener("click", (event) => {
+      if (shouldSuppressSheetSelectionClick(event)) return;
       const editableCell = event.target.closest(".editable-cell[data-management-field]");
       if (editableCell) {
         selectEditableCell("management", editableCell);
@@ -20922,7 +21165,11 @@ HTML = r"""<!doctype html>
     managementBody.addEventListener("keydown", (event) => {
       handleEditableCellNavigation("management", event);
     });
+    ledgerBody.addEventListener("mousedown", (event) => handleSheetBodyMouseDown("ledger", event));
+    ledgerBody.addEventListener("mouseover", (event) => handleSheetBodyMouseOver("ledger", event));
+    ledgerBody.addEventListener("mousemove", (event) => handleSheetBodyMouseOver("ledger", event));
     ledgerBody.addEventListener("click", (event) => {
+      if (shouldSuppressSheetSelectionClick(event)) return;
       if (event.target.closest("[data-row-check]")) {
         syncLedgerSelectAll();
         return;
