@@ -346,9 +346,11 @@ def _daily_log_public(
     staff: sqlite3.Row | dict[str, Any],
     log_date: str,
     task_counts: dict[int, dict[str, int]],
+    task_samples: dict[int, dict[str, list[dict[str, Any]]]],
 ) -> dict[str, Any]:
     user_id = int(staff["id"])
     counts = task_counts.get(user_id, {})
+    samples = task_samples.get(user_id, {})
     if row:
         item = dict(row)
     else:
@@ -375,6 +377,9 @@ def _daily_log_public(
     item["open_tasks"] = int(counts.get("open_tasks", 0))
     item["completed_today"] = int(counts.get("completed_today", 0))
     item["due_today"] = int(counts.get("due_today", 0))
+    item["completed_today_tasks"] = samples.get("completed_today_tasks", [])
+    item["due_today_tasks"] = samples.get("due_today_tasks", [])
+    item["open_task_samples"] = samples.get("open_task_samples", [])
     return item
 
 
@@ -455,7 +460,57 @@ def list_crm_daily_logs(db_path: Path, log_date: object = "", user_id: int | Non
             for row in counts_rows
             if row["user_id"] is not None
         }
-        logs = [_daily_log_public(logs_by_user.get(int(staff["id"])), staff, target_date, task_counts) for staff in staff_rows]
+        task_sample_rows = connection.execute(
+            """
+            SELECT id, public_id, title, status, priority, due_at, completed_at, assignee_user_id
+              FROM crm_tasks
+             WHERE assignee_user_id IS NOT NULL
+               AND (
+                    status != '완료'
+                    OR substr(completed_at, 1, 10) = ?
+                    OR substr(due_at, 1, 10) = ?
+               )
+             ORDER BY assignee_user_id,
+                      CASE WHEN status = '완료' AND substr(completed_at, 1, 10) = ? THEN 0 ELSE 1 END,
+                      CASE WHEN status != '완료' AND substr(due_at, 1, 10) = ? THEN 0 ELSE 1 END,
+                      CASE priority WHEN '높음' THEN 0 WHEN '보통' THEN 1 ELSE 2 END,
+                      CASE WHEN due_at IS NULL OR due_at = '' THEN 1 ELSE 0 END,
+                      due_at,
+                      updated_at DESC
+             LIMIT 800
+            """,
+            (target_date, target_date, target_date, target_date),
+        ).fetchall()
+        task_samples: dict[int, dict[str, list[dict[str, Any]]]] = {}
+        for row in _rows(task_sample_rows):
+            sample_user_id = int(row.get("assignee_user_id") or 0)
+            if not sample_user_id:
+                continue
+            bucket = task_samples.setdefault(sample_user_id, {
+                "completed_today_tasks": [],
+                "due_today_tasks": [],
+                "open_task_samples": [],
+            })
+            task_item = {
+                "id": row.get("id"),
+                "public_id": row.get("public_id") or "",
+                "title": row.get("title") or "",
+                "status": row.get("status") or "",
+                "priority": row.get("priority") or "",
+                "due_at": row.get("due_at") or "",
+            }
+            if row.get("status") == "완료" and str(row.get("completed_at") or "")[:10] == target_date:
+                if len(bucket["completed_today_tasks"]) < 6:
+                    bucket["completed_today_tasks"].append(task_item)
+            elif str(row.get("due_at") or "")[:10] == target_date:
+                if len(bucket["due_today_tasks"]) < 6:
+                    bucket["due_today_tasks"].append(task_item)
+            if row.get("status") != "완료" and len(bucket["open_task_samples"]) < 8:
+                bucket["open_task_samples"].append(task_item)
+        logs = [
+            _daily_log_public(logs_by_user.get(int(staff["id"])), staff, target_date, task_counts, task_samples)
+            for staff in staff_rows
+        ]
         submitted = sum(1 for item in logs if item["submitted"])
         issue_count = sum(1 for item in logs if _has_daily_log_issue(item.get("blockers")))
         return {

@@ -64,6 +64,48 @@ class CrmDailyLogTests(unittest.TestCase):
                 )
 
                 self.assertGreater(log_id, 0)
+                connection = sqlite3.connect(db_path)
+                try:
+                    connection.executemany(
+                        """
+                        INSERT INTO crm_tasks (
+                            public_id, created_at, updated_at, title, assignee_user_id, assignee_name,
+                            due_at, status, priority, source, completed_at
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        [
+                            (
+                                "CRM-20260625-0001",
+                                "2026-06-25T08:00:00",
+                                "2026-06-25T08:00:00",
+                                "오늘 마감 발주 확인",
+                                1,
+                                "김대리",
+                                "2026-06-25",
+                                "진행",
+                                "높음",
+                                "app",
+                                "",
+                            ),
+                            (
+                                "CRM-20260625-0002",
+                                "2026-06-25T08:30:00",
+                                "2026-06-25T09:30:00",
+                                "오전 CS 처리",
+                                1,
+                                "김대리",
+                                "",
+                                "완료",
+                                "보통",
+                                "app",
+                                "2026-06-25T09:30:00",
+                            ),
+                        ],
+                    )
+                    connection.commit()
+                finally:
+                    connection.close()
+
                 payload = crm.list_crm_daily_logs(db_path, "2026-06-25")
                 self.assertEqual(payload["summary"]["submitted"], 1)
                 self.assertEqual(payload["summary"]["missing"], 1)
@@ -71,6 +113,11 @@ class CrmDailyLogTests(unittest.TestCase):
                 kim_log = next(item for item in payload["logs"] if item["user_id"] == 1)
                 self.assertTrue(kim_log["submitted"])
                 self.assertEqual(kim_log["completed_work"], "오전 발주 마감")
+                self.assertEqual(kim_log["open_tasks"], 1)
+                self.assertEqual(kim_log["due_today"], 1)
+                self.assertEqual(kim_log["completed_today"], 1)
+                self.assertEqual(kim_log["due_today_tasks"][0]["title"], "오늘 마감 발주 확인")
+                self.assertEqual(kim_log["completed_today_tasks"][0]["title"], "오전 CS 처리")
 
                 updated_id = crm.save_crm_daily_log(
                     db_path,
