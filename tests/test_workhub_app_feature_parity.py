@@ -244,6 +244,8 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         self.assertIn('id="crmPanelDaily"', html_source)
         self.assertIn('id="crmDailyLogForm"', html_source)
         self.assertIn('id="crmDailyLogBody"', html_source)
+        self.assertIn("crm-daily-log-list", html_source)
+        self.assertIn("crm-daily-log-card", html_source)
         self.assertIn("오늘 한 일", html_source)
         self.assertIn("내일 할 일", html_source)
         self.assertNotIn('id="crmDailyFormSummary"', html_source)

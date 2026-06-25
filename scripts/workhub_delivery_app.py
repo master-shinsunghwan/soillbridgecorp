@@ -7574,6 +7574,77 @@ HTML = r"""<!doctype html>
     .crm-daily-preview.empty {
       color: #94a3b8;
     }
+    .crm-daily-list-panel {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: white;
+      overflow: hidden;
+    }
+    .crm-daily-log-list {
+      display: grid;
+      gap: 10px;
+      padding: 12px;
+      background: #f8fafc;
+    }
+    .crm-daily-log-empty {
+      padding: 24px 12px;
+      color: #94a3b8;
+      font-size: 13px;
+      font-weight: 850;
+      text-align: center;
+    }
+    .crm-daily-log-card {
+      display: grid;
+      gap: 10px;
+      padding: 12px;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      background: #fff;
+    }
+    .crm-daily-log-card-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      align-items: flex-start;
+    }
+    .crm-daily-log-card-actions {
+      display: flex;
+      flex-shrink: 0;
+      gap: 6px;
+      align-items: center;
+    }
+    .crm-daily-log-card-body {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+    }
+    .crm-daily-log-section {
+      display: grid;
+      gap: 6px;
+      min-width: 0;
+      padding: 10px;
+      border: 1px solid #e5e7eb;
+      border-radius: 7px;
+      background: #fbfcff;
+    }
+    .crm-daily-log-section > span {
+      color: #475467;
+      font-size: 11px;
+      font-weight: 950;
+    }
+    .crm-daily-log-text {
+      min-height: 42px;
+      color: #27364a;
+      font-size: 13px;
+      font-weight: 800;
+      line-height: 1.55;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .crm-daily-log-text.empty {
+      color: #94a3b8;
+      font-weight: 800;
+    }
     .crm-daily-report {
       display: grid;
       gap: 5px;
@@ -8211,6 +8282,26 @@ HTML = r"""<!doctype html>
       .crm-task-toolbar { grid-template-columns: 1fr; }
       .crm-advanced-filters { grid-template-columns: 1fr; }
       .crm-daily-toolbar { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 760px) {
+      .crm-daily-log-list {
+        padding: 10px;
+      }
+      .crm-daily-log-card-head {
+        display: grid;
+      }
+      .crm-daily-log-card-actions {
+        justify-content: space-between;
+      }
+      .crm-daily-log-card-actions .crm-mini-button {
+        min-width: 86px;
+      }
+      .crm-daily-log-card-body {
+        grid-template-columns: 1fr;
+      }
+      .crm-daily-log-section {
+        padding: 9px;
+      }
     }
     .crm-help {
       margin: 0;
@@ -9336,15 +9427,10 @@ HTML = r"""<!doctype html>
             </form>
             <div>
               <div class="crm-task-board-stats" id="crmDailyLogStats"></div>
-              <article class="crm-card">
+              <section class="crm-daily-list-panel">
                 <div class="crm-card-head"><span>직원별 일일 업무일지</span><span id="crmDailyLogDateLabel">오늘</span></div>
-                <div class="crm-table-wrap">
-                  <table class="crm-table">
-                    <thead><tr><th>직원</th><th>오늘 한 일</th><th>내일 할 일</th><th>관리</th></tr></thead>
-                    <tbody id="crmDailyLogBody"></tbody>
-                  </table>
-                </div>
-              </article>
+                <div class="crm-daily-log-list" id="crmDailyLogBody"></div>
+              </section>
             </div>
           </div>
         </section>
@@ -15512,32 +15598,40 @@ HTML = r"""<!doctype html>
         `).join("");
       }
       if (!logs.length) {
-        crmDailyLogBody.innerHTML = `<tr><td colspan="4">표시할 직원 일지가 없습니다.</td></tr>`;
+        crmDailyLogBody.innerHTML = `<div class="crm-daily-log-empty">표시할 직원 일지가 없습니다.</div>`;
         return;
       }
       crmDailyLogBody.innerHTML = logs.map((log) => {
         const canWrite = can("crm_manage") || String(log.user_id || "") === String(currentUser.id || "");
         const todayText = crmDailyPreviewText(log) || "아직 작성된 내용이 없습니다.";
         const tomorrowText = crmDailyCompactText(log.next_plan) || "아직 작성된 내용이 없습니다.";
+        const status = log.submitted ? `<span class="crm-status done">작성</span>` : `<span class="crm-status wait">미작성</span>`;
+        const action = canWrite
+          ? `<button class="crm-mini-button" type="button" data-crm-daily-load="${escapeHtml(log.user_id)}">${log.submitted ? "수정" : "작성"}</button>`
+          : "";
         return `
-          <tr>
-            <td class="left">
+          <article class="crm-daily-log-card">
+            <div class="crm-daily-log-card-head">
               <div class="crm-daily-name">
                 <strong>${escapeHtml(log.display_name || log.employee_name || "직원")}</strong>
                 <span>${escapeHtml(roleText(log.role))} · ${escapeHtml(log.username || "")}</span>
               </div>
-            </td>
-            <td class="left">
-              <div class="crm-daily-report">
-                <div class="crm-daily-report-top">
-                  ${log.submitted ? `<span class="crm-status done">작성</span>` : `<span class="crm-status wait">미작성</span>`}
-                  <span class="crm-daily-report-title ${log.submitted ? "" : "empty"}">${escapeHtml(todayText)}</span>
-                </div>
+              <div class="crm-daily-log-card-actions">
+                ${status}
+                ${action}
               </div>
-            </td>
-            <td class="left"><div class="crm-daily-preview ${log.next_plan ? "" : "empty"}">${escapeHtml(tomorrowText)}</div></td>
-            <td>${canWrite ? `<button class="crm-mini-button" type="button" data-crm-daily-load="${escapeHtml(log.user_id)}">${log.submitted ? "수정" : "작성"}</button>` : "-"}</td>
-          </tr>
+            </div>
+            <div class="crm-daily-log-card-body">
+              <div class="crm-daily-log-section">
+                <span>오늘 한 일</span>
+                <div class="crm-daily-log-text ${log.submitted ? "" : "empty"}">${escapeHtml(todayText)}</div>
+              </div>
+              <div class="crm-daily-log-section">
+                <span>내일 할 일</span>
+                <div class="crm-daily-log-text ${log.next_plan ? "" : "empty"}">${escapeHtml(tomorrowText)}</div>
+              </div>
+            </div>
+          </article>
         `;
       }).join("");
     }
