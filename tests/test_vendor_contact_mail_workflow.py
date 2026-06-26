@@ -237,6 +237,44 @@ class VendorContactMailWorkflowTests(unittest.TestCase):
             self.assertEqual(rows[0]["occurred_at"], app.date.today().isoformat())
             self.assertEqual(rows[0]["purchase_vendor"], "탑스미넬")
 
+    def test_blank_cs_occurrence_sorts_by_order_date_before_import_time(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            app = load_app(Path(directory))
+            app.init_db()
+            connection = app.connect_db()
+            try:
+                connection.execute(
+                    """
+                    INSERT INTO cs_cases (
+                        created_at, updated_at, status, product_name,
+                        receiver_name, occurred_at, order_date, ship_date
+                    ) VALUES (
+                        '2026-06-23 06:38:34', '2026-06-23 06:38:34', '접수',
+                        '과거 업로드 데이터', '홍길동', '', '2022-06-27', '2022-06-27'
+                    )
+                    """
+                )
+                current = connection.execute(
+                    """
+                    INSERT INTO cs_cases (
+                        created_at, updated_at, status, product_name,
+                        receiver_name, occurred_at, order_date, ship_date
+                    ) VALUES (
+                        '2026-06-20 09:00:00', '2026-06-20 09:00:00', '접수',
+                        '현재 데이터', '김영웅', '2026-06-20', '2026-06-20', '2026-06-20'
+                    )
+                    """
+                )
+                connection.commit()
+                current_id = int(current.lastrowid)
+            finally:
+                connection.close()
+
+            rows = app.list_cs_cases(limit=1)
+
+            self.assertEqual(rows[0]["id"], current_id)
+            self.assertEqual(rows[0]["product_name"], "현재 데이터")
+
     def test_mail_settings_store_bulk_mail_technical_defaults(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             app = load_app(Path(directory))

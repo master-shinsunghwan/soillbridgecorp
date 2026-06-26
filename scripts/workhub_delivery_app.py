@@ -17051,9 +17051,13 @@ HTML = r"""<!doctype html>
 
     function ledgerFieldValue(csCase, field) {
       if (field === "purchase_vendor") return csCase.purchase_vendor || csCase.vendor_name || "";
-      if (field === "occurred_at") return csCase.occurred_at || csCase.created_at || "";
+      if (field === "occurred_at") return ledgerDisplayDate(csCase);
       if (field === "original_invoice") return csCase.original_invoice || csCase.original_info || "";
       return csCase[field] || "";
+    }
+
+    function ledgerDisplayDate(csCase) {
+      return csCase.occurred_at || csCase.order_date || csCase.ship_date || "";
     }
 
     function matchesLedgerFilters(csCase) {
@@ -17121,7 +17125,7 @@ HTML = r"""<!doctype html>
         ].filter(Boolean).join(" · ");
       }
       return [
-        shortKoreanDate(row.occurred_at || row.order_date || row.created_at),
+        shortKoreanDate(row.occurred_at || row.order_date || row.ship_date),
         row.receiver_name || row.orderer_name || row.sales_vendor || "이름 없음",
         row.product_name || "상품명 없음",
       ].filter(Boolean).join(" · ");
@@ -18111,9 +18115,10 @@ HTML = r"""<!doctype html>
           : `<button class="ledger-row-return-check" type="button" data-return-check-row>회수확인</button>`;
         const csTypeSelectOptions = ["", ...csTypeOptions];
         if (isLedgerCompletedCase(csCase)) row.classList.add("completed-cs");
+        const displayDate = ledgerDisplayDate(csCase);
         row.innerHTML = `
           <td><input class="ledger-check" type="checkbox" data-row-check /></td>
-          <td data-full-date="${escapeHtml(csCase.occurred_at || csCase.created_at)}">${escapeHtml(shortKoreanDate(csCase.occurred_at || csCase.created_at))}</td>
+          <td data-full-date="${escapeHtml(displayDate)}">${escapeHtml(shortKoreanDate(displayDate))}</td>
           <td title="${escapeHtml(csCase.sales_vendor)}">${escapeHtml(csCase.sales_vendor)}</td>
           <td title="${escapeHtml(csCase.purchase_vendor || csCase.vendor_name)}">${escapeHtml(csCase.purchase_vendor || csCase.vendor_name)}</td>
           <td class="editable-cell" data-field="status" data-label="처리진행상태" data-value="${escapeHtml(statusValue)}" data-input="select" data-options="${escapeHtml(JSON.stringify(statusSelectOptions))}">
@@ -28425,7 +28430,7 @@ def list_cs_cases(query: str = "", status: str = "", limit: int = 20, year: str 
         conditions.append("status = ?")
         params.append(status)
     period_condition, period_params = date_period_condition(
-        ["occurred_at", "order_date", "ship_date", "created_at"],
+        ["occurred_at", "order_date", "ship_date"],
         year,
         month,
     )
@@ -28443,10 +28448,17 @@ def list_cs_cases(query: str = "", status: str = "", limit: int = 20, year: str 
                    receiver_phone, receiver_address, cs_type, cs_content, return_invoice,
                    reship_invoice, mail_subject, mail_sent_at, occurred_at, completed_at, order_date,
                    ship_date, sales_vendor, purchase_vendor, courier, quantity
-              FROM cs_cases
+             FROM cs_cases
               {where}
-             ORDER BY CASE WHEN date(COALESCE(NULLIF(occurred_at, ''), created_at)) IS NULL THEN 1 ELSE 0 END,
-                      date(COALESCE(NULLIF(occurred_at, ''), created_at)) DESC,
+             ORDER BY CASE
+                        WHEN COALESCE(date(NULLIF(occurred_at, '')),
+                                      date(NULLIF(order_date, '')),
+                                      date(NULLIF(ship_date, ''))) IS NULL THEN 1
+                        ELSE 0
+                      END,
+                      COALESCE(date(NULLIF(occurred_at, '')),
+                               date(NULLIF(order_date, '')),
+                               date(NULLIF(ship_date, ''))) DESC,
                       id DESC
              LIMIT ?
             """,
