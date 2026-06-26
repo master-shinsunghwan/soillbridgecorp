@@ -156,11 +156,42 @@ class VendorContactMailWorkflowTests(unittest.TestCase):
 
             case_id = app.create_cs_case_from_management(record_id)
             self.assertTrue(app.get_management_record(record_id)["cs_received_at"])
+            self.assertTrue(app.list_management_records(limit=1)[0]["cs_received_at"])
 
             deleted = app.delete_cs_cases([case_id])
 
             self.assertEqual(deleted, 1)
             self.assertEqual(app.get_management_record(record_id)["cs_received_at"], "")
+
+    def test_orphan_management_cs_received_state_is_reconciled(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            app = load_app(Path(directory))
+            app.init_db()
+            now = app.now_text()
+            connection = app.connect_db()
+            try:
+                cursor = connection.execute(
+                    """
+                    INSERT INTO management_records (
+                        created_at, source_file, source_sheet, source_row, purchase_vendor, sales_vendor,
+                        order_date, ship_date, orderer_name, sender_phone, receiver_name, receiver_phone,
+                        product_name, quantity, receiver_address, courier, invoice_number, memo, cs_received_at
+                    ) VALUES (?, 'source.xlsx', 'Sheet1', 2, '탑스미넬', '쿠팡',
+                              '2026-06-18', '2026-06-18', '주문자', '010-1111-2222',
+                              '홍길동', '010-0000-0000', '테스트 상품', '1',
+                              '서울시 테스트', '롯데택배', '1234567890', '파손', ?)
+                    """,
+                    (now, now),
+                )
+                connection.commit()
+                record_id = int(cursor.lastrowid)
+            finally:
+                connection.close()
+
+            rows = app.list_management_records(limit=1)
+
+            self.assertEqual(rows[0]["id"], record_id)
+            self.assertEqual(rows[0]["cs_received_at"], "")
 
     def test_manual_cs_case_save_appears_at_top_of_ledger_results(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

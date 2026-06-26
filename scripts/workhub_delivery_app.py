@@ -25844,6 +25844,20 @@ def init_db() -> None:
         connection.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_management_source ON management_records(source_file, source_sheet, source_row)")
         connection.execute(
             """
+            UPDATE management_records
+               SET cs_received_at = ''
+             WHERE COALESCE(cs_received_at, '') <> ''
+               AND NOT EXISTS (
+                   SELECT 1
+                     FROM cs_cases
+                    WHERE cs_cases.source_file = '통합관리대장:' || management_records.source_file
+                      AND cs_cases.source_sheet = management_records.source_sheet
+                      AND cs_cases.source_row = management_records.source_row
+               )
+            """
+        )
+        connection.execute(
+            """
             CREATE TABLE IF NOT EXISTS import_shipments (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 created_at TEXT NOT NULL,
