@@ -130,6 +130,50 @@ class VendorContactMailWorkflowTests(unittest.TestCase):
             self.assertEqual(case["order_date"], "2026-06-18")
 
 
+    def test_manual_cs_case_save_appears_at_top_of_ledger_results(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            app = load_app(Path(directory))
+            app.init_db()
+            connection = app.connect_db()
+            try:
+                for index in range(25):
+                    connection.execute(
+                        """
+                        INSERT INTO cs_cases (
+                            created_at, updated_at, status, vendor_name, product_name,
+                            receiver_name, cs_content, occurred_at
+                        ) VALUES (?, ?, '접수', ?, ?, ?, ?, '2000-01-01')
+                        """,
+                        (
+                            f"2000-01-01 00:00:{index:02d}",
+                            f"2000-01-01 00:00:{index:02d}",
+                            f"기존거래처{index}",
+                            f"기존상품{index}",
+                            f"기존수령인{index}",
+                            "기존 CS",
+                        ),
+                    )
+                connection.commit()
+            finally:
+                connection.close()
+
+            case_id = app.save_cs_case(
+                {
+                    "vendor_type": "purchase",
+                    "vendor_name": "탑스미넬",
+                    "recipient_email": "topsminell@naver.com",
+                    "cs_product": "테스트 상품",
+                    "cs_receiver": "홍길동",
+                    "cs_content": "파손 접수",
+                }
+            )
+
+            rows = app.list_cs_cases(limit=1)
+
+            self.assertEqual(rows[0]["id"], case_id)
+            self.assertEqual(rows[0]["occurred_at"], app.date.today().isoformat())
+            self.assertEqual(rows[0]["purchase_vendor"], "탑스미넬")
+
     def test_mail_settings_store_bulk_mail_technical_defaults(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             app = load_app(Path(directory))

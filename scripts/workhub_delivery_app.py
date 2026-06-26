@@ -28236,9 +28236,18 @@ def normalize_progress_status(status: str, completed_at: str = "", occurred_at: 
 
 def cs_case_from_payload(payload: dict, status: str = "접수", mail_sent: bool = False) -> dict[str, str]:
     original_info = clean_payload_text(payload, "cs_origin")
+    vendor_type = clean_payload_text(payload, "vendor_type") or "purchase"
+    vendor_name = clean_payload_text(payload, "vendor_name")
+    sales_vendor = clean_payload_text(payload, "sales_vendor")
+    purchase_vendor = clean_payload_text(payload, "purchase_vendor")
+    if vendor_name:
+        if vendor_type == "sales" and not sales_vendor:
+            sales_vendor = vendor_name
+        elif vendor_type != "sales" and not purchase_vendor:
+            purchase_vendor = vendor_name
     return {
         "status": status,
-        "vendor_name": clean_payload_text(payload, "vendor_name"),
+        "vendor_name": vendor_name,
         "vendor_email": clean_payload_text(payload, "recipient_email"),
         "original_info": original_info,
         "original_invoice": clean_payload_text(payload, "original_invoice") or extract_invoice_number(original_info),
@@ -28255,6 +28264,14 @@ def cs_case_from_payload(payload: dict, status: str = "접수", mail_sent: bool 
         "mail_subject": clean_payload_text(payload, "subject"),
         "mail_body": clean_payload_text(payload, "body"),
         "mail_sent_at": now_text() if mail_sent else clean_payload_text(payload, "mail_sent_at"),
+        "occurred_at": clean_payload_text(payload, "occurred_at") or date.today().isoformat(),
+        "completed_at": clean_payload_text(payload, "completed_at"),
+        "order_date": clean_payload_text(payload, "order_date"),
+        "ship_date": clean_payload_text(payload, "ship_date"),
+        "sales_vendor": sales_vendor,
+        "purchase_vendor": purchase_vendor,
+        "courier": clean_payload_text(payload, "courier"),
+        "quantity": clean_payload_text(payload, "quantity"),
     }
 
 
@@ -28283,6 +28300,14 @@ def save_cs_case(payload: dict, status: str = "접수", mail_sent: bool = False)
         "mail_subject",
         "mail_body",
         "mail_sent_at",
+        "occurred_at",
+        "completed_at",
+        "order_date",
+        "ship_date",
+        "sales_vendor",
+        "purchase_vendor",
+        "courier",
+        "quantity",
     ]
     values = {
         "created_at": timestamp,
@@ -28375,8 +28400,8 @@ def list_cs_cases(query: str = "", status: str = "", limit: int = 20, year: str 
                    ship_date, sales_vendor, purchase_vendor, courier, quantity
               FROM cs_cases
               {where}
-             ORDER BY CASE WHEN date(occurred_at) IS NULL THEN 1 ELSE 0 END,
-                      date(occurred_at) DESC,
+             ORDER BY CASE WHEN date(COALESCE(NULLIF(occurred_at, ''), created_at)) IS NULL THEN 1 ELSE 0 END,
+                      date(COALESCE(NULLIF(occurred_at, ''), created_at)) DESC,
                       id DESC
              LIMIT ?
             """,
