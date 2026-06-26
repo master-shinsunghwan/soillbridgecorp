@@ -28530,7 +28530,34 @@ def delete_cs_cases(case_ids: list[int]) -> int:
     placeholders = ", ".join("?" for _ in case_ids)
     connection = connect_db()
     try:
+        source_rows = connection.execute(
+            f"""
+            SELECT source_file, source_sheet, source_row
+              FROM cs_cases
+             WHERE id IN ({placeholders})
+            """,
+            case_ids,
+        ).fetchall()
         cursor = connection.execute(f"DELETE FROM cs_cases WHERE id IN ({placeholders})", case_ids)
+        management_prefix = "통합관리대장:"
+        for row in source_rows:
+            source_file = str(row["source_file"] or "")
+            if not source_file.startswith(management_prefix):
+                continue
+            connection.execute(
+                """
+                UPDATE management_records
+                   SET cs_received_at = ''
+                 WHERE source_file = ?
+                   AND source_sheet = ?
+                   AND source_row = ?
+                """,
+                [
+                    source_file[len(management_prefix):],
+                    row["source_sheet"],
+                    row["source_row"],
+                ],
+            )
         connection.commit()
         return int(cursor.rowcount or 0)
     finally:
