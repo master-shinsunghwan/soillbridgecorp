@@ -11320,6 +11320,7 @@ HTML = r"""<!doctype html>
     let isBulkSaving = false;
     let isNavigationSaving = false;
     let activeVendorManageType = "purchase";
+    let portalNoticeRows = [];
 
     if (managementWorkspaceMount && managementFields) managementWorkspaceMount.appendChild(managementFields);
     if (ledgerWorkspaceMount && ledgerFields) ledgerWorkspaceMount.appendChild(ledgerFields);
@@ -11334,6 +11335,9 @@ HTML = r"""<!doctype html>
     renderManagementPeriodControls();
     applyStaticPermissions();
     loadNoticeTemplate();
+    loadPortalNotices().catch((error) => {
+      notice.textContent = error.message || "공지사항을 불러오지 못했습니다.";
+    });
     loadImportShipments();
     loadCargoShipments();
 
@@ -12194,27 +12198,15 @@ HTML = r"""<!doctype html>
     }
 
     function noticeRecords() {
-      let rows = [];
-      try {
-        rows = JSON.parse(localStorage.getItem("workhub_notice_templates") || "[]");
-      } catch {
-        rows = [];
-      }
+      let rows = Array.isArray(portalNoticeRows) ? [...portalNoticeRows] : [];
       if (!Array.isArray(rows)) rows = [];
-      const legacy = legacyNoticeRecord();
-      if (legacy && !rows.some((row) => row.id === legacy.id || (row.title === legacy.title && row.body === legacy.body && row.date === legacy.date))) {
-        rows.unshift(legacy);
-        localStorage.setItem("workhub_notice_templates", JSON.stringify(rows));
-        localStorage.removeItem("workhub_notice_template");
-      }
       return rows
         .filter((row) => row && (row.title || row.body))
         .sort((a, b) => String(b.created_at || b.date || "").localeCompare(String(a.created_at || a.date || "")));
     }
 
     function saveNoticeRecords(rows) {
-      localStorage.setItem("workhub_notice_templates", JSON.stringify(rows));
-      localStorage.removeItem("workhub_notice_template");
+      portalNoticeRows = Array.isArray(rows) ? rows : [];
     }
 
     function latestNoticeRecord() {
@@ -12231,6 +12223,15 @@ HTML = r"""<!doctype html>
     function loadNoticeTemplate() {
       resetNoticeInputs();
       renderNoticePreview();
+    }
+
+    async function loadPortalNotices() {
+      const response = await fetch("/api/notices");
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || "공지사항을 불러오지 못했습니다.");
+      saveNoticeRecords(data.notices || []);
+      renderNoticePreview();
+      return portalNoticeRows;
     }
 
     function noticePayload() {
@@ -12341,6 +12342,7 @@ HTML = r"""<!doctype html>
       const draft = noticePayload();
       const latest = latestNoticeRecord();
       renderNoticeHistory();
+      if (companyStaffNoticeTitle) companyStaffNoticeTitle.textContent = latest?.title || "등록 전";
       if (!draft.title && !draft.body) {
         noticePreview.innerHTML = `<strong>공지 입력 대기</strong>새 공지사항을 입력한 뒤 저장해주세요. 입력창은 항상 새 공지를 위해 비워둡니다.`;
       } else {
@@ -12384,7 +12386,7 @@ HTML = r"""<!doctype html>
       noticePopup.classList.remove("open");
     }
 
-    function saveNoticeTemplate() {
+    async function saveNoticeTemplate() {
       if (!can("notice_manage")) {
         notice.textContent = "공지사항 관리 권한이 없습니다.";
         return;
@@ -12395,17 +12397,22 @@ HTML = r"""<!doctype html>
         noticeTitleInput?.focus();
         return;
       }
-      const rows = noticeRecords();
-      rows.unshift({
-        ...payload,
-        id: `notice-${Date.now()}`,
-        created_at: new Date().toISOString(),
-      });
-      saveNoticeRecords(rows);
-      resetNoticeInputs();
-      renderNoticePreview();
-      if (companyStaffNoticeTitle) companyStaffNoticeTitle.textContent = payload.title || "등록 전";
-      notice.textContent = "공지사항을 저장했습니다. 입력칸은 새 공지를 위해 비워두었습니다.";
+      try {
+        notice.textContent = "공지사항을 저장 중입니다.";
+        const response = await fetch("/api/notice-save", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.error || "공지사항 저장에 실패했습니다.");
+        saveNoticeRecords(data.notices || (data.notice ? [data.notice, ...noticeRecords()] : noticeRecords()));
+        resetNoticeInputs();
+        renderNoticePreview();
+        notice.textContent = data.message || "공지사항을 저장했습니다. 입력칸은 새 공지를 위해 비워두었습니다.";
+      } catch (error) {
+        notice.textContent = error.message || "공지사항 저장에 실패했습니다.";
+      }
     }
 
     function clearNoticeTemplate() {
@@ -12418,16 +12425,25 @@ HTML = r"""<!doctype html>
       notice.textContent = "공지사항 입력 내용을 초기화했습니다.";
     }
 
-    function deleteNoticeRecord(noticeId) {
+    async function deleteNoticeRecord(noticeId) {
       if (!can("notice_manage")) {
         notice.textContent = "공지사항 관리 권한이 없습니다.";
         return;
       }
-      const rows = noticeRecords().filter((row) => String(row.id) !== String(noticeId));
-      saveNoticeRecords(rows);
-      renderNoticePreview();
-      if (companyStaffNoticeTitle) companyStaffNoticeTitle.textContent = rows[0]?.title || "등록 전";
-      notice.textContent = "공지사항을 삭제했습니다.";
+      try {
+        const response = await fetch("/api/notice-delete", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: noticeId }),
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.error || "공지사항 삭제에 실패했습니다.");
+        saveNoticeRecords(data.notices || noticeRecords().filter((row) => String(row.id) !== String(noticeId)));
+        renderNoticePreview();
+        notice.textContent = data.message || "공지사항을 삭제했습니다.";
+      } catch (error) {
+        notice.textContent = error.message || "공지사항 삭제에 실패했습니다.";
+      }
     }
 
     function resetCargoShipmentForm(record = null) {
@@ -14742,7 +14758,7 @@ HTML = r"""<!doctype html>
     }
 
     async function loadDashboardEntryData() {
-      const tasks = [loadImportShipments(), loadCargoShipments(), loadDashboardSalesSummary()];
+      const tasks = [loadPortalNotices(), loadImportShipments(), loadCargoShipments(), loadDashboardSalesSummary()];
       tasks.push(loadCompanyCalendar().catch(() => {
         if (companyCalendarGrid) companyCalendarGrid.innerHTML = `<div class="calendar-empty">캘린더를 불러오지 못했습니다.</div>`;
       }));
@@ -25910,6 +25926,21 @@ def init_db() -> None:
         connection.execute("CREATE INDEX IF NOT EXISTS idx_cargo_shipments_ship_date ON cargo_shipments(ship_date)")
         connection.execute(
             """
+            CREATE TABLE IF NOT EXISTS portal_notices (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                notice_date TEXT NOT NULL,
+                title TEXT,
+                owner TEXT,
+                body TEXT,
+                created_by TEXT
+            )
+            """
+        )
+        connection.execute("CREATE INDEX IF NOT EXISTS idx_portal_notices_created ON portal_notices(created_at)")
+        connection.execute(
+            """
             CREATE TABLE IF NOT EXISTS leave_types (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 code TEXT NOT NULL UNIQUE,
@@ -28809,6 +28840,75 @@ def list_cargo_shipments() -> list[dict[str, str | int]]:
             -int(row.get("id") or 0),
         ),
     )
+
+
+def list_portal_notices(limit: int = 50) -> list[dict[str, str | int]]:
+    init_db()
+    safe_limit = max(1, min(int(limit or 50), 200))
+    connection = connect_db()
+    try:
+        rows = connection.execute(
+            """
+            SELECT id, created_at, updated_at, notice_date AS date, title, owner, body, created_by
+              FROM portal_notices
+             WHERE COALESCE(title, '') <> '' OR COALESCE(body, '') <> ''
+             ORDER BY created_at DESC, id DESC
+             LIMIT ?
+            """,
+            (safe_limit,),
+        ).fetchall()
+    finally:
+        connection.close()
+    return [dict(row) for row in rows]
+
+
+def save_portal_notice(payload: dict, user: dict[str, str]) -> dict[str, str | int]:
+    init_db()
+    notice_date = clean_payload_text(payload, "date") or date.today().isoformat()
+    title = clean_payload_text(payload, "title")
+    owner = clean_payload_text(payload, "owner")
+    body = clean_payload_text(payload, "body")
+    if not title and not body:
+        raise ValueError("공지 제목 또는 내용을 입력해주세요.")
+    now = now_text()
+    created_by = str(user.get("username") or user.get("display_name") or "")
+    connection = connect_db()
+    try:
+        cursor = connection.execute(
+            """
+            INSERT INTO portal_notices (created_at, updated_at, notice_date, title, owner, body, created_by)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (now, now, notice_date, title, owner, body, created_by),
+        )
+        notice_id = int(cursor.lastrowid)
+        connection.commit()
+    finally:
+        connection.close()
+    saved = [row for row in list_portal_notices(limit=1) if int(row["id"]) == notice_id]
+    return saved[0] if saved else {
+        "id": notice_id,
+        "created_at": now,
+        "updated_at": now,
+        "date": notice_date,
+        "title": title,
+        "owner": owner,
+        "body": body,
+        "created_by": created_by,
+    }
+
+
+def delete_portal_notice(notice_id: int) -> int:
+    init_db()
+    if not notice_id:
+        raise ValueError("삭제할 공지사항 ID가 없습니다.")
+    connection = connect_db()
+    try:
+        cursor = connection.execute("DELETE FROM portal_notices WHERE id = ?", (notice_id,))
+        connection.commit()
+        return int(cursor.rowcount or 0)
+    finally:
+        connection.close()
 
 
 def save_cargo_shipment(payload: dict) -> int:
@@ -32037,6 +32137,10 @@ class WorkhubHandler(BaseHTTPRequestHandler):
             self.send_json({"shipments": list_cargo_shipments()})
             return
 
+        if self.path == "/api/notices":
+            self.send_json({"notices": list_portal_notices()})
+            return
+
         self.send_error(404)
 
     def do_POST(self) -> None:
@@ -32675,6 +32779,24 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                 payload = json.loads(self.rfile.read(length).decode("utf-8"))
                 cargo_id = save_cargo_shipment(payload)
                 self.send_json({"message": "화물 입출고건을 저장했습니다.", "shipment_id": cargo_id})
+                return
+
+            if self.path == "/api/notice-save":
+                if not self.require_permission(user, "notice_manage", "공지사항 관리"):
+                    return
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(length).decode("utf-8") or "{}")
+                saved = save_portal_notice(payload, user)
+                self.send_json({"message": "공지사항을 저장했습니다.", "notice": saved, "notices": list_portal_notices()})
+                return
+
+            if self.path == "/api/notice-delete":
+                if not self.require_permission(user, "notice_manage", "공지사항 관리"):
+                    return
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(length).decode("utf-8") or "{}")
+                deleted = delete_portal_notice(int(payload.get("id") or 0))
+                self.send_json({"message": "공지사항을 삭제했습니다.", "deleted": deleted, "notices": list_portal_notices()})
                 return
 
             if self.path == "/api/import-shipment-complete":

@@ -102,6 +102,28 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
             self.assertIn('companyActiveTab === "notice" && panel.dataset.companyPanel === "calendar"', html_source)
             self.assertIn("loadDashboardEntryData().catch", html_source)
 
+    def test_portal_notice_records_are_stored_in_server_db(self) -> None:
+        app = self.load_app()
+        app.init_db()
+
+        saved = app.save_portal_notice(
+            {
+                "date": "2026-06-26",
+                "title": "업무 포털 업데이트 안내",
+                "owner": "관리자",
+                "body": "공지사항 서버 저장 테스트",
+            },
+            {"username": "admin", "display_name": "Admin"},
+        )
+        rows = app.list_portal_notices()
+
+        self.assertEqual(rows[0]["id"], saved["id"])
+        self.assertEqual(rows[0]["date"], "2026-06-26")
+        self.assertEqual(rows[0]["title"], "업무 포털 업데이트 안내")
+        self.assertEqual(rows[0]["body"], "공지사항 서버 저장 테스트")
+        self.assertEqual(app.delete_portal_notice(int(saved["id"])), 1)
+        self.assertEqual(app.list_portal_notices(), [])
+
     def test_sidebar_navigation_uses_hierarchical_text_colors(self) -> None:
         html_source = (ROOT / "scripts" / "workhub_delivery_app.py").read_text(encoding="utf-8")
 
