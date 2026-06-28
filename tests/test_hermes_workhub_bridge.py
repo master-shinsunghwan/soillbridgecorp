@@ -86,7 +86,10 @@ class HermesWorkhubBridgeTests(unittest.TestCase):
 
         bridge.AI_TOOL_PROVIDER = "auto"
         bridge.OPENAI_API_KEY = "set"
-        self.assertTrue(bridge.should_use_openai_for_intent("image_generation"))
+        self.assertFalse(bridge.should_use_openai_for_intent("image_generation"))
+
+        bridge.AI_TOOL_PROVIDER = ""
+        self.assertFalse(bridge.should_use_openai_for_intent("web_search"))
 
     def test_bridge_prompt_marks_shared_tool_intent_for_hermes(self) -> None:
         bridge = load_bridge_module()

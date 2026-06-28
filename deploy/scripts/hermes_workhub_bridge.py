@@ -190,7 +190,7 @@ def should_use_openai_for_intent(intent: str) -> bool:
         return False
     if AI_TOOL_PROVIDER in {"openai", "api"}:
         return True
-    return bool(OPENAI_API_KEY)
+    return False
 
 
 def should_block_unconfigured_image_generation(intent: str) -> bool:
