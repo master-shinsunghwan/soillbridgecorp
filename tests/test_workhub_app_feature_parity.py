@@ -234,12 +234,18 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         self.assertIn('managementBody.addEventListener("dblclick"', html_source)
         self.assertIn('ledgerBody.addEventListener("dblclick"', html_source)
         self.assertIn("function handleEditableCellNavigation(scope, event)", html_source)
+        self.assertIn('data-ledger-edit-row', html_source)
         management_click_start = html_source.index('managementBody.addEventListener("click"')
         management_click_end = html_source.index('managementBody.addEventListener("dblclick"', management_click_start)
         ledger_click_start = html_source.index('ledgerBody.addEventListener("click"')
         ledger_click_end = html_source.index('ledgerBody.addEventListener("dblclick"', ledger_click_start)
         self.assertNotIn('openCellEditor("management"', html_source[management_click_start:management_click_end])
-        self.assertNotIn('openCellEditor("ledger"', html_source[ledger_click_start:ledger_click_end])
+        self.assertIn('const editButton = event.target.closest("[data-ledger-edit-row]");', html_source[ledger_click_start:ledger_click_end])
+        self.assertIn('if (editableCell) openCellEditor("ledger", editableCell);', html_source[ledger_click_start:ledger_click_end])
+        ledger_cell_click = html_source[
+            html_source.index('const editableCell = event.target.closest(".editable-cell[data-field]");', ledger_click_start):ledger_click_end
+        ]
+        self.assertNotIn('openCellEditor("ledger"', ledger_cell_click)
 
     def test_sheet_like_tables_support_drag_selection_and_numeric_summary(self) -> None:
         html_source = (ROOT / "scripts" / "workhub_delivery_app.py").read_text(encoding="utf-8")
@@ -295,7 +301,7 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         self.assertIn("if (String(csCase.completed_at || '').trim()) return true;", html_source)
         self.assertIn(".ledger-table tbody tr.completed-cs td", html_source)
         self.assertIn("background: #fff8d8 !important;", html_source)
-        self.assertIn('data-field="completed_at" data-value="${escapeHtml(csCase.completed_at)}"', html_source)
+        self.assertIn('field: "completed_at", label: "완료일", value: csCase.completed_at', html_source)
         self.assertIn("const completedAt = fieldValue(row.querySelector('[data-field=\"completed_at\"]'));", html_source)
         self.assertIn('row.classList.add("completed-cs")', html_source)
         self.assertIn('row.classList.toggle("completed-cs", isCompletedByValues(csType, status) || Boolean(completedAt));', html_source)
@@ -435,6 +441,20 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         self.assertIn("await saveLedgerPayload(payload);", save_block)
         self.assertIn("updateLedgerCaseCache(payload);", save_block)
         self.assertIn("applyLedgerFilters();", save_block)
+
+    def test_ledger_rows_expose_visible_edit_button_and_order_field_updates(self) -> None:
+        html_source = (ROOT / "scripts" / "workhub_delivery_app.py").read_text(encoding="utf-8")
+
+        self.assertIn('data-ledger-edit-row', html_source)
+        self.assertIn('openCellEditor("ledger", editableCell);', html_source)
+        self.assertIn('sales_vendor: fieldValue(row.querySelector(\'[data-field="sales_vendor"]\'))', html_source)
+        self.assertIn('purchase_vendor: fieldValue(row.querySelector(\'[data-field="purchase_vendor"]\'))', html_source)
+        self.assertIn('order_date: fieldValue(row.querySelector(\'[data-field="order_date"]\'))', html_source)
+        self.assertIn('receiver_address: fieldValue(row.querySelector(\'[data-field="receiver_address"]\'))', html_source)
+        self.assertIn('original_invoice: fieldValue(row.querySelector(\'[data-field="original_invoice"]\'))', html_source)
+        self.assertIn("CS_CASE_UPDATE_FIELDS", html_source)
+        self.assertIn('"receiver_address"', html_source)
+        self.assertIn('"original_invoice"', html_source)
 
     def test_checked_rows_can_receive_selected_cell_value_in_bulk(self) -> None:
         html_source = (ROOT / "scripts" / "workhub_delivery_app.py").read_text(encoding="utf-8")

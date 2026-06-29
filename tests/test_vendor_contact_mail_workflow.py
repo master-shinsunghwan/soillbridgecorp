@@ -275,6 +275,64 @@ class VendorContactMailWorkflowTests(unittest.TestCase):
             self.assertEqual(rows[0]["id"], current_id)
             self.assertEqual(rows[0]["product_name"], "현재 데이터")
 
+    def test_cs_case_update_can_edit_order_and_shipping_fields(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            app = load_app(Path(directory))
+            case_id = app.save_cs_case(
+                {
+                    "vendor_type": "purchase",
+                    "vendor_name": "기존매입처",
+                    "sales_vendor": "기존매출처",
+                    "cs_product": "기존 상품",
+                    "cs_receiver": "기존수령자",
+                    "cs_phone": "010-0000-0000",
+                    "cs_address": "기존 주소",
+                    "cs_content": "기존 CS",
+                    "original_invoice": "1111111111",
+                    "quantity": "1",
+                    "courier": "기존택배",
+                    "order_date": "2026-06-20",
+                    "ship_date": "2026-06-21",
+                }
+            )
+
+            app.update_cs_case(
+                case_id,
+                {
+                    "sales_vendor": "수정매출처",
+                    "purchase_vendor": "수정매입처",
+                    "order_date": "2026-06-22",
+                    "ship_date": "2026-06-23",
+                    "orderer_name": "수정주문자",
+                    "orderer_phone": "010-1111-2222",
+                    "receiver_name": "수정수령자",
+                    "receiver_phone": "010-3333-4444",
+                    "product_name": "수정 상품",
+                    "quantity": "3",
+                    "receiver_address": "수정 주소",
+                    "courier": "수정택배",
+                    "original_invoice": "9999999999",
+                    "completed_at": "2026-06-24",
+                },
+            )
+
+            updated = app.get_cs_case(case_id)
+
+            self.assertEqual(updated["sales_vendor"], "수정매출처")
+            self.assertEqual(updated["purchase_vendor"], "수정매입처")
+            self.assertEqual(updated["order_date"], "2026-06-22")
+            self.assertEqual(updated["ship_date"], "2026-06-23")
+            self.assertEqual(updated["orderer_name"], "수정주문자")
+            self.assertEqual(updated["orderer_phone"], "010-1111-2222")
+            self.assertEqual(updated["receiver_name"], "수정수령자")
+            self.assertEqual(updated["receiver_phone"], "010-3333-4444")
+            self.assertEqual(updated["product_name"], "수정 상품")
+            self.assertEqual(updated["quantity"], "3")
+            self.assertEqual(updated["receiver_address"], "수정 주소")
+            self.assertEqual(updated["courier"], "수정택배")
+            self.assertEqual(updated["original_invoice"], "9999999999")
+            self.assertEqual(updated["completed_at"], "2026-06-24")
+
     def test_mail_settings_store_bulk_mail_technical_defaults(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             app = load_app(Path(directory))

@@ -10173,6 +10173,7 @@ HTML = r"""<!doctype html>
                 <col class="address-col" />
                 <col class="courier-col" />
                 <col class="original-invoice-col" />
+                <col class="action-col" />
               </colgroup>
               <thead>
                 <tr>
@@ -10197,6 +10198,7 @@ HTML = r"""<!doctype html>
                   <th class="has-filter"><span class="ledger-th-title">상세주소</span><button class="ledger-filter-trigger" type="button" data-ledger-filter-button="receiver_address" data-label="상세주소">▼</button></th>
                   <th class="has-filter"><span class="ledger-th-title">택배사</span><button class="ledger-filter-trigger" type="button" data-ledger-filter-button="courier" data-label="택배사">▼</button></th>
                   <th class="has-filter"><span class="ledger-th-title">송장번호</span><button class="ledger-filter-trigger" type="button" data-ledger-filter-button="original_invoice" data-label="송장번호">▼</button></th>
+                  <th>수정</th>
                 </tr>
               </thead>
               <tbody id="ledgerBody"></tbody>
@@ -17407,6 +17409,9 @@ HTML = r"""<!doctype html>
       row.querySelectorAll(".management-cs-button").forEach((button) => {
         setHidden(button, !can("cs_receive"));
       });
+      row.querySelectorAll("[data-ledger-edit-row]").forEach((button) => {
+        setHidden(button, !can("ledger_edit"));
+      });
     }
 
     function cellDisplayValue(value, options = {}) {
@@ -17491,7 +17496,7 @@ HTML = r"""<!doctype html>
     function sheetCellSelectorForScope(scope) {
       return scope === "management"
         ? "tr[data-record-id] td:not(:first-child):not(:last-child)"
-        : "tr[data-case-id] td:not(:first-child)";
+        : "tr[data-case-id] td:not(:first-child):not(:last-child)";
     }
 
     function sheetRowsForScope(scope) {
@@ -18179,7 +18184,7 @@ HTML = r"""<!doctype html>
       }
       if (!cases || cases.length === 0) {
         const row = document.createElement("tr");
-        row.innerHTML = `<td colspan="21">조회된 CS건이 없습니다.</td>`;
+        row.innerHTML = `<td colspan="22">조회된 CS건이 없습니다.</td>`;
         ledgerBody.appendChild(row);
         return;
       }
@@ -18197,30 +18202,31 @@ HTML = r"""<!doctype html>
         row.innerHTML = `
           <td><input class="ledger-check" type="checkbox" data-row-check /></td>
           <td data-full-date="${escapeHtml(displayDate)}">${escapeHtml(shortKoreanDate(displayDate))}</td>
-          <td title="${escapeHtml(csCase.sales_vendor)}">${escapeHtml(csCase.sales_vendor)}</td>
-          <td title="${escapeHtml(csCase.purchase_vendor || csCase.vendor_name)}">${escapeHtml(csCase.purchase_vendor || csCase.vendor_name)}</td>
+          ${editableCell({ scope: "ledger", field: "sales_vendor", label: "매출거래처", value: csCase.sales_vendor })}
+          ${editableCell({ scope: "ledger", field: "purchase_vendor", label: "매입거래처", value: csCase.purchase_vendor || csCase.vendor_name })}
           <td class="editable-cell" data-field="status" data-label="처리진행상태" data-value="${escapeHtml(statusValue)}" data-input="select" data-options="${escapeHtml(JSON.stringify(statusSelectOptions))}">
             <span class="ledger-status-cell">
               <span class="ledger-cell-value">${escapeHtml(cellDisplayValue(statusValue))}</span>
               ${returnCheckButtonHtml}
             </span>
           </td>
-          <td data-field="completed_at" data-value="${escapeHtml(csCase.completed_at)}" data-full-date="${escapeHtml(csCase.completed_at)}">${escapeHtml(shortKoreanDate(csCase.completed_at))}</td>
+          ${editableCell({ scope: "ledger", field: "completed_at", label: "완료일", value: csCase.completed_at, date: true, input: "date" })}
           ${editableCell({ scope: "ledger", field: "cs_type", label: "처리내용", value: csCase.cs_type, input: "select", options: csTypeSelectOptions })}
           ${editableCell({ scope: "ledger", field: "cs_content", label: "C/S 내용", value: csCase.cs_content, align: "left", input: "textarea" })}
           ${editableCell({ scope: "ledger", field: "reship_invoice", label: "재발송운송장번호", value: csCase.reship_invoice, align: "invoice-cell reship-cell" })}
           ${editableCell({ scope: "ledger", field: "return_invoice", label: "회수운송장번호", value: csCase.return_invoice, align: "invoice-cell return-cell" })}
-          <td data-full-date="${escapeHtml(csCase.order_date)}">${escapeHtml(shortKoreanDate(csCase.order_date))}</td>
-          <td data-full-date="${escapeHtml(csCase.ship_date)}">${escapeHtml(shortKoreanDate(csCase.ship_date))}</td>
-          <td title="${escapeHtml(csCase.orderer_name)}">${escapeHtml(csCase.orderer_name)}</td>
-          <td title="${escapeHtml(csCase.orderer_phone)}">${escapeHtml(csCase.orderer_phone)}</td>
-          <td title="${escapeHtml(csCase.receiver_name)}">${escapeHtml(csCase.receiver_name)}</td>
-          <td title="${escapeHtml(csCase.receiver_phone)}">${escapeHtml(csCase.receiver_phone)}</td>
-          <td class="left" title="${escapeHtml(csCase.product_name)}">${escapeHtml(csCase.product_name)}</td>
-          <td class="${escapeHtml(quantityLevelClass(csCase.quantity))}">${escapeHtml(csCase.quantity)}</td>
-          <td class="left" title="${escapeHtml(csCase.receiver_address)}">${escapeHtml(csCase.receiver_address)}</td>
-          <td title="${escapeHtml(csCase.courier)}">${escapeHtml(csCase.courier)}</td>
-          <td title="${escapeHtml(csCase.original_invoice || csCase.original_info)}">${escapeHtml(csCase.original_invoice || csCase.original_info)}</td>
+          ${editableCell({ scope: "ledger", field: "order_date", label: "주문일자", value: csCase.order_date, date: true, input: "date" })}
+          ${editableCell({ scope: "ledger", field: "ship_date", label: "출고일", value: csCase.ship_date, date: true, input: "date" })}
+          ${editableCell({ scope: "ledger", field: "orderer_name", label: "주문자", value: csCase.orderer_name })}
+          ${editableCell({ scope: "ledger", field: "orderer_phone", label: "주문자 연락처", value: csCase.orderer_phone })}
+          ${editableCell({ scope: "ledger", field: "receiver_name", label: "수령자", value: csCase.receiver_name })}
+          ${editableCell({ scope: "ledger", field: "receiver_phone", label: "수령자 연락처", value: csCase.receiver_phone })}
+          ${editableCell({ scope: "ledger", field: "product_name", label: "제품명", value: csCase.product_name, align: "left", input: "textarea" })}
+          ${editableCell({ scope: "ledger", field: "quantity", label: "수량", value: csCase.quantity, align: quantityLevelClass(csCase.quantity) })}
+          ${editableCell({ scope: "ledger", field: "receiver_address", label: "상세주소", value: csCase.receiver_address, align: "left", input: "textarea" })}
+          ${editableCell({ scope: "ledger", field: "courier", label: "택배사", value: csCase.courier })}
+          ${editableCell({ scope: "ledger", field: "original_invoice", label: "송장번호", value: csCase.original_invoice || csCase.original_info })}
+          <td><button class="ledger-save" type="button" data-ledger-edit-row>수정</button></td>
         `;
         applyRowPermissions(row);
         ledgerBody.appendChild(row);
@@ -19088,11 +19094,25 @@ HTML = r"""<!doctype html>
     function collectLedgerRow(row) {
       return {
         id: row.dataset.caseId,
+        sales_vendor: fieldValue(row.querySelector('[data-field="sales_vendor"]')),
+        purchase_vendor: fieldValue(row.querySelector('[data-field="purchase_vendor"]')),
         status: fieldValue(row.querySelector('[data-field="status"]')),
+        completed_at: fieldValue(row.querySelector('[data-field="completed_at"]')),
         cs_type: fieldValue(row.querySelector('[data-field="cs_type"]')),
         cs_content: fieldValue(row.querySelector('[data-field="cs_content"]')),
         return_invoice: fieldValue(row.querySelector('[data-field="return_invoice"]')),
         reship_invoice: fieldValue(row.querySelector('[data-field="reship_invoice"]')),
+        order_date: fieldValue(row.querySelector('[data-field="order_date"]')),
+        ship_date: fieldValue(row.querySelector('[data-field="ship_date"]')),
+        orderer_name: fieldValue(row.querySelector('[data-field="orderer_name"]')),
+        orderer_phone: fieldValue(row.querySelector('[data-field="orderer_phone"]')),
+        receiver_name: fieldValue(row.querySelector('[data-field="receiver_name"]')),
+        receiver_phone: fieldValue(row.querySelector('[data-field="receiver_phone"]')),
+        product_name: fieldValue(row.querySelector('[data-field="product_name"]')),
+        quantity: fieldValue(row.querySelector('[data-field="quantity"]')),
+        receiver_address: fieldValue(row.querySelector('[data-field="receiver_address"]')),
+        courier: fieldValue(row.querySelector('[data-field="courier"]')),
+        original_invoice: fieldValue(row.querySelector('[data-field="original_invoice"]')),
       };
     }
 
@@ -19110,11 +19130,9 @@ HTML = r"""<!doctype html>
     function updateLedgerCaseCache(payload) {
       const savedCase = ledgerCases.find((item) => String(item.id) === String(payload.id));
       if (!savedCase) return;
-      savedCase.status = payload.status;
-      savedCase.cs_type = payload.cs_type;
-      savedCase.cs_content = payload.cs_content;
-      savedCase.return_invoice = payload.return_invoice;
-      savedCase.reship_invoice = payload.reship_invoice;
+      Object.keys(payload).forEach((field) => {
+        if (field !== "id") savedCase[field] = payload[field];
+      });
     }
 
     function activeLedgerRow() {
@@ -21711,6 +21729,16 @@ HTML = r"""<!doctype html>
         event.preventDefault();
         event.stopPropagation();
         openReturnCheckPopup(returnCheckButton.closest("tr[data-case-id]"));
+        return;
+      }
+      const editButton = event.target.closest("[data-ledger-edit-row]");
+      if (editButton) {
+        event.preventDefault();
+        event.stopPropagation();
+        const row = editButton.closest("tr[data-case-id]");
+        const editableCell = row?.querySelector('.editable-cell[data-field="status"]')
+          || row?.querySelector(".editable-cell[data-field]");
+        if (editableCell) openCellEditor("ledger", editableCell);
         return;
       }
       const editableCell = event.target.closest(".editable-cell[data-field]");
@@ -28853,26 +28881,48 @@ def should_mark_cs_case_complete(cs_type: str, cs_content: str, return_invoice: 
     return False
 
 
-def update_cs_case(case_id: int, payload: dict) -> None:
-    status = clean_payload_text(payload, "status")
-    cs_type = clean_payload_text(payload, "cs_type")
-    return_invoice = clean_payload_text(payload, "return_invoice")
-    reship_invoice = clean_payload_text(payload, "reship_invoice")
+CS_CASE_UPDATE_FIELDS = [
+    "status",
+    "sales_vendor",
+    "purchase_vendor",
+    "completed_at",
+    "cs_type",
+    "cs_content",
+    "return_invoice",
+    "reship_invoice",
+    "order_date",
+    "ship_date",
+    "orderer_name",
+    "orderer_phone",
+    "receiver_name",
+    "receiver_phone",
+    "product_name",
+    "quantity",
+    "receiver_address",
+    "courier",
+    "original_invoice",
+]
 
+
+def update_cs_case(case_id: int, payload: dict) -> None:
     init_db()
     connection = connect_db()
     try:
         previous = connection.execute(
-            "SELECT status, cs_type, cs_content, return_invoice, reship_invoice, completed_at FROM cs_cases WHERE id = ?",
+            f"SELECT {', '.join(CS_CASE_UPDATE_FIELDS)}, return_invoice_updated_at, reship_invoice_updated_at FROM cs_cases WHERE id = ?",
             (case_id,),
         ).fetchone()
         if not previous:
             raise ValueError("수정할 CS건을 찾지 못했습니다.")
-        cs_type = cs_type if "cs_type" in payload else (previous["cs_type"] or "")
-        cs_content = clean_payload_text(payload, "cs_content") if "cs_content" in payload else (previous["cs_content"] or "")
-        return_invoice = return_invoice if "return_invoice" in payload else (previous["return_invoice"] or "")
-        reship_invoice = reship_invoice if "reship_invoice" in payload else (previous["reship_invoice"] or "")
-        status = status if status else (previous["status"] or "")
+        values = {
+            field: clean_payload_text(payload, field) if field in payload else (previous[field] or "")
+            for field in CS_CASE_UPDATE_FIELDS
+        }
+        status = values["status"] or (previous["status"] or "")
+        cs_type = values["cs_type"]
+        cs_content = values["cs_content"]
+        return_invoice = values["return_invoice"]
+        reship_invoice = values["reship_invoice"]
         now = now_text()
         return_invoice_updated_at = None
         reship_invoice_updated_at = None
@@ -28882,28 +28932,23 @@ def update_cs_case(case_id: int, payload: dict) -> None:
             reship_invoice_updated_at = now
         if "status" not in payload and should_mark_cs_case_complete(cs_type, cs_content, return_invoice, reship_invoice):
             status = "전체 처리완료"
-        completion_date = date.today().isoformat() if "전체 처리완료" in status and not (previous["completed_at"] or "").strip() else None
+        completed_at = values["completed_at"]
+        if "전체 처리완료" in status and not completed_at.strip():
+            completed_at = date.today().isoformat()
+        values["status"] = status
+        values["completed_at"] = completed_at
+        assignments = ",\n                    ".join(f"{field} = ?" for field in CS_CASE_UPDATE_FIELDS)
         cursor = connection.execute(
-            """
+            f"""
             UPDATE cs_cases
-               SET status = ?,
-                   cs_type = ?,
-                   cs_content = ?,
-                   return_invoice = ?,
-                   reship_invoice = ?,
-                   completed_at = COALESCE(NULLIF(completed_at, ''), ?),
+               SET {assignments},
                    return_invoice_updated_at = COALESCE(?, return_invoice_updated_at),
                    reship_invoice_updated_at = COALESCE(?, reship_invoice_updated_at),
                    updated_at = ?
              WHERE id = ?
             """,
             [
-                status,
-                cs_type,
-                cs_content,
-                return_invoice,
-                reship_invoice,
-                completion_date,
+                *[values[field] for field in CS_CASE_UPDATE_FIELDS],
                 return_invoice_updated_at,
                 reship_invoice_updated_at,
                 now,
