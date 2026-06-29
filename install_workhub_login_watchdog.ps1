@@ -21,7 +21,7 @@ if (-not [string]::IsNullOrWhiteSpace($Url)) {
 }
 
 $Action = New-ScheduledTaskAction -Execute $PowerShell -Argument $Arguments -WorkingDirectory $Root
-$Trigger = New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME
+$Trigger = New-ScheduledTaskTrigger -AtLogOn
 $Settings = New-ScheduledTaskSettingsSet `
   -AllowStartIfOnBatteries `
   -DontStopIfGoingOnBatteries `
