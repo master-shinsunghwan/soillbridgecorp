@@ -539,7 +539,9 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         self.assertIn("function matchesLedgerFiltersExcept(csCase, excludedField = \"\")", html_source)
         self.assertIn("function matchesManagementFiltersExcept(record, excludedField = \"\")", html_source)
         self.assertIn(".filter((csCase) => matchesLedgerFiltersExcept(csCase, field))", html_source)
-        self.assertIn(".filter((record) => matchesManagementFiltersExcept(record, field))", html_source)
+        self.assertIn("/api/management-filter-options?", html_source)
+        self.assertIn("appendManagementFilterParams(params, { excludeField: field });", html_source)
+        self.assertIn("filter_${field}", html_source)
         self.assertIn("if (field === excludedField) return true;", html_source)
 
     def test_crm_task_board_uses_collapsible_advanced_filters_from_branch(self) -> None:

@@ -4352,6 +4352,11 @@ HTML = r"""<!doctype html>
       font-size: 12px;
       cursor: pointer;
     }
+    .ledger-filter-option-count {
+      float: right;
+      color: #64748b;
+      font-weight: 800;
+    }
     .ledger-filter-option:hover { background: #eef6ff; }
     .ledger-filter-actions {
       display: flex;
@@ -11513,6 +11518,8 @@ HTML = r"""<!doctype html>
     };
     const ledgerFilters = {};
     const managementFilters = {};
+    let managementFilterOptionRequestId = 0;
+    let pendingManagementHighlightId = "";
     let isBulkSaving = false;
     let isNavigationSaving = false;
     let activeVendorManageType = "purchase";
@@ -11613,6 +11620,15 @@ HTML = r"""<!doctype html>
       const match = value.match(/^(\d{4})-(\d{2})$/);
       if (match) return { year: match[1], month: match[2] };
       return { year: managementYearFilter?.value || "", month: "" };
+    }
+
+    function appendManagementFilterParams(params, { excludeField = "" } = {}) {
+      Object.entries(managementFilters).forEach(([field, value]) => {
+        const normalized = String(value || "").trim();
+        if (!normalized || field === excludeField) return;
+        params.set(`filter_${field}`, normalized);
+      });
+      return params;
     }
 
     function setManagementPeriod(year, month) {
@@ -17708,22 +17724,34 @@ HTML = r"""<!doctype html>
         : `<button class="ledger-filter-option" type="button" disabled>표시할 값이 없습니다.</button>`;
     }
 
-    function renderManagementFilterOptions(field, searchText = "") {
-      const normalizedSearch = searchText.trim().toLowerCase();
-      const values = Array.from(new Set(
-        managementRecords
-          .filter((record) => matchesManagementFiltersExcept(record, field))
-          .map((record) => String(managementFieldValue(record, field) || "").trim())
-          .filter(Boolean)
-      )).sort((left, right) => left.localeCompare(right, "ko"));
-      const filteredValues = values
-        .filter((value) => !normalizedSearch || value.toLowerCase().includes(normalizedSearch))
-        .slice(0, 220);
-      ledgerFilterOptions.innerHTML = filteredValues.length
-        ? filteredValues.map((value) => (
-          `<button class="ledger-filter-option" type="button" data-filter-value="${escapeHtml(value)}">${escapeHtml(value)}</button>`
-        )).join("")
-        : `<button class="ledger-filter-option" type="button" disabled>표시할 값이 없습니다.</button>`;
+    async function renderManagementFilterOptions(field, searchText = "") {
+      const requestId = ++managementFilterOptionRequestId;
+      ledgerFilterOptions.innerHTML = `<button class="ledger-filter-option" type="button" disabled>월 전체 데이터를 확인하는 중입니다.</button>`;
+      const params = new URLSearchParams({ field, search: searchText.trim() });
+      const query = managementSearchInput.value.trim();
+      const period = selectedManagementPeriod();
+      if (query) params.set("q", query);
+      if (period.year) params.set("year", period.year);
+      if (period.month) params.set("month", period.month);
+      appendManagementFilterParams(params, { excludeField: field });
+      try {
+        const response = await fetch(`/api/management-filter-options?${params.toString()}`);
+        const data = await response.json().catch(() => ({}));
+        if (requestId !== managementFilterOptionRequestId) return;
+        if (!response.ok) throw new Error(data.error || "필터 후보를 불러오지 못했습니다.");
+        const options = data.options || [];
+        ledgerFilterOptions.innerHTML = options.length
+          ? options.map((option) => {
+            const value = option.value || "";
+            const count = Number(option.count || 0);
+            const suffix = count > 1 ? ` <span class="ledger-filter-option-count">${count.toLocaleString("ko-KR")}건</span>` : "";
+            return `<button class="ledger-filter-option" type="button" data-filter-value="${escapeHtml(value)}" data-filter-record-id="${escapeHtml(option.record_id || "")}">${escapeHtml(value)}${suffix}</button>`;
+          }).join("")
+          : `<button class="ledger-filter-option" type="button" disabled>해당 월 전체 데이터에 표시할 값이 없습니다.</button>`;
+      } catch (error) {
+        if (requestId !== managementFilterOptionRequestId) return;
+        ledgerFilterOptions.innerHTML = `<button class="ledger-filter-option" type="button" disabled>${escapeHtml(error.message || "필터 후보를 불러오지 못했습니다.")}</button>`;
+      }
     }
 
     function openLedgerFilter(button) {
@@ -18359,7 +18387,7 @@ HTML = r"""<!doctype html>
         delete managementFilters[activeManagementFilterField];
         ledgerFilterSearch.value = "";
         renderManagementFilterOptions(activeManagementFilterField, "");
-        applyManagementFilters();
+        loadManagementRecords();
         closeLedgerFilter();
         return;
       }
@@ -18382,7 +18410,7 @@ HTML = r"""<!doctype html>
     function clearAllManagementFilters() {
       Object.keys(managementFilters).forEach((field) => delete managementFilters[field]);
       ledgerFilterSearch.value = "";
-      applyManagementFilters();
+      loadManagementRecords();
     }
 
     function clearAllActivePopoverFilters() {
@@ -18403,17 +18431,18 @@ HTML = r"""<!doctype html>
       closeLedgerFilter();
     }
 
-    function setManagementFilter(value) {
+    function setManagementFilter(value, targetRecordId = "") {
       if (!activeManagementFilterField) return;
       const normalized = String(value || "").trim();
       if (normalized) managementFilters[activeManagementFilterField] = normalized;
       else delete managementFilters[activeManagementFilterField];
-      applyManagementFilters();
+      pendingManagementHighlightId = targetRecordId ? String(targetRecordId) : "";
+      loadManagementRecords();
       closeLedgerFilter();
     }
 
-    function setActivePopoverFilter(value) {
-      if (activeManagementFilterField) setManagementFilter(value);
+    function setActivePopoverFilter(value, targetRecordId = "") {
+      if (activeManagementFilterField) setManagementFilter(value, targetRecordId);
       else setLedgerFilter(value);
     }
 
@@ -19211,11 +19240,13 @@ HTML = r"""<!doctype html>
 
     async function loadManagementRecords({ showPicker = false } = {}) {
       const query = managementSearchInput.value.trim();
-      const params = new URLSearchParams({ limit: managementPageSize.value || "1000" });
+      const hasColumnFilters = Object.values(managementFilters).some((value) => String(value || "").trim());
+      const params = new URLSearchParams({ limit: hasColumnFilters ? "50000" : (managementPageSize.value || "1000") });
       const period = selectedManagementPeriod();
       if (query) params.set("q", query);
       if (period.year) params.set("year", period.year);
       if (period.month) params.set("month", period.month);
+      appendManagementFilterParams(params);
       renderManagementMonthTabs();
       try {
         const response = await fetch(`/api/management-records?${params.toString()}`);
@@ -19223,6 +19254,13 @@ HTML = r"""<!doctype html>
         const data = await response.json();
         managementRecords = data.records || [];
         applyManagementFilters();
+        if (pendingManagementHighlightId) {
+          const targetId = pendingManagementHighlightId;
+          pendingManagementHighlightId = "";
+          requestAnimationFrame(() => {
+            highlightTableRow(document.querySelector(`tr[data-record-id="${CSS.escape(String(targetId))}"]`));
+          });
+        }
         if (showPicker && query) {
           const searchableRows = managementRecords
             .filter(matchesManagementFilters)
@@ -21903,7 +21941,7 @@ HTML = r"""<!doctype html>
     ledgerFilterResetAll.addEventListener("click", clearAllActivePopoverFilters);
     ledgerFilterOptions.addEventListener("click", (event) => {
       const option = event.target.closest("[data-filter-value]");
-      if (option) setActivePopoverFilter(option.dataset.filterValue || "");
+      if (option) setActivePopoverFilter(option.dataset.filterValue || "", option.dataset.filterRecordId || "");
     });
     document.addEventListener("click", (event) => {
       if (
@@ -29357,6 +29395,26 @@ def date_period_condition(fields: list[str], year: str = "", month: str = "") ->
     return "(" + " OR ".join(f"{field} LIKE ?" for field in fields) + ")", [pattern] * len(fields)
 
 
+MANAGEMENT_FILTER_FIELDS = {
+    "order_date",
+    "ship_date",
+    "purchase_vendor",
+    "sales_vendor",
+    "transaction_type",
+    "ledger_checked",
+    "orderer_name",
+    "sender_phone",
+    "receiver_name",
+    "receiver_phone",
+    "product_name",
+    "quantity",
+    "receiver_address",
+    "courier",
+    "invoice_number",
+    "memo",
+}
+
+
 def list_cs_cases(query: str = "", status: str = "", limit: int = 20, year: str = "", month: str = "") -> list[dict[str, str | int]]:
     init_db()
     query = query.strip()
@@ -29600,7 +29658,13 @@ def delete_cs_cases(case_ids: list[int]) -> int:
         connection.close()
 
 
-def management_query_conditions(query: str = "", year: str = "", month: str = "") -> tuple[str, list[object]]:
+def management_query_conditions(
+    query: str = "",
+    year: str = "",
+    month: str = "",
+    filters: dict[str, object] | None = None,
+    exclude_filter: str = "",
+) -> tuple[str, list[object]]:
     query = query.strip()
     params: list[object] = []
     conditions: list[str] = []
@@ -29636,12 +29700,26 @@ def management_query_conditions(query: str = "", year: str = "", month: str = ""
     if period_condition:
         conditions.append(period_condition)
         params.extend(period_params)
+    for field, raw_value in (filters or {}).items():
+        if field == exclude_filter or field not in MANAGEMENT_FILTER_FIELDS:
+            continue
+        value = clean_cell(raw_value)
+        if not value:
+            continue
+        conditions.append(f"COALESCE({field}, '') LIKE ?")
+        params.append(f"%{value}%")
     where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
     return where, params
 
-def list_management_records(query: str = "", limit: int | None = 300, year: str = "", month: str = "") -> list[dict[str, str | int]]:
+def list_management_records(
+    query: str = "",
+    limit: int | None = 300,
+    year: str = "",
+    month: str = "",
+    filters: dict[str, object] | None = None,
+) -> list[dict[str, str | int]]:
     init_db()
-    where, params = management_query_conditions(query, year, month)
+    where, params = management_query_conditions(query, year, month, filters)
     connection = connect_db()
     try:
         limit_sql = ""
@@ -29673,6 +29751,59 @@ def list_management_records(query: str = "", limit: int | None = 300, year: str 
     finally:
         connection.close()
     return [dict(row) for row in rows]
+
+def list_management_filter_options(
+    field: str,
+    query: str = "",
+    year: str = "",
+    month: str = "",
+    filters: dict[str, object] | None = None,
+    search: str = "",
+    limit: int = 500,
+) -> list[dict[str, str | int]]:
+    init_db()
+    field = clean_cell(field)
+    if field not in MANAGEMENT_FILTER_FIELDS:
+        raise ValueError("지원하지 않는 통합관리대장 필터입니다.")
+    where, params = management_query_conditions(query, year, month, filters, exclude_filter=field)
+    search = clean_cell(search)
+    if search:
+        where = f"{where} AND COALESCE({field}, '') LIKE ?" if where else f"WHERE COALESCE({field}, '') LIKE ?"
+        params.append(f"%{search}%")
+    limit = min(max(int(limit or 500), 1), 2000)
+    params.append(limit)
+    connection = connect_db()
+    try:
+        rows = connection.execute(
+            f"""
+            SELECT value, COUNT(*) AS count, MIN(id) AS record_id
+              FROM (
+                    SELECT TRIM(COALESCE({field}, '')) AS value, id
+                      FROM management_records
+                      {where}
+                   )
+             WHERE value != ''
+             GROUP BY value
+             ORDER BY value COLLATE NOCASE
+             LIMIT ?
+            """,
+            params,
+        ).fetchall()
+    finally:
+        connection.close()
+    return [
+        {"value": str(row["value"] or ""), "count": int(row["count"] or 0), "record_id": int(row["record_id"] or 0)}
+        for row in rows
+    ]
+
+def management_filters_from_params(params: dict[str, list[str]]) -> dict[str, str]:
+    filters: dict[str, str] = {}
+    for field in MANAGEMENT_FILTER_FIELDS:
+        value = params.get(f"filter_{field}", [""])[0]
+        value = clean_cell(value)
+        if value:
+            filters[field] = value
+    return filters
 
 def list_management_records_by_ids(record_ids: list[int]) -> list[dict[str, str | int]]:
     init_db()
@@ -33127,11 +33258,28 @@ class WorkhubHandler(BaseHTTPRequestHandler):
             query = params.get("q", [""])[0]
             year = params.get("year", [""])[0]
             month = params.get("month", [""])[0]
+            filters = management_filters_from_params(params)
             try:
-                limit = min(max(int(params.get("limit", ["100"])[0]), 1), 5000)
+                limit = min(max(int(params.get("limit", ["100"])[0]), 1), 50000)
             except ValueError:
                 limit = 100
-            self.send_json({"records": list_management_records(query=query, limit=limit, year=year, month=month)})
+            self.send_json({"records": list_management_records(query=query, limit=limit, year=year, month=month, filters=filters)})
+            return
+
+        if self.path.startswith("/api/management-filter-options"):
+            parsed = urlsplit(self.path)
+            params = parse_qs(parsed.query)
+            query = params.get("q", [""])[0]
+            year = params.get("year", [""])[0]
+            month = params.get("month", [""])[0]
+            field = params.get("field", [""])[0]
+            search = params.get("search", [""])[0]
+            filters = management_filters_from_params(params)
+            try:
+                options = list_management_filter_options(field, query=query, year=year, month=month, filters=filters, search=search)
+                self.send_json({"options": options})
+            except Exception as exc:  # noqa: BLE001
+                self.send_json({"error": str(exc)}, status=400)
             return
 
         if self.path == "/api/management-periods":
