@@ -544,6 +544,9 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         self.assertIn("/api/management-filter-options?", html_source)
         self.assertIn("appendManagementFilterParams(params, { excludeField: field });", html_source)
         self.assertIn("filter_${field}", html_source)
+        self.assertIn("function defaultManagementPeriod()", html_source)
+        self.assertIn("managementMonthFilter.innerHTML = periodOptions", html_source)
+        self.assertNotIn('managementMonthFilter.innerHTML = `<option value="">전체 선택</option>', html_source)
         self.assertIn("if (field === excludedField) return true;", html_source)
 
     def test_crm_task_board_uses_collapsible_advanced_filters_from_branch(self) -> None:

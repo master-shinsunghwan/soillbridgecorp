@@ -10401,7 +10401,7 @@ HTML = r"""<!doctype html>
               <option value="">년도 선택</option>
             </select>
             <select id="managementMonthFilter">
-              <option value="">전체 선택</option>
+              <option value="">월 데이터 없음</option>
             </select>
             <button class="btn blue" id="managementRefresh" type="button">조회</button>
             <select id="managementPageSize">
@@ -11610,13 +11610,20 @@ HTML = r"""<!doctype html>
         .sort();
     }
 
+    function defaultManagementPeriod() {
+      const period = managementPeriods[0] || {};
+      const year = String(period.year || "");
+      const month = String(period.month || "").padStart(2, "0");
+      return year && month ? { year, month } : { year: "", month: "" };
+    }
+
     function selectedManagementPeriod() {
       const selectedOption = managementMonthFilter?.selectedOptions?.[0];
       const optionYear = selectedOption?.dataset?.year || "";
       const optionMonth = selectedOption?.dataset?.month || "";
       if (optionYear && optionMonth) return { year: optionYear, month: optionMonth };
       const value = managementMonthFilter?.value || "";
-      if (!value) return { year: "", month: "" };
+      if (!value) return defaultManagementPeriod();
       const match = value.match(/^(\d{4})-(\d{2})$/);
       if (match) return { year: match[1], month: match[2] };
       return { year: managementYearFilter?.value || "", month: "" };
@@ -11653,9 +11660,10 @@ HTML = r"""<!doctype html>
         const month = String(period.month || "").padStart(2, "0");
         return `<option value="${escapeHtml(`${year}-${month}`)}" data-year="${escapeHtml(year)}" data-month="${escapeHtml(month)}">${escapeHtml(year)}년 ${Number(month)}월</option>`;
       }).join("");
-      managementMonthFilter.innerHTML = `<option value="">전체 선택</option>${periodOptions}`;
-      if (previousPeriod.year && previousPeriod.month) {
-        const value = `${previousPeriod.year}-${previousPeriod.month}`;
+      managementMonthFilter.innerHTML = periodOptions || `<option value="">월 데이터 없음</option>`;
+      const nextPeriod = previousPeriod.year && previousPeriod.month ? previousPeriod : defaultManagementPeriod();
+      if (nextPeriod.year && nextPeriod.month) {
+        const value = `${nextPeriod.year}-${nextPeriod.month}`;
         managementMonthFilter.value = Array.from(managementMonthFilter.options).some((option) => option.value === value) ? value : "";
       } else {
         managementMonthFilter.value = "";
