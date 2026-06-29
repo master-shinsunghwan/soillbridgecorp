@@ -10326,8 +10326,8 @@ HTML = r"""<!doctype html>
             <button class="btn blue" id="ledgerRefresh" type="button">조회</button>
             <select id="ledgerPageSize">
               <option value="100">100개씩 보기</option>
-              <option value="500">500개씩 보기</option>
-              <option value="1000" selected>1,000개씩 보기</option>
+              <option value="500" selected>500개씩 보기</option>
+              <option value="1000">1,000개씩 보기</option>
               <option value="2000">2,000개씩 보기</option>
               <option value="5000">5,000개씩 보기</option>
             </select>
@@ -10417,8 +10417,8 @@ HTML = r"""<!doctype html>
             <button class="btn blue" id="managementRefresh" type="button">조회</button>
             <select id="managementPageSize">
               <option value="100">100개씩 보기</option>
-              <option value="500">500개씩 보기</option>
-              <option value="1000" selected>1,000개씩 보기</option>
+              <option value="500" selected>500개씩 보기</option>
+              <option value="1000">1,000개씩 보기</option>
               <option value="2000">2,000개씩 보기</option>
               <option value="5000">5,000개씩 보기</option>
             </select>
@@ -18731,7 +18731,7 @@ HTML = r"""<!doctype html>
 
     async function loadLedgerCases({ showPicker = false } = {}) {
       const query = ledgerSearchInput.value.trim();
-      const params = new URLSearchParams({ limit: ledgerPageSize.value || "1000" });
+      const params = new URLSearchParams({ limit: ledgerPageSize.value || "500" });
       if (query) params.set("q", query);
       if (ledgerYearFilter?.value) params.set("year", ledgerYearFilter.value);
       if (ledgerMonthFilter?.value) params.set("month", ledgerMonthFilter.value);
@@ -19322,7 +19322,7 @@ HTML = r"""<!doctype html>
     async function loadManagementRecords({ showPicker = false } = {}) {
       const query = managementSearchInput.value.trim();
       const hasColumnFilters = Object.values(managementFilters).some((value) => String(value || "").trim());
-      const params = new URLSearchParams({ limit: hasColumnFilters ? "50000" : (managementPageSize.value || "1000") });
+      const params = new URLSearchParams({ limit: hasColumnFilters ? "50000" : (managementPageSize.value || "500") });
       const period = selectedManagementPeriod();
       if (query) params.set("q", query);
       if (period.year) params.set("year", period.year);
@@ -20519,6 +20519,7 @@ HTML = r"""<!doctype html>
         templateInput.required = false;
         ledgerSearchInput.value = "";
         ledgerStatusFilter.value = "";
+        ledgerPageSize.value = "500";
         if (ledgerYearFilter) ledgerYearFilter.value = "";
         if (ledgerMonthFilter) ledgerMonthFilter.value = "";
         ledgerImportInput.value = "";
@@ -20541,7 +20542,7 @@ HTML = r"""<!doctype html>
         managementSearchInput.value = "";
         managementYearFilter.value = "";
         managementMonthFilter.value = "";
-        managementPageSize.value = "1000";
+        managementPageSize.value = "500";
         managementImportInput.value = "";
         Object.keys(managementFilters).forEach((key) => delete managementFilters[key]);
         closeLedgerFilter();
@@ -20681,7 +20682,7 @@ HTML = r"""<!doctype html>
         managementSearchInput.value = "";
         managementYearFilter.value = "";
         managementMonthFilter.value = "";
-        managementPageSize.value = "1000";
+        managementPageSize.value = "500";
         managementImportInput.value = "";
         closeLedgerFilter();
         loadManagementWorkspaceData();
@@ -20689,6 +20690,7 @@ HTML = r"""<!doctype html>
         setPageTitle("CS 처리대장");
         ledgerSearchInput.value = "";
         ledgerStatusFilter.value = "";
+        ledgerPageSize.value = "500";
         ledgerImportInput.value = "";
         Object.keys(ledgerFilters).forEach((key) => delete ledgerFilters[key]);
         closeLedgerFilter();
@@ -33387,9 +33389,9 @@ class WorkhubHandler(BaseHTTPRequestHandler):
             year = params.get("year", [""])[0]
             month = params.get("month", [""])[0]
             try:
-                limit = min(max(int(params.get("limit", ["100"])[0]), 1), 5000)
+                limit = min(max(int(params.get("limit", ["500"])[0]), 1), 5000)
             except ValueError:
-                limit = 100
+                limit = 500
             self.send_json({"cases": list_cs_cases(query=query, status=status, limit=limit, year=year, month=month)})
             return
 
@@ -33401,9 +33403,9 @@ class WorkhubHandler(BaseHTTPRequestHandler):
             month = params.get("month", [""])[0]
             filters = management_filters_from_params(params)
             try:
-                limit = min(max(int(params.get("limit", ["100"])[0]), 1), 50000)
+                limit = min(max(int(params.get("limit", ["500"])[0]), 1), 50000)
             except ValueError:
-                limit = 100
+                limit = 500
             self.send_json({"records": list_management_records(query=query, limit=limit, year=year, month=month, filters=filters)})
             return
 

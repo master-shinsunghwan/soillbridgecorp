@@ -191,6 +191,28 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         self.assertIn('#managementNavToggle', html_source)
         self.assertIn('#ledgerNavToggle', html_source)
 
+    def test_management_and_cs_ledgers_default_to_500_rows(self) -> None:
+        html_source = (ROOT / "scripts" / "workhub_delivery_app.py").read_text(encoding="utf-8")
+
+        ledger_size_start = html_source.index('id="ledgerPageSize"')
+        ledger_size_end = html_source.index("</select>", ledger_size_start)
+        ledger_size_slice = html_source[ledger_size_start:ledger_size_end]
+        management_size_start = html_source.index('id="managementPageSize"')
+        management_size_end = html_source.index("</select>", management_size_start)
+        management_size_slice = html_source[management_size_start:management_size_end]
+
+        self.assertIn('<option value="500" selected>500개씩 보기</option>', ledger_size_slice)
+        self.assertNotIn('<option value="1000" selected>', ledger_size_slice)
+        self.assertIn('<option value="500" selected>500개씩 보기</option>', management_size_slice)
+        self.assertNotIn('<option value="1000" selected>', management_size_slice)
+        self.assertIn('new URLSearchParams({ limit: ledgerPageSize.value || "500" })', html_source)
+        self.assertIn('new URLSearchParams({ limit: hasColumnFilters ? "50000" : (managementPageSize.value || "500") })', html_source)
+        self.assertIn('ledgerPageSize.value = "500";', html_source)
+        self.assertEqual(html_source.count('managementPageSize.value = "500";'), 2)
+        self.assertNotIn('managementPageSize.value = "1000";', html_source)
+        self.assertIn('int(params.get("limit", ["500"])[0])', html_source)
+        self.assertEqual(html_source.count('limit = 500'), 2)
+
     def test_cs_request_from_ledger_menu_supports_mail_attachments(self) -> None:
         html_source = (ROOT / "scripts" / "workhub_delivery_app.py").read_text(encoding="utf-8")
 
