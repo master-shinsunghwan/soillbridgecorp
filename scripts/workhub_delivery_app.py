@@ -17730,6 +17730,10 @@ HTML = r"""<!doctype html>
       const params = new URLSearchParams({ field, search: searchText.trim() });
       const query = managementSearchInput.value.trim();
       const period = selectedManagementPeriod();
+      if (!period.year || !period.month) {
+        ledgerFilterOptions.innerHTML = `<button class="ledger-filter-option" type="button" disabled>먼저 조회할 월을 선택해주세요.</button>`;
+        return;
+      }
       if (query) params.set("q", query);
       if (period.year) params.set("year", period.year);
       if (period.month) params.set("month", period.month);
@@ -22055,6 +22059,7 @@ HTML = r"""<!doctype html>
       const period = selectedManagementPeriod();
       managementYearFilter.value = period.year || "";
       renderManagementMonthTabs();
+      loadManagementRecords();
     });
     if (managementMonthTabs) {
       managementMonthTabs.addEventListener("click", (event) => {
@@ -29395,6 +29400,24 @@ def date_period_condition(fields: list[str], year: str = "", month: str = "") ->
     return "(" + " OR ".join(f"{field} LIKE ?" for field in fields) + ")", [pattern] * len(fields)
 
 
+def management_period_condition(year: str = "", month: str = "") -> tuple[str, list[str]]:
+    year = clean_cell(year)
+    month = clean_cell(month).zfill(2) if clean_cell(month) else ""
+    if not re.fullmatch(r"\d{4}", year):
+        year = ""
+    if not re.fullmatch(r"\d{2}", month) or not (1 <= int(month) <= 12):
+        month = ""
+    if not year and not month:
+        return "", []
+    if year and month:
+        pattern = f"{year}-{month}%"
+    elif year:
+        pattern = f"{year}%"
+    else:
+        pattern = f"%-{month}-%"
+    return "COALESCE(NULLIF(order_date, ''), NULLIF(ship_date, '')) LIKE ?", [pattern]
+
+
 MANAGEMENT_FILTER_FIELDS = {
     "order_date",
     "ship_date",
@@ -29696,7 +29719,7 @@ def management_query_conditions(
             """
         )
         params = [pattern] * 19
-    period_condition, period_params = date_period_condition(["order_date", "ship_date"], year, month)
+    period_condition, period_params = management_period_condition(year, month)
     if period_condition:
         conditions.append(period_condition)
         params.extend(period_params)
@@ -29765,6 +29788,8 @@ def list_management_filter_options(
     field = clean_cell(field)
     if field not in MANAGEMENT_FILTER_FIELDS:
         raise ValueError("지원하지 않는 통합관리대장 필터입니다.")
+    if not clean_cell(year) or not clean_cell(month):
+        raise ValueError("통합관리대장 필터는 월을 먼저 선택한 뒤 사용할 수 있습니다.")
     where, params = management_query_conditions(query, year, month, filters, exclude_filter=field)
     search = clean_cell(search)
     if search:

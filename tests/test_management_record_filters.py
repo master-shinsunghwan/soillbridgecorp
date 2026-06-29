@@ -25,8 +25,9 @@ class ManagementRecordFilterTests(unittest.TestCase):
         self.insert_record("2026-06-29", "화면상단 매출처", "김상단", "상품A")
         self.target_id = self.insert_record("2026-06-01", "월초 숨은 매출처", "이월초", "상품B")
         self.insert_record("2026-07-01", "다음달 매출처", "박다음", "상품C")
+        self.insert_record("2026-05-31", "출고만6월 매출처", "최혼입", "상품D", ship_date="2026-06-01")
 
-    def insert_record(self, order_date: str, sales_vendor: str, receiver_name: str, product_name: str) -> int:
+    def insert_record(self, order_date: str, sales_vendor: str, receiver_name: str, product_name: str, ship_date: str = "") -> int:
         connection = self.app.connect_db()
         try:
             cursor = connection.execute(
@@ -49,7 +50,7 @@ class ManagementRecordFilterTests(unittest.TestCase):
                     "판매",
                     "",
                     order_date,
-                    order_date,
+                    ship_date or order_date,
                     receiver_name,
                     "010-0000-0000",
                     receiver_name,
@@ -78,6 +79,7 @@ class ManagementRecordFilterTests(unittest.TestCase):
         self.assertIn("월초 숨은 매출처", option_by_value)
         self.assertEqual(option_by_value["월초 숨은 매출처"]["record_id"], self.target_id)
         self.assertNotIn("다음달 매출처", option_by_value)
+        self.assertNotIn("출고만6월 매출처", option_by_value)
 
     def test_management_records_apply_column_filters_on_server(self) -> None:
         rows = self.app.list_management_records(
