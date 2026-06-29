@@ -8822,6 +8822,7 @@ HTML = r"""<!doctype html>
           <button class="nav-subitem" type="button" data-open="crm" data-crm-nav-tab="mine">내 업무</button>
           <button class="nav-subitem" type="button" data-open="crm" data-crm-nav-tab="daily">일일 업무일지</button>
           <button class="nav-subitem" type="button" data-open="crm" data-crm-nav-tab="tasks">업무보드</button>
+          <button class="nav-subitem" type="button" data-open="fileLibrary">업무 파일</button>
           <button class="nav-subitem" type="button" data-open="crm" data-crm-nav-tab="accounts">직원 현황</button>
           <button class="nav-subitem" type="button" data-open="crm" data-crm-nav-tab="messages">메신저 연동</button>
         </div>

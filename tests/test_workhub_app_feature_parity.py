@@ -939,6 +939,18 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
             self.assertNotIn('data-open="invoice"><i data-lucide="file-spreadsheet"></i>', html_source)
             self.assertNotIn('data-open="vehicle"><i data-lucide="truck"></i>', html_source)
 
+    def test_work_management_tree_links_to_shared_file_library(self) -> None:
+        html_source = (ROOT / "scripts" / "workhub_delivery_app.py").read_text(encoding="utf-8")
+        crm_group_start = html_source.index('id="crmNavGroup"')
+        crm_group_end = html_source.index("__HERMES_NAV__", crm_group_start)
+        crm_group = html_source[crm_group_start:crm_group_end]
+
+        self.assertIn('data-open="fileLibrary"', crm_group)
+        self.assertIn("업무 파일", crm_group)
+        self.assertIn('id="fileLibraryWorkspace"', html_source)
+        self.assertIn('id="sharedFileInput"', html_source)
+        self.assertIn('id="sharedFileBody"', html_source)
+
     def test_excel_downloads_keep_object_url_until_browser_starts_download(self) -> None:
         for app_file in (
             ROOT / "scripts" / "workhub_delivery_app.py",
