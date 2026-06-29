@@ -1,4 +1,5 @@
 import importlib.util
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -130,3 +131,18 @@ class HermesWorkhubBridgeTests(unittest.TestCase):
         bridge.AI_TOOL_PROVIDER = "codex"
         bridge.FAL_KEY = ""
         self.assertFalse(bridge.should_block_unconfigured_image_generation("image_generation"))
+
+    def test_bridge_extracts_generated_image_payload_from_codex_path(self) -> None:
+        bridge = load_bridge_module()
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            cache_dir = Path(temp_dir).resolve()
+            image_path = cache_dir / "openai_codex_test.png"
+            image_path.write_bytes(b"\x89PNG\r\n\x1a\n")
+            bridge.HERMES_IMAGE_CACHE_DIR = cache_dir
+
+            payload = bridge.generated_image_payload(f"파일 경로: `{image_path}`")
+
+        self.assertEqual(payload["image_mime"], "image/png")
+        self.assertTrue(payload["image_base64"])
+        self.assertEqual(payload["image_path"], str(image_path))

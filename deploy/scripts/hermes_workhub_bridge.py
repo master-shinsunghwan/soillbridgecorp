@@ -2,11 +2,15 @@
 from __future__ import annotations
 
 import json
+import base64
+import mimetypes
 import os
+import re
 import subprocess
 import urllib.error
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 from typing import Any
 
 
@@ -23,6 +27,7 @@ FAL_KEY = os.environ.get("FAL_KEY", "").strip()
 AI_TOOL_PROVIDER = os.environ.get("WORKHUB_AI_TOOL_PROVIDER", "codex").strip().lower()
 HERMES_PROVIDER = os.environ.get("HERMES_PROVIDER", "openai-codex").strip()
 HERMES_MODEL = os.environ.get("HERMES_MODEL", "gpt-5.5").strip()
+HERMES_IMAGE_CACHE_DIR = Path(os.environ.get("HERMES_IMAGE_CACHE_DIR", "/opt/data/cache/images")).resolve()
 
 
 def normalize_token(value: str) -> str:
@@ -111,6 +116,27 @@ def run_hermes(prompt: str) -> str:
         detail = (completed.stderr or completed.stdout or "").strip()
         raise RuntimeError(detail[-1200:] or f"hermes exited with {completed.returncode}")
     return completed.stdout.strip()
+
+
+def generated_image_payload(answer: str) -> dict[str, Any]:
+    matches = re.findall(r"((?:[A-Za-z]:)?[/\\][^\s`]+?\.(?:png|jpg|jpeg|webp))", answer or "", flags=re.IGNORECASE)
+    for raw_path in reversed(matches):
+        path = Path(raw_path).resolve()
+        try:
+            if HERMES_IMAGE_CACHE_DIR not in path.parents:
+                continue
+            if not path.is_file():
+                continue
+            image_bytes = path.read_bytes()
+        except OSError:
+            continue
+        image_mime = mimetypes.guess_type(path.name)[0] or "image/png"
+        return {
+            "image_base64": base64.b64encode(image_bytes).decode("ascii"),
+            "image_mime": image_mime,
+            "image_path": str(path),
+        }
+    return {}
 
 
 def openai_request(path: str, payload: dict[str, Any]) -> dict[str, Any]:
@@ -299,7 +325,10 @@ class WorkhubHermesBridgeHandler(BaseHTTPRequestHandler):
                 return
             prompt = build_prompt(payload, mode)
             answer = run_hermes(prompt)
-            self.send_json(200, {"ok": True, "answer": answer, "text": answer})
+            response = {"ok": True, "answer": answer, "text": answer}
+            if intent == "image_generation":
+                response.update(generated_image_payload(answer))
+            self.send_json(200, response)
         except subprocess.TimeoutExpired:
             self.send_json(504, {"ok": False, "error": "timeout"})
         except Exception as exc:

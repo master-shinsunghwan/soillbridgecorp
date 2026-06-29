@@ -60,6 +60,21 @@ OPENAI_EXEC_ENV+=(-e "WORKHUB_AI_TOOL_PROVIDER=$WORKHUB_AI_TOOL_PROVIDER")
 OPENAI_EXEC_ENV+=(-e "HERMES_PROVIDER=$HERMES_PROVIDER")
 OPENAI_EXEC_ENV+=(-e "HERMES_MODEL=$HERMES_MODEL")
 
+docker exec "$HERMES_CONTAINER" python3 - <<'PY'
+from pathlib import Path
+
+import yaml
+
+path = Path("/opt/data/config.yaml")
+config = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+image_gen = config.setdefault("image_gen", {})
+image_gen["provider"] = "openai-codex"
+image_gen.setdefault("model", "gpt-image-2-medium")
+openai_codex = image_gen.setdefault("openai-codex", {})
+openai_codex.setdefault("model", "gpt-image-2-medium")
+path.write_text(yaml.safe_dump(config, sort_keys=False, allow_unicode=True), encoding="utf-8")
+PY
+
 exec docker exec \
   -e "HERMES_BRIDGE_PORT=$PORT" \
   -e "HERMES_BRIDGE_TIMEOUT=${HERMES_BRIDGE_TIMEOUT:-240}" \
