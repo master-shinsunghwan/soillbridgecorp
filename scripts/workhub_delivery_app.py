@@ -7535,6 +7535,15 @@ HTML = r"""<!doctype html>
       gap: 12px;
       align-items: start;
     }
+    .crm-daily-widget {
+      border-radius: 8px;
+      box-shadow: 0 10px 26px rgba(15, 23, 42, .07);
+    }
+    .crm-daily-form {
+      position: sticky;
+      top: 12px;
+      align-self: start;
+    }
     .crm-daily-form .crm-card-body {
       display: grid;
       gap: 10px;
@@ -7584,6 +7593,7 @@ HTML = r"""<!doctype html>
     }
     .crm-daily-log-list {
       display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr));
       gap: 10px;
       padding: 12px;
       background: #f8fafc;
@@ -7598,10 +7608,12 @@ HTML = r"""<!doctype html>
     .crm-daily-log-card {
       display: grid;
       gap: 10px;
+      min-width: 0;
       padding: 12px;
       border: 1px solid #e5e7eb;
       border-radius: 8px;
       background: #fff;
+      box-shadow: 0 8px 20px rgba(15, 23, 42, .05);
     }
     .crm-daily-log-card-head {
       display: flex;
@@ -7617,7 +7629,7 @@ HTML = r"""<!doctype html>
     }
     .crm-daily-log-card-body {
       display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
+      grid-template-columns: 1fr;
       gap: 10px;
     }
     .crm-daily-log-section {
@@ -7636,12 +7648,15 @@ HTML = r"""<!doctype html>
     }
     .crm-daily-log-text {
       min-height: 42px;
+      max-width: 100%;
       color: #27364a;
       font-size: 13px;
       font-weight: 800;
       line-height: 1.55;
       white-space: pre-wrap;
-      word-break: break-word;
+      word-break: keep-all;
+      overflow-wrap: anywhere;
+      text-wrap: pretty;
     }
     .crm-daily-log-text.empty {
       color: #94a3b8;
@@ -9409,7 +9424,7 @@ HTML = r"""<!doctype html>
             <button class="crm-mini-button" type="button" id="crmDailyLogReset">작성 초기화</button>
           </div>
           <div class="crm-daily-layout">
-            <form class="crm-card crm-daily-form" id="crmDailyLogForm">
+            <form class="crm-card crm-daily-form crm-daily-widget" id="crmDailyLogForm">
               <div class="crm-card-head">
                 <span>업무일지</span>
                 <span class="crm-mini-actions">
@@ -9430,7 +9445,7 @@ HTML = r"""<!doctype html>
             </form>
             <div>
               <div class="crm-task-board-stats" id="crmDailyLogStats"></div>
-              <section class="crm-daily-list-panel">
+              <section class="crm-daily-list-panel crm-daily-widget">
                 <div class="crm-card-head"><span>직원별 일일 업무일지</span><span id="crmDailyLogDateLabel">오늘</span></div>
                 <div class="crm-daily-log-list" id="crmDailyLogBody"></div>
               </section>
@@ -10686,16 +10701,9 @@ HTML = r"""<!doctype html>
     const vendorContactsFileInput = document.querySelector("#vendorContactsFileInput");
     const vendorContactsDropMain = document.querySelector("#vendorContactsDropMain");
     const salesReportFileInput = document.querySelector("#salesReportFileInput");
+    const salesReportManualUpload = document.querySelector("#salesReportManualUpload");
     const salesReportUploadMessage = document.querySelector("#salesReportUploadMessage");
     const salesReportRecentList = document.querySelector("#salesReportRecentList");
-    const salesNasEnabled = document.querySelector("#salesNasEnabled");
-    const salesNasImportDir = document.querySelector("#salesNasImportDir");
-    const salesNasProcessedDir = document.querySelector("#salesNasProcessedDir");
-    const salesNasErrorDir = document.querySelector("#salesNasErrorDir");
-    const salesNasScanInterval = document.querySelector("#salesNasScanInterval");
-    const salesNasSettingsSave = document.querySelector("#salesNasSettingsSave");
-    const salesNasScanNow = document.querySelector("#salesNasScanNow");
-    const salesNasAutomationMessage = document.querySelector("#salesNasAutomationMessage");
     const salesReportDashboard = document.querySelector("#salesReportDashboard");
     const salesReportKpiGrid = document.querySelector("#salesReportKpiGrid");
     const salesReportMarginDiagnosis = document.querySelector("#salesReportMarginDiagnosis");
@@ -13296,73 +13304,6 @@ HTML = r"""<!doctype html>
         renderSalesReportUploads(data.files || []);
       } catch (error) {
         salesReportRecentList.textContent = error.message;
-      }
-    }
-
-    function renderSalesAutomationSettings(settings = {}) {
-      if (salesNasEnabled) salesNasEnabled.checked = Boolean(settings.nas_enabled);
-      if (salesNasImportDir) salesNasImportDir.value = settings.nas_import_dir || "";
-      if (salesNasProcessedDir) salesNasProcessedDir.value = settings.nas_processed_dir || "processed";
-      if (salesNasErrorDir) salesNasErrorDir.value = settings.nas_error_dir || "error";
-      if (salesNasScanInterval) salesNasScanInterval.value = settings.nas_scan_interval_minutes || 15;
-      const last = settings.last_scan_at ? ` 마지막 스캔: ${settings.last_scan_at}` : "";
-      const message = settings.last_scan_message || "NAS 공유폴더를 지정하면 매출표가 자동 반영됩니다.";
-      if (salesNasAutomationMessage) salesNasAutomationMessage.textContent = `${message}${last}`;
-    }
-
-    function collectSalesAutomationSettings() {
-      return {
-        nas_enabled: Boolean(salesNasEnabled?.checked),
-        nas_import_dir: salesNasImportDir?.value?.trim() || "",
-        nas_processed_dir: salesNasProcessedDir?.value?.trim() || "processed",
-        nas_error_dir: salesNasErrorDir?.value?.trim() || "error",
-        nas_scan_interval_minutes: Number(salesNasScanInterval?.value || 15),
-      };
-    }
-
-    async function loadSalesAutomationSettings() {
-      if (!salesNasAutomationMessage) return;
-      try {
-        const response = await fetch("/api/sales-automation-settings");
-        const data = await response.json();
-        if (!response.ok) throw new Error(data.error || "매출 자동화 설정을 불러오지 못했습니다.");
-        renderSalesAutomationSettings(data);
-      } catch (error) {
-        salesNasAutomationMessage.textContent = error.message;
-      }
-    }
-
-    async function saveSalesAutomationSettings() {
-      if (!salesNasAutomationMessage) return;
-      salesNasAutomationMessage.textContent = "NAS 자동화 설정을 저장하는 중입니다.";
-      try {
-        const response = await fetch("/api/sales-automation-settings", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(collectSalesAutomationSettings()),
-        });
-        const data = await response.json();
-        if (!response.ok) throw new Error(data.error || "매출 자동화 설정 저장에 실패했습니다.");
-        renderSalesAutomationSettings(data.settings || {});
-        salesNasAutomationMessage.textContent = data.message || "NAS 자동화 설정을 저장했습니다.";
-      } catch (error) {
-        salesNasAutomationMessage.textContent = error.message;
-      }
-    }
-
-    async function scanSalesNasNow() {
-      if (!salesNasAutomationMessage) return;
-      salesNasAutomationMessage.textContent = "NAS 공유폴더를 스캔하는 중입니다.";
-      try {
-        await saveSalesAutomationSettings();
-        const response = await fetch("/api/sales-automation-scan", { method: "POST" });
-        const data = await response.json();
-        if (!response.ok) throw new Error(data.error || "NAS 공유폴더 스캔에 실패했습니다.");
-        renderSalesReportUploads(data.files || []);
-        await loadSalesReportDashboard();
-        salesNasAutomationMessage.textContent = data.message || data.result?.message || "NAS 공유폴더 스캔을 완료했습니다.";
-      } catch (error) {
-        salesNasAutomationMessage.textContent = error.message;
       }
     }
 
@@ -20232,7 +20173,6 @@ HTML = r"""<!doctype html>
       } else if (showSalesReport) {
         setPageTitle("매출현황");
         closeLedgerFilter();
-        loadSalesAutomationSettings();
         loadSalesReportUploads();
         loadSalesReportDashboard();
       } else if (showBackup) {
@@ -20318,7 +20258,6 @@ HTML = r"""<!doctype html>
         else if (currentMode === "leave") await loadLeaveData();
         else if (currentMode === "userAdmin") await loadUserAccounts();
         else if (currentMode === "salesReport") {
-          await loadSalesAutomationSettings();
           await loadSalesReportUploads();
           await loadSalesReportDashboard();
         } else if (currentMode === "backup") await loadBackups();
@@ -21480,8 +21419,7 @@ HTML = r"""<!doctype html>
       });
     }
     if (salesReportFileInput) salesReportFileInput.addEventListener("change", uploadSalesReportWorkbook);
-    salesNasSettingsSave?.addEventListener("click", saveSalesAutomationSettings);
-    salesNasScanNow?.addEventListener("click", scanSalesNasNow);
+    salesReportManualUpload?.addEventListener("click", openSalesReportUploadPicker);
     saveCsCaseButton.addEventListener("click", saveCurrentCsCase);
     sendCsMailButton?.addEventListener("click", async () => {
       if (!can("mail_send")) return;
@@ -22520,35 +22458,10 @@ ADMIN_WORKSPACE_HTML = r"""
               <div class="admin-section-title">매출현황</div>
               <input id="salesReportFileInput" name="sales_report" type="file" accept=".xlsx,.xlsm,.xls,.csv,.zip" hidden />
               <div class="admin-form compact-form">
-                <label>
-                  NAS 자동 업로드
-                  <span class="inline-check">
-                    <input id="salesNasEnabled" type="checkbox" />
-                    <span>공유폴더 자동 스캔 사용</span>
-                  </span>
-                </label>
-                <label>
-                  NAS 공유폴더 경로
-                  <input id="salesNasImportDir" type="text" placeholder="예) Y:\\SALES 또는 /mnt/workhub-sales" />
-                </label>
-                <label>
-                  처리 완료 폴더
-                  <input id="salesNasProcessedDir" type="text" placeholder="processed" />
-                </label>
-                <label>
-                  오류 보관 폴더
-                  <input id="salesNasErrorDir" type="text" placeholder="error" />
-                </label>
-                <label>
-                  자동 스캔 간격(분)
-                  <input id="salesNasScanInterval" type="number" min="1" max="1440" step="1" />
-                </label>
                 <div class="form-actions">
-                  <button id="salesNasSettingsSave" class="secondary" type="button">NAS 설정 저장</button>
-                  <button id="salesNasScanNow" type="button">지금 스캔</button>
+                  <button id="salesReportManualUpload" type="button">매출표 업로드</button>
                 </div>
-                <div class="admin-message" id="salesNasAutomationMessage">NAS 자동 업로드 설정을 불러오는 중입니다.</div>
-                <div class="admin-message" id="salesReportUploadMessage">매출표 수동 업로드 또는 NAS 자동 업로드를 사용할 수 있습니다.</div>
+                <div class="admin-message" id="salesReportUploadMessage">매출표 파일을 직접 업로드해서 현황을 갱신합니다.</div>
                 <div class="admin-message" id="salesReportRecentList">업로드된 매출표가 없습니다.</div>
               </div>
               <div class="sales-dashboard" id="salesReportDashboard">
