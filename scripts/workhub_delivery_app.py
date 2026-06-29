@@ -3436,6 +3436,17 @@ HTML = r"""<!doctype html>
       vertical-align: top;
     }
     .leave-table tr:last-child td { border-bottom: 0; }
+    .leave-admin-balance-row {
+      cursor: pointer;
+    }
+    .leave-admin-balance-row:hover td,
+    .leave-admin-balance-row.selected td {
+      background: #eff6ff;
+    }
+    .leave-admin-balance-row.selected td:first-child {
+      color: var(--blue);
+      font-weight: 950;
+    }
     .leave-action-row { display: flex; gap: 6px; }
     .leave-action {
       height: 30px;
@@ -11304,6 +11315,8 @@ HTML = r"""<!doctype html>
     const leaveHolidaySubstituteInput = document.querySelector("#leaveHolidaySubstituteInput");
     const leaveHolidaySave = document.querySelector("#leaveHolidaySave");
     const leaveAdminBalanceBody = document.querySelector("#leaveAdminBalanceBody");
+    const leaveAdminUsageTitle = document.querySelector("#leaveAdminUsageTitle");
+    const leaveAdminUsageBody = document.querySelector("#leaveAdminUsageBody");
     const leaveTabs = Array.from(document.querySelectorAll("[data-leave-tab]"));
     const backupRefresh = document.querySelector("#backupRefresh");
     const backupCreate = document.querySelector("#backupCreate");
@@ -11442,6 +11455,8 @@ HTML = r"""<!doctype html>
     let ledgerUploadInProgress = false;
     let managementUploadInProgress = false;
     let leaveAdminUsers = [];
+    let leaveAdminUsageRequests = {};
+    let selectedLeaveAdminUsageUserId = "";
     let managementPeriods = [];
     let importShipments = [];
     let userAccounts = [];
@@ -12160,13 +12175,41 @@ HTML = r"""<!doctype html>
     function selectLeaveAdminUser(userId) {
       if (!leaveAdminUserSelect) return;
       leaveAdminUserSelect.value = String(userId || "");
+      selectedLeaveAdminUsageUserId = String(userId || "");
       renderLeaveAdminUserList(leaveAdminUserSearch?.value || "");
+      renderLeaveAdminUsage(selectedLeaveAdminUsageUserId);
     }
 
     function leaveDateRangeText(row) {
       const start = row.start_date || "";
       const end = row.end_date || "";
       return start && end && start !== end ? `${start} ~ ${end}` : start || end || "";
+    }
+
+    function renderLeaveAdminUsage(userId = "") {
+      if (!leaveAdminUsageBody) return;
+      const selectedId = String(userId || selectedLeaveAdminUsageUserId || leaveAdminUserSelect?.value || "");
+      selectedLeaveAdminUsageUserId = selectedId;
+      const selectedUser = leaveAdminUsers.find((user) => String(user.id) === selectedId);
+      if (leaveAdminUsageTitle) {
+        leaveAdminUsageTitle.textContent = selectedUser
+          ? `${selectedUser.display_name || selectedUser.username} 사용일자`
+          : "선택 직원 사용일자";
+      }
+      document.querySelectorAll("[data-leave-admin-balance-user]").forEach((row) => {
+        row.classList.toggle("selected", row.dataset.leaveAdminBalanceUser === selectedId);
+      });
+      const rows = (leaveAdminUsageRequests[selectedId] || []).filter((row) => row.status === "APPROVED" && Number(row.requested_days || 0) > 0);
+      leaveAdminUsageBody.innerHTML = rows.length
+        ? rows.map((row) => `
+          <tr>
+            <td><strong>${escapeHtml(leaveDateRangeText(row))}</strong></td>
+            <td>${escapeHtml(row.unit_label)}</td>
+            <td>${dayText(row.requested_days)}</td>
+            <td>${escapeHtml(row.reason)}</td>
+          </tr>
+        `).join("")
+        : `<tr><td colspan="4">${selectedUser ? "반영된 사용일자가 없습니다." : "직원별 현황에서 직원을 선택해주세요."}</td></tr>`;
     }
 
     function setLeaveTab(tabName) {
@@ -12225,6 +12268,7 @@ HTML = r"""<!doctype html>
         display_name: user.display_name || user.name || user.username || "",
         username: user.username || "",
       }));
+      leaveAdminUsageRequests = data.admin_usage_requests || {};
       const userOptions = leaveAdminUsers.map((user) => ({
         id: user.id,
         name: `${user.display_name || user.username} (${user.username})`,
@@ -12256,9 +12300,14 @@ HTML = r"""<!doctype html>
         : `<tr><td colspan="6">승인 대기 중인 연차 신청이 없습니다.</td></tr>`;
       leaveAdminBalanceBody.innerHTML = (data.admin_balances || []).length
         ? data.admin_balances.map((row) => `
-          <tr><td>${escapeHtml(row.display_name)}</td><td>${escapeHtml(row.username)}</td><td>${dayText(row.total_days)}</td><td>${dayText(row.used_days)}</td><td><strong>${dayText(row.remaining_days)}</strong></td></tr>
+          <tr class="leave-admin-balance-row" data-leave-admin-balance-user="${escapeHtml(row.user_id)}"><td>${escapeHtml(row.display_name)}</td><td>${escapeHtml(row.username)}</td><td>${dayText(row.total_days)}</td><td>${dayText(row.used_days)}</td><td><strong>${dayText(row.remaining_days)}</strong></td></tr>
         `).join("")
         : `<tr><td colspan="5">직원 연차 현황이 없습니다.</td></tr>`;
+      const availableAdminUserIds = new Set((data.admin_balances || []).map((row) => String(row.user_id)));
+      if (!selectedLeaveAdminUsageUserId || !availableAdminUserIds.has(selectedLeaveAdminUsageUserId)) {
+        selectedLeaveAdminUsageUserId = String((data.admin_balances || [])[0]?.user_id || leaveAdminUserSelect?.value || "");
+      }
+      renderLeaveAdminUsage(selectedLeaveAdminUsageUserId);
       document.querySelector('[data-leave-tab="approvals"]')?.classList.toggle("permission-hidden", !data.can_approve);
       document.querySelector('[data-leave-tab="admin"]')?.classList.toggle("permission-hidden", !data.can_manage);
       document.querySelector('[data-leave-tab="holidays"]')?.classList.toggle("permission-hidden", !data.can_manage);
@@ -22050,11 +22099,17 @@ HTML = r"""<!doctype html>
     if (leaveUnitSelect) leaveUnitSelect.addEventListener("change", syncHalfDayDates);
     if (leaveStartDate) leaveStartDate.addEventListener("change", syncHalfDayDates);
     if (leaveAdminUserSearch) leaveAdminUserSearch.addEventListener("input", () => renderLeaveAdminUserList(leaveAdminUserSearch.value));
-    if (leaveAdminUserSelect) leaveAdminUserSelect.addEventListener("change", () => renderLeaveAdminUserList(leaveAdminUserSearch?.value || ""));
+    if (leaveAdminUserSelect) leaveAdminUserSelect.addEventListener("change", () => selectLeaveAdminUser(leaveAdminUserSelect.value));
     if (leaveAdminUserList) {
       leaveAdminUserList.addEventListener("click", (event) => {
         const button = event.target.closest("[data-leave-admin-user]");
         if (button) selectLeaveAdminUser(button.dataset.leaveAdminUser);
+      });
+    }
+    if (leaveAdminBalanceBody) {
+      leaveAdminBalanceBody.addEventListener("click", (event) => {
+        const row = event.target.closest("[data-leave-admin-balance-user]");
+        if (row) selectLeaveAdminUser(row.dataset.leaveAdminBalanceUser);
       });
     }
     if (leaveBalanceSave) leaveBalanceSave.addEventListener("click", saveLeaveBalance);
@@ -22889,6 +22944,13 @@ LEAVE_WORKSPACE_HTML = r"""
                 <table class="leave-table">
                   <thead><tr><th>직원</th><th>아이디</th><th>시작</th><th>사용</th><th>잔여</th></tr></thead>
                   <tbody id="leaveAdminBalanceBody"></tbody>
+                </table>
+              </div>
+              <div class="leave-card">
+                <div class="leave-card-title" id="leaveAdminUsageTitle">선택 직원 사용일자</div>
+                <table class="leave-table">
+                  <thead><tr><th>사용일</th><th>구분</th><th>수량</th><th>내용</th></tr></thead>
+                  <tbody id="leaveAdminUsageBody"></tbody>
                 </table>
               </div>
             </section>
@@ -28856,6 +28918,23 @@ def list_leave_admin_balances(connection: sqlite3.Connection) -> list[dict[str, 
     return rows
 
 
+def list_leave_admin_usage_requests(connection: sqlite3.Connection) -> dict[str, list[dict[str, str | float | int]]]:
+    rows = connection.execute(
+        """
+        SELECT leave_requests.*, leave_types.name AS leave_type_name, users.display_name
+          FROM leave_requests
+          JOIN leave_types ON leave_types.id = leave_requests.leave_type_id
+          JOIN users ON users.id = leave_requests.user_id
+         WHERE users.active = 1
+         ORDER BY users.display_name COLLATE NOCASE, leave_requests.start_date DESC, leave_requests.id DESC
+        """
+    ).fetchall()
+    grouped: dict[str, list[dict[str, str | float | int]]] = {}
+    for row in rows:
+        grouped.setdefault(str(row["user_id"]), []).append(leave_request_dict(row))
+    return grouped
+
+
 def leave_payload(user: dict[str, str]) -> dict:
     user_id = int(user["id"])
     connection = connect_db()
@@ -28885,6 +28964,7 @@ def leave_payload(user: dict[str, str]) -> dict:
             "pending_requests": [],
             "users": [],
             "admin_balances": [],
+            "admin_usage_requests": {},
             "notifications": list_leave_notifications(user, connection),
         }
         if payload["can_approve"]:
@@ -28893,6 +28973,7 @@ def leave_payload(user: dict[str, str]) -> dict:
             payload["users"] = list_active_users_for_leave(connection)
         if payload["can_manage"]:
             payload["admin_balances"] = list_leave_admin_balances(connection)
+            payload["admin_usage_requests"] = list_leave_admin_usage_requests(connection)
         connection.commit()
         return payload
     finally:

@@ -280,6 +280,32 @@ class LeaveAdvancedWorkflowTests(unittest.TestCase):
             self.assertTrue(admin_payload["can_manage"])
             self.assertGreaterEqual(len(admin_payload["users"]), len(team_payload["users"]))
 
+    def test_leave_payload_sends_staff_usage_dates_to_managers(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            app = load_app(Path(directory))
+            users = self.make_users(app)
+            admin = get_user(app, "admin")
+            self.set_balance(app, users["requester"], total=5)
+
+            app.add_historical_leave_usage(
+                {
+                    "user_id": users["requester"]["id"],
+                    "usage_dates": "2026-01-23\n2026-02-14 반차",
+                    "note": "관리자 확인용",
+                },
+                admin,
+            )
+
+            team_payload = app.leave_payload(users["team"])
+            admin_payload = app.leave_payload(admin)
+            requester_usage = admin_payload["admin_usage_requests"][str(users["requester"]["id"])]
+
+            self.assertEqual(team_payload["admin_usage_requests"], {})
+            self.assertEqual(len(requester_usage), 2)
+            self.assertEqual(requester_usage[0]["start_date"], "2026-02-14")
+            self.assertEqual(requester_usage[0]["requested_days"], 0.5)
+            self.assertEqual(requester_usage[1]["start_date"], "2026-01-23")
+
 
 if __name__ == "__main__":
     unittest.main()
