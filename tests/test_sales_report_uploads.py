@@ -238,6 +238,12 @@ class SalesReportUploadTests(unittest.TestCase):
         self.assertEqual(product_parsed["report_type"], "product")
         self.assertEqual(product_parsed["rows"][0]["name"], "테스트 상품 A")
 
+    def test_sales_report_type_prefers_product_filename_hint(self) -> None:
+        source = Path(self.tempdir.name) / "상품별 매출현황.xls"
+        self.write_seller_report(source)
+
+        self.assertEqual(self.app.detect_sales_report_type(source, source.name), "product")
+
     def test_sales_report_dashboard_combines_daily_seller_and_product_reports(self) -> None:
         base = Path(self.tempdir.name)
         daily = base / "매출 통계.xlsx"
@@ -751,6 +757,49 @@ class SalesReportUploadTests(unittest.TestCase):
         self.assertEqual(seller_by_name["C거래처"]["profit_sales_amount"], 300)
         self.assertEqual(supplier_by_name["A매입처"]["purchase_total"], 1000)
         self.assertEqual(supplier_by_name["B매입처"]["purchase_total"], 2000)
+
+    def test_sales_partner_detail_uses_raw_daily_amounts_not_deltas(self) -> None:
+        connection = self.app.connect_db()
+        try:
+            cursor = connection.execute(
+                """
+                INSERT INTO sales_report_uploads
+                    (stored_name, original_name, report_type, report_date, period, size, uploaded_by, uploaded_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                ("seller-daily.zip", "seller-daily.zip", "seller_daily_zip", "2026-06-29", "2026-06", 1, "admin", "2026-06-29"),
+            )
+            file_id = int(cursor.lastrowid)
+            connection.commit()
+        finally:
+            connection.close()
+
+        self.app.save_sales_report_snapshot(
+            file_id,
+            {
+                "report_type": "seller_daily_zip",
+                "report_date": "2026-06-29",
+                "period": "2026-06",
+                "rows": [
+                    {"name": "A거래처", "report_date": "2026-06-04", "period": "2026-06", "quantity": 4, "profit_sales_amount": 2680000, "profit_margin": 2658500},
+                    {"name": "A거래처", "report_date": "2026-06-05", "period": "2026-06", "quantity": -1, "profit_sales_amount": -225000, "profit_margin": -203500},
+                    {"name": "A거래처", "report_date": "2026-06-06", "period": "2026-06", "quantity": -2, "profit_sales_amount": -2455000, "profit_margin": -2455000},
+                ],
+            },
+        )
+
+        detail = self.app.sales_report_detail_payload("seller", "A거래처", "2026-06")
+        amount_rows = detail["sections"][1]["rows"]
+
+        self.assertEqual(detail["metrics"][2]["value"], 0)
+        self.assertEqual(
+            amount_rows,
+            [
+                ["2026-06-04", 2680000, 2658500],
+                ["2026-06-05", -225000, -203500],
+                ["2026-06-06", -2455000, -2455000],
+            ],
+        )
 
     def test_sales_dimension_reports_without_date_inherit_latest_daily_context(self) -> None:
         base = Path(self.tempdir.name)

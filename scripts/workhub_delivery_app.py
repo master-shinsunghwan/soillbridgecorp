@@ -23635,6 +23635,11 @@ def _sales_report_table(path: str | Path) -> tuple[list[str], list[list[object]]
 
 
 def detect_sales_report_type(path: str | Path, original_name: str = "") -> str:
+    lowered_name = str(original_name or Path(path).name).lower()
+    if "statistics_good" in lowered_name or "상품별" in lowered_name:
+        return "product"
+    if "suppler" in lowered_name or "supplier" in lowered_name or "공급사" in lowered_name:
+        return "supplier"
     try:
         headers, _ = _sales_report_table(path)
     except Exception:
@@ -23647,9 +23652,6 @@ def detect_sales_report_type(path: str | Path, original_name: str = "") -> str:
     if "공급사" in header_set:
         return "supplier"
     if "상품코드" in header_set and "상품명" in header_set:
-        return "product"
-    lowered_name = str(original_name or Path(path).name).lower()
-    if "statistics_good" in lowered_name:
         return "product"
     return ""
 
@@ -24645,24 +24647,15 @@ def sales_report_detail_payload(kind: str, key: str, period: str = "") -> dict[s
             table_name = "sales_report_seller_rows" if is_seller else "sales_report_supplier_rows"
             name_column = "seller_name" if is_seller else "supplier_name"
             amount_column = "profit_sales_amount" if is_seller else "supply_total"
-            latest_detail_snapshot = connection.execute(
-                f"""
-                SELECT MAX(report_date) AS report_date
-                  FROM {table_name}
-                 WHERE period = ? AND {name_column} = ? AND report_date != ''
-                """,
-                (selected_period, detail_key),
-            ).fetchone()
-            latest_detail_date = str(latest_detail_snapshot["report_date"] or "") if latest_detail_snapshot else ""
             sales_summary = connection.execute(
                 f"""
                 SELECT COALESCE(SUM(quantity), 0) AS quantity,
                        COALESCE(SUM({amount_column}), 0) AS amount,
                        COALESCE(SUM(profit_margin - profit_shipping), 0) AS profit_margin
-                  FROM {table_name}
-                 WHERE period = ? AND {name_column} = ? AND (? = '' OR report_date = ?)
-                """,
-                (selected_period, detail_key, latest_detail_date, latest_detail_date),
+                   FROM {table_name}
+                  WHERE period = ? AND {name_column} = ?
+                 """,
+                (selected_period, detail_key),
             ).fetchone()
             vendor_column = "sales_vendor" if is_seller else "purchase_vendor"
             ledger_rows = connection.execute(
@@ -24683,36 +24676,35 @@ def sales_report_detail_payload(kind: str, key: str, period: str = "") -> dict[s
                 """,
                 (f"{selected_period}%", detail_key),
             ).fetchall()
-            amount_rows = connection.execute(
+            amount_date_stats = connection.execute(
                 f"""
-                WITH vendor_rows AS (
-                    SELECT report_date,
-                           COALESCE(SUM(quantity), 0) AS quantity,
-                           COALESCE(SUM({amount_column}), 0) AS amount,
-                           COALESCE(SUM(profit_margin - profit_shipping), 0) AS profit_margin
-                      FROM {table_name}
-                     WHERE period = ? AND {name_column} = ?
-                     GROUP BY report_date
-                ),
-                ordered_rows AS (
-                    SELECT report_date,
-                           quantity,
-                           amount,
-                           profit_margin,
-                           LAG(quantity) OVER (ORDER BY report_date) AS previous_quantity,
-                           LAG(amount) OVER (ORDER BY report_date) AS previous_amount,
-                           LAG(profit_margin) OVER (ORDER BY report_date) AS previous_margin
-                      FROM vendor_rows
-                )
-                SELECT report_date,
-                       CASE WHEN previous_amount IS NULL THEN NULL ELSE quantity - previous_quantity END AS quantity_delta,
-                       CASE WHEN previous_amount IS NULL THEN NULL ELSE amount - previous_amount END AS amount_delta,
-                       CASE WHEN previous_amount IS NULL THEN NULL ELSE profit_margin - previous_margin END AS margin_delta
-                  FROM ordered_rows
-                 ORDER BY report_date
+                SELECT COUNT(DISTINCT rows.report_date) AS date_count,
+                       COALESCE(SUM(CASE WHEN uploads.report_type = 'seller_daily_zip' THEN 1 ELSE 0 END), 0) AS daily_zip_rows
+                  FROM {table_name} AS rows
+                  LEFT JOIN sales_report_uploads AS uploads ON uploads.id = rows.file_id
+                 WHERE rows.period = ? AND rows.{name_column} = ? AND rows.report_date != ''
                 """,
                 (selected_period, detail_key),
-            ).fetchall()
+            ).fetchone()
+            amount_detail_active = bool(amount_date_stats) and (
+                int(amount_date_stats["date_count"] or 0) > 1
+                or int(amount_date_stats["daily_zip_rows"] or 0) > 0
+            )
+            amount_rows = []
+            if amount_detail_active:
+                amount_rows = connection.execute(
+                    f"""
+                    SELECT report_date,
+                           COALESCE(SUM(quantity), 0) AS quantity_delta,
+                           COALESCE(SUM({amount_column}), 0) AS amount_delta,
+                           COALESCE(SUM(profit_margin - profit_shipping), 0) AS margin_delta
+                      FROM {table_name}
+                     WHERE period = ? AND {name_column} = ? AND report_date != ''
+                     GROUP BY report_date
+                     ORDER BY report_date
+                    """,
+                    (selected_period, detail_key),
+                ).fetchall()
             amount_by_date = {
                 str(row["report_date"] or ""): {
                     "quantity_delta": row["quantity_delta"],
@@ -24774,7 +24766,7 @@ def sales_report_detail_payload(kind: str, key: str, period: str = "") -> dict[s
                         "empty": "해당 거래처의 월 전체 관리대장 데이터가 없습니다.",
                     },
                     {
-                        "title": "금액 확인 가능일",
+                        "title": "일자별 금액",
                         "headers": ["일자", "매출금액" if is_seller else "매입금액", "손익마진(택배비 제외)"],
                         "rows": [
                             [
@@ -24784,7 +24776,7 @@ def sales_report_detail_payload(kind: str, key: str, period: str = "") -> dict[s
                             ]
                             for row in amount_detail_rows
                         ],
-                        "empty": "연속 업로드된 거래처별 누적 스냅샷이 없어 일자별 금액을 계산할 수 없습니다.",
+                        "empty": "거래처별 일자 금액 데이터가 없습니다.",
                     },
                 ],
             }
