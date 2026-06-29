@@ -13555,7 +13555,7 @@ HTML = r"""<!doctype html>
     function formatSalesMillion(value, signed = false) {
       const number = Number(value || 0);
       const sign = signed && number > 0 ? "+" : "";
-      return `${number < 0 ? "-" : sign}${Math.abs(number).toLocaleString("ko-KR")}`;
+      return `${number < 0 ? "-" : sign}${Math.abs(number).toLocaleString("ko-KR")}원`;
     }
 
     function formatSalesCompactMoney(value, signed = false) {

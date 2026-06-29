@@ -390,6 +390,7 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         end = html_source.index("function formatSalesPercent", start)
         formatter_slice = html_source[start:end]
         self.assertIn('Math.abs(number).toLocaleString("ko-KR")', formatter_slice)
+        self.assertIn('}원`', formatter_slice)
         self.assertNotIn("백만", formatter_slice)
 
     def test_admin_navigation_and_admin_pages_can_scroll(self) -> None:
