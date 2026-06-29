@@ -888,6 +888,23 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         self.assertIn('id="salesReportFileInput"', admin_slice)
         self.assertIn('>매출현황</div>', admin_slice)
 
+    def test_sales_report_permission_shows_menu_for_non_admin_staff(self) -> None:
+        app = self.load_app()
+
+        html_source = app.render_app_html({
+            "username": "sales-staff",
+            "display_name": "매출담당",
+            "role": "user",
+            "permissions": ["sales_report_manage"],
+        })
+
+        self.assertIn('id="salesReportNavGroup"', html_source)
+        self.assertIn('data-open="salesReport">매출표 업로드</button>', html_source)
+        self.assertIn('id="userAdminWorkspace"', html_source)
+        self.assertIn('id="salesReportUploadCard"', html_source)
+        self.assertNotIn('id="adminToolsNavGroup"', html_source)
+        self.assertIn('mode === "userAdmin" && (!userAdminWorkspace || currentUser.role !== "admin")', html_source)
+
     def test_sales_report_dashboard_layout_uses_three_report_types(self) -> None:
         html_source = (ROOT / "scripts" / "workhub_delivery_app.py").read_text(encoding="utf-8")
 

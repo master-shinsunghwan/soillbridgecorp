@@ -20141,7 +20141,7 @@ HTML = r"""<!doctype html>
     function showWorkspace(mode) {
       if (!confirmSaveBeforeLeaving(mode, () => showWorkspace(mode))) return false;
       closeModal();
-      if (mode === "userAdmin" && !userAdminWorkspace) mode = "dashboard";
+      if (mode === "userAdmin" && (!userAdminWorkspace || currentUser.role !== "admin")) mode = "dashboard";
       if (mode === "salesReport" && (!userAdminWorkspace || !can("sales_report_manage"))) mode = "dashboard";
       if (mode === "leave" && !leaveWorkspace) mode = "dashboard";
       if (mode === "backup" && !backupWorkspace) mode = "dashboard";
@@ -25745,9 +25745,10 @@ def render_app_html(user: dict[str, str]) -> str:
     leave_workspace = LEAVE_WORKSPACE_HTML.replace("__LEAVE_TITLE__", leave_title) if leave_enabled else ""
     hermes_nav = HERMES_NAV_HTML if hermes_enabled else ""
     hermes_workspace = HERMES_WORKSPACE_HTML if hermes_enabled else ""
-    sales_report_nav = SALES_REPORT_NAV_HTML if is_admin and "sales_report_manage" in permissions else ""
+    sales_report_enabled = "sales_report_manage" in permissions
+    sales_report_nav = SALES_REPORT_NAV_HTML if sales_report_enabled else ""
     admin_tools_nav = ADMIN_TOOLS_NAV_HTML if is_admin else ""
-    admin_workspace = ADMIN_WORKSPACE_HTML.replace("__PERMISSION_CHECKBOXES__", permissions_html()) if is_admin else ""
+    admin_workspace = ADMIN_WORKSPACE_HTML.replace("__PERMISSION_CHECKBOXES__", permissions_html()) if is_admin or sales_report_enabled else ""
     backup_workspace = BACKUP_WORKSPACE_HTML if is_admin else ""
     system_workspace = SYSTEM_WORKSPACE_HTML if is_admin else ""
     return (
