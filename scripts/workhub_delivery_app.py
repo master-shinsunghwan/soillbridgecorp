@@ -24913,18 +24913,9 @@ def sales_report_dashboard_payload(period: str = "", report_date: str = "") -> d
             (previous_period,),
         ).fetchone()
         latest_previous_supplier_date = str(latest_previous_supplier_date_row["report_date"] or "") if latest_previous_supplier_date_row else ""
-        supplier_date_rows_exist = connection.execute(
-            """
-            SELECT 1
-              FROM sales_report_supplier_rows
-             WHERE period = ? AND report_date != '' AND report_date <= ?
-             LIMIT 1
-            """,
-            (selected_period, selected_date),
-        ).fetchone() is not None
-        if supplier_date_rows_exist:
-            supplier_scope_sql = "period = ? AND report_date != '' AND report_date <= ?"
-            supplier_scope_params: tuple[object, ...] = (selected_period, selected_date)
+        if latest_supplier_date:
+            supplier_scope_sql = "period = ? AND report_date = ?"
+            supplier_scope_params: tuple[object, ...] = (selected_period, latest_supplier_date)
         else:
             supplier_scope_sql = "period = ?"
             supplier_scope_params = (selected_period,)

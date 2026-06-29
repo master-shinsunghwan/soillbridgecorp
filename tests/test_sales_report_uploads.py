@@ -750,12 +750,12 @@ class SalesReportUploadTests(unittest.TestCase):
         self.assertEqual(dashboard["yesterday"]["profit_sales_amount"], 100)
         self.assertEqual(dashboard["month"]["profit_sales_amount"], 400)
         self.assertEqual(dashboard["seller_total"]["profit_sales_amount"], 400)
-        self.assertEqual(dashboard["supplier_purchase_total"]["purchase_total"], 3000)
+        self.assertEqual(dashboard["supplier_purchase_total"]["purchase_total"], 2000)
         seller_by_name = {row["name"]: row for row in dashboard["seller_top"]}
         supplier_by_name = {row["name"]: row for row in dashboard["supplier_purchase_totals"]}
         self.assertEqual(seller_by_name["A거래처"]["profit_sales_amount"], 100)
         self.assertEqual(seller_by_name["C거래처"]["profit_sales_amount"], 300)
-        self.assertEqual(supplier_by_name["A매입처"]["purchase_total"], 1000)
+        self.assertNotIn("A매입처", supplier_by_name)
         self.assertEqual(supplier_by_name["B매입처"]["purchase_total"], 2000)
 
     def test_sales_partner_detail_uses_raw_daily_amounts_not_deltas(self) -> None:
