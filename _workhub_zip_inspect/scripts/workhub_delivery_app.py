@@ -3284,6 +3284,18 @@ HTML = r"""<!doctype html>
       font-size: 12px;
       font-weight: 800;
     }
+    .vendor-picker-type-select {
+      width: 100%;
+      min-height: 40px;
+      margin-bottom: 8px;
+      padding: 0 12px;
+      border: 1px solid #aab2bf;
+      border-radius: 7px;
+      background: #fff;
+      color: #1a2230;
+      font-size: 14px;
+      font-weight: 850;
+    }
     .vendor-picker-tree {
       margin-top: 10px;
       max-height: 240px;
@@ -3299,6 +3311,60 @@ HTML = r"""<!doctype html>
       color: #344054;
       font-size: 12px;
       font-weight: 950;
+    }
+    .vendor-picker-toolbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin: 0 0 8px;
+      padding: 8px 10px;
+      border: 1px solid #dbe4f3;
+      border-radius: 7px;
+      background: #f8fbff;
+    }
+    .vendor-picker-check,
+    .vendor-picker-checkbox-row {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      color: #1f2937;
+      font-size: 13px;
+      font-weight: 850;
+    }
+    .vendor-picker-check input,
+    .vendor-picker-checkbox-row input {
+      width: 16px;
+      height: 16px;
+      margin: 0;
+      accent-color: #2563eb;
+      flex: 0 0 auto;
+    }
+    .vendor-picker-count {
+      color: #2563eb;
+      font-size: 12px;
+      font-weight: 950;
+      white-space: nowrap;
+    }
+    .vendor-picker-checkbox-row {
+      width: 100%;
+      min-height: 36px;
+      margin-top: 4px;
+      padding: 7px 10px;
+      border: 1px solid #e2e8f0;
+      border-radius: 7px;
+      background: #fff;
+      cursor: pointer;
+    }
+    .vendor-picker-checkbox-row:hover {
+      border-color: #93c5fd;
+      background: #eff6ff;
+    }
+    .vendor-picker-checkbox-row span {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
     .vendor-picker-option {
       width: 100%;
@@ -9420,6 +9486,10 @@ HTML = r"""<!doctype html>
         <div class="stock-notice-fields" id="stockNoticeFields">
           <div class="text-field">
             <label class="field-label" for="stockVendorPickerButton">업체 선택</label>
+            <select class="vendor-picker-type-select" id="stockVendorTypeFilter">
+              <option value="purchase">매입처</option>
+              <option value="sales">매출처</option>
+            </select>
             <button class="vendor-picker-button" id="stockVendorPickerButton" type="button">업체를 선택해주세요</button>
             <div class="vendor-picker-selected" id="stockSelectedVendorLabel">선택된 업체 없음</div>
             <div class="vendor-picker-tree" id="stockVendorTree" hidden></div>
@@ -10120,6 +10190,7 @@ HTML = r"""<!doctype html>
     const stockVendorPickerButton = document.querySelector("#stockVendorPickerButton");
     const stockVendorTree = document.querySelector("#stockVendorTree");
     const stockSelectedVendorLabel = document.querySelector("#stockSelectedVendorLabel");
+    const stockVendorTypeFilter = document.querySelector("#stockVendorTypeFilter");
     const stockVendorTypeSelect = document.querySelector("#stockVendorTypeSelect");
     const stockRecipientEmailInput = document.querySelector("#stockRecipientEmailInput");
     const stockVendorNameInput = document.querySelector("#stockVendorNameInput");
@@ -10572,6 +10643,7 @@ HTML = r"""<!doctype html>
     let ledgerFollowupAlertLoading = false;
     let currentOrderMode = "delivery";
     let vendorContacts = [];
+    let selectedStockVendors = [];
     let cachedMailSettings = {};
     let activeCsCaseId = "";
     let ledgerCases = [];
@@ -12346,6 +12418,9 @@ HTML = r"""<!doctype html>
 
     function renderVendorContacts() {
       vendorContactSelect.innerHTML = "";
+      const validStockVendorKeys = new Set(vendorContacts.map(stockVendorKey));
+      selectedStockVendors = selectedStockVendors.filter((contact) => validStockVendorKeys.has(stockVendorKey(contact)));
+      updateStockVendorSelectionSummary();
       const emptyOption = document.createElement("option");
       emptyOption.value = "";
       emptyOption.textContent = vendorContacts.length ? "업체를 선택해주세요" : "저장된 업체가 없습니다";
@@ -12363,6 +12438,18 @@ HTML = r"""<!doctype html>
 
     function vendorManageTypeLabelText(type = activeVendorManageType) {
       return type === "sales" ? "매출처" : "매입처";
+    }
+
+    function stockVendorTypeLabelText(type = stockVendorTypeFilter?.value || "purchase") {
+      return type === "sales" ? "매출처" : "매입처";
+    }
+
+    function stockVendorKey(contact) {
+      return `${contact.vendor_type || "purchase"}::${contact.vendor_name}`;
+    }
+
+    function stockVendorContactsForType(type = stockVendorTypeFilter?.value || "purchase") {
+      return vendorContacts.filter((contact) => (contact.vendor_type || "purchase") === type);
     }
 
     function renderVendorManageContacts() {
@@ -12389,28 +12476,33 @@ HTML = r"""<!doctype html>
 
     function renderStockVendorContacts() {
       if (!stockVendorTree) return;
+      const selectedType = stockVendorTypeFilter?.value || "purchase";
+      const selectedLabel = stockVendorTypeLabelText(selectedType);
       if (!vendorContacts.length) {
         stockVendorTree.innerHTML = '<div class="vendor-picker-empty">저장된 업체 메일 리스트가 없습니다.</div>';
         return;
       }
-      const groups = [
-        ["purchase", "매입처"],
-        ["sales", "매출처"],
-      ];
-      stockVendorTree.innerHTML = groups.map(([type, label]) => {
-        const items = vendorContacts.filter((contact) => (contact.vendor_type || "purchase") === type);
-        if (!items.length) return "";
-        return `
-          <div class="vendor-picker-group">
-            <div class="vendor-picker-group-title">${label}</div>
-            ${items.map((contact) => `
-              <button class="vendor-picker-option" type="button" data-stock-vendor-type="${escapeHtml(contact.vendor_type || "purchase")}" data-stock-vendor-name="${escapeHtml(contact.vendor_name)}">
-                ${escapeHtml(contact.vendor_name)} / ${escapeHtml(contact.email)}
-              </button>
-            `).join("")}
+      const items = stockVendorContactsForType(selectedType);
+      const selectedKeys = new Set(selectedStockVendors.map(stockVendorKey));
+      const allChecked = Boolean(items.length) && items.every((contact) => selectedKeys.has(stockVendorKey(contact)));
+      stockVendorTree.innerHTML = items.length ? `
+        <div class="vendor-picker-group">
+          <div class="vendor-picker-group-title">${selectedLabel} 하위 업체</div>
+          <div class="vendor-picker-toolbar">
+            <label class="vendor-picker-check">
+              <input type="checkbox" data-stock-vendor-select-all ${allChecked ? "checked" : ""} />
+              <span>${selectedLabel} 전체 선택</span>
+            </label>
+            <span class="vendor-picker-count">선택 ${selectedStockVendors.length}곳</span>
           </div>
-        `;
-      }).join("") || '<div class="vendor-picker-empty">저장된 업체 메일 리스트가 없습니다.</div>';
+          ${items.map((contact) => `
+            <label class="vendor-picker-checkbox-row">
+              <input type="checkbox" data-stock-vendor-checkbox data-stock-vendor-type="${escapeHtml(contact.vendor_type || selectedType)}" data-stock-vendor-name="${escapeHtml(contact.vendor_name)}" ${selectedKeys.has(stockVendorKey(contact)) ? "checked" : ""} />
+              <span>${escapeHtml(contact.vendor_name)} / ${escapeHtml(contact.email)}</span>
+            </label>
+          `).join("")}
+        </div>
+      ` : `<div class="vendor-picker-empty">저장된 ${selectedLabel} 메일 리스트가 없습니다.</div>`;
     }
 
     async function loadVendorContacts() {
@@ -12478,37 +12570,83 @@ HTML = r"""<!doctype html>
 
     function setSelectedStockVendor(selected) {
       if (!selected) {
-        stockVendorTypeSelect.value = "purchase";
+        selectedStockVendors = [];
+        const selectedType = stockVendorTypeFilter?.value || "purchase";
+        stockVendorTypeSelect.value = selectedType;
         stockVendorNameInput.value = "";
         stockRecipientEmailInput.value = "";
-        if (stockVendorPickerButton) stockVendorPickerButton.textContent = "업체를 선택해주세요";
+        const selectedLabel = stockVendorTypeLabelText(selectedType);
+        if (stockVendorPickerButton) stockVendorPickerButton.textContent = `${selectedLabel} 업체를 선택해주세요`;
         if (stockSelectedVendorLabel) stockSelectedVendorLabel.textContent = "선택된 업체 없음";
         return;
       }
-      stockVendorTypeSelect.value = selected.vendor_type || "purchase";
-      stockVendorNameInput.value = selected.vendor_name;
-      stockRecipientEmailInput.value = selected.email;
-      if (stockVendorPickerButton) stockVendorPickerButton.textContent = selected.vendor_name;
+      selectedStockVendors = [selected];
+      if (stockVendorTypeFilter) stockVendorTypeFilter.value = selected.vendor_type || "purchase";
+      updateStockVendorSelectionSummary();
+    }
+
+    function updateStockVendorSelectionSummary() {
+      const selectedType = stockVendorTypeFilter?.value || "purchase";
+      const selectedLabel = stockVendorTypeLabelText(selectedType);
+      const first = selectedStockVendors[0];
+      stockVendorTypeSelect.value = first?.vendor_type || selectedType;
+      stockVendorNameInput.value = first?.vendor_name || "";
+      stockRecipientEmailInput.value = first?.email || "";
+      if (!selectedStockVendors.length) {
+        if (stockVendorPickerButton) stockVendorPickerButton.textContent = `${selectedLabel} 업체를 선택해주세요`;
+        if (stockSelectedVendorLabel) stockSelectedVendorLabel.textContent = "선택된 업체 없음";
+        return;
+      }
+      if (stockVendorPickerButton) stockVendorPickerButton.textContent = `${selectedLabel} ${selectedStockVendors.length}곳 선택됨`;
       if (stockSelectedVendorLabel) {
-        const typeLabel = selected.vendor_type_label || (selected.vendor_type === "sales" ? "매출처" : "매입처");
-        stockSelectedVendorLabel.textContent = `[${typeLabel}] ${selected.vendor_name} / ${selected.email}`;
+        const names = selectedStockVendors.slice(0, 2).map((vendor) => vendor.vendor_name).join(", ");
+        const more = selectedStockVendors.length > 2 ? ` 외 ${selectedStockVendors.length - 2}곳` : "";
+        stockSelectedVendorLabel.textContent = `[${selectedLabel}] ${names}${more} / 총 ${selectedStockVendors.length}곳`;
       }
     }
 
     function toggleStockVendorTree() {
       if (!stockVendorTree) return;
+      renderStockVendorContacts();
       stockVendorTree.hidden = !stockVendorTree.hidden;
     }
 
-    function applySelectedStockVendorFromTree(button) {
-      const selectedType = button?.dataset.stockVendorType || "";
-      const selectedName = button?.dataset.stockVendorName || "";
+    function changeStockVendorTypeFilter() {
+      setSelectedStockVendor(null);
+      renderStockVendorContacts();
+      if (stockVendorTree) stockVendorTree.hidden = false;
+    }
+
+    function toggleSelectedStockVendorFromTree(input) {
+      const selectedType = input?.dataset.stockVendorType || "";
+      const selectedName = input?.dataset.stockVendorName || "";
       const selected = vendorContacts.find((contact) => (
         (contact.vendor_type || "purchase") === selectedType && contact.vendor_name === selectedName
       ));
       if (!selected) return;
-      setSelectedStockVendor(selected);
-      if (stockVendorTree) stockVendorTree.hidden = true;
+      const selectedKey = stockVendorKey(selected);
+      if (input.checked) {
+        selectedStockVendors = [
+          ...selectedStockVendors.filter((contact) => stockVendorKey(contact) !== selectedKey),
+          selected,
+        ];
+      } else {
+        selectedStockVendors = selectedStockVendors.filter((contact) => stockVendorKey(contact) !== selectedKey);
+      }
+      updateStockVendorSelectionSummary();
+      renderStockVendorContacts();
+    }
+
+    function toggleAllStockVendorsForType(checked) {
+      const selectedType = stockVendorTypeFilter?.value || "purchase";
+      const items = stockVendorContactsForType(selectedType);
+      if (checked) {
+        selectedStockVendors = [...items];
+      } else {
+        selectedStockVendors = [];
+      }
+      updateStockVendorSelectionSummary();
+      renderStockVendorContacts();
     }
 
     function applySelectedStockVendor() {
@@ -12977,15 +13115,55 @@ HTML = r"""<!doctype html>
       }
     }
 
-    function collectStockNoticePayload() {
-      return {
+    function collectStockNoticeRecipients() {
+      if (selectedStockVendors.length) return selectedStockVendors;
+      const email = stockRecipientEmailInput?.value.trim() || "";
+      const name = stockVendorNameInput?.value.trim() || "";
+      if (!email || !name) return [];
+      return [{
         vendor_type: stockVendorTypeSelect?.value || "purchase",
-        recipient_email: stockRecipientEmailInput?.value.trim() || "",
-        vendor_name: stockVendorNameInput?.value.trim() || "",
+        vendor_name: name,
+        email,
+      }];
+    }
+
+    function collectStockNoticePayload(vendor = null) {
+      return {
+        vendor_type: vendor?.vendor_type || stockVendorTypeSelect?.value || "purchase",
+        recipient_email: vendor?.email || stockRecipientEmailInput?.value.trim() || "",
+        vendor_name: vendor?.vendor_name || stockVendorNameInput?.value.trim() || "",
         subject: stockSubjectInput?.value.trim() || "",
         body: stockBodyInput?.value.trim() || "",
         save_credentials: true,
       };
+    }
+
+    async function sendCurrentStockNoticeMail() {
+      refreshStockNoticeBody();
+      const recipients = collectStockNoticeRecipients();
+      const basePayload = collectStockNoticePayload(recipients[0] || null);
+      if (!recipients.length || !basePayload.subject || !basePayload.body) {
+        throw new Error("받는 업체를 선택하고 제목, 공지 내용을 입력해주세요.");
+      }
+      const failedVendors = [];
+      for (const recipient of recipients) {
+        const payload = collectStockNoticePayload(recipient);
+        const response = await fetch("/api/mail-send", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        const data = await response.json();
+        if (!response.ok) {
+          failedVendors.push(`${recipient.vendor_name || recipient.email}: ${data.error || "발송 실패"}`);
+        }
+      }
+      if (failedVendors.length) {
+        throw new Error(`공지 메일 ${recipients.length - failedVendors.length}/${recipients.length}건 발송, 실패: ${failedVendors.join(", ")}`);
+      }
+      notice.textContent = recipients.length === 1
+        ? "공지 메일 발송이 완료되었습니다."
+        : `공지 메일 ${recipients.length}건 발송이 완료되었습니다.`;
     }
 
     function renderCsCases(cases) {
@@ -20404,9 +20582,15 @@ HTML = r"""<!doctype html>
     [csOriginInput, csProductInput, csReceiverInput, csPhoneInput, csAddressInput, csContentInput]
       .forEach((input) => input.addEventListener("input", refreshCsBody));
     stockVendorPickerButton?.addEventListener("click", toggleStockVendorTree);
-    stockVendorTree?.addEventListener("click", (event) => {
-      const button = event.target.closest("[data-stock-vendor-name]");
-      if (button) applySelectedStockVendorFromTree(button);
+    stockVendorTypeFilter?.addEventListener("change", changeStockVendorTypeFilter);
+    stockVendorTree?.addEventListener("change", (event) => {
+      const selectAll = event.target.closest("[data-stock-vendor-select-all]");
+      if (selectAll) {
+        toggleAllStockVendorsForType(selectAll.checked);
+        return;
+      }
+      const checkbox = event.target.closest("[data-stock-vendor-checkbox]");
+      if (checkbox) toggleSelectedStockVendorFromTree(checkbox);
     });
     [
       stockNoticeDateInput,
@@ -20442,19 +20626,7 @@ HTML = r"""<!doctype html>
         } else if (currentMode === "cs") {
           await sendCurrentCsMail();
         } else if (currentMode === "mail-stock") {
-          refreshStockNoticeBody();
-          const payload = collectStockNoticePayload();
-          if (!payload.recipient_email || !payload.subject || !payload.body) {
-            throw new Error("받는 업체 메일, 제목, 공지 내용을 입력해주세요.");
-          }
-          const response = await fetch("/api/mail-send", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(payload),
-          });
-          const data = await response.json();
-          if (!response.ok) throw new Error(data.error || "공지 메일 발송에 실패했습니다.");
-          notice.textContent = data.message || "공지 메일 발송이 완료되었습니다.";
+          await sendCurrentStockNoticeMail();
         } else if (currentMode === "vehicle") {
           const payload = collectVehiclePayload();
           if (!payload.supplier || !payload.delivery_place || !payload.manager || payload.items.length === 0) {
