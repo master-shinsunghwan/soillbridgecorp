@@ -22518,7 +22518,7 @@ ADMIN_WORKSPACE_HTML = r"""
             </div>
             <div class="admin-card" id="salesReportUploadCard">
               <div class="admin-section-title">매출현황</div>
-              <input id="salesReportFileInput" name="sales_report" type="file" accept=".xlsx,.xlsm,.xls,.csv" hidden />
+              <input id="salesReportFileInput" name="sales_report" type="file" accept=".xlsx,.xlsm,.xls,.csv,.zip" hidden />
               <div class="admin-form compact-form">
                 <label>
                   NAS 자동 업로드
@@ -22986,7 +22986,7 @@ def save_uploaded_sales_report_file(fields: dict[str, tuple[str, bytes] | str], 
 
     filename, data = uploaded
     filename = safe_filename(filename)
-    if not filename.lower().endswith((".xlsx", ".xlsm", ".xls", ".csv")):
+    if Path(filename).suffix.lower() not in SALES_REPORT_ALLOWED_SUFFIXES:
         raise ValueError("매출표는 xlsx, xlsm, xls, csv 파일만 업로드할 수 있습니다.")
     if not data:
         raise ValueError("매출표 파일을 다시 선택해주세요.")
@@ -23288,7 +23288,8 @@ DEFAULT_SALES_AUTOMATION_SETTINGS = {
     "last_scan_message": "",
 }
 SALES_REPORT_NAS_UPLOADER = "auto-nas"
-SALES_REPORT_ALLOWED_SUFFIXES = {".xlsx", ".xlsm", ".xls", ".csv"}
+SALES_REPORT_WORKBOOK_SUFFIXES = {".xlsx", ".xlsm", ".xls", ".csv"}
+SALES_REPORT_ALLOWED_SUFFIXES = {*SALES_REPORT_WORKBOOK_SUFFIXES, ".zip"}
 _SALES_REPORT_NAS_SCHEDULER_STARTED = False
 _SALES_REPORT_NAS_SCAN_LOCK = threading.Lock()
 
@@ -23812,6 +23813,103 @@ def parse_sales_report_file(path: str | Path, original_name: str = "") -> dict[s
     raise ValueError("지원하는 매출표 형식이 아닙니다.")
 
 
+def _sales_partner_name_from_daily_filename(filename: str) -> str:
+    stem = Path(str(filename or "")).stem.strip()
+    for suffix in (" 매출 현황", " 매출현황", "_매출 현황", "_매출현황"):
+        if stem.endswith(suffix):
+            stem = stem[: -len(suffix)]
+            break
+    return stem.strip() or Path(str(filename or "")).stem.strip()
+
+
+def _sales_daily_row_as_seller(row: dict[str, object], seller_name: str) -> dict[str, object]:
+    report_date = str(row.get("report_date") or "")
+    return {
+        "name": seller_name,
+        "report_date": report_date,
+        "period": str(row.get("period") or report_date[:7] or ""),
+        "quantity": row.get("quantity", 0),
+        "sales_amount": row.get("sales_amount", 0),
+        "supply_amount": row.get("supply_amount", 0),
+        "sales_total": row.get("sales_total", 0),
+        "supply_total": row.get("supply_total", 0),
+        "sales_margin": row.get("sales_margin", 0),
+        "cs_amount": 0,
+        "cs_supply_amount": 0,
+        "cs_margin": row.get("cs_margin", 0),
+        "profit_quantity_sales": row.get("profit_quantity_sales", 0),
+        "profit_quantity_supply": row.get("profit_quantity_supply", 0),
+        "profit_sales_amount": row.get("profit_sales_amount", 0),
+        "profit_supply_amount": row.get("profit_supply_amount", 0),
+        "profit_sales_margin": row.get("profit_sales_margin", 0),
+        "profit_shipping": row.get("profit_shipping", 0),
+        "profit_margin": row.get("profit_margin", 0),
+        "margin_rate": row.get("margin_rate", 0),
+    }
+
+
+def parse_partner_daily_sales_zip(path: str | Path, original_name: str = "") -> dict[str, object]:
+    source = Path(path)
+    cutoff_date = date.today().isoformat()
+    seller_rows: list[dict[str, object]] = []
+    imported_files = 0
+    skipped_current_or_future_rows = 0
+    skipped_files = 0
+    error_files = 0
+
+    with zipfile.ZipFile(source) as archive, tempfile.TemporaryDirectory() as temp_dir:
+        temp_root = Path(temp_dir)
+        for index, member in enumerate(archive.infolist(), start=1):
+            if member.is_dir():
+                continue
+            member_name = Path(member.filename.replace("\\", "/")).name
+            if not member_name or member_name.startswith("~$"):
+                continue
+            suffix = Path(member_name).suffix.lower()
+            if suffix not in SALES_REPORT_WORKBOOK_SUFFIXES:
+                skipped_files += 1
+                continue
+            target = temp_root / f"{index:04d}_{_safe_shared_filename(member_name)}"
+            target.write_bytes(archive.read(member))
+            try:
+                parsed = parse_sales_report_file(target, member_name)
+            except Exception:
+                error_files += 1
+                continue
+            if str(parsed.get("report_type") or "") != "daily":
+                skipped_files += 1
+                continue
+            seller_name = _sales_partner_name_from_daily_filename(member_name)
+            imported_files += 1
+            for row in parsed.get("rows", []):
+                if not isinstance(row, dict):
+                    continue
+                report_date = str(row.get("report_date") or "")
+                if not report_date:
+                    continue
+                if report_date >= cutoff_date:
+                    skipped_current_or_future_rows += 1
+                    continue
+                seller_rows.append(_sales_daily_row_as_seller(row, seller_name))
+
+    if not seller_rows:
+        raise ValueError("거래처별 일자별 매출 ZIP에서 반영할 데이터를 찾지 못했습니다.")
+
+    periods = sorted({str(row.get("period") or "") for row in seller_rows if row.get("period")})
+    dates = sorted({str(row.get("report_date") or "") for row in seller_rows if row.get("report_date")})
+    period = periods[0] if len(periods) == 1 else (dates[-1][:7] if dates else "")
+    return {
+        "report_type": "seller_daily_zip",
+        "report_date": dates[-1] if dates else "",
+        "period": period,
+        "rows": seller_rows,
+        "source_file_count": imported_files,
+        "skipped_file_count": skipped_files,
+        "error_file_count": error_files,
+        "skipped_current_or_future_rows": skipped_current_or_future_rows,
+    }
+
+
 def _sales_row_sum(rows: list[dict[str, object]], key: str) -> int:
     return int(sum(_sales_report_int(row.get(key, 0)) for row in rows))
 
@@ -23876,6 +23974,47 @@ def save_sales_report_snapshot(file_id: int, parsed: dict[str, object]) -> None:
                         row.get("profit_sales_margin", 0),
                         row.get("profit_shipping_sales", 0),
                         row.get("profit_shipping_supply", 0),
+                        row.get("profit_shipping", 0),
+                        row.get("profit_margin", 0),
+                        row.get("margin_rate", 0),
+                    ),
+                )
+        elif report_type == "seller_daily_zip":
+            report_dates = sorted({str(row.get("report_date") or "") for row in rows if row.get("report_date")})
+            for target_date in report_dates:
+                connection.execute("DELETE FROM sales_report_seller_rows WHERE report_date = ?", (target_date,))
+            for row in rows:
+                row_report_date = str(row.get("report_date") or report_date or "")
+                row_period = str(row.get("period") or row_report_date[:7] or period)
+                connection.execute(
+                    """
+                    INSERT INTO sales_report_seller_rows (
+                        period, report_date, file_id, seller_name, quantity, sales_amount, supply_amount,
+                        sales_total, supply_total, sales_margin, cs_amount, cs_supply_amount, cs_margin,
+                        profit_quantity_sales, profit_quantity_supply, profit_sales_amount, profit_supply_amount,
+                        profit_sales_margin, profit_shipping, profit_margin, margin_rate
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        row_period,
+                        row_report_date,
+                        file_id,
+                        row.get("name", ""),
+                        row.get("quantity", 0),
+                        row.get("sales_amount", 0),
+                        row.get("supply_amount", 0),
+                        row.get("sales_total", 0),
+                        row.get("supply_total", 0),
+                        row.get("sales_margin", 0),
+                        row.get("cs_amount", 0),
+                        row.get("cs_supply_amount", 0),
+                        row.get("cs_margin", 0),
+                        row.get("profit_quantity_sales", 0),
+                        row.get("profit_quantity_supply", 0),
+                        row.get("profit_sales_amount", 0),
+                        row.get("profit_supply_amount", 0),
+                        row.get("profit_sales_margin", 0),
                         row.get("profit_shipping", 0),
                         row.get("profit_margin", 0),
                         row.get("margin_rate", 0),
@@ -25309,6 +25448,14 @@ def sales_report_date_from_upload_name(name: str, period: str = "") -> str:
             return date(int(year), int(month), int(day)).isoformat()
         except ValueError:
             return ""
+    match = re.search(r"(?<!\d)(20\d{2})(\d{1,2})(\d{2})(?!\d)", text)
+    if match:
+        year, month, day = match.groups()
+        try:
+            candidate = date(int(year), int(month), int(day)).isoformat()
+            return candidate if not period or candidate.startswith(period) else ""
+        except ValueError:
+            return ""
     if period:
         compact_period = period.replace("-", "")
         match = re.search(r"(?<!\d)(\d{1,2})(\d{2})(?!\d)", text)
@@ -25348,12 +25495,17 @@ def save_sales_report_file(
     target = SALES_REPORT_DIR / stored_name
     target.write_bytes(source.read_bytes())
     uploaded_at = now_text()
-    report_type = detect_sales_report_type(target, safe_original)
     parsed_report: dict[str, object] | None = None
+    if target.suffix.lower() == ".zip":
+        parsed_report = parse_partner_daily_sales_zip(target, safe_original)
+        report_type = str(parsed_report.get("report_type") or "")
+    else:
+        report_type = detect_sales_report_type(target, safe_original)
     report_date = ""
     period = ""
     if report_type:
-        parsed_report = parse_sales_report_file(target, safe_original)
+        if parsed_report is None:
+            parsed_report = parse_sales_report_file(target, safe_original)
         report_date = str(parsed_report.get("report_date") or "")
         period = str(parsed_report.get("period") or report_date[:7] or "")
 
@@ -25408,6 +25560,9 @@ def save_sales_report_file(
         "report_date": report_date,
         "period": period,
         "source_kind": str(source_kind or ""),
+        "row_count": len(parsed_report.get("rows", [])) if parsed_report else 0,
+        "source_file_count": int(parsed_report.get("source_file_count", 0)) if parsed_report else 0,
+        "skipped_current_or_future_rows": int(parsed_report.get("skipped_current_or_future_rows", 0)) if parsed_report else 0,
     }
 
 

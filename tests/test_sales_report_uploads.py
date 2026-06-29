@@ -5,6 +5,8 @@ import os
 import sys
 import tempfile
 import unittest
+import zipfile
+from datetime import date, timedelta
 from pathlib import Path
 
 import openpyxl
@@ -606,6 +608,78 @@ class SalesReportUploadTests(unittest.TestCase):
         )
 
         self.assertEqual(parsed, "2026-06-23")
+
+    def test_sales_report_date_from_upload_name_accepts_compact_single_digit_month(self) -> None:
+        parsed = self.app.sales_report_date_from_upload_name(
+            "2026629 거래처별 매출현황.xlsx",
+            "2026-06",
+        )
+
+        self.assertEqual(parsed, "2026-06-29")
+
+    def test_partner_daily_zip_imports_seller_rows_until_yesterday(self) -> None:
+        base = Path(self.tempdir.name)
+        archive_path = base / "partner-daily.zip"
+        today = date.today()
+        yesterday = today - timedelta(days=1)
+        with zipfile.ZipFile(archive_path, "w") as archive:
+            archive.writestr("A거래처 매출 현황.xlsx", b"a")
+            archive.writestr("B거래처 매출 현황.xlsx", b"b")
+
+        original_parse = self.app.parse_sales_report_file
+
+        def fake_parse(path: Path, original_name: str = "") -> dict[str, object]:
+            amount = 100 if original_name.startswith("A") else 200
+            return {
+                "report_type": "daily",
+                "report_date": yesterday.isoformat(),
+                "period": yesterday.isoformat()[:7],
+                "rows": [
+                    {
+                        "report_date": yesterday.isoformat(),
+                        "period": yesterday.isoformat()[:7],
+                        "quantity": 1,
+                        "profit_sales_amount": amount,
+                        "profit_shipping": 10,
+                        "profit_margin": amount + 10,
+                    },
+                    {
+                        "report_date": today.isoformat(),
+                        "period": today.isoformat()[:7],
+                        "quantity": 9,
+                        "profit_sales_amount": 999,
+                        "profit_shipping": 0,
+                        "profit_margin": 999,
+                    },
+                ],
+            }
+
+        try:
+            self.app.parse_sales_report_file = fake_parse
+            saved = self.app.save_sales_report_file(archive_path, archive_path.name, "admin")
+        finally:
+            self.app.parse_sales_report_file = original_parse
+
+        self.assertEqual(saved["report_type"], "seller_daily_zip")
+        self.assertEqual(saved["row_count"], 2)
+        self.assertEqual(saved["source_file_count"], 2)
+        self.assertEqual(saved["skipped_current_or_future_rows"], 2)
+
+        connection = self.app.connect_db()
+        try:
+            rows = connection.execute(
+                """
+                SELECT report_date, seller_name, quantity, profit_sales_amount, profit_margin, profit_shipping
+                  FROM sales_report_seller_rows
+                 ORDER BY seller_name
+                """
+            ).fetchall()
+        finally:
+            connection.close()
+
+        self.assertEqual([row["report_date"] for row in rows], [yesterday.isoformat(), yesterday.isoformat()])
+        self.assertEqual([row["seller_name"] for row in rows], ["A거래처", "B거래처"])
+        self.assertEqual([row["profit_sales_amount"] for row in rows], [100, 200])
 
     def test_sales_dimension_reports_without_date_inherit_latest_daily_context(self) -> None:
         base = Path(self.tempdir.name)

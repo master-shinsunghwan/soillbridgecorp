@@ -850,7 +850,7 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         self.assertIn('id="salesReportNavToggle"', html_source)
         self.assertIn('"sales_report_manage"', html_source)
         self.assertIn("__SALES_REPORT_NAV__", html_source)
-        self.assertIn('accept=".xlsx,.xlsm,.xls,.csv"', html_source)
+        self.assertIn('accept=".xlsx,.xlsm,.xls,.csv,.zip"', html_source)
         self.assertIn('data-open="salesReport">매출표 업로드</button>', html_source)
         self.assertIn('mode === "salesReport"', html_source)
         self.assertIn("sales-report-only", html_source)
