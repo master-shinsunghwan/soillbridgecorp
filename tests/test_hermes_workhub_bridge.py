@@ -76,7 +76,7 @@ class HermesWorkhubBridgeTests(unittest.TestCase):
     def test_bridge_uses_shared_hermes_backend_for_tool_intents_by_default(self) -> None:
         bridge = load_bridge_module()
 
-        bridge.AI_TOOL_PROVIDER = "hermes"
+        bridge.AI_TOOL_PROVIDER = "codex"
         bridge.OPENAI_API_KEY = ""
         self.assertFalse(bridge.should_use_openai_for_intent("web_search"))
         self.assertFalse(bridge.should_use_openai_for_intent("image_generation"))
@@ -90,6 +90,19 @@ class HermesWorkhubBridgeTests(unittest.TestCase):
 
         bridge.AI_TOOL_PROVIDER = ""
         self.assertFalse(bridge.should_use_openai_for_intent("web_search"))
+
+    def test_bridge_builds_codex_provider_command_for_hermes(self) -> None:
+        bridge = load_bridge_module()
+
+        bridge.HERMES_PROVIDER = "openai-codex"
+        bridge.HERMES_MODEL = "gpt-5.5"
+        bridge.HERMES_BIN = "hermes"
+        command = bridge.hermes_command("hello")
+
+        self.assertIn("--provider", command)
+        self.assertIn("openai-codex", command)
+        self.assertIn("-m", command)
+        self.assertIn("gpt-5.5", command)
 
     def test_bridge_prompt_marks_shared_tool_intent_for_hermes(self) -> None:
         bridge = load_bridge_module()
@@ -112,4 +125,8 @@ class HermesWorkhubBridgeTests(unittest.TestCase):
         self.assertIn("FAL_KEY", response["answer"])
 
         bridge.FAL_KEY = "set"
+        self.assertFalse(bridge.should_block_unconfigured_image_generation("image_generation"))
+
+        bridge.AI_TOOL_PROVIDER = "codex"
+        bridge.FAL_KEY = ""
         self.assertFalse(bridge.should_block_unconfigured_image_generation("image_generation"))

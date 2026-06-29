@@ -20,7 +20,9 @@ OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "").strip()
 OPENAI_TEXT_MODEL = os.environ.get("OPENAI_TEXT_MODEL", "gpt-5.5")
 OPENAI_IMAGE_MODEL = os.environ.get("OPENAI_IMAGE_MODEL", "gpt-image-2")
 FAL_KEY = os.environ.get("FAL_KEY", "").strip()
-AI_TOOL_PROVIDER = os.environ.get("WORKHUB_AI_TOOL_PROVIDER", "hermes").strip().lower()
+AI_TOOL_PROVIDER = os.environ.get("WORKHUB_AI_TOOL_PROVIDER", "codex").strip().lower()
+HERMES_PROVIDER = os.environ.get("HERMES_PROVIDER", "openai-codex").strip()
+HERMES_MODEL = os.environ.get("HERMES_MODEL", "gpt-5.5").strip()
 
 
 def normalize_token(value: str) -> str:
@@ -81,13 +83,23 @@ def build_prompt(payload: dict[str, Any], mode: str) -> str:
     )
 
 
+def hermes_command(prompt: str) -> list[str]:
+    command = [HERMES_BIN, "--ignore-rules"]
+    if HERMES_PROVIDER:
+        command.extend(["--provider", HERMES_PROVIDER])
+    if HERMES_MODEL:
+        command.extend(["-m", HERMES_MODEL])
+    command.extend(["-z", prompt])
+    return command
+
+
 def run_hermes(prompt: str) -> str:
     if not prompt.strip():
         raise ValueError("message is required")
     env = os.environ.copy()
     env.setdefault("HERMES_ACCEPT_HOOKS", "1")
     completed = subprocess.run(
-        [HERMES_BIN, "--ignore-rules", "-z", prompt],
+        hermes_command(prompt),
         cwd=HERMES_CWD,
         env=env,
         text=True,
@@ -186,7 +198,7 @@ def run_openai_image_generation(payload: dict[str, Any]) -> dict[str, Any]:
 def should_use_openai_for_intent(intent: str) -> bool:
     if intent not in {"web_search", "image_generation"}:
         return False
-    if AI_TOOL_PROVIDER in {"hermes", "shared", "slack", "slack_hermes"}:
+    if AI_TOOL_PROVIDER in {"codex", "openai-codex", "hermes", "shared", "slack", "slack_hermes"}:
         return False
     if AI_TOOL_PROVIDER in {"openai", "api"}:
         return True
@@ -195,6 +207,8 @@ def should_use_openai_for_intent(intent: str) -> bool:
 
 def should_block_unconfigured_image_generation(intent: str) -> bool:
     if intent != "image_generation":
+        return False
+    if AI_TOOL_PROVIDER in {"codex", "openai-codex"}:
         return False
     if should_use_openai_for_intent(intent):
         return False
