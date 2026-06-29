@@ -3016,6 +3016,34 @@ HTML = r"""<!doctype html>
       justify-content: flex-end;
       gap: 8px;
     }
+    .hermes-mode-selector {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 6px;
+    }
+    .hermes-mode-button {
+      min-height: 36px;
+      border: 1px solid #d8e0ec;
+      border-radius: 8px;
+      background: #f8fafc;
+      color: #334155;
+      font-family: inherit;
+      font-size: 12px;
+      font-weight: 950;
+      cursor: pointer;
+    }
+    .hermes-mode-button.active {
+      border-color: #2563eb;
+      background: #eff6ff;
+      color: #1d4ed8;
+    }
+    .hermes-mode-hint {
+      min-height: 18px;
+      color: #64748b;
+      font-size: 12px;
+      font-weight: 800;
+      line-height: 1.45;
+    }
     .hermes-response {
       min-height: 48px;
       padding: 12px;
@@ -3102,6 +3130,36 @@ HTML = r"""<!doctype html>
       white-space: pre-wrap;
       font-size: 13px;
       font-weight: 750;
+    }
+    .hermes-result-links {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 8px;
+    }
+    .hermes-result-link {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 32px;
+      padding: 0 10px;
+      border: 1px solid #93c5fd;
+      border-radius: 7px;
+      background: #eff6ff;
+      color: #1d4ed8;
+      font-size: 12px;
+      font-weight: 950;
+      text-decoration: none;
+    }
+    .hermes-result-image {
+      display: block;
+      width: min(100%, 420px);
+      max-height: 280px;
+      object-fit: contain;
+      margin-top: 10px;
+      border: 1px solid #d8e0ec;
+      border-radius: 8px;
+      background: #fff;
     }
     .hermes-side-card strong {
       display: block;
@@ -11133,6 +11191,8 @@ HTML = r"""<!doctype html>
     const hermesChatResponse = document.querySelector("#hermesChatResponse");
     const hermesChatTranscript = document.querySelector("#hermesChatTranscript");
     const hermesChatClose = document.querySelector("#hermesChatClose");
+    const hermesChatModeButtons = Array.from(document.querySelectorAll("[data-hermes-chat-mode]"));
+    const hermesChatModeHint = document.querySelector("#hermesChatModeHint");
     const hermesAutomationTitle = document.querySelector("#hermesAutomationTitle");
     const hermesAutomationBody = document.querySelector("#hermesAutomationBody");
     const hermesAutomationSend = document.querySelector("#hermesAutomationSend");
@@ -11388,6 +11448,7 @@ HTML = r"""<!doctype html>
     let hermesChatMessages = [];
     let hermesChatPending = false;
     let hermesChatSessionId = 0;
+    let hermesChatMode = "auto";
     let crmSelectedTaskId = "";
     const CRM_TASK_STATUSES = ["대기", "진행중", "보류", "완료"];
     const CRM_TASK_BUILTIN_VIEWS = [
@@ -13494,8 +13555,7 @@ HTML = r"""<!doctype html>
     function formatSalesMillion(value, signed = false) {
       const number = Number(value || 0);
       const sign = signed && number > 0 ? "+" : "";
-      const absolute = Math.abs(number) / 1000000;
-      return `${number < 0 ? "-" : sign}${absolute.toLocaleString("ko-KR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}백만`;
+      return `${number < 0 ? "-" : sign}${Math.abs(number).toLocaleString("ko-KR")}`;
     }
 
     function formatSalesCompactMoney(value, signed = false) {
@@ -14135,6 +14195,84 @@ HTML = r"""<!doctype html>
       return JSON.stringify(payload, null, 2);
     }
 
+    const HERMES_CHAT_MODE_LABELS = {
+      auto: "자동선택",
+      automation: "업무자동화",
+      general: "일반 AI",
+      search: "자료검색",
+      image: "이미지생성",
+    };
+
+    const HERMES_CHAT_MODE_HINTS = {
+      auto: "자동선택: 요청에 맞는 Workhub 업무, 일반 AI, 검색, 이미지 기능을 자동으로 고릅니다.",
+      automation: "업무자동화: Workhub 데이터와 업무 흐름을 우선으로 판단합니다.",
+      general: "일반 AI: Workhub 내부 기능에 억지로 묶지 않고 일반 Codex/GPT처럼 답합니다.",
+      search: "자료검색: 최신 정보와 웹 조사 요청을 검색 중심으로 처리합니다.",
+      image: "이미지생성: 이미지 제작 결과를 미리보기와 다운로드 링크로 제공합니다.",
+    };
+
+    function hermesPayloadFromResult(data) {
+      return data?.result?.data || data?.data || data?.result || data || {};
+    }
+
+    function hermesFilesFromResult(data) {
+      const payload = hermesPayloadFromResult(data);
+      const files = [];
+      const seen = new Set();
+      const pushFile = (file) => {
+        if (!file || !file.download_url) return;
+        if (seen.has(file.download_url)) return;
+        seen.add(file.download_url);
+        files.push({
+          id: file.id || "",
+          name: file.original_name || file.filename || file.name || "결과물 다운로드",
+          download_url: file.download_url,
+          mime: file.mime || file.image_mime || "",
+        });
+      };
+      pushFile(payload.generated_file);
+      pushFile(payload.generated_text_file);
+      if (Array.isArray(payload.generated_files)) payload.generated_files.forEach(pushFile);
+      if (Array.isArray(payload.files)) payload.files.forEach(pushFile);
+      if (Array.isArray(data?.files)) data.files.forEach(pushFile);
+      return files;
+    }
+
+    function hermesImageUrlFromResult(data) {
+      const payload = hermesPayloadFromResult(data);
+      const file = payload.generated_file || {};
+      if (file.download_url && String(file.original_name || file.filename || "").match(/\.(png|jpg|jpeg|webp)$/i)) {
+        return file.download_url;
+      }
+      return payload.image_url || data?.image_url || "";
+    }
+
+    function hermesAnswerHtml(text, files = [], imageUrl = "") {
+      const body = `<div>${escapeHtml(text || "")}</div>`;
+      const image = imageUrl
+        ? `<img class="hermes-result-image" src="${escapeHtml(imageUrl)}" alt="Hermes 생성 이미지" />`
+        : "";
+      const links = files.length ? `
+        <div class="hermes-result-links">
+          ${files.map((file) => `<a class="hermes-result-link" href="${escapeHtml(file.download_url)}" download>${escapeHtml(file.name || "결과물 다운로드")}</a>`).join("")}
+        </div>
+      ` : "";
+      return `${body}${image}${links}`;
+    }
+
+    function setHermesLatestAnswer(text, files = [], imageUrl = "") {
+      if (!hermesChatResponse) return;
+      hermesChatResponse.innerHTML = hermesAnswerHtml(text, files, imageUrl);
+    }
+
+    function setHermesChatMode(mode) {
+      hermesChatMode = HERMES_CHAT_MODE_LABELS[mode] ? mode : "auto";
+      hermesChatModeButtons.forEach((button) => {
+        button.classList.toggle("active", button.dataset.hermesChatMode === hermesChatMode);
+      });
+      if (hermesChatModeHint) hermesChatModeHint.textContent = HERMES_CHAT_MODE_HINTS[hermesChatMode] || "";
+    }
+
     function setHermesStatus(ok, message) {
       if (!hermesStatusPill) return;
       hermesStatusPill.textContent = ok ? "연결됨" : (message ? "확인 필요" : "연결 대기");
@@ -14348,18 +14486,19 @@ HTML = r"""<!doctype html>
       hermesChatTranscript.innerHTML = hermesChatMessages.map((item) => {
         const roleLabel = item.role === "user" ? "질문" : (item.role === "error" ? "오류" : "답변");
         const statusLabel = item.status === "pending" ? "준비 중" : (item.status === "error" ? "실패" : "완료");
+        const modeLabel = item.mode ? ` · ${HERMES_CHAT_MODE_LABELS[item.mode] || item.mode}` : "";
         return `
           <div class="hermes-chat-message ${escapeHtml(item.role)}">
             <strong>${roleLabel}</strong>
-            <div>${escapeHtml(item.text || "")}</div>
-            <span>${escapeHtml(item.created_at || "")} · ${statusLabel}</span>
+            ${hermesAnswerHtml(item.text || "", item.files || [], item.image_url || "")}
+            <span>${escapeHtml(item.created_at || "")} · ${statusLabel}${escapeHtml(modeLabel)}</span>
           </div>
         `;
       }).join("");
       hermesChatTranscript.scrollTop = hermesChatTranscript.scrollHeight;
     }
 
-    function appendHermesChatMessage(role, text, status = "done") {
+    function appendHermesChatMessage(role, text, status = "done", extra = {}) {
       const id = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
       hermesChatMessages.push({
         id,
@@ -14367,6 +14506,7 @@ HTML = r"""<!doctype html>
         text,
         status,
         created_at: new Date().toLocaleString("ko-KR"),
+        ...extra,
       });
       renderHermesChatTranscript();
       return id;
@@ -14384,7 +14524,7 @@ HTML = r"""<!doctype html>
       hermesChatMessages = [];
       hermesChatPending = false;
       if (hermesChatInput) hermesChatInput.value = "";
-      if (hermesChatResponse) hermesChatResponse.textContent = "헤르메스 연결 후 답변이 여기에 표시됩니다.";
+      setHermesLatestAnswer("헤르메스 연결 후 답변이 여기에 표시됩니다.");
       if (hermesChatSend) hermesChatSend.disabled = false;
       renderHermesChatTranscript();
       showWorkspace("dashboard");
@@ -14394,31 +14534,35 @@ HTML = r"""<!doctype html>
       if (hermesChatPending) return;
       const message = (hermesChatInput?.value || "").trim();
       if (!message) {
-        if (hermesChatResponse) hermesChatResponse.textContent = "보낼 내용을 입력해주세요.";
+        setHermesLatestAnswer("보낼 내용을 입력해주세요.");
         hermesChatInput?.focus();
         return;
       }
-      appendHermesChatMessage("user", message);
+      const requestedMode = hermesChatMode;
+      appendHermesChatMessage("user", message, "done", { mode: requestedMode });
       if (hermesChatInput) hermesChatInput.value = "";
-      const answerId = appendHermesChatMessage("assistant", "헤르메스가 답변을 준비하는 중입니다.", "pending");
+      const answerId = appendHermesChatMessage("assistant", "헤르메스가 답변을 준비하는 중입니다.", "pending", { mode: requestedMode });
       const sessionId = hermesChatSessionId;
       hermesChatPending = true;
       if (hermesChatSend) hermesChatSend.disabled = true;
-      if (hermesChatResponse) hermesChatResponse.textContent = "헤르메스가 답변을 준비하는 중입니다.";
+      setHermesLatestAnswer("헤르메스가 답변을 준비하는 중입니다.");
       try {
         const data = await hermesFetchJson("/api/hermes-chat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ message }),
+          body: JSON.stringify({ message, mode: requestedMode }),
         });
         const answer = hermesTextFromResult(data) || "응답을 받았습니다.";
+        const files = hermesFilesFromResult(data);
+        const imageUrl = hermesImageUrlFromResult(data);
+        const resolvedMode = data.mode || requestedMode;
         if (sessionId !== hermesChatSessionId) return;
-        if (hermesChatResponse) hermesChatResponse.textContent = answer;
-        updateHermesChatMessage(answerId, { text: answer, status: "done" });
+        setHermesLatestAnswer(answer, files, imageUrl);
+        updateHermesChatMessage(answerId, { text: answer, status: "done", files, image_url: imageUrl, mode: resolvedMode });
         await loadHermesHistory();
       } catch (error) {
         if (sessionId !== hermesChatSessionId) return;
-        if (hermesChatResponse) hermesChatResponse.textContent = error.message;
+        setHermesLatestAnswer(error.message);
         updateHermesChatMessage(answerId, { role: "error", text: error.message, status: "error" });
       } finally {
         if (sessionId === hermesChatSessionId) {
@@ -20775,11 +20919,15 @@ HTML = r"""<!doctype html>
       button.addEventListener("click", () => setHermesTab(button.dataset.hermesTabButton || "chat"));
     });
     hermesChatSend?.addEventListener("click", sendHermesChat);
+    hermesChatModeButtons.forEach((button) => {
+      button.addEventListener("click", () => setHermesChatMode(button.dataset.hermesChatMode || "auto"));
+    });
+    setHermesChatMode("auto");
     hermesChatInput?.addEventListener("keydown", (event) => {
       if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {
         event.preventDefault();
         sendHermesChat().catch((error) => {
-          if (hermesChatResponse) hermesChatResponse.textContent = error.message;
+          setHermesLatestAnswer(error.message);
         });
       }
     });
@@ -20789,7 +20937,7 @@ HTML = r"""<!doctype html>
         const action = button.dataset.hermesQuick || "";
         if (action === "summary") {
           createHermesSummary().catch((error) => {
-            if (hermesChatResponse) hermesChatResponse.textContent = error.message;
+            setHermesLatestAnswer(error.message);
           });
         } else if (action === "history") {
           setHermesTab("history");
@@ -22384,6 +22532,14 @@ HERMES_WORKSPACE_HTML = r"""
             <div class="hermes-chat-layout">
               <div class="hermes-card hermes-chat-input-card">
                 <div class="admin-section-title">AI 업무채팅</div>
+                <div class="hermes-mode-selector" id="hermesChatModeSelector" role="group" aria-label="Hermes 기능 모드">
+                  <button class="hermes-mode-button active" type="button" data-hermes-chat-mode="auto">자동선택</button>
+                  <button class="hermes-mode-button" type="button" data-hermes-chat-mode="automation">업무자동화</button>
+                  <button class="hermes-mode-button" type="button" data-hermes-chat-mode="general">일반 AI</button>
+                  <button class="hermes-mode-button" type="button" data-hermes-chat-mode="search">자료검색</button>
+                  <button class="hermes-mode-button" type="button" data-hermes-chat-mode="image">이미지생성</button>
+                </div>
+                <div class="hermes-mode-hint" id="hermesChatModeHint">자동선택: 요청에 맞는 Workhub 업무, 일반 AI, 검색, 이미지 기능을 자동으로 고릅니다.</div>
                 <textarea class="hermes-textarea" id="hermesChatInput" placeholder="예) 오늘 미처리 CS를 요약하고 우선순위를 추천해줘."></textarea>
                 <div class="hermes-actions">
                   <button class="workspace-button" type="button" id="hermesChatSend">헤르메스에 보내기</button>
@@ -31664,7 +31820,19 @@ def save_hermes_settings(payload: dict) -> dict[str, object]:
     return load_hermes_settings(include_secret=False)
 
 
-def hermes_chat_intent(message: str) -> str:
+def normalize_hermes_chat_mode(value: object) -> str:
+    mode = str(value or "auto").strip().lower()
+    return mode if mode in {"auto", "automation", "general", "search", "image"} else "auto"
+
+
+def hermes_chat_intent(message: str, mode: str = "auto") -> str:
+    mode = normalize_hermes_chat_mode(mode)
+    if mode == "search":
+        return "web_search"
+    if mode == "image":
+        return "image_generation"
+    if mode in {"automation", "general"}:
+        return "chat"
     text = str(message or "").strip().lower()
     if text.startswith(("/검색", "검색:", "search:")) or any(token in text for token in ("검색해", "찾아봐", "최신", "뉴스", "인터넷")):
         return "web_search"
@@ -31735,13 +31903,16 @@ def hermes_workhub_context_snapshot() -> dict[str, object]:
     }
 
 
-def hermes_capabilities_payload(intent: str = "chat") -> dict[str, object]:
+def hermes_capabilities_payload(intent: str = "chat", mode: str = "auto") -> dict[str, object]:
     return {
         "chat": True,
         "workhub_context": True,
         "automation_planning": True,
         "web_search": "Codex-backed Hermes agent by default; direct OpenAI web_search only when WORKHUB_AI_TOOL_PROVIDER=openai",
         "image_generation": "Codex-backed Hermes agent by default; direct OpenAI image API only when WORKHUB_AI_TOOL_PROVIDER=openai",
+        "downloadable_results": True,
+        "available_chat_modes": ["auto", "automation", "general", "search", "image"],
+        "requested_mode": normalize_hermes_chat_mode(mode),
         "requested_intent": intent,
     }
 
@@ -31761,6 +31932,26 @@ def save_hermes_generated_image(data: dict[str, object], uploaded_by: str = "") 
     finally:
         temp_path.unlink(missing_ok=True)
     saved["download_url"] = f"/api/shared-file-download?id={saved['id']}"
+    return saved
+
+
+def save_hermes_text_result(text: str, mode: str = "auto", uploaded_by: str = "") -> dict[str, object] | None:
+    text = str(text or "").strip()
+    if not text:
+        return None
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".txt", mode="w", encoding="utf-8") as handle:
+        handle.write(text)
+        temp_path = Path(handle.name)
+    try:
+        saved = save_shared_file(
+            temp_path,
+            f"hermes_{normalize_hermes_chat_mode(mode)}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt",
+            uploaded_by,
+        )
+    finally:
+        temp_path.unlink(missing_ok=True)
+    saved["download_url"] = f"/api/shared-file-download?id={saved['id']}"
+    saved["mime"] = "text/plain"
     return saved
 
 
@@ -33165,12 +33356,24 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                 message = clean_payload_text(payload, "message")
                 if not message:
                     raise ValueError("헤르메스에 보낼 내용을 입력해주세요.")
-                intent = hermes_chat_intent(message)
+                chat_mode = normalize_hermes_chat_mode(payload.get("mode"))
+                intent = hermes_chat_intent(message, chat_mode)
+                effective_mode = chat_mode
+                if chat_mode == "auto":
+                    if intent == "web_search":
+                        effective_mode = "search"
+                    elif intent == "image_generation":
+                        effective_mode = "image"
+                    else:
+                        effective_mode = "automation"
+                user_label = str(user.get("display_name") or user.get("username") or "")
                 request_payload = {
                     "message": message,
                     "intent": intent,
+                    "mode": effective_mode,
+                    "requested_mode": chat_mode,
                     "source": "workhub",
-                    "capabilities": hermes_capabilities_payload(intent),
+                    "capabilities": hermes_capabilities_payload(intent, effective_mode),
                     "workhub_context": hermes_workhub_context_snapshot(),
                     "user": {
                         "id": int(user.get("id") or 0),
@@ -33183,27 +33386,46 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                     data = result.get("data", {}) if isinstance(result.get("data"), dict) else {}
                     generated_file = save_hermes_generated_image(
                         data,
-                        str(user.get("display_name") or user.get("username") or ""),
+                        user_label,
                     ) if intent == "image_generation" else None
+                    answer_text = str(data.get("answer") or data.get("text") or hermes_result_text(result) or "응답을 받았습니다.")
+                    result_files = []
                     if generated_file:
                         data["generated_file"] = generated_file
-                        data["answer"] = f"{data.get('answer') or data.get('text') or '이미지를 생성했습니다.'}\n다운로드: {generated_file['download_url']}"
-                        data["text"] = data["answer"]
+                        result_files.append(generated_file)
+                        answer_text = f"{answer_text or '이미지를 생성했습니다.'}\n다운로드: {generated_file['download_url']}"
+                        data["answer"] = answer_text
+                        data["text"] = answer_text
                         result["data"] = data
                     elif intent == "image_generation" and data.get("image_url"):
-                        data["answer"] = f"{data.get('answer') or data.get('text') or '이미지를 생성했습니다.'}\n이미지 URL: {data['image_url']}"
-                        data["text"] = data["answer"]
+                        answer_text = f"{answer_text or '이미지를 생성했습니다.'}\n이미지 URL: {data['image_url']}"
+                        data["answer"] = answer_text
+                        data["text"] = answer_text
+                        result["data"] = data
+                    text_file = save_hermes_text_result(answer_text, effective_mode, user_label)
+                    if text_file:
+                        data["generated_text_file"] = text_file
+                        result_files.append(text_file)
+                    if result_files:
+                        data["generated_files"] = result_files
                         result["data"] = data
                     append_hermes_history(
                         "AI 업무채팅",
                         message,
                         "성공",
                         json.dumps(data, ensure_ascii=False)[:1000],
-                        {"category": "chat", "intent": intent},
+                        {"category": "chat", "intent": intent, "mode": effective_mode},
                     )
-                    self.send_json({"message": "헤르메스 응답을 받았습니다.", "result": result, "intent": intent})
+                    self.send_json({
+                        "message": "헤르메스 응답을 받았습니다.",
+                        "result": result,
+                        "intent": intent,
+                        "mode": effective_mode,
+                        "files": result_files,
+                        "image_url": data.get("image_url", ""),
+                    })
                 except Exception as exc:
-                    append_hermes_history("AI 업무채팅", message, "실패", str(exc), {"category": "chat", "intent": intent})
+                    append_hermes_history("AI 업무채팅", message, "실패", str(exc), {"category": "chat", "intent": intent, "mode": effective_mode})
                     raise
                 return
 

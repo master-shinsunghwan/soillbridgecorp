@@ -59,11 +59,33 @@ def build_prompt(payload: dict[str, Any], mode: str) -> str:
     if isinstance(capabilities, dict) and capabilities:
         capability_text = "\n\nAvailable Workhub AI capabilities:\n" + json.dumps(capabilities, ensure_ascii=False, indent=2)[:2000]
     intent = str(payload.get("intent") or "").strip().lower()
+    chat_mode = str(payload.get("mode") or payload.get("requested_mode") or "auto").strip().lower()
     intent_text = ""
     if intent == "web_search":
         intent_text = "\n\nRequested tool intent: web_search. Use the shared Hermes research/search backend when available."
     elif intent == "image_generation":
         intent_text = "\n\nRequested tool intent: image_generation. Use the shared Hermes image-generation backend when available."
+    mode_text = {
+        "automation": (
+            "\n\nRequested Workhub mode: 업무자동화. Prioritize Workhub business data, operational workflows, "
+            "and actionable automation steps. You may still answer generally if the request needs it."
+        ),
+        "general": (
+            "\n\nRequested Workhub mode: 일반 AI. Answer like a general Codex/GPT assistant. "
+            "Do not force the response into Workhub automation or internal database actions unless the user explicitly asks."
+        ),
+        "search": (
+            "\n\nRequested Workhub mode: 자료검색. Treat this as a research/search task. "
+            "Prefer current, source-aware investigation and summarize findings with links when available."
+        ),
+        "image": (
+            "\n\nRequested Workhub mode: 이미지생성. Treat this as an image generation task. "
+            "Create or route to image-generation tools and return the generated file path or image payload when possible."
+        ),
+        "auto": (
+            "\n\nRequested Workhub mode: 자동선택. Choose the most useful capability among Workhub automation, general AI, search, and image generation."
+        ),
+    }.get(chat_mode, "")
     if mode == "automation":
         title = str(payload.get("title") or "Workhub automation request").strip()
         body = str(payload.get("body") or payload.get("message") or "").strip()
@@ -74,17 +96,18 @@ def build_prompt(payload: dict[str, Any], mode: str) -> str:
             "If the user asks for code or UI implementation, summarize the request and say Codex/developer work is needed.\n\n"
             f"Title: {title}\n"
             f"Request:\n{body}"
-            f"{context_text}{capability_text}{intent_text}"
+            f"{context_text}{capability_text}{mode_text}{intent_text}"
         )
     message = str(payload.get("message") or payload.get("prompt") or "").strip()
     return (
         "You are Hermes connected to Soillbridge Workhub.\n"
-        "Reply in Korean with a concise, practical business answer.\n"
+        "Reply in Korean with a concise, practical answer.\n"
         "When the request is ambiguous, list what should be checked next.\n\n"
         "Use the provided Workhub context when it helps, but do not modify Workhub data.\n"
+        "Do not limit the user to Workhub-only tasks: you may support general AI answers, research/search, image generation, and Workhub automation according to the requested mode.\n"
         "If the user asks for code or UI implementation, summarize the request and say Codex/developer work is needed.\n\n"
         f"Workhub message:\n{message}"
-        f"{context_text}{capability_text}{intent_text}"
+        f"{context_text}{capability_text}{mode_text}{intent_text}"
     )
 
 
@@ -266,6 +289,11 @@ def requested_intent(payload: dict[str, Any], mode: str) -> str:
     explicit = str(payload.get("intent") or "").strip().lower()
     if explicit in {"web_search", "image_generation"}:
         return explicit
+    chat_mode = str(payload.get("mode") or payload.get("requested_mode") or "").strip().lower()
+    if chat_mode == "search":
+        return "web_search"
+    if chat_mode == "image":
+        return "image_generation"
     if mode != "chat":
         return ""
     message = str(payload.get("message") or payload.get("prompt") or "").lower()

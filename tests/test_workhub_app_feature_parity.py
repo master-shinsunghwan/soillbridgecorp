@@ -333,6 +333,16 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         self.assertIn("/api/hermes-status", html_source)
         self.assertIn("/api/hermes-chat", html_source)
         self.assertIn("/api/hermes-automation", html_source)
+        self.assertIn('data-hermes-chat-mode="auto"', html_source)
+        self.assertIn('data-hermes-chat-mode="automation"', html_source)
+        self.assertIn('data-hermes-chat-mode="general"', html_source)
+        self.assertIn('data-hermes-chat-mode="search"', html_source)
+        self.assertIn('data-hermes-chat-mode="image"', html_source)
+        self.assertIn("function setHermesChatMode(mode)", html_source)
+        self.assertIn("body: JSON.stringify({ message, mode: requestedMode })", html_source)
+        self.assertIn("save_hermes_text_result", html_source)
+        self.assertIn("generated_text_file", html_source)
+        self.assertIn("hermes-result-link", html_source)
         self.assertIn("HERMES_SETTINGS_PATH", html_source)
         self.assertIn("hermes_request", html_source)
         self.assertIn("hermes_use", html_source)
@@ -372,6 +382,15 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         self.assertIn('setHermesTab("history")', html_source)
         self.assertIn('setHermesTab("automation")', html_source)
         self.assertIn('setHermesTab("settings")', html_source)
+
+    def test_dashboard_sales_amounts_show_full_numbers_not_million_suffix(self) -> None:
+        html_source = (ROOT / "scripts" / "workhub_delivery_app.py").read_text(encoding="utf-8")
+
+        start = html_source.index("function formatSalesMillion")
+        end = html_source.index("function formatSalesPercent", start)
+        formatter_slice = html_source[start:end]
+        self.assertIn('Math.abs(number).toLocaleString("ko-KR")', formatter_slice)
+        self.assertNotIn("백만", formatter_slice)
 
     def test_admin_navigation_and_admin_pages_can_scroll(self) -> None:
         html_source = (ROOT / "scripts" / "workhub_delivery_app.py").read_text(encoding="utf-8")

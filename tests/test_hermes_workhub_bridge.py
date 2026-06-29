@@ -73,6 +73,14 @@ class HermesWorkhubBridgeTests(unittest.TestCase):
             bridge.requested_intent({"message": "최신 자료 조사해줘"}, "automation"),
             "",
         )
+        self.assertEqual(
+            bridge.requested_intent({"message": "시장 조사", "mode": "search"}, "chat"),
+            "web_search",
+        )
+        self.assertEqual(
+            bridge.requested_intent({"message": "배너 만들어줘", "mode": "image"}, "chat"),
+            "image_generation",
+        )
 
     def test_bridge_uses_shared_hermes_backend_for_tool_intents_by_default(self) -> None:
         bridge = load_bridge_module()
@@ -108,10 +116,19 @@ class HermesWorkhubBridgeTests(unittest.TestCase):
     def test_bridge_prompt_marks_shared_tool_intent_for_hermes(self) -> None:
         bridge = load_bridge_module()
 
-        prompt = bridge.build_prompt({"message": "최신 자료 조사해줘", "intent": "web_search"}, "chat")
+        prompt = bridge.build_prompt({"message": "최신 자료 조사해줘", "intent": "web_search", "mode": "search"}, "chat")
 
         self.assertIn("Requested tool intent: web_search", prompt)
         self.assertIn("shared Hermes research/search backend", prompt)
+        self.assertIn("Requested Workhub mode", prompt)
+
+    def test_bridge_general_mode_does_not_force_workhub_automation(self) -> None:
+        bridge = load_bridge_module()
+
+        prompt = bridge.build_prompt({"message": "문장 다듬어줘", "mode": "general"}, "chat")
+
+        self.assertIn("general Codex/GPT assistant", prompt)
+        self.assertIn("Do not force", prompt)
 
     def test_bridge_blocks_unconfigured_shared_image_generation(self) -> None:
         bridge = load_bridge_module()
