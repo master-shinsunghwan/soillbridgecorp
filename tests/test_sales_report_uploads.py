@@ -46,6 +46,53 @@ class SalesReportUploadTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.app.save_uploaded_sales_report_file({"file": ("sales_report.txt", b"plain")}, "file")
 
+    def test_hermes_sales_report_context_uses_today_only_for_today_request(self) -> None:
+        payload = {
+            "period": "2026-06",
+            "selected_date": "2026-06-29",
+            "today_data_uploaded": True,
+            "today": {"quantity": 576, "profit_sales_amount": 7288170},
+            "month": {"quantity": 9999, "profit_sales_amount": 296117470},
+            "seller_total": {"profit_sales_amount": 296117470},
+            "supplier_purchase_total": {"purchase_total": 60937748},
+            "seller_top": [{"name": "월간 판매사"}],
+            "product_top": [{"name": "월간 상품"}],
+        }
+
+        context = self.app.hermes_sales_report_context(
+            payload,
+            self.app.hermes_sales_report_scope("오늘 매출 요약해줘"),
+        )
+
+        self.assertEqual(context["scope"], "today")
+        self.assertTrue(context["today_only"])
+        self.assertEqual(context["today"]["profit_sales_amount"], 7288170)
+        self.assertNotIn("month", context)
+        self.assertNotIn("seller_total", context)
+        self.assertNotIn("top_sellers", context)
+
+    def test_hermes_sales_report_context_keeps_month_for_month_request(self) -> None:
+        payload = {
+            "period": "2026-06",
+            "selected_date": "2026-06-29",
+            "today": {"profit_sales_amount": 7288170},
+            "month": {"profit_sales_amount": 296117470},
+            "seller_total": {"profit_sales_amount": 296117470},
+            "supplier_purchase_total": {"purchase_total": 60937748},
+            "seller_top": [{"name": "월간 판매사"}],
+            "product_top": [{"name": "월간 상품"}],
+        }
+
+        context = self.app.hermes_sales_report_context(
+            payload,
+            self.app.hermes_sales_report_scope("이번 달 누계 매출 알려줘"),
+        )
+
+        self.assertEqual(context["scope"], "month")
+        self.assertFalse(context["today_only"])
+        self.assertEqual(context["month"]["profit_sales_amount"], 296117470)
+        self.assertIn("seller_total", context)
+
     def write_daily_report(self, path: Path) -> None:
         workbook = openpyxl.Workbook()
         sheet = workbook.active

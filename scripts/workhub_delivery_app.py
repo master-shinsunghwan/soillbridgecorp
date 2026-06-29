@@ -80,6 +80,7 @@ ORDER_DOWNLOAD_DIR = DOWNLOAD_DIR / "order_outputs"
 ORDER_DOWNLOAD_HISTORY_PATH = ORDER_DOWNLOAD_DIR / "history.json"
 ORDER_DOWNLOAD_LIMIT = 10
 SHARED_FILE_DIR = RUNTIME_ROOT / "shared_files"
+HERMES_RESULT_DIR = RUNTIME_ROOT / "hermes_results"
 SALES_REPORT_DIR = RUNTIME_ROOT / "sales_reports"
 CONFIG_DIR = RUNTIME_ROOT / "config"
 DB_PATH = CONFIG_DIR / "workhub.db"
@@ -3137,6 +3138,12 @@ HTML = r"""<!doctype html>
       gap: 8px;
       margin-top: 8px;
     }
+    .hermes-result-link-row {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      max-width: 100%;
+    }
     .hermes-result-link {
       display: inline-flex;
       align-items: center;
@@ -3150,6 +3157,21 @@ HTML = r"""<!doctype html>
       font-size: 12px;
       font-weight: 950;
       text-decoration: none;
+    }
+    .hermes-result-save {
+      min-height: 32px;
+      padding: 0 10px;
+      border: 1px solid #16a34a;
+      border-radius: 7px;
+      background: #ecfdf5;
+      color: #047857;
+      font-size: 12px;
+      font-weight: 950;
+      cursor: pointer;
+    }
+    .hermes-result-save:disabled {
+      cursor: default;
+      opacity: .65;
     }
     .hermes-result-image {
       display: block;
@@ -14228,6 +14250,8 @@ HTML = r"""<!doctype html>
           name: file.original_name || file.filename || file.name || "결과물 다운로드",
           download_url: file.download_url,
           mime: file.mime || file.image_mime || "",
+          saveable: file.saveable === true,
+          saved: file.saved === true,
         });
       };
       pushFile(payload.generated_file);
@@ -14254,7 +14278,12 @@ HTML = r"""<!doctype html>
         : "";
       const links = files.length ? `
         <div class="hermes-result-links">
-          ${files.map((file) => `<a class="hermes-result-link" href="${escapeHtml(file.download_url)}" download>${escapeHtml(file.name || "결과물 다운로드")}</a>`).join("")}
+          ${files.map((file) => `
+            <span class="hermes-result-link-row">
+              <a class="hermes-result-link" href="${escapeHtml(file.download_url)}" download>${escapeHtml(file.name || "결과물 다운로드")}</a>
+              ${file.saveable && file.id && !file.saved ? `<button class="hermes-result-save" type="button" data-hermes-result-save="${escapeHtml(file.id)}" data-hermes-result-name="${escapeHtml(file.name || "결과물")}">업무파일에 저장</button>` : ""}
+            </span>
+          `).join("")}
         </div>
       ` : "";
       return `${body}${image}${links}`;
@@ -14263,6 +14292,48 @@ HTML = r"""<!doctype html>
     function setHermesLatestAnswer(text, files = [], imageUrl = "") {
       if (!hermesChatResponse) return;
       hermesChatResponse.innerHTML = hermesAnswerHtml(text, files, imageUrl);
+    }
+
+    async function saveHermesResultToShared(button) {
+      const resultId = button?.dataset?.hermesResultSave || "";
+      if (!resultId || button.disabled) return;
+      const resultName = button.dataset.hermesResultName || "결과물";
+      const approved = await requestAppConfirm({
+        kicker: "업무파일 저장",
+        title: "이 결과물을 업무파일에 저장할까요?",
+        message: "승인하면 업무파일 목록에 저장되어 다른 업무파일과 같이 관리됩니다.",
+        highlight: resultName,
+        okText: "저장",
+        cancelText: "취소",
+      });
+      if (!approved) return;
+      const previousText = button.textContent;
+      button.disabled = true;
+      button.textContent = "저장 중";
+      try {
+        await hermesFetchJson("/api/hermes-result-save", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: resultId }),
+        });
+        button.textContent = "저장됨";
+        document.querySelectorAll("[data-hermes-result-save]").forEach((target) => {
+          if (target.dataset.hermesResultSave !== resultId) return;
+          target.disabled = true;
+          target.textContent = "저장됨";
+        });
+        hermesChatMessages.forEach((message) => {
+          (message.files || []).forEach((file) => {
+            if (file.id === resultId) file.saved = true;
+          });
+        });
+        renderHermesChatTranscript();
+        if (typeof loadSharedFiles === "function") await loadSharedFiles();
+      } catch (error) {
+        button.disabled = false;
+        button.textContent = previousText || "업무파일에 저장";
+        setHermesLatestAnswer(error.message || "업무파일 저장에 실패했습니다.");
+      }
     }
 
     function setHermesChatMode(mode) {
@@ -20897,6 +20968,12 @@ HTML = r"""<!doctype html>
       if (!button) return;
       event.preventDefault();
       openOrderModal(button.dataset.orderExecute);
+    });
+    document.addEventListener("click", (event) => {
+      const button = event.target.closest("[data-hermes-result-save]");
+      if (!button) return;
+      event.preventDefault();
+      saveHermesResultToShared(button);
     });
     orderDownloadRefresh?.addEventListener("click", loadOrderDownloads);
     orderDownloadList?.addEventListener("click", async (event) => {
@@ -31841,7 +31918,59 @@ def hermes_chat_intent(message: str, mode: str = "auto") -> str:
     return "chat"
 
 
-def hermes_workhub_context_snapshot() -> dict[str, object]:
+def hermes_sales_report_scope(message: object = "") -> str:
+    text = str(message or "").strip().lower()
+    if any(token in text for token in ("오늘", "금일", "당일", "today")):
+        return "today"
+    if any(token in text for token in ("이번 달", "이번달", "월간", "월 누계", "월누계", "누계", "month", "monthly")):
+        return "month"
+    return "default"
+
+
+def hermes_sales_report_context(payload: dict[str, object], scope: str = "default") -> dict[str, object]:
+    scope = scope if scope in {"today", "month", "default"} else "default"
+    base = {
+        "period": payload.get("period", ""),
+        "selected_date": payload.get("selected_date", ""),
+        "scope": scope,
+    }
+    if scope == "today":
+        return {
+            **base,
+            "today_only": True,
+            "instruction": "User asked for today's/current-day sales. Use sales_report.today only for sales figures. Do not answer with monthly cumulative totals.",
+            "today_data_uploaded": payload.get("today_data_uploaded", False),
+            "today": payload.get("today", {}),
+            "previous_business_date": payload.get("previous_business_date", ""),
+            "yesterday": payload.get("yesterday", {}),
+            "comparison": payload.get("comparison", {}),
+        }
+    if scope == "month":
+        return {
+            **base,
+            "today_only": False,
+            "instruction": "User asked for month/cumulative sales. Use monthly cumulative fields and label them as month-to-date totals.",
+            "month": payload.get("month", {}),
+            "seller_total": payload.get("seller_total", {}),
+            "supplier_purchase_total": payload.get("supplier_purchase_total", {}),
+            "top_sellers": payload.get("seller_top", [])[:5],
+            "top_products": payload.get("product_top", [])[:5],
+        }
+    return {
+        **base,
+        "today_only": False,
+        "instruction": "If the user's wording says today/current-day, use sales_report.today only. Use month fields only when the user asks for month or cumulative totals.",
+        "today_data_uploaded": payload.get("today_data_uploaded", False),
+        "today": payload.get("today", {}),
+        "month": payload.get("month", {}),
+        "seller_total": payload.get("seller_total", {}),
+        "supplier_purchase_total": payload.get("supplier_purchase_total", {}),
+        "top_sellers": payload.get("seller_top", [])[:5],
+        "top_products": payload.get("product_top", [])[:5],
+    }
+
+
+def hermes_workhub_context_snapshot(message: object = "") -> dict[str, object]:
     init_db()
     connection = connect_db()
     try:
@@ -31878,16 +32007,7 @@ def hermes_workhub_context_snapshot() -> dict[str, object]:
     if sales_period:
         try:
             payload = sales_report_dashboard_payload(sales_period, sales_date)
-            sales_summary = {
-                "period": payload.get("period", ""),
-                "selected_date": payload.get("selected_date", ""),
-                "today": payload.get("today", {}),
-                "month": payload.get("month", {}),
-                "seller_total": payload.get("seller_total", {}),
-                "supplier_purchase_total": payload.get("supplier_purchase_total", {}),
-                "top_sellers": payload.get("seller_top", [])[:5],
-                "top_products": payload.get("product_top", [])[:5],
-            }
+            sales_summary = hermes_sales_report_context(payload, hermes_sales_report_scope(message))
         except Exception as exc:
             sales_summary = {"error": str(exc)}
 
@@ -31917,6 +32037,83 @@ def hermes_capabilities_payload(intent: str = "chat", mode: str = "auto") -> dic
     }
 
 
+def hermes_text_result_requested(message: object) -> bool:
+    text = str(message or "").strip().lower()
+    return any(token in text for token in (
+        "txt",
+        "텍스트 파일",
+        "파일로",
+        "다운로드 링크",
+        "다운로드 가능",
+        "다운로드할 수",
+        "결과물 파일",
+    ))
+
+
+def _safe_hermes_result_id(value: object) -> str:
+    result_id = str(value or "").strip()
+    if not re.fullmatch(r"[A-Za-z0-9_-]{12,80}", result_id):
+        raise ValueError("결과 파일을 찾지 못했습니다.")
+    return result_id
+
+
+def _hermes_result_paths(result_id: object) -> tuple[Path, Path]:
+    safe_id = _safe_hermes_result_id(result_id)
+    base_dir = HERMES_RESULT_DIR.resolve()
+    data_path = (HERMES_RESULT_DIR / safe_id).resolve()
+    meta_path = (HERMES_RESULT_DIR / f"{safe_id}.json").resolve()
+    if base_dir not in data_path.parents or base_dir not in meta_path.parents:
+        raise ValueError("결과 파일을 찾지 못했습니다.")
+    return data_path, meta_path
+
+
+def _hermes_result_public(result_id: str, metadata: dict[str, object]) -> dict[str, object]:
+    return {
+        "id": result_id,
+        "name": str(metadata.get("original_name") or metadata.get("filename") or "Hermes 결과물"),
+        "original_name": str(metadata.get("original_name") or metadata.get("filename") or "Hermes 결과물"),
+        "filename": str(metadata.get("filename") or metadata.get("original_name") or "Hermes 결과물"),
+        "mime": str(metadata.get("mime") or "application/octet-stream"),
+        "size": int(metadata.get("size") or 0),
+        "download_url": f"/api/hermes-result-download?id={quote(result_id)}",
+        "saveable": True,
+        "saved": False,
+    }
+
+
+def save_hermes_temp_result(data: bytes, original_name: str, mime: str = "application/octet-stream") -> dict[str, object]:
+    HERMES_RESULT_DIR.mkdir(parents=True, exist_ok=True)
+    result_id = secrets.token_urlsafe(18).replace("-", "_")
+    data_path, meta_path = _hermes_result_paths(result_id)
+    safe_original = _safe_shared_filename(original_name or f"hermes_result_{datetime.now().strftime('%Y%m%d_%H%M%S')}")
+    data_path.write_bytes(data)
+    metadata = {
+        "original_name": safe_original,
+        "filename": safe_original,
+        "mime": mime or mimetypes.guess_type(safe_original)[0] or "application/octet-stream",
+        "size": len(data),
+        "created_at": now_text(),
+    }
+    meta_path.write_text(json.dumps(metadata, ensure_ascii=False), encoding="utf-8")
+    return _hermes_result_public(result_id, metadata)
+
+
+def hermes_result_download_info(result_id: object) -> tuple[Path, dict[str, object]]:
+    data_path, meta_path = _hermes_result_paths(result_id)
+    if not data_path.is_file() or not meta_path.is_file():
+        raise ValueError("결과 파일을 찾지 못했습니다.")
+    metadata = json.loads(meta_path.read_text(encoding="utf-8"))
+    return data_path, metadata
+
+
+def save_hermes_result_to_shared(result_id: object, uploaded_by: str = "") -> dict[str, object]:
+    data_path, metadata = hermes_result_download_info(result_id)
+    saved = save_shared_file(data_path, str(metadata.get("original_name") or data_path.name), uploaded_by)
+    saved["download_url"] = f"/api/shared-file-download?id={saved['id']}"
+    saved["saved"] = True
+    return saved
+
+
 def save_hermes_generated_image(data: dict[str, object], uploaded_by: str = "") -> dict[str, object] | None:
     image_base64 = str(data.get("image_base64") or "")
     if not image_base64:
@@ -31924,35 +32121,22 @@ def save_hermes_generated_image(data: dict[str, object], uploaded_by: str = "") 
     image_mime = str(data.get("image_mime") or "image/png").lower()
     extension = ".jpg" if "jpeg" in image_mime or "jpg" in image_mime else ".png"
     image_bytes = base64.b64decode(image_base64)
-    with tempfile.NamedTemporaryFile(delete=False, suffix=extension) as handle:
-        handle.write(image_bytes)
-        temp_path = Path(handle.name)
-    try:
-        saved = save_shared_file(temp_path, f"hermes_generated_{datetime.now().strftime('%Y%m%d_%H%M%S')}{extension}", uploaded_by)
-    finally:
-        temp_path.unlink(missing_ok=True)
-    saved["download_url"] = f"/api/shared-file-download?id={saved['id']}"
-    return saved
+    return save_hermes_temp_result(
+        image_bytes,
+        f"hermes_generated_{datetime.now().strftime('%Y%m%d_%H%M%S')}{extension}",
+        image_mime,
+    )
 
 
 def save_hermes_text_result(text: str, mode: str = "auto", uploaded_by: str = "") -> dict[str, object] | None:
     text = str(text or "").strip()
     if not text:
         return None
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".txt", mode="w", encoding="utf-8") as handle:
-        handle.write(text)
-        temp_path = Path(handle.name)
-    try:
-        saved = save_shared_file(
-            temp_path,
-            f"hermes_{normalize_hermes_chat_mode(mode)}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt",
-            uploaded_by,
-        )
-    finally:
-        temp_path.unlink(missing_ok=True)
-    saved["download_url"] = f"/api/shared-file-download?id={saved['id']}"
-    saved["mime"] = "text/plain"
-    return saved
+    return save_hermes_temp_result(
+        text.encode("utf-8"),
+        f"hermes_{normalize_hermes_chat_mode(mode)}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt",
+        "text/plain; charset=utf-8",
+    )
 
 
 def describe_hermes_connection_error(exc: Exception, url: str, base_url: str) -> str:
@@ -32777,6 +32961,29 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                 self.send_json({"error": str(exc)}, status=400)
             return
 
+        if self.path.startswith("/api/hermes-result-download"):
+            if not self.require_permission(user, "hermes_use", "헤르메스"):
+                return
+            parsed = urlsplit(self.path)
+            params = parse_qs(parsed.query)
+            try:
+                path, metadata = hermes_result_download_info(params.get("id", [""])[0])
+            except Exception as exc:  # noqa: BLE001
+                self.send_json({"error": str(exc)}, status=404)
+                return
+            data = path.read_bytes()
+            content_type = str(metadata.get("mime") or mimetypes.guess_type(str(path))[0] or "application/octet-stream")
+            filename = quote(str(metadata.get("original_name") or path.name))
+            self.send_response(200)
+            self.send_header("Content-Type", content_type)
+            self.send_header("Content-Disposition", f"attachment; filename*=UTF-8''{filename}")
+            self.send_header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
+            self.send_header("Pragma", "no-cache")
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+            return
+
         if self.path.startswith("/api/shared-file-download"):
             parsed = urlsplit(self.path)
             params = parse_qs(parsed.query)
@@ -33374,7 +33581,7 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                     "requested_mode": chat_mode,
                     "source": "workhub",
                     "capabilities": hermes_capabilities_payload(intent, effective_mode),
-                    "workhub_context": hermes_workhub_context_snapshot(),
+                    "workhub_context": hermes_workhub_context_snapshot(message),
                     "user": {
                         "id": int(user.get("id") or 0),
                         "username": user.get("username", ""),
@@ -33394,6 +33601,7 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                         data["generated_file"] = generated_file
                         result_files.append(generated_file)
                         answer_text = f"{answer_text or '이미지를 생성했습니다.'}\n다운로드: {generated_file['download_url']}"
+                        answer_text = f"{answer_text}\n업무파일 저장은 결과 링크의 저장 버튼을 눌러 승인하면 진행됩니다."
                         data["answer"] = answer_text
                         data["text"] = answer_text
                         result["data"] = data
@@ -33402,10 +33610,11 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                         data["answer"] = answer_text
                         data["text"] = answer_text
                         result["data"] = data
-                    text_file = save_hermes_text_result(answer_text, effective_mode, user_label)
-                    if text_file:
-                        data["generated_text_file"] = text_file
-                        result_files.append(text_file)
+                    if hermes_text_result_requested(message):
+                        text_file = save_hermes_text_result(answer_text, effective_mode, user_label)
+                        if text_file:
+                            data["generated_text_file"] = text_file
+                            result_files.append(text_file)
                     if result_files:
                         data["generated_files"] = result_files
                         result["data"] = data
@@ -33436,6 +33645,20 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                 self.send_json({"message": "헤르메스 채팅 요약을 저장했습니다.", "summary": summary})
                 return
 
+            if self.path == "/api/hermes-result-save":
+                if not self.require_permission(user, "hermes_use", "헤르메스"):
+                    return
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(length).decode("utf-8") or "{}")
+                uploaded_by = str(user.get("display_name") or user.get("username") or "")
+                saved = save_hermes_result_to_shared(payload.get("id"), uploaded_by)
+                self.send_json({
+                    "message": "업무파일에 저장했습니다.",
+                    "file": saved,
+                    "files": list_shared_files(),
+                })
+                return
+
             if self.path == "/api/hermes-automation":
                 if not self.require_permission(user, "hermes_automation", "헤르메스 자동화 요청"):
                     return
@@ -33450,7 +33673,7 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                     "body": body,
                     "source": "workhub",
                     "capabilities": hermes_capabilities_payload("automation"),
-                    "workhub_context": hermes_workhub_context_snapshot(),
+                    "workhub_context": hermes_workhub_context_snapshot(f"{title}\n{body}"),
                     "user": {
                         "id": int(user.get("id") or 0),
                         "username": user.get("username", ""),

@@ -42,6 +42,26 @@ class HermesWorkhubBridgeTests(unittest.TestCase):
         self.assertIn("2026-06", prompt)
         self.assertIn("Available Workhub AI capabilities", prompt)
 
+    def test_bridge_prompt_warns_today_scope_not_to_use_monthly_totals(self) -> None:
+        bridge = load_bridge_module()
+
+        prompt = bridge.build_prompt({
+            "message": "오늘 매출 요약해줘",
+            "workhub_context": {
+                "sales_report": {
+                    "period": "2026-06",
+                    "selected_date": "2026-06-29",
+                    "scope": "today",
+                    "today_only": True,
+                    "today": {"profit_sales_amount": 7288170},
+                },
+            },
+        }, "chat")
+
+        self.assertIn("Use only Workhub context sales_report.today", prompt)
+        self.assertIn("Do not infer or mention monthly cumulative totals", prompt)
+        self.assertNotIn('"month"', prompt)
+
     def test_bridge_authorization_accepts_bearer_or_x_hermes_key(self) -> None:
         bridge = load_bridge_module()
 

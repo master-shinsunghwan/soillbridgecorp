@@ -52,8 +52,16 @@ def is_authorized(headers: dict[str, str], expected_token: str = BRIDGE_TOKEN) -
 def build_prompt(payload: dict[str, Any], mode: str) -> str:
     workhub_context = payload.get("workhub_context")
     context_text = ""
+    scope_text = ""
     if isinstance(workhub_context, dict) and workhub_context:
         context_text = "\n\nWorkhub context snapshot:\n" + json.dumps(workhub_context, ensure_ascii=False, indent=2)[:6000]
+        sales_report = workhub_context.get("sales_report")
+        if isinstance(sales_report, dict) and sales_report.get("scope") == "today":
+            scope_text = (
+                "\n\nSales data rule: the user asked for today's/current-day sales. "
+                "Use only Workhub context sales_report.today for sales figures. "
+                "Do not infer or mention monthly cumulative totals unless the user explicitly asks for month/cumulative data."
+            )
     capabilities = payload.get("capabilities")
     capability_text = ""
     if isinstance(capabilities, dict) and capabilities:
@@ -96,7 +104,7 @@ def build_prompt(payload: dict[str, Any], mode: str) -> str:
             "If the user asks for code or UI implementation, summarize the request and say Codex/developer work is needed.\n\n"
             f"Title: {title}\n"
             f"Request:\n{body}"
-            f"{context_text}{capability_text}{mode_text}{intent_text}"
+            f"{context_text}{scope_text}{capability_text}{mode_text}{intent_text}"
         )
     message = str(payload.get("message") or payload.get("prompt") or "").strip()
     return (
@@ -107,7 +115,7 @@ def build_prompt(payload: dict[str, Any], mode: str) -> str:
         "Do not limit the user to Workhub-only tasks: you may support general AI answers, research/search, image generation, and Workhub automation according to the requested mode.\n"
         "If the user asks for code or UI implementation, summarize the request and say Codex/developer work is needed.\n\n"
         f"Workhub message:\n{message}"
-        f"{context_text}{capability_text}{mode_text}{intent_text}"
+        f"{context_text}{scope_text}{capability_text}{mode_text}{intent_text}"
     )
 
 

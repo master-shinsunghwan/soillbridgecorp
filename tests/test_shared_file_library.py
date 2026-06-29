@@ -55,6 +55,30 @@ class SharedFileLibraryTests(unittest.TestCase):
         self.assertEqual(saved_path.read_text(encoding="utf-8"), "plain text")
         self.assertTrue(saved_path.name.endswith("_업무 안내.txt"))
 
+    def test_hermes_text_result_is_created_only_when_requested(self) -> None:
+        self.assertFalse(self.app.hermes_text_result_requested("오늘 매출 알려줘"))
+        self.assertTrue(self.app.hermes_text_result_requested("오늘 매출을 txt 파일로 만들어줘"))
+        self.assertTrue(self.app.hermes_text_result_requested("이미지와 파일을 바로 다운로드 가능하게 링크를 만들어줘"))
+
+    def test_hermes_temp_result_does_not_enter_shared_files_until_saved(self) -> None:
+        result = self.app.save_hermes_text_result("임시 결과", "general", "admin")
+
+        self.assertIsNotNone(result)
+        self.assertTrue(result["saveable"])
+        self.assertEqual(result["saved"], False)
+        self.assertIn("/api/hermes-result-download?id=", result["download_url"])
+        self.assertEqual(self.app.list_shared_files(), [])
+
+        path, metadata = self.app.hermes_result_download_info(result["id"])
+        self.assertEqual(path.read_text(encoding="utf-8"), "임시 결과")
+        self.assertIn("hermes_general_", metadata["original_name"])
+
+        saved = self.app.save_hermes_result_to_shared(result["id"], "admin")
+
+        self.assertTrue(saved["saved"])
+        self.assertEqual(len(self.app.list_shared_files()), 1)
+        self.assertEqual(saved["uploaded_by"], "admin")
+
 
 if __name__ == "__main__":
     unittest.main()
