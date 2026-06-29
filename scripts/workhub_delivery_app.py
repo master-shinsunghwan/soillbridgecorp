@@ -11279,6 +11279,7 @@ HTML = r"""<!doctype html>
     const leaveMessage = document.querySelector("#leaveMessage");
     const leaveNotificationList = document.querySelector("#leaveNotificationList");
     const leaveBalanceBody = document.querySelector("#leaveBalanceBody");
+    const leaveMineUsageBody = document.querySelector("#leaveMineUsageBody");
     const leaveHistoryBody = document.querySelector("#leaveHistoryBody");
     const leaveApprovalBody = document.querySelector("#leaveApprovalBody");
     const leaveTypeSelect = document.querySelector("#leaveTypeSelect");
@@ -12162,6 +12163,12 @@ HTML = r"""<!doctype html>
       renderLeaveAdminUserList(leaveAdminUserSearch?.value || "");
     }
 
+    function leaveDateRangeText(row) {
+      const start = row.start_date || "";
+      const end = row.end_date || "";
+      return start && end && start !== end ? `${start} ~ ${end}` : start || end || "";
+    }
+
     function setLeaveTab(tabName) {
       const targetButton = leaveTabs.find((button) => button.dataset.leaveTab === tabName && !button.classList.contains("permission-hidden"));
       const activeTab = targetButton ? tabName : "mine";
@@ -12188,10 +12195,23 @@ HTML = r"""<!doctype html>
           <tr><td>${escapeHtml(row.name)}</td><td>${dayText(row.total_days)}</td><td>${dayText(row.used_days)} / 예약 ${dayText(row.reserved_days)}</td><td><strong>${dayText(row.remaining_days)}</strong></td></tr>
         `).join("")
         : `<tr><td colspan="4">연차 기준이 아직 설정되지 않았습니다.</td></tr>`;
+      const approvedUsageRows = (data.requests || []).filter((row) => row.status === "APPROVED" && Number(row.requested_days || 0) > 0);
+      if (leaveMineUsageBody) {
+        leaveMineUsageBody.innerHTML = approvedUsageRows.length
+          ? approvedUsageRows.map((row) => `
+            <tr>
+              <td><strong>${escapeHtml(leaveDateRangeText(row))}</strong></td>
+              <td>${escapeHtml(row.unit_label)}</td>
+              <td>${dayText(row.requested_days)}</td>
+              <td>${escapeHtml(row.reason)}</td>
+            </tr>
+          `).join("")
+          : `<tr><td colspan="4">아직 반영된 연차 사용일자가 없습니다.</td></tr>`;
+      }
       leaveHistoryBody.innerHTML = (data.requests || []).length
         ? data.requests.map((row) => `
           <tr>
-            <td>${escapeHtml(row.start_date)}${row.start_date === row.end_date ? "" : ` ~ ${escapeHtml(row.end_date)}`}</td>
+            <td>${escapeHtml(leaveDateRangeText(row))}</td>
             <td>${escapeHtml(row.unit_label)}</td>
             <td>${dayText(row.requested_days)}</td>
             <td>${escapeHtml(row.status_label)}${row.status === "PENDING" ? ` ? ${escapeHtml(row.approval_step_label)}` : ""}</td>
@@ -22798,12 +22818,19 @@ LEAVE_WORKSPACE_HTML = r"""
             <div class="leave-message" id="leaveMessage"></div>
             <div class="leave-notification-list" id="leaveNotificationList"></div>
             <section class="leave-tab-panel active" id="leaveTabMine">
-              <div class="leave-grid two">
+              <div class="leave-grid">
                 <div class="leave-card">
                   <div class="leave-card-title">연차 잔여 현황</div>
                   <table class="leave-table">
                     <thead><tr><th>유형</th><th>부여</th><th>사용</th><th>잔여</th></tr></thead>
                     <tbody id="leaveBalanceBody"></tbody>
+                  </table>
+                </div>
+                <div class="leave-card">
+                  <div class="leave-card-title">내 사용일자</div>
+                  <table class="leave-table">
+                    <thead><tr><th>사용일</th><th>구분</th><th>수량</th><th>내용</th></tr></thead>
+                    <tbody id="leaveMineUsageBody"></tbody>
                   </table>
                 </div>
               </div>
