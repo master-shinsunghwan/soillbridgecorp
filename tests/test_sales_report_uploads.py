@@ -695,5 +695,39 @@ class SalesReportUploadTests(unittest.TestCase):
         self.assertEqual(purchase_totals[1]["purchase_total"], 750)
 
 
+    def test_sales_report_nas_scan_imports_and_archives_new_files_once(self) -> None:
+        base = Path(self.tempdir.name)
+        nas_dir = base / "nas-sales"
+        nas_dir.mkdir()
+        source = nas_dir / "Statistics_Sales_Suppler_2026-06-19.xls"
+        self.write_supplier_report(source)
+
+        settings = self.app.save_sales_automation_settings({
+            "nas_enabled": True,
+            "nas_import_dir": str(nas_dir),
+            "nas_processed_dir": "processed",
+            "nas_error_dir": "error",
+            "nas_scan_interval_minutes": 10,
+        })
+        first_result = self.app.scan_sales_report_nas_folder(settings, uploaded_by="auto-nas")
+
+        self.assertEqual(first_result["imported_count"], 1)
+        self.assertEqual(first_result["error_count"], 0)
+        self.assertFalse(source.exists())
+        self.assertTrue((nas_dir / "processed" / "Statistics_Sales_Suppler_2026-06-19.xls").exists())
+
+        files = self.app.list_sales_report_uploads()
+        self.assertEqual(len(files), 1)
+        self.assertEqual(files[0]["uploaded_by"], "auto-nas")
+
+        duplicate = nas_dir / "Statistics_Sales_Suppler_2026-06-19.xls"
+        self.write_supplier_report(duplicate)
+        second_result = self.app.scan_sales_report_nas_folder(settings, uploaded_by="auto-nas")
+
+        self.assertEqual(second_result["imported_count"], 0)
+        self.assertEqual(second_result["duplicate_count"], 1)
+        self.assertEqual(len(self.app.list_sales_report_uploads()), 1)
+
+
 if __name__ == "__main__":
     unittest.main()

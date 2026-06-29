@@ -4,6 +4,7 @@ import json
 import mimetypes
 import os
 import re
+import shutil
 import smtplib
 import ssl
 import sqlite3
@@ -86,6 +87,7 @@ MAIL_SETTINGS_PATH = CONFIG_DIR / "mail_settings.json"
 VENDOR_CONTACTS_PATH = CONFIG_DIR / "vendor_contacts.json"
 CRM_WEBHOOK_TOKEN_PATH = CONFIG_DIR / "crm_webhook_token.txt"
 BACKUP_SETTINGS_PATH = CONFIG_DIR / "backup_settings.json"
+SALES_AUTOMATION_SETTINGS_PATH = CONFIG_DIR / "sales_automation_settings.json"
 HERMES_SETTINGS_PATH = CONFIG_DIR / "hermes_settings.json"
 HERMES_HISTORY_PATH = CONFIG_DIR / "hermes_history.jsonl"
 BACKUP_DIR = Path(os.environ.get("WORKHUB_BACKUP_DIR", str(RUNTIME_ROOT / "backups")))
@@ -10683,6 +10685,14 @@ HTML = r"""<!doctype html>
     const salesReportFileInput = document.querySelector("#salesReportFileInput");
     const salesReportUploadMessage = document.querySelector("#salesReportUploadMessage");
     const salesReportRecentList = document.querySelector("#salesReportRecentList");
+    const salesNasEnabled = document.querySelector("#salesNasEnabled");
+    const salesNasImportDir = document.querySelector("#salesNasImportDir");
+    const salesNasProcessedDir = document.querySelector("#salesNasProcessedDir");
+    const salesNasErrorDir = document.querySelector("#salesNasErrorDir");
+    const salesNasScanInterval = document.querySelector("#salesNasScanInterval");
+    const salesNasSettingsSave = document.querySelector("#salesNasSettingsSave");
+    const salesNasScanNow = document.querySelector("#salesNasScanNow");
+    const salesNasAutomationMessage = document.querySelector("#salesNasAutomationMessage");
     const salesReportDashboard = document.querySelector("#salesReportDashboard");
     const salesReportKpiGrid = document.querySelector("#salesReportKpiGrid");
     const salesReportMarginDiagnosis = document.querySelector("#salesReportMarginDiagnosis");
@@ -13283,6 +13293,73 @@ HTML = r"""<!doctype html>
         renderSalesReportUploads(data.files || []);
       } catch (error) {
         salesReportRecentList.textContent = error.message;
+      }
+    }
+
+    function renderSalesAutomationSettings(settings = {}) {
+      if (salesNasEnabled) salesNasEnabled.checked = Boolean(settings.nas_enabled);
+      if (salesNasImportDir) salesNasImportDir.value = settings.nas_import_dir || "";
+      if (salesNasProcessedDir) salesNasProcessedDir.value = settings.nas_processed_dir || "processed";
+      if (salesNasErrorDir) salesNasErrorDir.value = settings.nas_error_dir || "error";
+      if (salesNasScanInterval) salesNasScanInterval.value = settings.nas_scan_interval_minutes || 15;
+      const last = settings.last_scan_at ? ` 마지막 스캔: ${settings.last_scan_at}` : "";
+      const message = settings.last_scan_message || "NAS 공유폴더를 지정하면 매출표가 자동 반영됩니다.";
+      if (salesNasAutomationMessage) salesNasAutomationMessage.textContent = `${message}${last}`;
+    }
+
+    function collectSalesAutomationSettings() {
+      return {
+        nas_enabled: Boolean(salesNasEnabled?.checked),
+        nas_import_dir: salesNasImportDir?.value?.trim() || "",
+        nas_processed_dir: salesNasProcessedDir?.value?.trim() || "processed",
+        nas_error_dir: salesNasErrorDir?.value?.trim() || "error",
+        nas_scan_interval_minutes: Number(salesNasScanInterval?.value || 15),
+      };
+    }
+
+    async function loadSalesAutomationSettings() {
+      if (!salesNasAutomationMessage) return;
+      try {
+        const response = await fetch("/api/sales-automation-settings");
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "매출 자동화 설정을 불러오지 못했습니다.");
+        renderSalesAutomationSettings(data);
+      } catch (error) {
+        salesNasAutomationMessage.textContent = error.message;
+      }
+    }
+
+    async function saveSalesAutomationSettings() {
+      if (!salesNasAutomationMessage) return;
+      salesNasAutomationMessage.textContent = "NAS 자동화 설정을 저장하는 중입니다.";
+      try {
+        const response = await fetch("/api/sales-automation-settings", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(collectSalesAutomationSettings()),
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "매출 자동화 설정 저장에 실패했습니다.");
+        renderSalesAutomationSettings(data.settings || {});
+        salesNasAutomationMessage.textContent = data.message || "NAS 자동화 설정을 저장했습니다.";
+      } catch (error) {
+        salesNasAutomationMessage.textContent = error.message;
+      }
+    }
+
+    async function scanSalesNasNow() {
+      if (!salesNasAutomationMessage) return;
+      salesNasAutomationMessage.textContent = "NAS 공유폴더를 스캔하는 중입니다.";
+      try {
+        await saveSalesAutomationSettings();
+        const response = await fetch("/api/sales-automation-scan", { method: "POST" });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "NAS 공유폴더 스캔에 실패했습니다.");
+        renderSalesReportUploads(data.files || []);
+        await loadSalesReportDashboard();
+        salesNasAutomationMessage.textContent = data.message || data.result?.message || "NAS 공유폴더 스캔을 완료했습니다.";
+      } catch (error) {
+        salesNasAutomationMessage.textContent = error.message;
       }
     }
 
@@ -20136,6 +20213,7 @@ HTML = r"""<!doctype html>
       } else if (showSalesReport) {
         setPageTitle("매출현황");
         closeLedgerFilter();
+        loadSalesAutomationSettings();
         loadSalesReportUploads();
         loadSalesReportDashboard();
       } else if (showBackup) {
@@ -20221,6 +20299,7 @@ HTML = r"""<!doctype html>
         else if (currentMode === "leave") await loadLeaveData();
         else if (currentMode === "userAdmin") await loadUserAccounts();
         else if (currentMode === "salesReport") {
+          await loadSalesAutomationSettings();
           await loadSalesReportUploads();
           await loadSalesReportDashboard();
         } else if (currentMode === "backup") await loadBackups();
@@ -21382,6 +21461,8 @@ HTML = r"""<!doctype html>
       });
     }
     if (salesReportFileInput) salesReportFileInput.addEventListener("change", uploadSalesReportWorkbook);
+    salesNasSettingsSave?.addEventListener("click", saveSalesAutomationSettings);
+    salesNasScanNow?.addEventListener("click", scanSalesNasNow);
     saveCsCaseButton.addEventListener("click", saveCurrentCsCase);
     sendCsMailButton?.addEventListener("click", async () => {
       if (!can("mail_send")) return;
@@ -22409,6 +22490,38 @@ ADMIN_WORKSPACE_HTML = r"""
             <div class="admin-card" id="salesReportUploadCard">
               <div class="admin-section-title">매출현황</div>
               <input id="salesReportFileInput" name="sales_report" type="file" accept=".xlsx,.xlsm,.xls,.csv" hidden />
+              <div class="admin-form compact-form">
+                <label>
+                  NAS 자동 업로드
+                  <span class="inline-check">
+                    <input id="salesNasEnabled" type="checkbox" />
+                    <span>공유폴더 자동 스캔 사용</span>
+                  </span>
+                </label>
+                <label>
+                  NAS 공유폴더 경로
+                  <input id="salesNasImportDir" type="text" placeholder="예) Y:\\SALES 또는 /mnt/workhub-sales" />
+                </label>
+                <label>
+                  처리 완료 폴더
+                  <input id="salesNasProcessedDir" type="text" placeholder="processed" />
+                </label>
+                <label>
+                  오류 보관 폴더
+                  <input id="salesNasErrorDir" type="text" placeholder="error" />
+                </label>
+                <label>
+                  자동 스캔 간격(분)
+                  <input id="salesNasScanInterval" type="number" min="1" max="1440" step="1" />
+                </label>
+                <div class="form-actions">
+                  <button id="salesNasSettingsSave" class="secondary" type="button">NAS 설정 저장</button>
+                  <button id="salesNasScanNow" type="button">지금 스캔</button>
+                </div>
+                <div class="admin-message" id="salesNasAutomationMessage">NAS 자동 업로드 설정을 불러오는 중입니다.</div>
+                <div class="admin-message" id="salesReportUploadMessage">매출표 수동 업로드 또는 NAS 자동 업로드를 사용할 수 있습니다.</div>
+                <div class="admin-message" id="salesReportRecentList">업로드된 매출표가 없습니다.</div>
+              </div>
               <div class="sales-dashboard" id="salesReportDashboard">
                 <div class="sales-kpi-grid" id="salesReportKpiGrid"></div>
                 <div class="sales-margin-diagnosis" id="salesReportMarginDiagnosis">
@@ -23134,6 +23247,233 @@ def list_sales_report_uploads(limit: int = 5) -> list[dict[str, str | int]]:
         return [_sales_report_public(row) for row in rows]
     finally:
         connection.close()
+
+
+DEFAULT_SALES_AUTOMATION_SETTINGS = {
+    "nas_enabled": False,
+    "nas_import_dir": "",
+    "nas_processed_dir": "processed",
+    "nas_error_dir": "error",
+    "nas_scan_interval_minutes": 15,
+    "last_scan_at": "",
+    "last_scan_message": "",
+}
+SALES_REPORT_NAS_UPLOADER = "auto-nas"
+SALES_REPORT_ALLOWED_SUFFIXES = {".xlsx", ".xlsm", ".xls", ".csv"}
+_SALES_REPORT_NAS_SCHEDULER_STARTED = False
+_SALES_REPORT_NAS_SCAN_LOCK = threading.Lock()
+
+
+def clean_sales_automation_path(value: object) -> str:
+    return str(value or "").strip().strip('"')
+
+
+def normalize_sales_automation_settings(payload: dict | None = None) -> dict[str, object]:
+    source = {**DEFAULT_SALES_AUTOMATION_SETTINGS, **(payload or {})}
+    try:
+        interval = int(source.get("nas_scan_interval_minutes") or DEFAULT_SALES_AUTOMATION_SETTINGS["nas_scan_interval_minutes"])
+    except (TypeError, ValueError):
+        interval = int(DEFAULT_SALES_AUTOMATION_SETTINGS["nas_scan_interval_minutes"])
+    interval = min(max(interval, 1), 1440)
+    return {
+        "nas_enabled": bool(source.get("nas_enabled")),
+        "nas_import_dir": clean_sales_automation_path(source.get("nas_import_dir")),
+        "nas_processed_dir": clean_sales_automation_path(source.get("nas_processed_dir")) or "processed",
+        "nas_error_dir": clean_sales_automation_path(source.get("nas_error_dir")) or "error",
+        "nas_scan_interval_minutes": interval,
+        "last_scan_at": str(source.get("last_scan_at") or ""),
+        "last_scan_message": str(source.get("last_scan_message") or ""),
+    }
+
+
+def sales_report_automation_child_dir(import_root: Path, configured: object) -> Path:
+    child = Path(clean_sales_automation_path(configured) or "processed").expanduser()
+    if child.is_absolute():
+        return child
+    return import_root / child
+
+
+def ensure_sales_automation_folders(settings: dict[str, object]) -> None:
+    import_dir = clean_sales_automation_path(settings.get("nas_import_dir"))
+    if not import_dir:
+        return
+    import_root = Path(import_dir).expanduser()
+    if not import_root.exists() or not import_root.is_dir():
+        return
+    sales_report_automation_child_dir(import_root, settings.get("nas_processed_dir")).mkdir(parents=True, exist_ok=True)
+    sales_report_automation_child_dir(import_root, settings.get("nas_error_dir")).mkdir(parents=True, exist_ok=True)
+
+
+def load_sales_automation_settings() -> dict[str, object]:
+    raw: dict[str, object] = {}
+    if SALES_AUTOMATION_SETTINGS_PATH.exists():
+        try:
+            raw = json.loads(SALES_AUTOMATION_SETTINGS_PATH.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            raw = {}
+    return normalize_sales_automation_settings(raw)
+
+
+def save_sales_automation_settings(payload: dict | None = None) -> dict[str, object]:
+    current = load_sales_automation_settings()
+    merged = {**current, **(payload or {})}
+    settings = normalize_sales_automation_settings(merged)
+    ensure_sales_automation_folders(settings)
+    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+    SALES_AUTOMATION_SETTINGS_PATH.write_text(json.dumps(settings, ensure_ascii=False, indent=2), encoding="utf-8")
+    return settings
+
+
+def sales_report_file_fingerprint(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def sales_report_fingerprint_imported(fingerprint: str) -> bool:
+    if not fingerprint:
+        return False
+    init_db()
+    connection = connect_db()
+    try:
+        row = connection.execute(
+            "SELECT 1 FROM sales_report_uploads WHERE source_fingerprint = ? LIMIT 1",
+            (fingerprint,),
+        ).fetchone()
+        return row is not None
+    finally:
+        connection.close()
+
+
+def unique_archive_path(folder: Path, filename: str) -> Path:
+    target = folder / filename
+    if not target.exists():
+        return target
+    stem = target.stem
+    suffix = target.suffix
+    for index in range(1, 10000):
+        candidate = folder / f"{stem}_{index}{suffix}"
+        if not candidate.exists():
+            return candidate
+    return folder / f"{stem}_{secrets.token_hex(4)}{suffix}"
+
+
+def move_sales_report_nas_file(source: Path, destination_dir: Path) -> Path:
+    destination_dir.mkdir(parents=True, exist_ok=True)
+    destination = unique_archive_path(destination_dir, source.name)
+    shutil.move(str(source), str(destination))
+    return destination
+
+
+def iter_sales_report_nas_files(import_root: Path) -> list[Path]:
+    if not import_root.exists() or not import_root.is_dir():
+        return []
+    files: list[Path] = []
+    for path in sorted(import_root.iterdir(), key=lambda item: item.name.lower()):
+        if not path.is_file():
+            continue
+        if path.name.startswith("~$"):
+            continue
+        if path.suffix.lower() not in SALES_REPORT_ALLOWED_SUFFIXES:
+            continue
+        files.append(path)
+    return files
+
+
+def scan_sales_report_nas_folder(
+    settings: dict[str, object] | None = None,
+    uploaded_by: str = SALES_REPORT_NAS_UPLOADER,
+) -> dict[str, object]:
+    settings = normalize_sales_automation_settings(settings or load_sales_automation_settings())
+    result: dict[str, object] = {
+        "enabled": bool(settings.get("nas_enabled")),
+        "scanned_count": 0,
+        "imported_count": 0,
+        "duplicate_count": 0,
+        "error_count": 0,
+        "skipped_count": 0,
+        "files": [],
+        "message": "",
+    }
+    if not settings.get("nas_enabled"):
+        result["message"] = "NAS 자동 업로드가 꺼져 있습니다."
+        return result
+
+    import_dir = clean_sales_automation_path(settings.get("nas_import_dir"))
+    if not import_dir:
+        result["message"] = "NAS 공유폴더 경로를 먼저 지정해주세요."
+        return result
+    import_root = Path(import_dir).expanduser()
+    if not import_root.exists() or not import_root.is_dir():
+        result["message"] = f"NAS 공유폴더를 찾지 못했습니다: {import_root}"
+        return result
+
+    processed_dir = sales_report_automation_child_dir(import_root, settings.get("nas_processed_dir"))
+    error_dir = sales_report_automation_child_dir(import_root, settings.get("nas_error_dir"))
+    scanned_files = iter_sales_report_nas_files(import_root)
+    result["scanned_count"] = len(scanned_files)
+    file_results: list[dict[str, object]] = []
+    with _SALES_REPORT_NAS_SCAN_LOCK:
+        for path in scanned_files:
+            item: dict[str, object] = {"name": path.name, "status": "pending"}
+            try:
+                fingerprint = sales_report_file_fingerprint(path)
+                if sales_report_fingerprint_imported(fingerprint):
+                    archived = move_sales_report_nas_file(path, processed_dir)
+                    result["duplicate_count"] = int(result["duplicate_count"]) + 1
+                    item.update({"status": "duplicate", "archived_to": str(archived)})
+                else:
+                    saved = save_sales_report_file(
+                        path,
+                        path.name,
+                        uploaded_by,
+                        source_kind="nas",
+                        source_fingerprint=fingerprint,
+                    )
+                    archived = move_sales_report_nas_file(path, processed_dir)
+                    result["imported_count"] = int(result["imported_count"]) + 1
+                    item.update({"status": "imported", "file_id": saved["id"], "archived_to": str(archived)})
+            except Exception as exc:  # noqa: BLE001
+                result["error_count"] = int(result["error_count"]) + 1
+                item.update({"status": "error", "error": str(exc)})
+                try:
+                    archived = move_sales_report_nas_file(path, error_dir)
+                    item["archived_to"] = str(archived)
+                except Exception as archive_exc:  # noqa: BLE001
+                    item["archive_error"] = str(archive_exc)
+            file_results.append(item)
+    result["files"] = file_results
+    result["message"] = (
+        f"스캔 {result['scanned_count']}건 / 반영 {result['imported_count']}건 / "
+        f"중복 {result['duplicate_count']}건 / 오류 {result['error_count']}건"
+    )
+    updated = {**settings, "last_scan_at": now_text(), "last_scan_message": result["message"]}
+    save_sales_automation_settings(updated)
+    return result
+
+
+def sales_report_nas_scheduler_loop() -> None:
+    while True:
+        try:
+            settings = load_sales_automation_settings()
+            if settings.get("nas_enabled"):
+                scan_sales_report_nas_folder(settings)
+            interval = int(settings.get("nas_scan_interval_minutes") or 15)
+        except Exception as exc:  # noqa: BLE001
+            print(f"매출표 NAS 자동 스캔 실패: {exc}")
+            interval = 15
+        time.sleep(max(60, interval * 60))
+
+
+def start_sales_report_nas_scheduler() -> None:
+    global _SALES_REPORT_NAS_SCHEDULER_STARTED
+    if _SALES_REPORT_NAS_SCHEDULER_STARTED:
+        return
+    _SALES_REPORT_NAS_SCHEDULER_STARTED = True
+    thread = threading.Thread(target=sales_report_nas_scheduler_loop, daemon=True)
+    thread.start()
 
 
 class _SalesReportTableParser(HTMLParser):
@@ -24960,7 +25300,13 @@ def sales_report_date_from_upload_name(name: str, period: str = "") -> str:
     return ""
 
 
-def save_sales_report_file(source_path: str | Path, original_name: str, uploaded_by: str = "") -> dict[str, str | int]:
+def save_sales_report_file(
+    source_path: str | Path,
+    original_name: str,
+    uploaded_by: str = "",
+    source_kind: str = "",
+    source_fingerprint: str = "",
+) -> dict[str, str | int]:
     source = Path(source_path)
     if not source.is_file():
         raise FileNotFoundError("매출표 파일을 찾지 못했습니다.")
@@ -24999,9 +25345,10 @@ def save_sales_report_file(source_path: str | Path, original_name: str, uploaded
         cursor = connection.execute(
             """
             INSERT INTO sales_report_uploads (
-                stored_name, original_name, size, uploaded_by, uploaded_at, report_type, report_date, period
+                stored_name, original_name, size, uploaded_by, uploaded_at,
+                report_type, report_date, period, source_kind, source_fingerprint
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 stored_name,
@@ -25012,6 +25359,8 @@ def save_sales_report_file(source_path: str | Path, original_name: str, uploaded
                 report_type,
                 report_date,
                 period,
+                str(source_kind or ""),
+                str(source_fingerprint or ""),
             ),
         )
         connection.commit()
@@ -25029,6 +25378,7 @@ def save_sales_report_file(source_path: str | Path, original_name: str, uploaded
         "report_type": report_type,
         "report_date": report_date,
         "period": period,
+        "source_kind": str(source_kind or ""),
     }
 
 
@@ -25481,6 +25831,8 @@ def init_db() -> None:
             "report_type": "TEXT",
             "report_date": "TEXT",
             "period": "TEXT",
+            "source_kind": "TEXT",
+            "source_fingerprint": "TEXT",
         }.items():
             if column not in sales_upload_columns:
                 connection.execute(f"ALTER TABLE sales_report_uploads ADD COLUMN {column} {column_type}")
@@ -26888,6 +27240,7 @@ RESTORE_ALLOWED_FILES = {
     "config/mail_settings.json": MAIL_SETTINGS_PATH,
     "config/vendor_contacts.json": VENDOR_CONTACTS_PATH,
     "config/backup_settings.json": BACKUP_SETTINGS_PATH,
+    "config/sales_automation_settings.json": SALES_AUTOMATION_SETTINGS_PATH,
     "config/secret.key": SECRET_KEY_PATH,
     "config/crm_webhook_token.txt": CRM_WEBHOOK_TOKEN_PATH,
     "config/hermes_settings.json": HERMES_SETTINGS_PATH,
@@ -27187,7 +27540,16 @@ def create_workhub_backup(
         with zipfile.ZipFile(output_path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
             archive.write(temp_db, "config/workhub.db")
             included = ["config/workhub.db"]
-            for path in (MAIL_SETTINGS_PATH, VENDOR_CONTACTS_PATH, BACKUP_SETTINGS_PATH, SECRET_KEY_PATH, CRM_WEBHOOK_TOKEN_PATH, HERMES_SETTINGS_PATH, HERMES_HISTORY_PATH):
+            for path in (
+                MAIL_SETTINGS_PATH,
+                VENDOR_CONTACTS_PATH,
+                BACKUP_SETTINGS_PATH,
+                SALES_AUTOMATION_SETTINGS_PATH,
+                SECRET_KEY_PATH,
+                CRM_WEBHOOK_TOKEN_PATH,
+                HERMES_SETTINGS_PATH,
+                HERMES_HISTORY_PATH,
+            ):
                 if path.exists() and path.is_file():
                     arcname = f"config/{path.name}"
                     archive.write(path, arcname)
@@ -31807,6 +32169,12 @@ class WorkhubHandler(BaseHTTPRequestHandler):
             self.send_json({"files": list_sales_report_uploads()})
             return
 
+        if self.path == "/api/sales-automation-settings":
+            if not self.require_permission(user, "sales_report_manage", "매출 자동화 설정"):
+                return
+            self.send_json(load_sales_automation_settings())
+            return
+
         if self.path.startswith("/api/sales-report-dashboard"):
             if not self.require_permission(user, "sales_report_manage", "매출현황"):
                 return
@@ -32221,6 +32589,23 @@ class WorkhubHandler(BaseHTTPRequestHandler):
             user = self.current_user()
             if not user:
                 self.send_json({"error": "로그인이 필요합니다."}, status=401)
+                return
+
+            if self.path == "/api/sales-automation-settings":
+                if not self.require_permission(user, "sales_report_manage", "매출 자동화 설정"):
+                    return
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(length).decode("utf-8") or "{}")
+                settings = save_sales_automation_settings(payload if isinstance(payload, dict) else {})
+                self.send_json({"message": "매출 자동화 설정을 저장했습니다.", "settings": settings})
+                return
+
+            if self.path == "/api/sales-automation-scan":
+                if not self.require_permission(user, "sales_report_manage", "매출 자동 스캔"):
+                    return
+                uploaded_by = str(user.get("display_name") or user.get("username") or SALES_REPORT_NAS_UPLOADER)
+                result = scan_sales_report_nas_folder(uploaded_by=uploaded_by)
+                self.send_json({"message": result.get("message") or "스캔을 완료했습니다.", "result": result, "files": list_sales_report_uploads()})
                 return
 
             if self.path == "/api/internal-message-save":
@@ -33140,6 +33525,7 @@ def run(host: str = "127.0.0.1", port: int = 8765) -> None:
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     init_db()
     start_backup_scheduler()
+    start_sales_report_nas_scheduler()
     start_sales_report_alert_scheduler()
     server = ThreadingHTTPServer((host, port), WorkhubHandler)
     print(f"(주)소일브릿지 발주 업무자동화 앱 실행 중: http://{host}:{port}")
