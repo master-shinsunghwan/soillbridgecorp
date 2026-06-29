@@ -1,14 +1,14 @@
 @echo off
 setlocal
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0install_workhub_login_watchdog.ps1"
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0install_workhub_login_watchdog.ps1" -Url "https://workhub.soilbridgecorp.cloud"
 if errorlevel 1 (
   echo.
-  echo Workhub local auto-open setup failed.
+  echo Workhub VPS auto-open setup failed.
   echo Please check the message above.
   pause
   exit /b 1
 )
 echo.
-echo Workhub local auto-open setup complete.
+echo Workhub VPS auto-open setup complete.
 pause
 endlocal

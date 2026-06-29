@@ -1,7 +1,8 @@
 param(
   [int]$Port = 8781,
   [int]$IntervalMinutes = 5,
-  [string]$Url = ""
+  [string]$Url = "https://workhub.soilbridgecorp.cloud",
+  [int]$ChromeDebugPort = 9231
 )
 
 $ErrorActionPreference = "Stop"
@@ -14,6 +15,7 @@ $TargetUrl = if ($UseLocalServer) { "http://127.0.0.1:$Port" } else { $Url.TrimE
 $LogPath = Join-Path $Root "workhub_login_watchdog.log"
 $DataRoot = if ($env:WORKHUB_DATA_DIR) { $env:WORKHUB_DATA_DIR } else { $Root }
 $DbPath = Join-Path $DataRoot "config\workhub.db"
+$ChromeProfileDir = Join-Path $env:LOCALAPPDATA "SoillbridgeWorkhub\ChromeProfile"
 
 $PythonCandidates = @(
   (Join-Path $Root "runtime\python\python.exe"),
@@ -138,6 +140,35 @@ finally:
   }
 }
 
+function Test-RemoteWorkhubLoggedIn {
+  if ($UseLocalServer) {
+    return $false
+  }
+
+  try {
+    $TargetHost = ([Uri]$TargetUrl).Host
+    $Tabs = Invoke-RestMethod -UseBasicParsing -Uri "http://127.0.0.1:$ChromeDebugPort/json" -TimeoutSec 2
+    foreach ($Tab in $Tabs) {
+      $TabUrl = [string]$Tab.url
+      if (-not $TabUrl) {
+        continue
+      }
+      try {
+        $Parsed = [Uri]$TabUrl
+      } catch {
+        continue
+      }
+      if ($Parsed.Host -eq $TargetHost -and -not $Parsed.AbsolutePath.StartsWith("/login")) {
+        return $true
+      }
+    }
+  } catch {
+    return $false
+  }
+
+  return $false
+}
+
 function Open-WorkhubLogin {
   $Chrome = Find-Chrome
   if (-not $Chrome) {
@@ -145,19 +176,36 @@ function Open-WorkhubLogin {
     return
   }
   Write-WatchLog "Opening Workhub because no active login session was found: $TargetUrl"
-  Start-Process -FilePath $Chrome -ArgumentList @("--new-window", $TargetUrl) | Out-Null
+  if ($UseLocalServer) {
+    Start-Process -FilePath $Chrome -ArgumentList @("--new-window", $TargetUrl) | Out-Null
+    return
+  }
+
+  New-Item -ItemType Directory -Path $ChromeProfileDir -Force | Out-Null
+  Start-Process -FilePath $Chrome -ArgumentList @(
+    "--remote-debugging-port=$ChromeDebugPort",
+    "--user-data-dir=$ChromeProfileDir",
+    "--new-window",
+    $TargetUrl
+  ) | Out-Null
 }
 
-$Python = Find-Python
-Write-WatchLog "Watchdog started. Url=$TargetUrl IntervalMinutes=$IntervalMinutes Db=$DbPath Python=$Python LocalServer=$UseLocalServer"
+$Python = if ($UseLocalServer) { Find-Python } else { "" }
+Write-WatchLog "Watchdog started. Url=$TargetUrl IntervalMinutes=$IntervalMinutes Db=$DbPath Python=$Python LocalServer=$UseLocalServer ChromeDebugPort=$ChromeDebugPort"
 
 while ($true) {
   try {
     if ($UseLocalServer) {
       Ensure-WorkhubServer -Python $Python
-    }
-    if ((-not $UseLocalServer) -or (-not (Test-ActiveLoginSession -Python $Python))) {
-      Open-WorkhubLogin
+      if (-not (Test-ActiveLoginSession -Python $Python)) {
+        Open-WorkhubLogin
+      }
+    } else {
+      if (-not (Test-RemoteWorkhubLoggedIn)) {
+        Open-WorkhubLogin
+      } else {
+        Write-WatchLog "Workhub is already logged in on this PC."
+      }
     }
   } catch {
     Write-WatchLog "Watchdog error: $($_.Exception.Message)"
