@@ -443,8 +443,8 @@ class SalesReportUploadTests(unittest.TestCase):
         dashboard = self.app.sales_report_dashboard_payload("2026-06", "2026-06-24")
         self.assertEqual(len(dashboard["seller_top"]), 1)
         self.assertEqual(dashboard["seller_top"][0]["name"], "A판매사")
-        self.assertEqual(dashboard["seller_top"][0]["quantity"], 2)
-        self.assertEqual(dashboard["seller_top"][0]["profit_sales_amount"], 200)
+        self.assertEqual(dashboard["seller_top"][0]["quantity"], 3)
+        self.assertEqual(dashboard["seller_top"][0]["profit_sales_amount"], 300)
 
     def test_same_date_dimension_upload_replaces_previous_snapshot(self) -> None:
         connection = self.app.connect_db()
@@ -680,6 +680,77 @@ class SalesReportUploadTests(unittest.TestCase):
         self.assertEqual([row["report_date"] for row in rows], [yesterday.isoformat(), yesterday.isoformat()])
         self.assertEqual([row["seller_name"] for row in rows], ["A거래처", "B거래처"])
         self.assertEqual([row["profit_sales_amount"] for row in rows], [100, 200])
+
+    def test_dashboard_uses_previous_actual_sales_date_and_month_to_date_sellers(self) -> None:
+        connection = self.app.connect_db()
+        try:
+            cursor = connection.execute(
+                """
+                INSERT INTO sales_report_uploads
+                    (stored_name, original_name, report_type, report_date, period, size, uploaded_by, uploaded_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                ("seller-daily.zip", "seller-daily.zip", "seller_daily_zip", "2026-06-29", "2026-06", 1, "admin", "2026-06-29"),
+            )
+            file_id = int(cursor.lastrowid)
+            cursor = connection.execute(
+                """
+                INSERT INTO sales_report_uploads
+                    (stored_name, original_name, report_type, report_date, period, size, uploaded_by, uploaded_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                ("supplier-daily.xlsx", "supplier-daily.xlsx", "supplier", "2026-06-29", "2026-06", 1, "admin", "2026-06-29"),
+            )
+            supplier_file_id = int(cursor.lastrowid)
+            connection.commit()
+        finally:
+            connection.close()
+
+        self.app.save_sales_report_snapshot(
+            file_id,
+            {
+                "report_type": "seller_daily_zip",
+                "report_date": "2026-06-29",
+                "period": "2026-06",
+                "rows": [
+                    {"name": "A거래처", "report_date": "2026-06-26", "period": "2026-06", "quantity": 1, "profit_sales_amount": 100, "profit_margin": 100},
+                    {"name": "A거래처", "report_date": "2026-06-27", "period": "2026-06", "quantity": 0, "profit_sales_amount": 0, "profit_margin": 0},
+                    {"name": "B거래처", "report_date": "2026-06-28", "period": "2026-06", "quantity": 0, "profit_sales_amount": 0, "profit_margin": 0},
+                    {"name": "C거래처", "report_date": "2026-06-29", "period": "2026-06", "quantity": 3, "profit_sales_amount": 300, "profit_margin": 300},
+                ],
+            },
+        )
+        connection = self.app.connect_db()
+        try:
+            connection.executemany(
+                """
+                INSERT INTO sales_report_supplier_rows
+                    (period, report_date, file_id, supplier_name, quantity, supply_total)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                [
+                    ("2026-06", "2026-06-26", supplier_file_id, "A매입처", 1, 1000),
+                    ("2026-06", "2026-06-28", supplier_file_id, "A매입처", 0, 0),
+                    ("2026-06", "2026-06-29", supplier_file_id, "B매입처", 2, 2000),
+                ],
+            )
+            connection.commit()
+        finally:
+            connection.close()
+
+        dashboard = self.app.sales_report_dashboard_payload("2026-06", "2026-06-29")
+
+        self.assertEqual(dashboard["previous_business_date"], "2026-06-26")
+        self.assertEqual(dashboard["yesterday"]["profit_sales_amount"], 100)
+        self.assertEqual(dashboard["month"]["profit_sales_amount"], 400)
+        self.assertEqual(dashboard["seller_total"]["profit_sales_amount"], 400)
+        self.assertEqual(dashboard["supplier_purchase_total"]["purchase_total"], 3000)
+        seller_by_name = {row["name"]: row for row in dashboard["seller_top"]}
+        supplier_by_name = {row["name"]: row for row in dashboard["supplier_purchase_totals"]}
+        self.assertEqual(seller_by_name["A거래처"]["profit_sales_amount"], 100)
+        self.assertEqual(seller_by_name["C거래처"]["profit_sales_amount"], 300)
+        self.assertEqual(supplier_by_name["A매입처"]["purchase_total"], 1000)
+        self.assertEqual(supplier_by_name["B매입처"]["purchase_total"], 2000)
 
     def test_sales_dimension_reports_without_date_inherit_latest_daily_context(self) -> None:
         base = Path(self.tempdir.name)

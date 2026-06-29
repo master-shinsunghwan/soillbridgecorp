@@ -24205,24 +24205,44 @@ def previous_sales_data_date(connection: sqlite3.Connection, base_date: date) ->
                 SELECT report_date
                   FROM sales_report_daily_rows
                  WHERE report_date != '' AND report_date < ?
+                 GROUP BY report_date
+                HAVING SUM(ABS(COALESCE(quantity, 0))) > 0
+                    OR SUM(ABS(COALESCE(sales_amount, 0))) > 0
+                    OR SUM(ABS(COALESCE(sales_total, 0))) > 0
+                    OR SUM(ABS(COALESCE(profit_sales_amount, 0))) > 0
                 UNION ALL
                 SELECT report_date
                   FROM sales_report_seller_rows
                  WHERE report_date != '' AND report_date < ?
+                 GROUP BY report_date
+                HAVING SUM(ABS(COALESCE(quantity, 0))) > 0
+                    OR SUM(ABS(COALESCE(sales_amount, 0))) > 0
+                    OR SUM(ABS(COALESCE(sales_total, 0))) > 0
+                    OR SUM(ABS(COALESCE(profit_sales_amount, 0))) > 0
                 UNION ALL
                 SELECT report_date
                   FROM sales_report_supplier_rows
                  WHERE report_date != '' AND report_date < ?
+                 GROUP BY report_date
+                HAVING SUM(ABS(COALESCE(quantity, 0))) > 0
+                    OR SUM(ABS(COALESCE(sales_amount, 0))) > 0
+                    OR SUM(ABS(COALESCE(sales_total, 0))) > 0
+                    OR SUM(ABS(COALESCE(profit_sales_amount, 0))) > 0
                 UNION ALL
                 SELECT report_date
                   FROM sales_report_product_rows
                  WHERE report_date != '' AND report_date < ?
+                 GROUP BY report_date
+                HAVING SUM(ABS(COALESCE(quantity, 0))) > 0
+                    OR SUM(ABS(COALESCE(sales_amount, 0))) > 0
+                    OR SUM(ABS(COALESCE(sales_total, 0))) > 0
+                    OR SUM(ABS(COALESCE(profit_sales_amount, 0))) > 0
                )
         """,
         (base_text, base_text, base_text, base_text),
     ).fetchone()
     report_date = str(row["report_date"] or "") if row else ""
-    return report_date or previous_business_day(base_date).isoformat()
+    return report_date
 
 
 def sales_report_day_summary_from_sources(connection: sqlite3.Connection, target_date: str) -> dict[str, object]:
@@ -24847,11 +24867,45 @@ def sales_report_dashboard_payload(period: str = "", report_date: str = "") -> d
             """,
             (previous_period,),
         ).fetchone()
-        latest_seller_date_row = connection.execute(
-            "SELECT MAX(report_date) AS report_date FROM sales_report_seller_rows WHERE period = ? AND report_date != ''",
+        daily_month_rows_exist = connection.execute(
+            "SELECT 1 FROM sales_report_daily_rows WHERE period = ? LIMIT 1",
+            (selected_period,),
+        ).fetchone() is not None
+        seller_date_stats = connection.execute(
+            """
+            SELECT COUNT(DISTINCT report_date) AS date_count,
+                   MAX(report_date) AS report_date
+              FROM sales_report_seller_rows
+             WHERE period = ? AND report_date != ''
+            """,
             (selected_period,),
         ).fetchone()
-        latest_seller_date = str(latest_seller_date_row["report_date"] or "") if latest_seller_date_row else ""
+        seller_date_count = int(seller_date_stats["date_count"] or 0) if seller_date_stats else 0
+        latest_seller_date = str(seller_date_stats["report_date"] or "") if seller_date_stats else ""
+        seller_month_scope_active = seller_date_count > 1 or (seller_date_count > 0 and not daily_month_rows_exist)
+        if seller_month_scope_active:
+            seller_scope_sql = "period = ? AND report_date != '' AND report_date <= ?"
+            seller_scope_params: tuple[object, ...] = (selected_period, selected_date)
+        elif latest_seller_date:
+            seller_scope_sql = "period = ? AND report_date = ?"
+            seller_scope_params = (selected_period, latest_seller_date)
+        else:
+            seller_scope_sql = "period = ?"
+            seller_scope_params = (selected_period,)
+        if seller_month_scope_active:
+            month = connection.execute(
+                f"""
+                SELECT COALESCE(SUM(quantity), 0) AS quantity,
+                       COALESCE(SUM(sales_amount), 0) AS sales_amount,
+                       COALESCE(SUM(sales_total), 0) AS sales_total,
+                       COALESCE(SUM(profit_sales_amount), 0) AS profit_sales_amount,
+                       COALESCE(SUM(profit_supply_amount), 0) AS profit_supply_amount,
+                       COALESCE(SUM(profit_margin - profit_shipping), 0) AS profit_margin
+                  FROM sales_report_seller_rows
+                 WHERE {seller_scope_sql}
+                """,
+                seller_scope_params,
+            ).fetchone()
         latest_previous_seller_date_row = connection.execute(
             "SELECT MAX(report_date) AS report_date FROM sales_report_seller_rows WHERE period = ? AND report_date != ''",
             (previous_period,),
@@ -24867,16 +24921,31 @@ def sales_report_dashboard_payload(period: str = "", report_date: str = "") -> d
             (previous_period,),
         ).fetchone()
         latest_previous_supplier_date = str(latest_previous_supplier_date_row["report_date"] or "") if latest_previous_supplier_date_row else ""
-        seller_total = connection.execute(
+        supplier_date_rows_exist = connection.execute(
             """
+            SELECT 1
+              FROM sales_report_supplier_rows
+             WHERE period = ? AND report_date != '' AND report_date <= ?
+             LIMIT 1
+            """,
+            (selected_period, selected_date),
+        ).fetchone() is not None
+        if supplier_date_rows_exist:
+            supplier_scope_sql = "period = ? AND report_date != '' AND report_date <= ?"
+            supplier_scope_params: tuple[object, ...] = (selected_period, selected_date)
+        else:
+            supplier_scope_sql = "period = ?"
+            supplier_scope_params = (selected_period,)
+        seller_total = connection.execute(
+            f"""
             SELECT COALESCE(SUM(quantity), 0) AS quantity,
                    COALESCE(SUM(sales_amount), 0) AS sales_amount,
                    COALESCE(SUM(profit_sales_amount), 0) AS profit_sales_amount,
                    COALESCE(SUM(profit_margin - profit_shipping), 0) AS profit_margin
               FROM sales_report_seller_rows
-             WHERE period = ? AND (? = '' OR report_date = ?)
+             WHERE {seller_scope_sql}
             """,
-            (selected_period, latest_seller_date, latest_seller_date),
+            seller_scope_params,
         ).fetchone()
         previous_seller_total = connection.execute(
             """
@@ -24889,13 +24958,13 @@ def sales_report_dashboard_payload(period: str = "", report_date: str = "") -> d
             (previous_period, latest_previous_seller_date, latest_previous_seller_date),
         ).fetchone()
         supplier_purchase_total = connection.execute(
-            """
+            f"""
             SELECT COALESCE(SUM(quantity), 0) AS quantity,
                    COALESCE(SUM(supply_total), 0) AS purchase_total
               FROM sales_report_supplier_rows
-             WHERE period = ? AND (? = '' OR report_date = ?)
+             WHERE {supplier_scope_sql}
             """,
-            (selected_period, latest_supplier_date, latest_supplier_date),
+            supplier_scope_params,
         ).fetchone()
         previous_supplier_purchase_total = connection.execute(
             """
@@ -24937,7 +25006,7 @@ def sales_report_dashboard_payload(period: str = "", report_date: str = "") -> d
             (selected_period,),
         ).fetchall()
         seller_rows = connection.execute(
-            """
+            f"""
             SELECT seller_name AS name,
                    COALESCE(SUM(quantity), 0) AS quantity,
                    COALESCE(SUM(sales_amount), 0) AS sales_amount,
@@ -24948,11 +25017,11 @@ def sales_report_dashboard_payload(period: str = "", report_date: str = "") -> d
                    COALESCE(SUM(cs_amount), 0) AS cs_amount,
                    COALESCE(SUM(cs_margin), 0) AS cs_margin
               FROM sales_report_seller_rows
-             WHERE period = ? AND (? = '' OR report_date = ?)
+             WHERE {seller_scope_sql}
              GROUP BY seller_name
              ORDER BY profit_sales_amount DESC, quantity DESC, seller_name COLLATE NOCASE
             """,
-            (selected_period, latest_seller_date, latest_seller_date),
+            seller_scope_params,
         ).fetchall()
         product_rows = connection.execute(
             """
@@ -24972,16 +25041,16 @@ def sales_report_dashboard_payload(period: str = "", report_date: str = "") -> d
             (selected_period, SALES_REPORT_PRODUCT_EXCLUDE_PATTERN),
         ).fetchall()
         supplier_purchase_rows = connection.execute(
-            """
+            f"""
             SELECT supplier_name AS name,
                    COALESCE(SUM(quantity), 0) AS quantity,
                    COALESCE(SUM(supply_total), 0) AS purchase_total
               FROM sales_report_supplier_rows
-             WHERE period = ? AND (? = '' OR report_date = ?)
+             WHERE {supplier_scope_sql}
              GROUP BY supplier_name
              ORDER BY purchase_total DESC, quantity DESC, supplier_name COLLATE NOCASE
             """,
-            (selected_period, latest_supplier_date, latest_supplier_date),
+            supplier_scope_params,
         ).fetchall()
         daily_compare_rows = connection.execute(
             """
