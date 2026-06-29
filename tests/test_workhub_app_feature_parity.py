@@ -339,6 +339,8 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         self.assertIn('data-hermes-chat-mode="search"', html_source)
         self.assertIn('data-hermes-chat-mode="image"', html_source)
         self.assertIn("function setHermesChatMode(mode)", html_source)
+        self.assertIn('effective_mode not in {"general", "search", "image"}', html_source)
+        self.assertIn('"workhub_context": workhub_context', html_source)
         self.assertIn("body: JSON.stringify({ message, mode: requestedMode })", html_source)
         self.assertIn("save_hermes_text_result", html_source)
         self.assertIn("generated_text_file", html_source)

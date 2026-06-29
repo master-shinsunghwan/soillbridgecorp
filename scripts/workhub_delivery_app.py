@@ -33722,6 +33722,11 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                     else:
                         effective_mode = "automation"
                 user_label = str(user.get("display_name") or user.get("username") or "")
+                workhub_context = (
+                    hermes_workhub_context_snapshot(message)
+                    if effective_mode not in {"general", "search", "image"}
+                    else {}
+                )
                 request_payload = {
                     "message": message,
                     "intent": intent,
@@ -33729,7 +33734,7 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                     "requested_mode": chat_mode,
                     "source": "workhub",
                     "capabilities": hermes_capabilities_payload(intent, effective_mode),
-                    "workhub_context": hermes_workhub_context_snapshot(message),
+                    "workhub_context": workhub_context,
                     "user": {
                         "id": int(user.get("id") or 0),
                         "username": user.get("username", ""),
