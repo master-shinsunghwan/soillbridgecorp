@@ -10,6 +10,11 @@ $ErrorActionPreference = "Stop"
 $Root = Split-Path -Parent $MyInvocation.MyCommand.Path
 $Watchdog = Join-Path $Root "scripts\workhub_login_watchdog.ps1"
 $TaskName = "Soillbridge Workhub Login Watchdog"
+$StartupDir = [Environment]::GetFolderPath("Startup")
+$StartupLauncher = Join-Path $StartupDir "Soillbridge Workhub Login Watchdog.vbs"
+$OldStartupLauncherCmd = Join-Path $StartupDir "Soillbridge Workhub Login Watchdog.cmd"
+$LocalLauncherDir = Join-Path $env:LOCALAPPDATA "SoillbridgeWorkhub"
+$LocalLauncherCmd = Join-Path $LocalLauncherDir "Workhub Login Watchdog.cmd"
 
 if (-not (Test-Path -LiteralPath $Watchdog)) {
   throw "Watchdog script was not found: $Watchdog"
@@ -45,23 +50,24 @@ try {
     -Description "Open Workhub on PC login and remind every 5 minutes until this PC has an active login." `
     -Force | Out-Null
 
+  Remove-Item -LiteralPath $StartupLauncher -Force -ErrorAction SilentlyContinue
+  Remove-Item -LiteralPath $OldStartupLauncherCmd -Force -ErrorAction SilentlyContinue
   Start-ScheduledTask -TaskName $TaskName
 } catch {
   $InstallMode = "startup folder"
-  $StartupDir = [Environment]::GetFolderPath("Startup")
-  $Launcher = Join-Path $StartupDir "Soillbridge Workhub Login Watchdog.vbs"
-  $LauncherCmd = Join-Path $StartupDir "Soillbridge Workhub Login Watchdog.cmd"
+  New-Item -ItemType Directory -Path $LocalLauncherDir -Force | Out-Null
   $CmdLines = @(
     "@echo off",
     "cd /d `"$Root`"",
     "`"$PowerShell`" -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$Watchdog`" -Port $Port -IntervalMinutes $IntervalMinutes -ChromeDebugPort $ChromeDebugPort -Url `"$Url`""
   )
-  Set-Content -LiteralPath $LauncherCmd -Encoding ASCII -Value $CmdLines
+  Set-Content -LiteralPath $LocalLauncherCmd -Encoding ASCII -Value $CmdLines
   $VbsLines = @(
     "Set WshShell = CreateObject(""WScript.Shell"")",
-    "WshShell.Run Chr(34) & ""$LauncherCmd"" & Chr(34), 0, False"
+    "WshShell.Run Chr(34) & ""$LocalLauncherCmd"" & Chr(34), 0, False"
   )
-  Set-Content -LiteralPath $Launcher -Encoding ASCII -Value $VbsLines
+  Set-Content -LiteralPath $StartupLauncher -Encoding ASCII -Value $VbsLines
+  Remove-Item -LiteralPath $OldStartupLauncherCmd -Force -ErrorAction SilentlyContinue
 
   Start-Process `
     -FilePath $PowerShell `

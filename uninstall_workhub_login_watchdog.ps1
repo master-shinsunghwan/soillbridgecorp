@@ -4,6 +4,7 @@ $TaskName = "Soillbridge Workhub Login Watchdog"
 $Task = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
 $StartupLauncher = Join-Path ([Environment]::GetFolderPath("Startup")) "Soillbridge Workhub Login Watchdog.vbs"
 $StartupLauncherCmd = Join-Path ([Environment]::GetFolderPath("Startup")) "Soillbridge Workhub Login Watchdog.cmd"
+$LocalLauncherCmd = Join-Path (Join-Path $env:LOCALAPPDATA "SoillbridgeWorkhub") "Workhub Login Watchdog.cmd"
 
 if ($Task) {
   Stop-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
@@ -21,4 +22,9 @@ if (Test-Path -LiteralPath $StartupLauncher) {
 if (Test-Path -LiteralPath $StartupLauncherCmd) {
   Remove-Item -LiteralPath $StartupLauncherCmd -Force
   Write-Host "Startup launcher command removed."
+}
+
+if (Test-Path -LiteralPath $LocalLauncherCmd) {
+  Remove-Item -LiteralPath $LocalLauncherCmd -Force
+  Write-Host "Local launcher command removed."
 }
