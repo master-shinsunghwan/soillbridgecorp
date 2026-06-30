@@ -3017,6 +3017,48 @@ HTML = r"""<!doctype html>
       justify-content: flex-end;
       gap: 8px;
     }
+    .hermes-action-runner {
+      display: grid;
+      gap: 10px;
+      padding-top: 12px;
+      border-top: 1px solid #e2e8f0;
+    }
+    .hermes-action-grid {
+      display: grid;
+      grid-template-columns: minmax(180px, .9fr) minmax(220px, 1.1fr) minmax(160px, .8fr);
+      gap: 10px;
+      align-items: end;
+    }
+    .hermes-action-grid label,
+    .hermes-action-runner label {
+      display: grid;
+      gap: 6px;
+      color: #344054;
+      font-size: 12px;
+      font-weight: 900;
+    }
+    .hermes-action-grid select,
+    .hermes-action-grid input,
+    .hermes-action-runner textarea {
+      width: 100%;
+    }
+    .hermes-action-runner textarea {
+      min-height: 92px;
+    }
+    .hermes-action-result strong {
+      display: block;
+      color: #0f172a;
+      font-size: 12px;
+      font-weight: 950;
+      margin-bottom: 6px;
+    }
+    .hermes-action-result ul {
+      margin: 0;
+      padding-left: 18px;
+    }
+    .hermes-action-result li {
+      margin: 3px 0;
+    }
     .hermes-mode-selector {
       display: grid;
       grid-template-columns: repeat(5, minmax(0, 1fr));
@@ -3309,6 +3351,7 @@ HTML = r"""<!doctype html>
     }
     @media (max-width: 1100px) {
       .hermes-settings-grid { grid-template-columns: 1fr; }
+      .hermes-action-grid { grid-template-columns: 1fr; }
       .hermes-hero { grid-template-columns: auto minmax(0, 1fr); }
       .hermes-status-pill { grid-column: 1 / -1; justify-self: start; }
       .hermes-chat-layout { grid-template-columns: 1fr; }
@@ -11235,6 +11278,16 @@ HTML = r"""<!doctype html>
     const hermesAutomationBody = document.querySelector("#hermesAutomationBody");
     const hermesAutomationSend = document.querySelector("#hermesAutomationSend");
     const hermesAutomationResponse = document.querySelector("#hermesAutomationResponse");
+    const hermesActionSelect = document.querySelector("#hermesActionSelect");
+    const hermesActionTaskTitle = document.querySelector("#hermesActionTaskTitle");
+    const hermesActionTaskAssignee = document.querySelector("#hermesActionTaskAssignee");
+    const hermesActionTaskDue = document.querySelector("#hermesActionTaskDue");
+    const hermesActionTaskPriority = document.querySelector("#hermesActionTaskPriority");
+    const hermesActionTaskStatus = document.querySelector("#hermesActionTaskStatus");
+    const hermesActionTaskDescription = document.querySelector("#hermesActionTaskDescription");
+    const hermesActionPreview = document.querySelector("#hermesActionPreview");
+    const hermesActionExecute = document.querySelector("#hermesActionExecute");
+    const hermesActionResult = document.querySelector("#hermesActionResult");
     const hermesHistoryFilter = document.querySelector("#hermesHistoryFilter");
     const hermesSummaryCreate = document.querySelector("#hermesSummaryCreate");
     const hermesSummaryList = document.querySelector("#hermesSummaryList");
@@ -14776,6 +14829,72 @@ HTML = r"""<!doctype html>
       } catch (error) {
         if (hermesAutomationResponse) hermesAutomationResponse.textContent = error.message;
       }
+    }
+
+    function hermesActionPayloadFromForm() {
+      return {
+        action: hermesActionSelect?.value || "crm.create_task",
+        params: {
+          title: hermesActionTaskTitle?.value.trim() || "",
+          assignee_name: hermesActionTaskAssignee?.value.trim() || "",
+          due_at: hermesActionTaskDue?.value || "",
+          priority: hermesActionTaskPriority?.value || "보통",
+          status: hermesActionTaskStatus?.value || "대기",
+          description: hermesActionTaskDescription?.value.trim() || "",
+        },
+      };
+    }
+
+    function renderHermesActionResult(data = {}) {
+      if (!hermesActionResult) return;
+      const preview = data.preview || data.result?.preview || {};
+      const result = data.result || {};
+      const items = preview.items || [];
+      const lines = items.length
+        ? `<ul>${items.map((item) => `<li>${escapeHtml(item.label || "")}: ${escapeHtml(item.value || "")}</li>`).join("")}</ul>`
+        : "";
+      const title = result.public_id
+        ? `${escapeHtml(result.public_id)} 업무가 등록됐습니다.`
+        : escapeHtml(preview.title || data.message || "미리보기 결과");
+      const message = escapeHtml(result.message || preview.message || data.message || "");
+      hermesActionResult.innerHTML = `<strong>${title}</strong>${message ? `<div>${message}</div>` : ""}${lines}`;
+    }
+
+    async function previewHermesAction() {
+      if (!hermesActionResult) return;
+      hermesActionResult.textContent = "실행 전 미리보기를 만드는 중입니다.";
+      const data = await hermesFetchJson("/api/hermes-action-preview", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(hermesActionPayloadFromForm()),
+      });
+      renderHermesActionResult(data);
+      return data;
+    }
+
+    async function executeHermesAction() {
+      const payload = hermesActionPayloadFromForm();
+      const previewData = await previewHermesAction();
+      const preview = previewData?.preview || {};
+      const approved = await requestAppConfirm({
+        kicker: "Workhub 실행 승인",
+        title: "이 작업을 실제로 실행할까요?",
+        message: preview.message || "승인하면 Workhub 데이터가 변경됩니다.",
+        highlight: preview.title || payload.params.title || "Workhub 실행 API",
+        okText: "실행",
+        cancelText: "취소",
+      });
+      if (!approved) return;
+      if (hermesActionResult) hermesActionResult.textContent = "승인된 작업을 실행하는 중입니다.";
+      const data = await hermesFetchJson("/api/hermes-action-execute", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      renderHermesActionResult(data);
+      await loadHermesHistory().catch(() => {});
+      if (typeof loadCrmTasks === "function") await loadCrmTasks().catch(() => {});
+      if (typeof loadCrmMineTasks === "function") await loadCrmMineTasks().catch(() => {});
     }
 
     function syncCompanyNavState() {
@@ -21149,6 +21268,16 @@ HTML = r"""<!doctype html>
     hermesHistoryFilter?.addEventListener("change", () => renderHermesHistory(hermesHistoryItems));
     hermesSummaryCreate?.addEventListener("click", createHermesSummary);
     hermesAutomationSend?.addEventListener("click", sendHermesAutomation);
+    hermesActionPreview?.addEventListener("click", () => {
+      previewHermesAction().catch((error) => {
+        if (hermesActionResult) hermesActionResult.textContent = error.message;
+      });
+    });
+    hermesActionExecute?.addEventListener("click", () => {
+      executeHermesAction().catch((error) => {
+        if (hermesActionResult) hermesActionResult.textContent = error.message;
+      });
+    });
     hermesPresetButtons.forEach((button) => {
       button.addEventListener("click", () => applyHermesPreset(button.dataset.hermesPreset || "vps"));
     });
@@ -22782,6 +22911,48 @@ HERMES_WORKSPACE_HTML = r"""
                 <button class="workspace-button" type="button" id="hermesAutomationSend">자동화 요청 보내기</button>
               </div>
               <div class="hermes-response" id="hermesAutomationResponse">요청 결과가 여기에 표시됩니다.</div>
+              <div class="hermes-action-runner">
+                <div class="admin-section-title">승인형 Workhub 실행 API</div>
+                <div class="hermes-mode-hint">허용된 액션만 미리보기 후 승인해서 실행합니다. 현재는 업무관리 새 업무 등록부터 테스트할 수 있습니다.</div>
+                <div class="hermes-action-grid">
+                  <label>실행 액션
+                    <select class="hermes-input" id="hermesActionSelect">
+                      <option value="crm.create_task">업무관리 새 업무 등록</option>
+                    </select>
+                  </label>
+                  <label>업무 제목
+                    <input class="hermes-input" id="hermesActionTaskTitle" type="text" placeholder="예) 회수 지연 건 확인" />
+                  </label>
+                  <label>담당자
+                    <input class="hermes-input" id="hermesActionTaskAssignee" type="text" placeholder="이름 또는 사용자 ID" />
+                  </label>
+                  <label>마감일
+                    <input class="hermes-input" id="hermesActionTaskDue" type="date" />
+                  </label>
+                  <label>우선순위
+                    <select class="hermes-input" id="hermesActionTaskPriority">
+                      <option value="보통">보통</option>
+                      <option value="높음">높음</option>
+                      <option value="낮음">낮음</option>
+                    </select>
+                  </label>
+                  <label>상태
+                    <select class="hermes-input" id="hermesActionTaskStatus">
+                      <option value="대기">대기</option>
+                      <option value="진행중">진행중</option>
+                      <option value="보류">보류</option>
+                    </select>
+                  </label>
+                </div>
+                <label>업무 설명
+                  <textarea class="hermes-textarea" id="hermesActionTaskDescription" placeholder="헤르메스가 만든 처리 계획이나 사용자가 승인한 업무 내용을 적어주세요."></textarea>
+                </label>
+                <div class="hermes-actions">
+                  <button class="workspace-button ghost" type="button" id="hermesActionPreview">미리보기</button>
+                  <button class="workspace-button" type="button" id="hermesActionExecute">승인 후 실행</button>
+                </div>
+                <div class="hermes-response hermes-action-result" id="hermesActionResult">미리보기 결과가 여기에 표시됩니다.</div>
+              </div>
             </div>
           </section>
           <section class="hermes-tab-panel" data-hermes-panel="history">
@@ -32502,7 +32673,7 @@ def list_hermes_history(limit: int = 80) -> list[dict[str, str]]:
             item = json.loads(line)
         except json.JSONDecodeError:
             continue
-        rows.append({key: str(item.get(key, "")) for key in ("created_at", "kind", "title", "status", "message", "category", "summary", "source_count")})
+        rows.append({key: str(item.get(key, "")) for key in ("created_at", "kind", "title", "status", "message", "category", "summary", "source_count", "action_id", "task_id")})
     return list(reversed(rows))
 
 
@@ -32580,6 +32751,129 @@ def hermes_status_payload() -> dict[str, object]:
         return {"ok": True, "message": "Hermes Agent에 연결됐습니다.", "status": result.get("status"), "settings": settings}
     except Exception as exc:
         return {"ok": False, "message": str(exc), "settings": settings}
+
+
+HERMES_WORKHUB_ACTIONS: dict[str, dict[str, object]] = {
+    "crm.create_task": {
+        "id": "crm.create_task",
+        "label": "업무관리 새 업무 등록",
+        "description": "승인된 사용자 권한으로 업무관리 보드에 새 업무를 등록합니다.",
+        "required_permission": "crm_manage",
+        "required_label": "CRM 관리",
+        "category": "crm",
+        "mutates": True,
+        "parameters": [
+            {"name": "title", "label": "업무 제목", "required": True},
+            {"name": "assignee_name", "label": "담당자", "required": False},
+            {"name": "due_at", "label": "마감일", "required": False},
+            {"name": "priority", "label": "우선순위", "required": False},
+            {"name": "status", "label": "상태", "required": False},
+            {"name": "description", "label": "업무 설명", "required": False},
+        ],
+    },
+}
+
+
+def hermes_workhub_action_by_id(action_id: object) -> dict[str, object]:
+    action = HERMES_WORKHUB_ACTIONS.get(str(action_id or "").strip())
+    if not action:
+        raise ValueError("지원하지 않는 Workhub 실행 액션입니다.")
+    return action
+
+
+def hermes_workhub_action_request(payload: dict | None) -> tuple[str, dict[str, object]]:
+    if not isinstance(payload, dict):
+        raise ValueError("실행 요청 형식이 올바르지 않습니다.")
+    action_id = str(payload.get("action") or payload.get("action_id") or "").strip()
+    params = payload.get("params") if isinstance(payload.get("params"), dict) else payload
+    hermes_workhub_action_by_id(action_id)
+    return action_id, dict(params or {})
+
+
+def hermes_workhub_action_catalog(user: dict[str, object]) -> list[dict[str, object]]:
+    catalog: list[dict[str, object]] = []
+    for action in HERMES_WORKHUB_ACTIONS.values():
+        required_permission = str(action.get("required_permission") or "")
+        catalog.append({
+            **action,
+            "available": user_has_permission(user, required_permission),
+        })
+    return catalog
+
+
+def normalize_hermes_task_action_params(params: dict[str, object]) -> dict[str, object]:
+    title = str(params.get("title") or "").strip()
+    if not title:
+        raise ValueError("업무 제목을 입력해주세요.")
+    priority = str(params.get("priority") or "보통").strip()
+    if priority not in {"낮음", "보통", "높음"}:
+        raise ValueError("우선순위는 낮음/보통/높음 중 하나여야 합니다.")
+    status = str(params.get("status") or "대기").strip()
+    if status not in {"대기", "진행중", "보류"}:
+        raise ValueError("새 업무 상태는 대기/진행중/보류 중 하나여야 합니다.")
+    return {
+        "title": title[:160],
+        "description": str(params.get("description") or "").strip()[:2000],
+        "assignee_user_id": str(params.get("assignee_user_id") or "").strip(),
+        "assignee_name": str(params.get("assignee_name") or "").strip(),
+        "due_at": str(params.get("due_at") or "").strip(),
+        "priority": priority,
+        "status": status,
+        "source": "hermes",
+    }
+
+
+def preview_hermes_workhub_action(action_id: object, params: dict[str, object], user: dict[str, object]) -> dict[str, object]:
+    action = hermes_workhub_action_by_id(action_id)
+    if action["id"] == "crm.create_task":
+        normalized = normalize_hermes_task_action_params(params)
+        assignee = normalized["assignee_name"] or normalized["assignee_user_id"] or "미정"
+        preview = {
+            "title": "업무관리 새 업무 등록",
+            "message": "승인하면 업무관리 보드에 새 업무가 생성됩니다.",
+            "items": [
+                {"label": "업무 제목", "value": normalized["title"]},
+                {"label": "담당자", "value": assignee},
+                {"label": "마감일", "value": normalized["due_at"] or "없음"},
+                {"label": "우선순위", "value": normalized["priority"]},
+                {"label": "상태", "value": normalized["status"]},
+            ],
+        }
+        return {
+            "action": action,
+            "params": normalized,
+            "preview": preview,
+            "can_execute": user_has_permission(user, str(action.get("required_permission") or "")),
+        }
+    raise ValueError("지원하지 않는 Workhub 실행 액션입니다.")
+
+
+def execute_hermes_workhub_action(action_id: object, params: dict[str, object], user: dict[str, object]) -> dict[str, object]:
+    preview_payload = preview_hermes_workhub_action(action_id, params, user)
+    action = preview_payload["action"]
+    if not user_has_permission(user, str(action.get("required_permission") or "")):
+        raise PermissionError(f"{action.get('required_label') or '실행'} 권한이 없습니다.")
+    if action["id"] == "crm.create_task":
+        normalized = dict(preview_payload["params"])
+        task_id = save_crm_task(DB_PATH, normalized, user)
+        public_id = task_public_id(task_id)
+        message = f"{public_id} 업무가 등록됐습니다."
+        append_hermes_history(
+            "Workhub 실행",
+            "업무관리 새 업무 등록",
+            "성공",
+            message,
+            {"category": "automation", "action_id": str(action["id"]), "task_id": str(task_id)},
+        )
+        return {
+            "ok": True,
+            "action_id": action["id"],
+            "task_id": task_id,
+            "public_id": public_id,
+            "message": message,
+            "preview": preview_payload["preview"],
+        }
+    raise ValueError("지원하지 않는 Workhub 실행 액션입니다.")
 
 
 def contact_from_row(row: sqlite3.Row) -> dict[str, str]:
@@ -33181,6 +33475,12 @@ class WorkhubHandler(BaseHTTPRequestHandler):
             if not self.require_permission(user, "hermes_use", "헤르메스"):
                 return
             self.send_json({"history": list_hermes_history()})
+            return
+
+        if self.path == "/api/hermes-actions":
+            if not self.require_permission(user, "hermes_automation", "헤르메스 자동화 요청"):
+                return
+            self.send_json({"actions": hermes_workhub_action_catalog(user)})
             return
 
         if self.path == "/api/hermes-summary":
@@ -33953,6 +34253,29 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                     "file": saved,
                     "files": list_shared_files(),
                 })
+                return
+
+            if self.path == "/api/hermes-action-preview":
+                if not self.require_permission(user, "hermes_automation", "헤르메스 자동화 요청"):
+                    return
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(length).decode("utf-8") or "{}")
+                action_id, params = hermes_workhub_action_request(payload)
+                preview = preview_hermes_workhub_action(action_id, params, user)
+                self.send_json({"message": "실행 전 미리보기를 만들었습니다.", **preview})
+                return
+
+            if self.path == "/api/hermes-action-execute":
+                if not self.require_permission(user, "hermes_automation", "헤르메스 자동화 요청"):
+                    return
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(length).decode("utf-8") or "{}")
+                action_id, params = hermes_workhub_action_request(payload)
+                action = hermes_workhub_action_by_id(action_id)
+                if not self.require_permission(user, str(action.get("required_permission") or ""), str(action.get("required_label") or "Workhub 실행")):
+                    return
+                result = execute_hermes_workhub_action(action_id, params, user)
+                self.send_json({"message": result.get("message") or "Workhub 실행을 완료했습니다.", "result": result})
                 return
 
             if self.path == "/api/hermes-automation":

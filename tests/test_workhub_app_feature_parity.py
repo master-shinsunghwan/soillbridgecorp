@@ -379,6 +379,12 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         self.assertIn("HERMES_PROFILE", html_source)
         self.assertIn("describe_hermes_connection_error", html_source)
         self.assertIn('api_key.lower().startswith(("basic ", "bearer "))', html_source)
+        self.assertIn("승인형 Workhub 실행 API", html_source)
+        self.assertIn('id="hermesActionTaskTitle"', html_source)
+        self.assertIn("/api/hermes-actions", html_source)
+        self.assertIn("/api/hermes-action-preview", html_source)
+        self.assertIn("/api/hermes-action-execute", html_source)
+        self.assertIn("execute_hermes_workhub_action", html_source)
 
     def test_hermes_chat_history_can_be_summarized_and_filtered(self) -> None:
         html_source = (ROOT / "scripts" / "workhub_delivery_app.py").read_text(encoding="utf-8")
