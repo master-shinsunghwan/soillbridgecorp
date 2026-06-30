@@ -57,4 +57,10 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts\run_workhub_deli
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File build_workhub_exe.ps1
 ```
 
+VPS 운영 주소를 주소창 없는 Windows 앱처럼 배포하려면 아래 파일을 실행합니다.
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File build_workhub_desktop_app.ps1
+```
+
 주의: `output`, `.build`, `node_modules`, `config`, DB 파일, 메일 비밀번호 파일은 GitHub에 올리지 않습니다.
