@@ -822,13 +822,13 @@ class SalesReportUploadTests(unittest.TestCase):
             connection.executemany(
                 """
                 INSERT INTO sales_report_supplier_rows
-                    (period, report_date, file_id, supplier_name, quantity, supply_total)
-                VALUES (?, ?, ?, ?, ?, ?)
+                    (period, report_date, file_id, supplier_name, quantity, supply_total, profit_supply_amount)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
                 """,
                 [
-                    ("2026-06", "2026-06-26", supplier_file_id, "A매입처", 1, 1000),
-                    ("2026-06", "2026-06-28", supplier_file_id, "A매입처", 0, 0),
-                    ("2026-06", "2026-06-29", supplier_file_id, "B매입처", 2, 2000),
+                    ("2026-06", "2026-06-26", supplier_file_id, "A매입처", 1, 1000, 1000),
+                    ("2026-06", "2026-06-28", supplier_file_id, "A매입처", 0, 0, 0),
+                    ("2026-06", "2026-06-29", supplier_file_id, "B매입처", 2, 2000, 2000),
                 ],
             )
             connection.commit()
@@ -841,12 +841,12 @@ class SalesReportUploadTests(unittest.TestCase):
         self.assertEqual(dashboard["yesterday"]["profit_sales_amount"], 100)
         self.assertEqual(dashboard["month"]["profit_sales_amount"], 400)
         self.assertEqual(dashboard["seller_total"]["profit_sales_amount"], 400)
-        self.assertEqual(dashboard["supplier_purchase_total"]["purchase_total"], 2000)
+        self.assertEqual(dashboard["supplier_purchase_total"]["purchase_total"], 3000)
         seller_by_name = {row["name"]: row for row in dashboard["seller_top"]}
         supplier_by_name = {row["name"]: row for row in dashboard["supplier_purchase_totals"]}
         self.assertEqual(seller_by_name["A거래처"]["profit_sales_amount"], 100)
         self.assertEqual(seller_by_name["C거래처"]["profit_sales_amount"], 300)
-        self.assertNotIn("A매입처", supplier_by_name)
+        self.assertEqual(supplier_by_name["A매입처"]["purchase_total"], 1000)
         self.assertEqual(supplier_by_name["B매입처"]["purchase_total"], 2000)
 
     def test_sales_partner_detail_uses_raw_daily_amounts_not_deltas(self) -> None:
@@ -973,12 +973,64 @@ class SalesReportUploadTests(unittest.TestCase):
         purchase_total = dashboard["supplier_purchase_total"]
 
         self.assertEqual(purchase_total["quantity"], 7)
-        self.assertEqual(purchase_total["purchase_total"], 1650)
+        self.assertEqual(purchase_total["purchase_total"], 1600)
         self.assertEqual(purchase_totals[0]["name"], "공급사B")
         self.assertEqual(purchase_totals[0]["purchase_total"], 900)
         self.assertEqual(purchase_totals[1]["name"], "공급사A")
-        self.assertEqual(purchase_totals[1]["purchase_total"], 750)
+        self.assertEqual(purchase_totals[1]["purchase_total"], 700)
 
+
+    def test_supplier_purchase_total_uses_monthly_profit_supply_amount(self) -> None:
+        base = Path(self.tempdir.name)
+        first = base / "supplier-20260624.xlsx"
+        second = base / "supplier-20260630.xlsx"
+        first.write_text("first supplier placeholder", encoding="utf-8")
+        second.write_text("second supplier placeholder", encoding="utf-8")
+
+        original_detect = self.app.detect_sales_report_type
+        original_parse = self.app.parse_sales_report_file
+
+        def fake_detect(path: Path, original_name: str = "") -> str:
+            return "supplier"
+
+        def fake_parse(path: Path, original_name: str = "") -> dict[str, object]:
+            if "20260624" in original_name:
+                return {
+                    "report_type": "supplier",
+                    "report_date": "2026-06-24",
+                    "period": "2026-06",
+                    "rows": [
+                        {"name": "A공급사", "quantity": 10, "supply_total": 1200, "profit_supply_amount": 1000},
+                        {"name": "B공급사", "quantity": 5, "supply_total": 700, "profit_supply_amount": 600},
+                    ],
+                }
+            return {
+                "report_type": "supplier",
+                "report_date": "2026-06-30",
+                "period": "2026-06",
+                "rows": [
+                    {"name": "A공급사", "quantity": 3, "supply_total": 450, "profit_supply_amount": 400},
+                    {"name": "C공급사", "quantity": 2, "supply_total": 350, "profit_supply_amount": 300},
+                ],
+            }
+
+        try:
+            self.app.detect_sales_report_type = fake_detect
+            self.app.parse_sales_report_file = fake_parse
+            self.app.save_sales_report_file(first, first.name, "admin")
+            self.app.save_sales_report_file(second, second.name, "admin")
+        finally:
+            self.app.detect_sales_report_type = original_detect
+            self.app.parse_sales_report_file = original_parse
+
+        dashboard = self.app.sales_report_dashboard_payload("2026-06", "2026-06-30")
+        purchase_by_name = {row["name"]: row for row in dashboard["supplier_purchase_totals"]}
+
+        self.assertEqual(dashboard["supplier_purchase_total"]["purchase_total"], 2300)
+        self.assertEqual(dashboard["supplier_purchase_total"]["quantity"], 20)
+        self.assertEqual(purchase_by_name["A공급사"]["purchase_total"], 1400)
+        self.assertEqual(purchase_by_name["B공급사"]["purchase_total"], 600)
+        self.assertEqual(purchase_by_name["C공급사"]["purchase_total"], 300)
 
     def test_sales_report_nas_scan_imports_and_archives_new_files_once(self) -> None:
         base = Path(self.tempdir.name)
