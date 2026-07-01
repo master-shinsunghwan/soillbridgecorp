@@ -16378,19 +16378,28 @@ HTML = r"""<!doctype html>
       `;
     }
 
-    function crmDailyLogSectionHtml(label, text, empty, key) {
+    function crmDailyDomToken(value) {
+      return String(value || "unknown")
+        .trim()
+        .replace(/[^A-Za-z0-9_-]+/g, "-")
+        .replace(/^-+|-+$/g, "") || "unknown";
+    }
+
+    function crmDailyLogSectionHtml(label, text, empty, key, sectionId) {
       const needsToggle = !empty && crmDailyNeedsToggle(text);
       const lineCount = crmDailyDisplayLines(text).length;
+      const textId = sectionId || `crm-daily-log-${crmDailyDomToken(key)}`;
+      const safeTextId = escapeHtml(textId);
       return `
         <div class="crm-daily-log-section ${empty ? "" : "has-content"}" data-crm-daily-section="${escapeHtml(key)}">
           <div class="crm-daily-log-section-head">
             <span>${escapeHtml(label)}</span>
             <div class="crm-daily-log-section-tools">
               ${!empty && lineCount > 1 ? `<span class="crm-daily-log-line-count">${escapeHtml(lineCount)}줄</span>` : ""}
-              ${needsToggle ? `<button class="crm-daily-log-toggle" type="button" data-crm-daily-toggle aria-expanded="false">전체보기</button>` : ""}
+              ${needsToggle ? `<button class="crm-daily-log-toggle" type="button" data-crm-daily-toggle="${safeTextId}" aria-controls="${safeTextId}" aria-expanded="false">전체보기</button>` : ""}
             </div>
           </div>
-          <div class="crm-daily-log-text ${empty ? "empty" : ""} ${needsToggle ? "is-collapsed" : ""}">${crmDailyLineListHtml(text, empty)}</div>
+          <div id="${safeTextId}" class="crm-daily-log-text ${empty ? "empty" : ""} ${needsToggle ? "is-collapsed" : ""}">${crmDailyLineListHtml(text, empty)}</div>
         </div>
       `;
     }
@@ -16457,13 +16466,16 @@ HTML = r"""<!doctype html>
           "ko"
         );
       });
-      crmDailyLogBody.innerHTML = sortedLogs.map((log) => {
+      crmDailyLogBody.innerHTML = sortedLogs.map((log, index) => {
         const canWrite = can("crm_manage") || String(log.user_id || "") === String(currentUser.id || "");
         const todayEntry = crmDailyReadableText(log.completed_work, log.ongoing_work, log.work_summary);
         const tomorrowEntry = crmDailyReadableText(log.next_plan);
         const hasEntry = Boolean(todayEntry || tomorrowEntry);
         const todayText = todayEntry || "아직 작성된 내용이 없습니다.";
         const tomorrowText = tomorrowEntry || "아직 작성된 내용이 없습니다.";
+        const logToken = crmDailyDomToken(log.user_id || log.username || log.display_name || index);
+        const todaySectionId = `crm-daily-log-${index}-${logToken}-today`;
+        const tomorrowSectionId = `crm-daily-log-${index}-${logToken}-tomorrow`;
         const status = log.submitted ? `<span class="crm-status done">작성</span>` : `<span class="crm-status wait">미작성</span>`;
         const action = canWrite
           ? `<button class="crm-mini-button" type="button" data-crm-daily-load="${escapeHtml(log.user_id)}">${log.submitted ? "수정" : "작성"}</button>`
@@ -16481,8 +16493,8 @@ HTML = r"""<!doctype html>
               </div>
             </div>
             <div class="crm-daily-log-card-body">
-              ${crmDailyLogSectionHtml("오늘 한 일", todayText, !todayEntry, "today")}
-              ${crmDailyLogSectionHtml("내일 할 일", tomorrowText, !tomorrowEntry, "tomorrow")}
+              ${crmDailyLogSectionHtml("오늘 한 일", todayText, !todayEntry, "today", todaySectionId)}
+              ${crmDailyLogSectionHtml("내일 할 일", tomorrowText, !tomorrowEntry, "tomorrow", tomorrowSectionId)}
             </div>
           </article>
         `;
@@ -21834,7 +21846,8 @@ HTML = r"""<!doctype html>
       const toggle = event.target.closest("[data-crm-daily-toggle]");
       if (toggle) {
         const section = toggle.closest(".crm-daily-log-section");
-        const text = section?.querySelector(".crm-daily-log-text");
+        const targetId = toggle.dataset.crmDailyToggle || toggle.getAttribute("aria-controls");
+        const text = targetId ? document.getElementById(targetId) : section?.querySelector(".crm-daily-log-text");
         const expanded = !section?.classList.contains("expanded");
         section?.classList.toggle("expanded", expanded);
         text?.classList.toggle("is-collapsed", !expanded);
