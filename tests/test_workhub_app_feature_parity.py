@@ -206,7 +206,8 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         self.assertIn('<option value="500" selected>500개씩 보기</option>', management_size_slice)
         self.assertNotIn('<option value="1000" selected>', management_size_slice)
         self.assertIn('new URLSearchParams({ limit: ledgerPageSize.value || "500" })', html_source)
-        self.assertIn('new URLSearchParams({ limit: hasColumnFilters ? "50000" : (managementPageSize.value || "500") })', html_source)
+        self.assertIn("const hasColorFilters = managementHasActiveColorFilters();", html_source)
+        self.assertIn('new URLSearchParams({ limit: (hasColumnFilters || hasColorFilters) ? "50000" : (managementPageSize.value || "500") })', html_source)
         self.assertIn('ledgerPageSize.value = "500";', html_source)
         self.assertEqual(html_source.count('managementPageSize.value = "500";'), 2)
         self.assertNotIn('managementPageSize.value = "1000";', html_source)
@@ -588,6 +589,18 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         self.assertIn("managementMonthFilter.innerHTML = periodOptions", html_source)
         self.assertNotIn('managementMonthFilter.innerHTML = `<option value="">전체 선택</option>', html_source)
         self.assertIn("if (field === excludedField) return true;", html_source)
+
+    def test_management_filters_can_show_only_colored_cells(self) -> None:
+        html_source = (ROOT / "scripts" / "workhub_delivery_app.py").read_text(encoding="utf-8")
+
+        self.assertIn('id="managementFilterColoredOnly"', html_source)
+        self.assertIn("const managementColorFilters = {};", html_source)
+        self.assertIn("function managementCellHasColor(record, field, duplicateCounts = managementColorFilterDuplicateCounts)", html_source)
+        self.assertIn("function matchesManagementColorFilters(record)", html_source)
+        self.assertIn("managementFilterColoredOnly.addEventListener", html_source)
+        self.assertIn("managementColorFilters[activeManagementFilterField] = \"colored\";", html_source)
+        self.assertIn("Object.keys(managementColorFilters).forEach", html_source)
+        self.assertIn("Boolean(managementFilters[field]) || Boolean(managementColorFilters[field])", html_source)
 
     def test_crm_task_board_uses_collapsible_advanced_filters_from_branch(self) -> None:
         html_source = (ROOT / "scripts" / "workhub_delivery_app.py").read_text(encoding="utf-8")

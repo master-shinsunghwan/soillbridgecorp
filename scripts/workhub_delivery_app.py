@@ -4412,6 +4412,30 @@ HTML = r"""<!doctype html>
       font-weight: 800;
     }
     .ledger-filter-option:hover { background: #eef6ff; }
+    .ledger-filter-color {
+      display: none;
+      margin: -2px 0 8px;
+    }
+    .ledger-filter-color.open { display: block; }
+    .ledger-filter-color button {
+      width: 100%;
+      height: 30px;
+      border: 1px solid #bfdbfe;
+      border-radius: 5px;
+      background: #eff6ff;
+      color: #155bc8;
+      font-family: inherit;
+      font-size: 12px;
+      font-weight: 850;
+      cursor: pointer;
+      text-align: left;
+      padding: 0 8px;
+    }
+    .ledger-filter-color button.active {
+      border-color: #155bc8;
+      background: #155bc8;
+      color: white;
+    }
     .ledger-filter-actions {
       display: flex;
       justify-content: flex-end;
@@ -10643,6 +10667,9 @@ HTML = r"""<!doctype html>
         <div class="ledger-filter-popover" id="ledgerFilterPopover">
           <div class="ledger-filter-title" id="ledgerFilterTitle">필터</div>
           <input class="ledger-filter-search" id="ledgerFilterSearch" type="text" placeholder="검색어 입력" />
+          <div class="ledger-filter-color" id="managementFilterColorControls">
+            <button type="button" id="managementFilterColoredOnly">색상 표시된 셀만</button>
+          </div>
           <div class="ledger-filter-option-list" id="ledgerFilterOptions"></div>
           <div class="ledger-filter-actions">
             <button type="button" id="ledgerFilterClear">현재 초기화</button>
@@ -11188,6 +11215,8 @@ HTML = r"""<!doctype html>
     const ledgerFilterTitle = document.querySelector("#ledgerFilterTitle");
     const ledgerFilterSearch = document.querySelector("#ledgerFilterSearch");
     const ledgerFilterOptions = document.querySelector("#ledgerFilterOptions");
+    const managementFilterColorControls = document.querySelector("#managementFilterColorControls");
+    const managementFilterColoredOnly = document.querySelector("#managementFilterColoredOnly");
     const ledgerFilterClear = document.querySelector("#ledgerFilterClear");
     const ledgerFilterResetAll = document.querySelector("#ledgerFilterResetAll");
     const ledgerFilterApply = document.querySelector("#ledgerFilterApply");
@@ -11695,6 +11724,8 @@ HTML = r"""<!doctype html>
     };
     const ledgerFilters = {};
     const managementFilters = {};
+    const managementColorFilters = {};
+    let managementColorFilterDuplicateCounts = new Map();
     let managementFilterOptionRequestId = 0;
     let pendingManagementHighlightId = "";
     let isBulkSaving = false;
@@ -17938,16 +17969,58 @@ HTML = r"""<!doctype html>
       return record[field] || "";
     }
 
+    function managementDuplicateKey(record) {
+      const dateKey = String(record.order_date || record.ship_date || "").trim();
+      const invoiceKey = String(record.invoice_number || "").trim();
+      return dateKey && invoiceKey ? `${dateKey}||${invoiceKey}` : "";
+    }
+
+    function managementDuplicateCounts(records) {
+      const counts = new Map();
+      (records || []).forEach((record) => {
+        const key = managementDuplicateKey(record);
+        if (!key) return;
+        counts.set(key, (counts.get(key) || 0) + 1);
+      });
+      return counts;
+    }
+
+    function isManagementDuplicateRecord(record, duplicateCounts = managementColorFilterDuplicateCounts) {
+      const key = managementDuplicateKey(record);
+      return Boolean(key && duplicateCounts && duplicateCounts.get(key) > 1);
+    }
+
+    function managementCellHasColor(record, field, duplicateCounts = managementColorFilterDuplicateCounts) {
+      if (record.cs_received_at) return true;
+      if (isManagementDuplicateRecord(record, duplicateCounts)) return true;
+      return field === "quantity" && Boolean(quantityLevelClass(record.quantity));
+    }
+
+    function managementHasActiveColorFilters() {
+      return Object.values(managementColorFilters).some(Boolean);
+    }
+
     function matchesManagementFilters(record) {
-      return matchesManagementFiltersExcept(record, "");
+      return matchesManagementTextFiltersExcept(record, "") && matchesManagementColorFilters(record);
     }
 
     function matchesManagementFiltersExcept(record, excludedField = "") {
+      return matchesManagementTextFiltersExcept(record, excludedField);
+    }
+
+    function matchesManagementTextFiltersExcept(record, excludedField = "") {
       return Object.entries(managementFilters).every(([field, filterValue]) => {
         if (field === excludedField) return true;
         const value = String(filterValue || "").trim().toLowerCase();
         if (!value) return true;
         return String(managementFieldValue(record, field)).toLowerCase().includes(value);
+      });
+    }
+
+    function matchesManagementColorFilters(record) {
+      return Object.entries(managementColorFilters).every(([field, mode]) => {
+        if (mode !== "colored") return true;
+        return managementCellHasColor(record, field);
       });
     }
 
@@ -18075,11 +18148,13 @@ HTML = r"""<!doctype html>
     }
 
     function applyManagementFilters() {
-      const filtered = managementRecords.filter(matchesManagementFilters);
+      const textFiltered = managementRecords.filter((record) => matchesManagementTextFiltersExcept(record, ""));
+      managementColorFilterDuplicateCounts = managementDuplicateCounts(textFiltered);
+      const filtered = textFiltered.filter(matchesManagementColorFilters);
       renderManagement(filtered);
       managementFilterButtons.forEach((button) => {
         const field = button.dataset.managementFilterButton;
-        button.classList.toggle("active", Boolean(managementFilters[field]));
+        button.classList.toggle("active", Boolean(managementFilters[field]) || Boolean(managementColorFilters[field]));
       });
       if (currentMode === "management") notice.textContent = `${filtered.length}건 조회되었습니다.`;
     }
@@ -18104,6 +18179,7 @@ HTML = r"""<!doctype html>
 
     async function renderManagementFilterOptions(field, searchText = "") {
       const requestId = ++managementFilterOptionRequestId;
+      syncManagementColorFilterControl();
       ledgerFilterOptions.innerHTML = `<button class="ledger-filter-option" type="button" disabled>월 전체 데이터를 확인하는 중입니다.</button>`;
       const params = new URLSearchParams({ field, search: searchText.trim() });
       const query = managementSearchInput.value.trim();
@@ -18136,9 +18212,20 @@ HTML = r"""<!doctype html>
       }
     }
 
+    function syncManagementColorFilterControl() {
+      if (!managementFilterColorControls || !managementFilterColoredOnly) return;
+      const visible = Boolean(activeManagementFilterField);
+      managementFilterColorControls.classList.toggle("open", visible);
+      managementFilterColoredOnly.classList.toggle(
+        "active",
+        Boolean(activeManagementFilterField && managementColorFilters[activeManagementFilterField])
+      );
+    }
+
     function openLedgerFilter(button) {
       activeManagementFilterField = "";
       activeLedgerFilterField = button.dataset.ledgerFilterButton || "";
+      syncManagementColorFilterControl();
       ledgerFilterTitle.textContent = `${button.dataset.label || "필터"} 필터`;
       ledgerFilterSearch.value = ledgerFilters[activeLedgerFilterField] || "";
       renderLedgerFilterOptions(activeLedgerFilterField, ledgerFilterSearch.value);
@@ -18153,6 +18240,7 @@ HTML = r"""<!doctype html>
     function openManagementFilter(button) {
       activeLedgerFilterField = "";
       activeManagementFilterField = button.dataset.managementFilterButton || "";
+      syncManagementColorFilterControl();
       ledgerFilterTitle.textContent = `${button.dataset.label || "필터"} 필터`;
       ledgerFilterSearch.value = managementFilters[activeManagementFilterField] || "";
       renderManagementFilterOptions(activeManagementFilterField, ledgerFilterSearch.value);
@@ -18168,6 +18256,7 @@ HTML = r"""<!doctype html>
       ledgerFilterPopover.classList.remove("open");
       activeLedgerFilterField = "";
       activeManagementFilterField = "";
+      syncManagementColorFilterControl();
     }
 
     function markRowDirty(row, dirty = true) {
@@ -18767,6 +18856,7 @@ HTML = r"""<!doctype html>
     function clearActiveLedgerFilter() {
       if (activeManagementFilterField) {
         delete managementFilters[activeManagementFilterField];
+        delete managementColorFilters[activeManagementFilterField];
         ledgerFilterSearch.value = "";
         renderManagementFilterOptions(activeManagementFilterField, "");
         loadManagementRecords();
@@ -18791,6 +18881,7 @@ HTML = r"""<!doctype html>
 
     function clearAllManagementFilters() {
       Object.keys(managementFilters).forEach((field) => delete managementFilters[field]);
+      Object.keys(managementColorFilters).forEach((field) => delete managementColorFilters[field]);
       ledgerFilterSearch.value = "";
       loadManagementRecords();
     }
@@ -18819,6 +18910,17 @@ HTML = r"""<!doctype html>
       if (normalized) managementFilters[activeManagementFilterField] = normalized;
       else delete managementFilters[activeManagementFilterField];
       pendingManagementHighlightId = targetRecordId ? String(targetRecordId) : "";
+      loadManagementRecords();
+      closeLedgerFilter();
+    }
+
+    function toggleManagementColorFilter() {
+      if (!activeManagementFilterField) return;
+      if (managementColorFilters[activeManagementFilterField]) {
+        delete managementColorFilters[activeManagementFilterField];
+      } else {
+        managementColorFilters[activeManagementFilterField] = "colored";
+      }
       loadManagementRecords();
       closeLedgerFilter();
     }
@@ -19566,23 +19668,14 @@ HTML = r"""<!doctype html>
         "#fff0df",
         "#eef2ff",
       ];
-      const duplicateCounts = new Map();
+      const duplicateCounts = managementDuplicateCounts(records);
       const duplicateColorByKey = new Map();
-      records.forEach((record) => {
-        const dateKey = String(record.order_date || record.ship_date || "").trim();
-        const invoiceKey = String(record.invoice_number || "").trim();
-        if (!dateKey || !invoiceKey) return;
-        const key = `${dateKey}||${invoiceKey}`;
-        duplicateCounts.set(key, (duplicateCounts.get(key) || 0) + 1);
-      });
       let duplicateGroupIndex = 0;
       records.forEach((record) => {
         const row = document.createElement("tr");
         row.dataset.recordId = record.id;
-        const dateKey = String(record.order_date || record.ship_date || "").trim();
-        const invoiceKey = String(record.invoice_number || "").trim();
-        const duplicateKey = dateKey && invoiceKey ? `${dateKey}||${invoiceKey}` : "";
-        if (duplicateKey && duplicateCounts.get(duplicateKey) > 1) {
+        const duplicateKey = managementDuplicateKey(record);
+        if (isManagementDuplicateRecord(record, duplicateCounts)) {
           if (!duplicateColorByKey.has(duplicateKey)) {
             duplicateColorByKey.set(
               duplicateKey,
@@ -19623,7 +19716,8 @@ HTML = r"""<!doctype html>
     async function loadManagementRecords({ showPicker = false } = {}) {
       const query = managementSearchInput.value.trim();
       const hasColumnFilters = Object.values(managementFilters).some((value) => String(value || "").trim());
-      const params = new URLSearchParams({ limit: hasColumnFilters ? "50000" : (managementPageSize.value || "500") });
+      const hasColorFilters = managementHasActiveColorFilters();
+      const params = new URLSearchParams({ limit: (hasColumnFilters || hasColorFilters) ? "50000" : (managementPageSize.value || "500") });
       const period = selectedManagementPeriod();
       if (query) params.set("q", query);
       if (period.year) params.set("year", period.year);
@@ -22345,6 +22439,7 @@ HTML = r"""<!doctype html>
     ledgerFilterApply.addEventListener("click", () => setActivePopoverFilter(ledgerFilterSearch.value));
     ledgerFilterClear.addEventListener("click", clearActiveLedgerFilter);
     ledgerFilterResetAll.addEventListener("click", clearAllActivePopoverFilters);
+    if (managementFilterColoredOnly) managementFilterColoredOnly.addEventListener("click", toggleManagementColorFilter);
     ledgerFilterOptions.addEventListener("click", (event) => {
       const option = event.target.closest("[data-filter-value]");
       if (option) setActivePopoverFilter(option.dataset.filterValue || "", option.dataset.filterRecordId || "");
