@@ -7816,8 +7816,9 @@ HTML = r"""<!doctype html>
     }
     .crm-daily-log-list {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr));
-      gap: 10px;
+      grid-template-columns: repeat(auto-fit, minmax(min(100%, 360px), 1fr));
+      align-items: start;
+      gap: 12px;
       padding: 12px;
       background: #f8fafc;
     }
@@ -7832,7 +7833,7 @@ HTML = r"""<!doctype html>
       display: grid;
       gap: 10px;
       min-width: 0;
-      padding: 12px;
+      padding: 14px;
       border: 1px solid #e5e7eb;
       border-radius: 8px;
       background: #fff;
@@ -7853,37 +7854,78 @@ HTML = r"""<!doctype html>
     .crm-daily-log-card-body {
       display: grid;
       grid-template-columns: 1fr;
-      gap: 10px;
+      gap: 12px;
     }
     .crm-daily-log-section {
       display: grid;
-      gap: 6px;
+      gap: 8px;
       min-width: 0;
-      padding: 10px;
+      padding: 12px;
       border: 1px solid #e5e7eb;
       border-radius: 7px;
       background: #fbfcff;
+    }
+    .crm-daily-log-section-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+      align-items: center;
+      min-width: 0;
     }
     .crm-daily-log-section > span {
       color: #475467;
       font-size: 11px;
       font-weight: 950;
     }
+    .crm-daily-log-section-head > span {
+      color: #475467;
+      font-size: 11px;
+      font-weight: 950;
+    }
     .crm-daily-log-text {
-      min-height: 42px;
+      position: relative;
+      min-height: 44px;
       max-width: 100%;
       color: #27364a;
       font-size: 13px;
       font-weight: 800;
-      line-height: 1.55;
-      white-space: pre-wrap;
-      word-break: keep-all;
+      line-height: 1.7;
+      white-space: pre-line;
+      word-break: normal;
       overflow-wrap: anywhere;
       text-wrap: pretty;
+    }
+    .crm-daily-log-text.is-collapsed {
+      max-height: 10.2em;
+      overflow: hidden;
+      -webkit-mask-image: linear-gradient(180deg, #000 72%, transparent);
+      mask-image: linear-gradient(180deg, #000 72%, transparent);
+    }
+    .crm-daily-log-section.expanded .crm-daily-log-text {
+      max-height: none;
+      overflow: visible;
+      -webkit-mask-image: none;
+      mask-image: none;
     }
     .crm-daily-log-text.empty {
       color: #94a3b8;
       font-weight: 800;
+    }
+    .crm-daily-log-toggle {
+      flex: 0 0 auto;
+      min-height: 24px;
+      padding: 0 9px;
+      border: 1px solid #bfdbfe;
+      border-radius: 999px;
+      background: #eff6ff;
+      color: #1d4ed8;
+      font-size: 11px;
+      font-weight: 950;
+      cursor: pointer;
+    }
+    .crm-daily-log-toggle:hover {
+      background: #dbeafe;
+      border-color: #93c5fd;
     }
     .crm-daily-report {
       display: grid;
@@ -16231,6 +16273,36 @@ HTML = r"""<!doctype html>
       return String(text || "").replace(/\s+/g, " ").trim();
     }
 
+    function crmDailyReadableText(...values) {
+      const text = values.find((value) => String(value || "").trim());
+      return String(text || "")
+        .replace(/\r\n?/g, "\n")
+        .split("\n")
+        .map((line) => line.replace(/[ \t]+/g, " ").trim())
+        .join("\n")
+        .replace(/\n{3,}/g, "\n\n")
+        .trim();
+    }
+
+    function crmDailyNeedsToggle(text) {
+      const value = String(text || "");
+      const lines = value.split("\n").filter((line) => line.trim());
+      return value.length > 140 || lines.length > 5;
+    }
+
+    function crmDailyLogSectionHtml(label, text, empty, key) {
+      const needsToggle = !empty && crmDailyNeedsToggle(text);
+      return `
+        <div class="crm-daily-log-section" data-crm-daily-section="${escapeHtml(key)}">
+          <div class="crm-daily-log-section-head">
+            <span>${escapeHtml(label)}</span>
+            ${needsToggle ? `<button class="crm-daily-log-toggle" type="button" data-crm-daily-toggle aria-expanded="false">전체보기</button>` : ""}
+          </div>
+          <div class="crm-daily-log-text ${empty ? "empty" : ""} ${needsToggle ? "is-collapsed" : ""}">${escapeHtml(text)}</div>
+        </div>
+      `;
+    }
+
     function clearCrmDailyLogFields() {
       if (crmDailyWorkSummary) crmDailyWorkSummary.value = "";
       if (crmDailyCompletedWork) crmDailyCompletedWork.value = "";
@@ -16286,8 +16358,10 @@ HTML = r"""<!doctype html>
       }
       crmDailyLogBody.innerHTML = logs.map((log) => {
         const canWrite = can("crm_manage") || String(log.user_id || "") === String(currentUser.id || "");
-        const todayText = crmDailyPreviewText(log) || "아직 작성된 내용이 없습니다.";
-        const tomorrowText = crmDailyCompactText(log.next_plan) || "아직 작성된 내용이 없습니다.";
+        const todayEntry = crmDailyReadableText(log.completed_work, log.ongoing_work, log.work_summary);
+        const tomorrowEntry = crmDailyReadableText(log.next_plan);
+        const todayText = todayEntry || "아직 작성된 내용이 없습니다.";
+        const tomorrowText = tomorrowEntry || "아직 작성된 내용이 없습니다.";
         const status = log.submitted ? `<span class="crm-status done">작성</span>` : `<span class="crm-status wait">미작성</span>`;
         const action = canWrite
           ? `<button class="crm-mini-button" type="button" data-crm-daily-load="${escapeHtml(log.user_id)}">${log.submitted ? "수정" : "작성"}</button>`
@@ -16305,14 +16379,8 @@ HTML = r"""<!doctype html>
               </div>
             </div>
             <div class="crm-daily-log-card-body">
-              <div class="crm-daily-log-section">
-                <span>오늘 한 일</span>
-                <div class="crm-daily-log-text ${log.submitted ? "" : "empty"}">${escapeHtml(todayText)}</div>
-              </div>
-              <div class="crm-daily-log-section">
-                <span>내일 할 일</span>
-                <div class="crm-daily-log-text ${log.next_plan ? "" : "empty"}">${escapeHtml(tomorrowText)}</div>
-              </div>
+              ${crmDailyLogSectionHtml("오늘 한 일", todayText, !todayEntry, "today")}
+              ${crmDailyLogSectionHtml("내일 할 일", tomorrowText, !tomorrowEntry, "tomorrow")}
             </div>
           </article>
         `;
@@ -21661,6 +21729,17 @@ HTML = r"""<!doctype html>
       saveCrmDailyLogForm(event).catch((error) => setCrmMessage(error.message, true));
     });
     crmDailyLogBody?.addEventListener("click", (event) => {
+      const toggle = event.target.closest("[data-crm-daily-toggle]");
+      if (toggle) {
+        const section = toggle.closest(".crm-daily-log-section");
+        const text = section?.querySelector(".crm-daily-log-text");
+        const expanded = !section?.classList.contains("expanded");
+        section?.classList.toggle("expanded", expanded);
+        text?.classList.toggle("is-collapsed", !expanded);
+        toggle.textContent = expanded ? "접기" : "전체보기";
+        toggle.setAttribute("aria-expanded", expanded ? "true" : "false");
+        return;
+      }
       const button = event.target.closest("[data-crm-daily-load]");
       if (!button) return;
       const log = crmDailyLogs.find((item) => String(item.user_id) === String(button.dataset.crmDailyLoad));
