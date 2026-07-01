@@ -12414,6 +12414,29 @@ HTML = r"""<!doctype html>
       });
     }
 
+    function canUseLeaveNotifications() {
+      return ["leave_view", "leave_approve", "leave_approve_team", "leave_approve_director", "leave_approve_ceo", "leave_director_override", "leave_manage"]
+        .some((permission) => can(permission));
+    }
+
+    function leaveNotificationText(item) {
+      return `${item.message || ""}${item.created_at ? ` ${item.created_at}` : ""}`.trim();
+    }
+
+    function leaveNotificationHtml(items = [], limit = 5) {
+      return (items || []).slice(0, limit).map((item) => `
+        <div>${escapeHtml(item.message)} <small>${escapeHtml(item.created_at || "")}</small></div>
+      `).join("");
+    }
+
+    async function fetchLeaveNotifications() {
+      if (!canUseLeaveNotifications()) return [];
+      const response = await fetch("/api/leave-notifications");
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "연차 알림을 불러오지 못했습니다.");
+      return data.notifications || [];
+    }
+
     function renderLeaveData(data) {
       if (!leaveWorkspace) return;
       leaveTotalDays.textContent = dayText(data.summary?.total_days);
@@ -12421,9 +12444,7 @@ HTML = r"""<!doctype html>
       if (leaveReservedDays) leaveReservedDays.textContent = dayText(data.summary?.reserved_days);
       leaveRemainingDays.textContent = dayText(data.summary?.remaining_days);
       if (leaveNotificationList) {
-        leaveNotificationList.innerHTML = (data.notifications || []).slice(0, 5).map((item) => `
-          <div>${escapeHtml(item.message)} <small>${escapeHtml(item.created_at || "")}</small></div>
-        `).join("");
+        leaveNotificationList.innerHTML = leaveNotificationHtml(data.notifications || [], 5);
       }
       leaveBalanceBody.innerHTML = (data.balances || []).length
         ? data.balances.map((row) => `
@@ -21225,9 +21246,16 @@ HTML = r"""<!doctype html>
 
     async function openTopbarAlertPanel() {
       const sections = [];
-      const leaveItems = leaveNotificationList
-        ? Array.from(leaveNotificationList.children).map((item) => item.textContent.trim()).filter(Boolean)
-        : [];
+      let leaveItems = [];
+      if (canUseLeaveNotifications()) {
+        try {
+          leaveItems = (await fetchLeaveNotifications()).map(leaveNotificationText).filter(Boolean);
+        } catch {
+          leaveItems = leaveNotificationList
+            ? Array.from(leaveNotificationList.children).map((item) => item.textContent.trim()).filter(Boolean)
+            : [];
+        }
+      }
       if (leaveItems.length) {
         sections.push(`
           <div class="focus-widget-section">
@@ -29307,6 +29335,60 @@ def leave_approval_label(step: str) -> str:
     }.get(step, step)
 
 
+def leave_unit_label(unit: str) -> str:
+    return "\uBC18\uCC28" if unit == "HALF_DAY" else "\uC5F0\uCC28"
+
+
+def leave_days_text(value: object) -> str:
+    try:
+        days = float(value or 0)
+    except (TypeError, ValueError):
+        days = 0.0
+    return f"{days:g}\uC77C"
+
+
+def leave_request_date_text(row: sqlite3.Row) -> str:
+    start = str(row["start_date"] or "")
+    end = str(row["end_date"] or "")
+    if start and end and start != end:
+        return f"{start}~{end}"
+    return start or end or "\uC77C\uC790 \uBBF8\uC815"
+
+
+def leave_requester_name(row: sqlite3.Row) -> str:
+    display_name = row["display_name"] if "display_name" in row.keys() else ""
+    username = row["username"] if "username" in row.keys() else ""
+    return str(display_name or username or "\uC2E0\uCCAD\uC790")
+
+
+def leave_actor_name(actor: dict[str, str]) -> str:
+    return str(actor.get("display_name") or actor.get("username") or "\uCC98\uB9AC\uC790")
+
+
+def leave_request_alarm_summary(row: sqlite3.Row) -> str:
+    return " · ".join([
+        leave_request_date_text(row),
+        leave_unit_label(str(row["unit"] or "")),
+        leave_days_text(row["requested_days"]),
+    ])
+
+
+def get_leave_request_context(connection: sqlite3.Connection, request_id: int) -> sqlite3.Row:
+    row = connection.execute(
+        """
+        SELECT leave_requests.*, leave_types.name AS leave_type_name, users.display_name, users.username
+          FROM leave_requests
+          JOIN leave_types ON leave_types.id = leave_requests.leave_type_id
+          JOIN users ON users.id = leave_requests.user_id
+         WHERE leave_requests.id = ?
+        """,
+        (request_id,),
+    ).fetchone()
+    if not row:
+        raise ValueError("\uC5F0\uCC28 \uC2E0\uCCAD\uC744 \uCC3E\uC744 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4.")
+    return row
+
+
 def leave_step_permission(step: str) -> str:
     return {
         "TEAM_LEAD": "leave_approve_team",
@@ -29327,12 +29409,19 @@ def actor_can_override_leave(actor: dict[str, str]) -> bool:
     return user_has_permission(actor, "leave_director_override") or user_has_permission(actor, "leave_manage")
 
 
-def active_users_with_leave_permission(connection: sqlite3.Connection, permissions: list[str]) -> list[sqlite3.Row]:
+def active_users_with_leave_permission(
+    connection: sqlite3.Connection,
+    permissions: list[str],
+    exclude_user_ids: set[int] | None = None,
+) -> list[sqlite3.Row]:
+    excluded = exclude_user_ids or set()
     rows = connection.execute(
         "SELECT id, username, display_name, role, permissions FROM users WHERE active = 1"
     ).fetchall()
     matches = []
     for row in rows:
+        if int(row["id"]) in excluded:
+            continue
         normalized = normalize_permissions(row["permissions"], row["role"])
         if any(permission in normalized for permission in permissions):
             matches.append(row)
@@ -29355,21 +29444,51 @@ def add_leave_notification(
     )
 
 
-def notify_leave_step(connection: sqlite3.Connection, request_id: int, step: str, requester_name: str) -> None:
+def notify_leave_step(
+    connection: sqlite3.Connection,
+    request_id: int,
+    step: str,
+    requester_name: str,
+    request_summary: str = "",
+    exclude_user_ids: set[int] | None = None,
+) -> None:
     permission = leave_step_permission(step)
     permissions = [permission, "leave_manage"]
     if step == "TEAM_LEAD":
         permissions.append("leave_approve")
     if step == "DIRECTOR":
         permissions.append("leave_director_override")
-    users = active_users_with_leave_permission(connection, permissions)
-    message = f"{requester_name}\uB2D8\uC758 \uC5F0\uCC28 \uC2E0\uCCAD\uC774 {leave_approval_label(step)} \uC2B9\uC778\uC744 \uAE30\uB2E4\uB9BD\uB2C8\uB2E4."
+    users = active_users_with_leave_permission(connection, permissions, exclude_user_ids=exclude_user_ids)
+    detail = f" ({request_summary})" if request_summary else ""
+    message = f"{requester_name}\uB2D8\uC758 \uC5F0\uCC28 \uC2E0\uCCAD\uC774 {leave_approval_label(step)} \uC2B9\uC778\uC744 \uAE30\uB2E4\uB9BD\uB2C8\uB2E4.{detail}"
     for user in users:
         add_leave_notification(connection, int(user["id"]), request_id, "approval_waiting", message)
 
 
 def notify_leave_requester(connection: sqlite3.Connection, user_id: int, request_id: int, message: str) -> None:
     add_leave_notification(connection, user_id, request_id, "request_update", message)
+
+
+def notify_leave_admins(
+    connection: sqlite3.Connection,
+    request_id: int,
+    message: str,
+    exclude_user_ids: set[int] | None = None,
+) -> None:
+    users = active_users_with_leave_permission(
+        connection,
+        [
+            "leave_manage",
+            "leave_approve",
+            "leave_approve_team",
+            "leave_approve_director",
+            "leave_approve_ceo",
+            "leave_director_override",
+        ],
+        exclude_user_ids=exclude_user_ids,
+    )
+    for user in users:
+        add_leave_notification(connection, int(user["id"]), request_id, "admin_update", message)
 
 
 def list_leave_notifications(user: dict[str, str], connection: sqlite3.Connection | None = None) -> list[dict[str, str | int]]:
@@ -29566,8 +29685,16 @@ def create_leave_request(user: dict[str, str], payload: dict) -> int:
             int(balance["id"]),
             reserved_days=round(float(balance["reserved_days"] or 0) + requested_days, 2),
         )
-        requester_name = str(user.get("display_name") or user.get("username") or "\uC2E0\uCCAD\uC790")
-        notify_leave_step(connection, request_id, "TEAM_LEAD", requester_name)
+        request_row = get_leave_request_context(connection, request_id)
+        requester_name = leave_requester_name(request_row)
+        request_summary = leave_request_alarm_summary(request_row)
+        notify_leave_requester(
+            connection,
+            user_id,
+            request_id,
+            f"\uC5F0\uCC28 \uC2E0\uCCAD\uC774 \uC811\uC218\uB418\uC5C8\uC2B5\uB2C8\uB2E4. \uD604\uC7AC {leave_approval_label('TEAM_LEAD')} \uC2B9\uC778 \uB300\uAE30\uC785\uB2C8\uB2E4. ({request_summary})",
+        )
+        notify_leave_step(connection, request_id, "TEAM_LEAD", requester_name, request_summary, exclude_user_ids={user_id})
         connection.commit()
         return request_id
     finally:
@@ -29643,7 +29770,23 @@ def finalize_leave_approval(
         """,
         (int(actor["id"]), now, now, request_id),
     )
-    notify_leave_requester(connection, int(row["user_id"]), request_id, "\uC5F0\uCC28 \uC2E0\uCCAD\uC774 \uCD5C\uC885 \uC2B9\uC778\uB418\uC5C8\uC2B5\uB2C8\uB2E4.")
+    requester_id = int(row["user_id"])
+    requester_name = leave_requester_name(row)
+    request_summary = leave_request_alarm_summary(row)
+    actor_name = leave_actor_name(actor)
+    requester_message = (
+        f"\uC5F0\uCC28 \uC2E0\uCCAD\uC774 {actor_name}\uB2D8\uC758 \uC804\uACB0\uB85C \uC2B9\uC778\uB418\uC5C8\uC2B5\uB2C8\uB2E4. ({request_summary})"
+        if overridden
+        else f"\uC5F0\uCC28 \uC2E0\uCCAD\uC774 \uCD5C\uC885 \uC2B9\uC778\uB418\uC5C8\uC2B5\uB2C8\uB2E4. ({request_summary})"
+    )
+    notify_leave_requester(connection, requester_id, request_id, requester_message)
+    admin_status = "\uC804\uACB0 \uC2B9\uC778" if overridden else "\uCD5C\uC885 \uC2B9\uC778"
+    notify_leave_admins(
+        connection,
+        request_id,
+        f"{requester_name}\uB2D8\uC758 \uC5F0\uCC28 \uC2E0\uCCAD\uC774 {admin_status}\uB418\uC5C8\uC2B5\uB2C8\uB2E4. ({request_summary})",
+        exclude_user_ids={requester_id, int(actor["id"])},
+    )
 
 
 def decide_leave_request(request_id: int, actor: dict[str, str], decision: str, comment: str = "") -> None:
@@ -29653,12 +29796,14 @@ def decide_leave_request(request_id: int, actor: dict[str, str], decision: str, 
     clean_comment = str(comment or "").strip()
     connection = connect_db()
     try:
-        row = connection.execute("SELECT * FROM leave_requests WHERE id = ?", (request_id,)).fetchone()
-        if not row:
-            raise ValueError("\uC774\uBBF8 \uCC98\uB9AC\uB41C \uC2E0\uCCAD\uC785\uB2C8\uB2E4.")
+        row = get_leave_request_context(connection, request_id)
         if row["status"] != "PENDING":
             raise ValueError("\uC804\uACB0 \uAD8C\uD55C\uC774 \uC5C6\uC2B5\uB2C8\uB2E4.")
         step = str(row["approval_step"] or "TEAM_LEAD")
+        requester_id = int(row["user_id"])
+        requester_name = leave_requester_name(row)
+        request_summary = leave_request_alarm_summary(row)
+        actor_name = leave_actor_name(actor)
         if decision == "override":
             if not actor_can_override_leave(actor):
                 raise ValueError("\uC2B9\uC778 \uAD8C\uD55C\uC774 \uC5C6\uC2B5\uB2C8\uB2E4.")
@@ -29679,7 +29824,18 @@ def decide_leave_request(request_id: int, actor: dict[str, str], decision: str, 
                 """,
                 (clean_comment or "\uBC18\uB824", int(actor["id"]), now, now, request_id),
             )
-            notify_leave_requester(connection, int(row["user_id"]), request_id, "\uC5F0\uCC28 \uC2E0\uCCAD\uC774 \uBC18\uB824\uB418\uC5C8\uC2B5\uB2C8\uB2E4.")
+            notify_leave_requester(
+                connection,
+                requester_id,
+                request_id,
+                f"\uC5F0\uCC28 \uC2E0\uCCAD\uC774 {leave_approval_label(step)}\uC5D0\uC11C \uBC18\uB824\uB418\uC5C8\uC2B5\uB2C8\uB2E4. ({request_summary})",
+            )
+            notify_leave_admins(
+                connection,
+                request_id,
+                f"{requester_name}\uB2D8\uC758 \uC5F0\uCC28 \uC2E0\uCCAD\uC774 {actor_name}\uB2D8\uC5D0 \uC758\uD574 \uBC18\uB824\uB418\uC5C8\uC2B5\uB2C8\uB2E4. ({request_summary})",
+                exclude_user_ids={requester_id, int(actor["id"])},
+            )
             connection.commit()
             return
         set_leave_step_decision(connection, request_id, step, "APPROVED", int(actor["id"]), clean_comment)
@@ -29688,15 +29844,27 @@ def decide_leave_request(request_id: int, actor: dict[str, str], decision: str, 
                 "UPDATE leave_requests SET approval_step = 'DIRECTOR', director_status = 'PENDING', updated_at = ? WHERE id = ?",
                 (now_text(), request_id),
             )
-            notify_leave_step(connection, request_id, "DIRECTOR", row["display_name"] if "display_name" in row.keys() else "\uC2E0\uCCAD\uC790")
+            notify_leave_requester(
+                connection,
+                requester_id,
+                request_id,
+                f"{leave_approval_label(step)} \uC2B9\uC778\uC774 \uC644\uB8CC\uB418\uC5C8\uC2B5\uB2C8\uB2E4. \uB2E4\uC74C \uB2E8\uACC4: {leave_approval_label('DIRECTOR')}. ({request_summary})",
+            )
+            notify_leave_step(connection, request_id, "DIRECTOR", requester_name, request_summary, exclude_user_ids={requester_id})
         elif step == "DIRECTOR":
             connection.execute(
                 "UPDATE leave_requests SET approval_step = 'CEO', ceo_status = 'PENDING', updated_at = ? WHERE id = ?",
                 (now_text(), request_id),
             )
-            notify_leave_step(connection, request_id, "CEO", row["display_name"] if "display_name" in row.keys() else "\uC2E0\uCCAD\uC790")
+            notify_leave_requester(
+                connection,
+                requester_id,
+                request_id,
+                f"{leave_approval_label(step)} \uC2B9\uC778\uC774 \uC644\uB8CC\uB418\uC5C8\uC2B5\uB2C8\uB2E4. \uB2E4\uC74C \uB2E8\uACC4: {leave_approval_label('CEO')}. ({request_summary})",
+            )
+            notify_leave_step(connection, request_id, "CEO", requester_name, request_summary, exclude_user_ids={requester_id})
         else:
-            refreshed = connection.execute("SELECT * FROM leave_requests WHERE id = ?", (request_id,)).fetchone()
+            refreshed = get_leave_request_context(connection, request_id)
             finalize_leave_approval(connection, refreshed, actor, clean_comment)
         connection.commit()
     finally:
@@ -29707,9 +29875,7 @@ def cancel_leave_request(request_id: int, actor: dict[str, str], reason: str = "
     init_db()
     connection = connect_db()
     try:
-        row = connection.execute("SELECT * FROM leave_requests WHERE id = ?", (request_id,)).fetchone()
-        if not row:
-            raise ValueError("\uC5F0\uCC28 \uC2E0\uCCAD\uC744 \uCC3E\uC744 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4.")
+        row = get_leave_request_context(connection, request_id)
         if row["status"] != "PENDING":
             raise ValueError("\uC2B9\uC778 \uB300\uAE30 \uC0C1\uD0DC\uC758 \uC2E0\uCCAD\uB9CC \uCDE8\uC18C\uD560 \uC218 \uC788\uC2B5\uB2C8\uB2E4.")
         if int(row["user_id"]) != int(actor["id"]) and not user_has_permission(actor, "leave_manage"):
@@ -29725,7 +29891,22 @@ def cancel_leave_request(request_id: int, actor: dict[str, str], reason: str = "
             """,
             (clean_reason, int(actor["id"]), now, now, request_id),
         )
-        notify_leave_requester(connection, int(row["user_id"]), request_id, "\uC5F0\uCC28 \uC2E0\uCCAD\uC774 \uCDE8\uC18C\uB418\uC5C8\uC2B5\uB2C8\uB2E4.")
+        requester_id = int(row["user_id"])
+        requester_name = leave_requester_name(row)
+        request_summary = leave_request_alarm_summary(row)
+        actor_name = leave_actor_name(actor)
+        requester_message = (
+            f"\uC5F0\uCC28 \uC2E0\uCCAD \uCDE8\uC18C\uAC00 \uC811\uC218\uB418\uC5C8\uC2B5\uB2C8\uB2E4. ({request_summary})"
+            if requester_id == int(actor["id"])
+            else f"{actor_name}\uB2D8\uC774 \uC5F0\uCC28 \uC2E0\uCCAD\uC744 \uCDE8\uC18C\uD588\uC2B5\uB2C8\uB2E4. ({request_summary})"
+        )
+        notify_leave_requester(connection, requester_id, request_id, requester_message)
+        notify_leave_admins(
+            connection,
+            request_id,
+            f"{requester_name}\uB2D8\uC758 \uC5F0\uCC28 \uC2E0\uCCAD\uC774 \uCDE8\uC18C\uB418\uC5C8\uC2B5\uB2C8\uB2E4. ({request_summary})",
+            exclude_user_ids={requester_id, int(actor["id"])},
+        )
         connection.commit()
     finally:
         connection.close()
@@ -34040,6 +34221,13 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                 self.send_json({"error": "연차 조회 권한이 없습니다."}, status=403)
                 return
             self.send_json(leave_payload(user))
+            return
+
+        if self.path == "/api/leave-notifications":
+            if not any(user_has_permission(user, permission) for permission in ("leave_view", "leave_approve", "leave_approve_team", "leave_approve_director", "leave_approve_ceo", "leave_director_override", "leave_manage")):
+                self.send_json({"error": "연차 알림 조회 권한이 없습니다."}, status=403)
+                return
+            self.send_json({"notifications": list_leave_notifications(user)})
             return
 
         if self.path == "/api/mail-settings":

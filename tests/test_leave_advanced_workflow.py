@@ -33,6 +33,10 @@ def get_user(app, username: str) -> dict[str, str]:
         connection.close()
 
 
+def leave_notification_messages(app, user: dict[str, str]) -> list[str]:
+    return [str(item["message"]) for item in app.list_leave_notifications(user)]
+
+
 class LeaveAdvancedWorkflowTests(unittest.TestCase):
     def make_users(self, app):
         app.init_db()
@@ -118,6 +122,73 @@ class LeaveAdvancedWorkflowTests(unittest.TestCase):
 
             team_notifications = app.list_leave_notifications(users["team"])
             self.assertTrue(any(item["request_id"] == request_id for item in team_notifications))
+
+    def test_leave_request_and_approval_notifications_reach_requester_and_managers(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            app = load_app(Path(directory))
+            users = self.make_users(app)
+            self.set_balance(app, users["requester"], total=5)
+
+            request_id = app.create_leave_request(
+                users["requester"],
+                {
+                    "leave_type_id": app.get_leave_type_id("annual"),
+                    "unit": "FULL_DAY",
+                    "start_date": "2026-01-05",
+                    "end_date": "2026-01-06",
+                    "reason": "가족 일정",
+                },
+            )
+
+            requester_messages = leave_notification_messages(app, users["requester"])
+            team_messages = leave_notification_messages(app, users["team"])
+            self.assertTrue(any("접수" in message and "팀장 확인" in message for message in requester_messages))
+            self.assertTrue(any("신청자님" in message and "팀장 확인" in message for message in team_messages))
+
+            app.decide_leave_request(request_id, users["team"], "approve", "팀장 확인")
+
+            requester_messages = leave_notification_messages(app, users["requester"])
+            director_messages = leave_notification_messages(app, users["director"])
+            self.assertTrue(any("팀장 확인 승인" in message and "실장 확인" in message for message in requester_messages))
+            self.assertTrue(any("신청자님" in message and "실장 확인" in message for message in director_messages))
+
+            app.decide_leave_request(request_id, users["director"], "approve", "실장 확인")
+
+            requester_messages = leave_notification_messages(app, users["requester"])
+            ceo_messages = leave_notification_messages(app, users["ceo"])
+            self.assertTrue(any("실장 확인 승인" in message and "대표 확인" in message for message in requester_messages))
+            self.assertTrue(any("신청자님" in message and "대표 확인" in message for message in ceo_messages))
+
+            app.decide_leave_request(request_id, users["ceo"], "approve", "대표 승인")
+
+            requester_messages = leave_notification_messages(app, users["requester"])
+            admin_messages = leave_notification_messages(app, get_user(app, "admin"))
+            self.assertTrue(any("최종 승인" in message for message in requester_messages))
+            self.assertTrue(any("신청자님" in message and "최종 승인" in message for message in admin_messages))
+
+    def test_leave_cancel_notifies_requester_and_managers(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            app = load_app(Path(directory))
+            users = self.make_users(app)
+            self.set_balance(app, users["requester"], total=5)
+
+            request_id = app.create_leave_request(
+                users["requester"],
+                {
+                    "leave_type_id": app.get_leave_type_id("annual"),
+                    "unit": "HALF_DAY",
+                    "start_date": "2026-01-09",
+                    "end_date": "2026-01-09",
+                    "reason": "오전 반차",
+                },
+            )
+
+            app.cancel_leave_request(request_id, users["requester"], "일정 변경")
+
+            requester_messages = leave_notification_messages(app, users["requester"])
+            team_messages = leave_notification_messages(app, users["team"])
+            self.assertTrue(any("취소" in message and "2026-01-09" in message for message in requester_messages))
+            self.assertTrue(any("취소" in message and "신청자님" in message for message in team_messages))
 
     def test_three_step_approval_finalizes_only_after_ceo_approval(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

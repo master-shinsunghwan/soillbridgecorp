@@ -666,6 +666,15 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
             self.assertIn('data-leave-cancel="${row.id}"', html_source)
             self.assertIn('data-leave-decision="override"', html_source)
 
+    def test_leave_notifications_are_available_from_topbar_alerts(self) -> None:
+        html_source = (SCRIPTS / "workhub_delivery_app.py").read_text(encoding="utf-8")
+
+        self.assertIn("/api/leave-notifications", html_source)
+        self.assertIn("function fetchLeaveNotifications", html_source)
+        self.assertIn("function canUseLeaveNotifications", html_source)
+        self.assertIn("leaveNotificationText", html_source)
+        self.assertIn("연차 알림", html_source)
+
     def test_delivery_modal_title_matches_menu_label(self) -> None:
         html_source = (SCRIPTS / "workhub_delivery_app.py").read_text(encoding="utf-8")
 
