@@ -5773,6 +5773,17 @@ HTML = r"""<!doctype html>
       stroke-linejoin: round;
       vector-effect: non-scaling-stroke;
     }
+    .dashboard-recent-bar {
+      fill: rgba(37, 99, 235, .24);
+      stroke: rgba(37, 99, 235, .24);
+      stroke-width: 0;
+    }
+    .dashboard-recent-bar.latest {
+      fill: rgba(5, 150, 105, .38);
+      stroke: rgba(5, 150, 105, .42);
+      stroke-width: .6;
+      vector-effect: non-scaling-stroke;
+    }
     .dashboard-recent-points {
       position: absolute;
       z-index: 2;
@@ -15525,6 +15536,14 @@ HTML = r"""<!doctype html>
                     <stop offset="100%" stop-color="#16a34a" stop-opacity=".02"></stop>
                   </linearGradient>
                 </defs>
+                ${recentRows.map((row, index) => {
+                  if (!row.hasData) return "";
+                  const point = points[index];
+                  const isLatest = row.key === latestRow.key;
+                  const barHeight = Math.max(3, chartBottom - point.y);
+                  const barX = Math.max(1, point.x - 3.4);
+                  return `<rect class="dashboard-recent-bar${isLatest ? " latest" : ""}" x="${barX.toFixed(2)}" y="${(chartBottom - barHeight).toFixed(2)}" width="6.8" height="${barHeight.toFixed(2)}" rx="1.8"></rect>`;
+                }).join("")}
                 ${areaPath ? `<path class="dashboard-recent-area" d="${escapeHtml(areaPath)}"></path>` : ""}
                 ${linePoints ? `<polyline class="dashboard-recent-line" points="${escapeHtml(linePoints)}"></polyline>` : ""}
               </svg>
@@ -15667,6 +15686,10 @@ HTML = r"""<!doctype html>
         hasComparison ? formatSignedSalesPercent(comparison.quantity_delta_rate) : "-",
         hasComparison ? salesAmountClass(quantityDelta) : "notice",
       );
+      if (periodLabel) {
+        if (dashboardMonthSalesLabel) dashboardMonthSalesLabel.textContent = `${periodLabel} 누적매출`;
+        if (dashboardSalesQuantityLabel) dashboardSalesQuantityLabel.textContent = `${periodLabel} 판매수량`;
+      }
       setDashboardCompareWaiting(!hasComparison, !hasComparison);
       setDashboardSalesMetric(null, dashboardSalesMargin, "", formatSalesCompactMoney(marginAmount), salesAmountClass(marginAmount), formatSalesNumber(marginAmount));
       setDashboardSalesMetric(null, dashboardSellerTotal, "", formatSalesCompactMoney(sellerSalesAmount), "", formatSalesNumber(sellerSalesAmount));
