@@ -214,6 +214,24 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         self.assertIn('int(params.get("limit", ["500"])[0])', html_source)
         self.assertEqual(html_source.count('limit = 500'), 2)
 
+    def test_management_workspace_navigation_preserves_selected_period(self) -> None:
+        html_source = (ROOT / "scripts" / "workhub_delivery_app.py").read_text(encoding="utf-8")
+
+        workspace_start = html_source.index('if (showManagement) {\n        setPageTitle("통합관리대장 관리");')
+        workspace_end = html_source.index('} else if (showLedger) {', workspace_start)
+        workspace_block = html_source[workspace_start:workspace_end]
+
+        self.assertNotIn('managementYearFilter.value = "";', workspace_block)
+        self.assertNotIn('managementMonthFilter.value = "";', workspace_block)
+        self.assertIn("loadManagementWorkspaceData();", workspace_block)
+
+        modal_start = html_source.index('modalTitle.textContent = "통합관리대장 관리";')
+        modal_end = html_source.index('const fileDrop = document.querySelector("label[for=\'fileInput\']");', modal_start)
+        modal_block = html_source[modal_start:modal_end]
+
+        self.assertIn('managementYearFilter.value = "";', modal_block)
+        self.assertIn('managementMonthFilter.value = "";', modal_block)
+
     def test_cs_request_from_ledger_menu_supports_mail_attachments(self) -> None:
         html_source = (ROOT / "scripts" / "workhub_delivery_app.py").read_text(encoding="utf-8")
 

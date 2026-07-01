@@ -21168,8 +21168,6 @@ HTML = r"""<!doctype html>
       if (showManagement) {
         setPageTitle("통합관리대장 관리");
         managementSearchInput.value = "";
-        managementYearFilter.value = "";
-        managementMonthFilter.value = "";
         managementPageSize.value = "500";
         managementImportInput.value = "";
         closeLedgerFilter();
