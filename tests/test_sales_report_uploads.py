@@ -361,6 +361,25 @@ class SalesReportUploadTests(unittest.TestCase):
         self.assertEqual(dashboard["daily_rows"][0]["report_date"], "2026-06-30")
         self.assertEqual(dashboard["daily_rows"][0]["profit_sales_amount"], 1190)
 
+    def test_seller_daily_file_extends_existing_daily_month_rows(self) -> None:
+        base = Path(self.tempdir.name)
+        daily = base / "daily.xlsx"
+        seller = base / "20260630_seller.xlsx"
+        self.write_daily_report(daily)
+        self.write_seller_report(seller)
+
+        self.app.save_sales_report_file(daily, daily.name, "admin")
+        self.app.save_sales_report_file(seller, seller.name, "admin")
+
+        dashboard = self.app.sales_report_dashboard_payload("2026-06", "2026-06-30")
+        daily_by_date = {row["report_date"]: row for row in dashboard["daily_rows"]}
+
+        self.assertEqual(dashboard["today"]["profit_sales_amount"], 1190)
+        self.assertEqual(dashboard["month"]["profit_sales_amount"], 3390)
+        self.assertIn("2026-06-19", daily_by_date)
+        self.assertIn("2026-06-30", daily_by_date)
+        self.assertEqual(daily_by_date["2026-06-30"]["profit_sales_amount"], 1190)
+
     def test_sales_report_dashboard_excludes_purchase_marked_products(self) -> None:
         connection = self.app.connect_db()
         try:

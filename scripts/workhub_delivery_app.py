@@ -25204,6 +25204,27 @@ def sales_report_seller_daily_summary_rows(connection: sqlite3.Connection, perio
     ).fetchall()
 
 
+def sales_report_combined_daily_summary_rows(connection: sqlite3.Connection, period: str) -> list[sqlite3.Row]:
+    if not period:
+        return []
+    daily_rows = connection.execute(
+        """
+        SELECT report_date, label, quantity, sales_amount, sales_total, profit_sales_amount,
+               profit_supply_amount, profit_shipping, profit_margin, margin_rate
+          FROM sales_report_daily_rows
+         WHERE period = ?
+         ORDER BY report_date DESC
+        """,
+        (period,),
+    ).fetchall()
+    rows_by_date = {str(row["report_date"] or ""): row for row in daily_rows if str(row["report_date"] or "")}
+    for row in sales_report_seller_daily_summary_rows(connection, period):
+        report_date = str(row["report_date"] or "")
+        if report_date and report_date not in rows_by_date:
+            rows_by_date[report_date] = row
+    return sorted(rows_by_date.values(), key=lambda row: str(row["report_date"] or ""), reverse=True)
+
+
 def previous_sales_period(period: str) -> str:
     match = re.match(r"^(20\d{2})-(\d{1,2})$", str(period or ""))
     if not match:
@@ -25890,18 +25911,7 @@ def sales_report_dashboard_payload(period: str = "", report_date: str = "") -> d
             """,
             (previous_period, SALES_REPORT_PRODUCT_EXCLUDE_PATTERN),
         ).fetchone()
-        daily_rows = connection.execute(
-            """
-            SELECT report_date, label, quantity, sales_amount, sales_total, profit_sales_amount,
-                   profit_supply_amount, profit_shipping, profit_margin, margin_rate
-              FROM sales_report_daily_rows
-             WHERE period = ?
-             ORDER BY report_date DESC
-            """,
-            (selected_period,),
-        ).fetchall()
-        if not daily_rows:
-            daily_rows = sales_report_seller_daily_summary_rows(connection, selected_period)
+        daily_rows = sales_report_combined_daily_summary_rows(connection, selected_period)
         seller_rows = connection.execute(
             f"""
             SELECT seller_name AS name,
@@ -26142,6 +26152,7 @@ def sales_report_dashboard_payload(period: str = "", report_date: str = "") -> d
     yesterday_quantity = int(yesterday_public.get("quantity", 0) or 0)
     quantity_delta = today_quantity - yesterday_quantity
     quantity_delta_rate = round((quantity_delta / yesterday_quantity) * 100, 1) if yesterday_quantity else 0
+    daily_rows_public = [_sales_report_daily_public(row) for row in daily_rows]
     month_total = {
         "quantity": int(month["quantity"] or 0),
         "sales_amount": int(month["sales_amount"] or 0),
@@ -26150,6 +26161,15 @@ def sales_report_dashboard_payload(period: str = "", report_date: str = "") -> d
         "profit_supply_amount": int(month["profit_supply_amount"] or 0),
         "profit_margin": int(month["profit_margin"] or 0),
     }
+    if daily_rows_public:
+        month_total = {
+            "quantity": sum(int(row.get("quantity", 0) or 0) for row in daily_rows_public),
+            "sales_amount": sum(int(row.get("sales_amount", 0) or 0) for row in daily_rows_public),
+            "sales_total": sum(int(row.get("sales_total", 0) or 0) for row in daily_rows_public),
+            "profit_sales_amount": sum(int(row.get("profit_sales_amount", 0) or 0) for row in daily_rows_public),
+            "profit_supply_amount": sum(int(row.get("profit_supply_amount", 0) or 0) for row in daily_rows_public),
+            "profit_margin": sum(int(row.get("profit_margin", 0) or 0) for row in daily_rows_public),
+        }
     previous_month_total = {
         "quantity": int(previous_month["quantity"] or 0),
         "sales_total": int(previous_month["sales_total"] or 0),
@@ -26241,7 +26261,7 @@ def sales_report_dashboard_payload(period: str = "", report_date: str = "") -> d
             "ok": difference == 0,
         },
         "margin_check": margin_check,
-        "daily_rows": [_sales_report_daily_public(row) for row in daily_rows],
+        "daily_rows": daily_rows_public,
         "seller_top": [_sales_report_named_public(row) for row in seller_rows],
         "product_top": [_sales_report_named_public(row) for row in product_rows],
         "supplier_purchase_totals": [_sales_report_purchase_public(row) for row in supplier_purchase_rows],
