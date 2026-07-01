@@ -4334,6 +4334,40 @@ HTML = r"""<!doctype html>
     .ledger-table th.has-filter {
       padding-right: 21px;
     }
+    .ledger-table th.filter-active {
+      background: linear-gradient(180deg, #dbeafe 0%, #bfdbfe 100%);
+      box-shadow: inset 0 -2px 0 #2563eb;
+      color: #102a56;
+    }
+    .ledger-table th.filter-active::before {
+      content: "";
+      position: absolute;
+      top: 5px;
+      left: 5px;
+      width: 6px;
+      height: 6px;
+      border-radius: 999px;
+      background: #2563eb;
+      box-shadow: 0 0 0 2px rgba(37, 99, 235, .16);
+    }
+    .ledger-table th.color-filter-active {
+      background: linear-gradient(180deg, #fff7ed 0%, #fed7aa 100%);
+      box-shadow: inset 0 -2px 0 #f97316;
+      color: #7c2d12;
+    }
+    .ledger-table th.text-filter-active.color-filter-active {
+      background: linear-gradient(135deg, #dbeafe 0%, #dbeafe 52%, #fed7aa 52%, #fed7aa 100%);
+      box-shadow: inset 0 -2px 0 #2563eb, inset 0 -4px 0 #f97316;
+      color: #102a56;
+    }
+    .ledger-table th.color-filter-active::before {
+      background: #f97316;
+      box-shadow: 0 0 0 2px rgba(249, 115, 22, .18);
+    }
+    .ledger-table th.text-filter-active.color-filter-active::before {
+      background: #2563eb;
+      box-shadow: 0 0 0 2px rgba(249, 115, 22, .28);
+    }
     .ledger-th-title {
       display: block;
       line-height: 1.2;
@@ -4357,6 +4391,11 @@ HTML = r"""<!doctype html>
     .ledger-filter-trigger.active {
       background: #155bc8;
       border-color: #0f4aaa;
+      color: white;
+    }
+    .ledger-filter-trigger.color-active {
+      background: #f97316;
+      border-color: #c2410c;
       color: white;
     }
     .ledger-filter-popover {
@@ -18048,12 +18087,34 @@ HTML = r"""<!doctype html>
       });
     }
 
+    function syncColumnFilterIndicator(button, { textActive = false, colorActive = false, value = "" } = {}) {
+      const header = button.closest("th");
+      const active = Boolean(textActive || colorActive);
+      const label = button.dataset.label || "필터";
+      const appliedParts = [];
+      if (textActive) appliedParts.push(`값: ${value}`);
+      if (colorActive) appliedParts.push("색상 표시된 셀만");
+      const title = active ? `${label} 필터 적용됨 (${appliedParts.join(", ")})` : `${label} 필터`;
+
+      button.classList.toggle("active", active);
+      button.classList.toggle("text-active", Boolean(textActive));
+      button.classList.toggle("color-active", Boolean(colorActive));
+      button.title = title;
+      if (!header) return;
+      header.classList.toggle("filter-active", active);
+      header.classList.toggle("text-filter-active", Boolean(textActive));
+      header.classList.toggle("color-filter-active", Boolean(colorActive));
+      if (active) header.title = title;
+      else header.removeAttribute("title");
+    }
+
     function applyLedgerFilters() {
       const filtered = ledgerCases.filter(matchesLedgerFilters);
       renderLedger(filtered);
       ledgerFilterButtons.forEach((button) => {
         const field = button.dataset.ledgerFilterButton;
-        button.classList.toggle("active", Boolean(ledgerFilters[field]));
+        const value = String(ledgerFilters[field] || "").trim();
+        syncColumnFilterIndicator(button, { textActive: Boolean(value), value });
       });
       if (currentMode === "ledger") notice.textContent = `${filtered.length}건 조회되었습니다.`;
     }
@@ -18247,7 +18308,12 @@ HTML = r"""<!doctype html>
       renderManagement(filtered);
       managementFilterButtons.forEach((button) => {
         const field = button.dataset.managementFilterButton;
-        button.classList.toggle("active", Boolean(managementFilters[field]) || Boolean(managementColorFilters[field]));
+        const value = String(managementFilters[field] || "").trim();
+        syncColumnFilterIndicator(button, {
+          textActive: Boolean(value),
+          colorActive: Boolean(managementColorFilters[field]),
+          value,
+        });
       });
       if (currentMode === "management") notice.textContent = `${filtered.length}건 조회되었습니다.`;
     }

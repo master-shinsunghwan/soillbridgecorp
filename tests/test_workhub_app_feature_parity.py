@@ -618,7 +618,22 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         self.assertIn("managementFilterColoredOnly.addEventListener", html_source)
         self.assertIn("managementColorFilters[activeManagementFilterField] = \"colored\";", html_source)
         self.assertIn("Object.keys(managementColorFilters).forEach", html_source)
-        self.assertIn("Boolean(managementFilters[field]) || Boolean(managementColorFilters[field])", html_source)
+        self.assertIn("colorActive: Boolean(managementColorFilters[field])", html_source)
+
+    def test_ledger_filter_headers_show_active_filter_state(self) -> None:
+        html_source = (ROOT / "scripts" / "workhub_delivery_app.py").read_text(encoding="utf-8")
+
+        self.assertIn("function syncColumnFilterIndicator(button", html_source)
+        self.assertIn('button.closest("th")', html_source)
+        self.assertIn('header.classList.toggle("filter-active", active);', html_source)
+        self.assertIn('header.classList.toggle("text-filter-active", Boolean(textActive));', html_source)
+        self.assertIn('header.classList.toggle("color-filter-active", Boolean(colorActive));', html_source)
+        self.assertIn('.ledger-table th.filter-active', html_source)
+        self.assertIn('.ledger-table th.color-filter-active', html_source)
+        self.assertIn('.ledger-table th.text-filter-active.color-filter-active', html_source)
+        self.assertIn('syncColumnFilterIndicator(button, { textActive: Boolean(value), value });', html_source)
+        self.assertIn('syncColumnFilterIndicator(button, {', html_source)
+        self.assertIn('colorActive: Boolean(managementColorFilters[field])', html_source)
 
     def test_crm_task_board_uses_collapsible_advanced_filters_from_branch(self) -> None:
         html_source = (ROOT / "scripts" / "workhub_delivery_app.py").read_text(encoding="utf-8")
