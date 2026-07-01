@@ -24970,6 +24970,59 @@ def sales_report_day_summary_from_sources(connection: sqlite3.Connection, target
     return {}
 
 
+def sales_report_seller_daily_summary_row(connection: sqlite3.Connection, target_date: str) -> sqlite3.Row | None:
+    if not target_date:
+        return None
+    return connection.execute(
+        """
+        SELECT report_date,
+               report_date AS label,
+               COALESCE(SUM(quantity), 0) AS quantity,
+               COALESCE(SUM(sales_amount), 0) AS sales_amount,
+               COALESCE(SUM(sales_total), 0) AS sales_total,
+               COALESCE(SUM(profit_sales_amount), 0) AS profit_sales_amount,
+               COALESCE(SUM(profit_supply_amount), 0) AS profit_supply_amount,
+               COALESCE(SUM(profit_shipping), 0) AS profit_shipping,
+               COALESCE(SUM(profit_margin), 0) AS profit_margin,
+               CASE
+                   WHEN COALESCE(SUM(profit_sales_amount), 0) = 0 THEN 0
+                   ELSE ROUND(((COALESCE(SUM(profit_margin), 0) - COALESCE(SUM(profit_shipping), 0)) * 100.0) / COALESCE(SUM(profit_sales_amount), 0), 1)
+               END AS margin_rate
+          FROM sales_report_seller_rows
+         WHERE report_date = ?
+         GROUP BY report_date
+        """,
+        (target_date,),
+    ).fetchone()
+
+
+def sales_report_seller_daily_summary_rows(connection: sqlite3.Connection, period: str) -> list[sqlite3.Row]:
+    if not period:
+        return []
+    return connection.execute(
+        """
+        SELECT report_date,
+               report_date AS label,
+               COALESCE(SUM(quantity), 0) AS quantity,
+               COALESCE(SUM(sales_amount), 0) AS sales_amount,
+               COALESCE(SUM(sales_total), 0) AS sales_total,
+               COALESCE(SUM(profit_sales_amount), 0) AS profit_sales_amount,
+               COALESCE(SUM(profit_supply_amount), 0) AS profit_supply_amount,
+               COALESCE(SUM(profit_shipping), 0) AS profit_shipping,
+               COALESCE(SUM(profit_margin), 0) AS profit_margin,
+               CASE
+                   WHEN COALESCE(SUM(profit_sales_amount), 0) = 0 THEN 0
+                   ELSE ROUND(((COALESCE(SUM(profit_margin), 0) - COALESCE(SUM(profit_shipping), 0)) * 100.0) / COALESCE(SUM(profit_sales_amount), 0), 1)
+               END AS margin_rate
+          FROM sales_report_seller_rows
+         WHERE period = ? AND report_date != ''
+         GROUP BY report_date
+         ORDER BY report_date DESC
+        """,
+        (period,),
+    ).fetchall()
+
+
 def previous_sales_period(period: str) -> str:
     match = re.match(r"^(20\d{2})-(\d{1,2})$", str(period or ""))
     if not match:
@@ -25510,6 +25563,8 @@ def sales_report_dashboard_payload(period: str = "", report_date: str = "") -> d
             "SELECT * FROM sales_report_daily_rows WHERE report_date = ?",
             (selected_date,),
         ).fetchone()
+        if today is None:
+            today = sales_report_seller_daily_summary_row(connection, selected_date)
         yesterday_public = sales_report_day_summary_from_sources(connection, previous_date)
         month = connection.execute(
             """
@@ -25664,6 +25719,8 @@ def sales_report_dashboard_payload(period: str = "", report_date: str = "") -> d
             """,
             (selected_period,),
         ).fetchall()
+        if not daily_rows:
+            daily_rows = sales_report_seller_daily_summary_rows(connection, selected_period)
         seller_rows = connection.execute(
             f"""
             SELECT seller_name AS name,
@@ -25953,7 +26010,7 @@ def sales_report_dashboard_payload(period: str = "", report_date: str = "") -> d
         "previous_period": previous_period,
         "selected_date": selected_date,
         "previous_business_date": previous_date,
-        "today_data_uploaded": bool(today),
+        "today_data_uploaded": bool(today_public),
         "today": today_public,
         "yesterday": yesterday_public,
         "comparison": {

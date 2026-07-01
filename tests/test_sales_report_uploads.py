@@ -336,6 +336,31 @@ class SalesReportUploadTests(unittest.TestCase):
         self.assertEqual(dashboard["seller_top"][0]["profit_sales_amount"], 900)
         self.assertEqual(dashboard["product_top"][0]["profit_sales_amount"], 700)
 
+    def test_daily_dimension_files_use_filename_date_for_dashboard_daily_summary(self) -> None:
+        base = Path(self.tempdir.name)
+        seller = base / "20260630_seller.xlsx"
+        product = base / "20260630_product.xls"
+        supplier = base / "20260630_supplier.xls"
+        self.write_seller_report(seller)
+        self.write_product_report(product)
+        self.write_supplier_report(supplier)
+
+        for source in (seller, product, supplier):
+            saved = self.app.save_sales_report_file(source, source.name, "admin")
+            self.assertEqual(saved["report_date"], "2026-06-30")
+            self.assertEqual(saved["period"], "2026-06")
+
+        dashboard = self.app.sales_report_dashboard_payload("2026-06", "2026-06-30")
+
+        self.assertTrue(dashboard["today_data_uploaded"])
+        self.assertEqual(dashboard["selected_date"], "2026-06-30")
+        self.assertEqual(dashboard["today"]["report_date"], "2026-06-30")
+        self.assertEqual(dashboard["today"]["quantity"], 10)
+        self.assertEqual(dashboard["today"]["profit_sales_amount"], 1190)
+        self.assertEqual(dashboard["month"]["profit_sales_amount"], 1190)
+        self.assertEqual(dashboard["daily_rows"][0]["report_date"], "2026-06-30")
+        self.assertEqual(dashboard["daily_rows"][0]["profit_sales_amount"], 1190)
+
     def test_sales_report_dashboard_excludes_purchase_marked_products(self) -> None:
         connection = self.app.connect_db()
         try:
