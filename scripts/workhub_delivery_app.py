@@ -24716,20 +24716,33 @@ def _sales_report_date(value: object) -> str:
         return value.date().isoformat()
     if isinstance(value, date):
         return value.isoformat()
-    match = re.search(r"(20\d{2})[-./](\d{1,2})[-./](\d{1,2})", _sales_report_text(value))
+    text = _sales_report_text(value)
+    match = re.search(r"(20\d{2})[-./](\d{1,2})[-./](\d{1,2})", text)
+    if not match:
+        match = re.search(r"(?<!\d)(20\d{2})(\d{2})(\d{2})(?!\d)", text)
     if not match:
         return ""
     year, month, day = match.groups()
-    return f"{int(year):04d}-{int(month):02d}-{int(day):02d}"
+    try:
+        return date(int(year), int(month), int(day)).isoformat()
+    except ValueError:
+        return ""
 
 
 def _sales_report_period(value: object) -> str:
     parsed = _sales_report_date(value)
     if parsed:
         return parsed[:7]
-    match = re.search(r"(20\d{2})[-./](\d{1,2})", _sales_report_text(value))
+    text = _sales_report_text(value)
+    match = re.search(r"(20\d{2})[-./](\d{1,2})", text)
+    if not match:
+        match = re.search(r"(?<!\d)(20\d{2})(\d{2})(?!\d)", text)
     if match:
         year, month = match.groups()
+        try:
+            date(int(year), int(month), 1)
+        except ValueError:
+            return ""
         return f"{int(year):04d}-{int(month):02d}"
     return ""
 

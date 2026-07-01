@@ -714,6 +714,12 @@ class SalesReportUploadTests(unittest.TestCase):
 
         self.assertEqual(parsed, "2026-06-29")
 
+    def test_sales_report_parser_dates_accept_compact_daily_filename(self) -> None:
+        filename = "20260701 supplier sales report.xls"
+
+        self.assertEqual(self.app._sales_report_date(filename), "2026-07-01")
+        self.assertEqual(self.app._sales_report_period(filename), "2026-07")
+
     def test_partner_daily_zip_imports_seller_rows_until_yesterday(self) -> None:
         base = Path(self.tempdir.name)
         archive_path = base / "partner-daily.zip"
