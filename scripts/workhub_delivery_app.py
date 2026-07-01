@@ -25233,7 +25233,7 @@ def sales_report_combined_daily_summary_rows(connection: sqlite3.Connection, per
     rows_by_date = {str(row["report_date"] or ""): row for row in daily_rows if str(row["report_date"] or "")}
     for row in sales_report_seller_daily_summary_rows(connection, period):
         report_date = str(row["report_date"] or "")
-        if report_date and report_date not in rows_by_date:
+        if report_date:
             rows_by_date[report_date] = row
     return sorted(rows_by_date.values(), key=lambda row: str(row["report_date"] or ""), reverse=True)
 
@@ -25778,8 +25778,9 @@ def sales_report_dashboard_payload(period: str = "", report_date: str = "") -> d
             "SELECT * FROM sales_report_daily_rows WHERE report_date = ?",
             (selected_date,),
         ).fetchone()
-        if today is None:
-            today = sales_report_seller_daily_summary_row(connection, selected_date)
+        seller_today = sales_report_seller_daily_summary_row(connection, selected_date)
+        if seller_today is not None:
+            today = seller_today
         yesterday_public = sales_report_day_summary_from_sources(connection, previous_date)
         month = connection.execute(
             """
