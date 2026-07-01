@@ -11647,6 +11647,8 @@ HTML = r"""<!doctype html>
     let leaveAdminUsers = [];
     let leaveAdminUsageRequests = {};
     let selectedLeaveAdminUsageUserId = "";
+    let leaveNotificationPollTimer = null;
+    const leaveNotificationPopupShownIds = new Set();
     let managementPeriods = [];
     let importShipments = [];
     let userAccounts = [];
@@ -12435,6 +12437,76 @@ HTML = r"""<!doctype html>
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "연차 알림을 불러오지 못했습니다.");
       return data.notifications || [];
+    }
+
+    function unreadLeaveNotifications(items = []) {
+      return (items || []).filter((item) => Number(item.is_read || 0) === 0 && item.id);
+    }
+
+    function leaveNotificationIds(items = []) {
+      return (items || [])
+        .map((item) => Number(item.id || 0))
+        .filter((id) => id > 0);
+    }
+
+    async function markLeaveNotificationsRead(ids = []) {
+      const cleanIds = ids.map((id) => Number(id || 0)).filter((id) => id > 0);
+      if (!cleanIds.length || !canUseLeaveNotifications()) return 0;
+      const response = await fetch("/api/leave-notifications-read", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids: cleanIds }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "연차 알림 확인 처리에 실패했습니다.");
+      return Number(data.updated || 0);
+    }
+
+    function leaveNotificationWidgetBody(items = []) {
+      const ids = leaveNotificationIds(items);
+      const itemList = items.map((item) => `<li>${escapeHtml(leaveNotificationText(item))}</li>`).join("");
+      return `
+        <section class="focus-widget-section">
+          <h4>새 연차 알림</h4>
+          <ul>${itemList}</ul>
+        </section>
+        <div class="focus-widget-actions">
+          <button class="crm-mini-button" type="button" data-topbar-open="leave">연차 화면 열기</button>
+          <button class="crm-mini-button primary" type="button" data-leave-notification-read="${escapeHtml(ids.join(","))}">확인 완료</button>
+        </div>
+      `;
+    }
+
+    function showLeaveNotificationWidget(items = []) {
+      const freshItems = unreadLeaveNotifications(items).filter((item) => !leaveNotificationPopupShownIds.has(String(item.id)));
+      if (!freshItems.length) return false;
+      if (focusWidget?.classList.contains("open")) return false;
+      freshItems.forEach((item) => leaveNotificationPopupShownIds.add(String(item.id)));
+      openFocusWidget({
+        kicker: "연차 알림",
+        title: freshItems.length > 1 ? `새 연차 알림 ${freshItems.length}건` : "새 연차 알림",
+        subtitle: todayString(),
+        body: leaveNotificationWidgetBody(freshItems),
+      });
+      return true;
+    }
+
+    async function checkLeaveNotificationWidget() {
+      if (!canUseLeaveNotifications()) return;
+      const notifications = await fetchLeaveNotifications();
+      const unread = unreadLeaveNotifications(notifications);
+      if (!unread.length) return;
+      showLeaveNotificationWidget(unread);
+    }
+
+    function startLeaveNotificationWatcher() {
+      if (!canUseLeaveNotifications() || leaveNotificationPollTimer) return;
+      window.setTimeout(() => {
+        checkLeaveNotificationWidget().catch(() => {});
+      }, 1200);
+      leaveNotificationPollTimer = window.setInterval(() => {
+        checkLeaveNotificationWidget().catch(() => {});
+      }, 60 * 1000);
     }
 
     function renderLeaveData(data) {
@@ -22131,6 +22203,26 @@ HTML = r"""<!doctype html>
       if (event.target === focusWidget) closeFocusWidget();
     });
     focusWidgetBody?.addEventListener("click", (event) => {
+      const leaveReadButton = event.target.closest("[data-leave-notification-read]");
+      if (leaveReadButton) {
+        const ids = String(leaveReadButton.dataset.leaveNotificationRead || "")
+          .split(",")
+          .map((value) => Number(value || 0))
+          .filter((id) => id > 0);
+        leaveReadButton.disabled = true;
+        leaveReadButton.textContent = "확인 중";
+        markLeaveNotificationsRead(ids)
+          .then(() => {
+            closeFocusWidget();
+            if (currentMode === "leave") loadLeaveData().catch(() => {});
+          })
+          .catch((error) => {
+            leaveReadButton.disabled = false;
+            leaveReadButton.textContent = "확인 완료";
+            notice.textContent = error.message || "연차 알림 확인 처리에 실패했습니다.";
+          });
+        return;
+      }
       const topbarOpenButton = event.target.closest("[data-topbar-open]");
       if (topbarOpenButton) {
         closeFocusWidget();
@@ -22796,6 +22888,8 @@ HTML = r"""<!doctype html>
       stockSoldoutNoteInput,
     ].forEach((input) => input?.addEventListener("input", refreshStockNoticeBody));
     stockNoticeDateInput?.addEventListener("change", refreshStockNoticeBody);
+
+    startLeaveNotificationWatcher();
 
     setInterval(() => {
       saveCurrentWorkspaceRows({ silent: true });
@@ -29409,6 +29503,17 @@ def actor_can_override_leave(actor: dict[str, str]) -> bool:
     return user_has_permission(actor, "leave_director_override") or user_has_permission(actor, "leave_manage")
 
 
+LEAVE_NOTIFICATION_PERMISSIONS = (
+    "leave_view",
+    "leave_approve",
+    "leave_approve_team",
+    "leave_approve_director",
+    "leave_approve_ceo",
+    "leave_director_override",
+    "leave_manage",
+)
+
+
 def active_users_with_leave_permission(
     connection: sqlite3.Connection,
     permissions: list[str],
@@ -29511,6 +29616,36 @@ def list_leave_notifications(user: dict[str, str], connection: sqlite3.Connectio
     finally:
         if own_connection and connection is not None:
             connection.close()
+
+
+def mark_leave_notifications_read(user: dict[str, str], notification_ids: list[object] | None = None) -> int:
+    init_db()
+    user_id = int(user["id"])
+    ids: list[int] = []
+    for value in notification_ids or []:
+        try:
+            notification_id = int(value)
+        except (TypeError, ValueError):
+            continue
+        if notification_id > 0:
+            ids.append(notification_id)
+    connection = connect_db()
+    try:
+        if ids:
+            placeholders = ",".join("?" for _ in ids)
+            cursor = connection.execute(
+                f"UPDATE leave_notifications SET is_read = 1 WHERE user_id = ? AND id IN ({placeholders})",
+                [user_id, *ids],
+            )
+        else:
+            cursor = connection.execute(
+                "UPDATE leave_notifications SET is_read = 1 WHERE user_id = ? AND is_read = 0",
+                (user_id,),
+            )
+        connection.commit()
+        return int(cursor.rowcount or 0)
+    finally:
+        connection.close()
 
 
 def list_leave_requests_for_user(connection: sqlite3.Connection, user_id: int) -> list[dict[str, str | float | int]]:
@@ -34224,7 +34359,7 @@ class WorkhubHandler(BaseHTTPRequestHandler):
             return
 
         if self.path == "/api/leave-notifications":
-            if not any(user_has_permission(user, permission) for permission in ("leave_view", "leave_approve", "leave_approve_team", "leave_approve_director", "leave_approve_ceo", "leave_director_override", "leave_manage")):
+            if not any(user_has_permission(user, permission) for permission in LEAVE_NOTIFICATION_PERMISSIONS):
                 self.send_json({"error": "연차 알림 조회 권한이 없습니다."}, status=403)
                 return
             self.send_json({"notifications": list_leave_notifications(user)})
@@ -34961,6 +35096,18 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                 payload = json.loads(self.rfile.read(length).decode("utf-8"))
                 cancel_leave_request(int(payload.get("request_id", 0)), user, clean_payload_text(payload, "reason"))
                 self.send_json({"message": "\uC5F0\uCC28 \uC2E0\uCCAD\uC744 \uCDE8\uC18C\uD588\uC2B5\uB2C8\uB2E4."})
+                return
+
+            if self.path == "/api/leave-notifications-read":
+                if not any(user_has_permission(user, permission) for permission in LEAVE_NOTIFICATION_PERMISSIONS):
+                    self.send_json({"error": "연차 알림 읽음 처리 권한이 없습니다."}, status=403)
+                    return
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(length).decode("utf-8")) if length else {}
+                if not isinstance(payload, dict):
+                    raise ValueError("연차 알림 읽음 처리 형식이 올바르지 않습니다.")
+                updated = mark_leave_notifications_read(user, payload.get("ids") or [])
+                self.send_json({"message": "연차 알림을 확인 처리했습니다.", "updated": updated})
                 return
 
             if self.path == "/api/leave-accrual":

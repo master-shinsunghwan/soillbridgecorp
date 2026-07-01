@@ -190,6 +190,40 @@ class LeaveAdvancedWorkflowTests(unittest.TestCase):
             self.assertTrue(any("취소" in message and "2026-01-09" in message for message in requester_messages))
             self.assertTrue(any("취소" in message and "신청자님" in message for message in team_messages))
 
+    def test_leave_notification_read_state_is_personal(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            app = load_app(Path(directory))
+            users = self.make_users(app)
+            self.set_balance(app, users["requester"], total=5)
+
+            request_id = app.create_leave_request(
+                users["requester"],
+                {
+                    "leave_type_id": app.get_leave_type_id("annual"),
+                    "unit": "FULL_DAY",
+                    "start_date": "2026-01-12",
+                    "end_date": "2026-01-12",
+                    "reason": "개인 일정",
+                },
+            )
+
+            requester_notification = next(
+                item for item in app.list_leave_notifications(users["requester"])
+                if item["request_id"] == request_id
+            )
+            team_notification = next(
+                item for item in app.list_leave_notifications(users["team"])
+                if item["request_id"] == request_id
+            )
+
+            updated = app.mark_leave_notifications_read(users["requester"], [requester_notification["id"], team_notification["id"]])
+
+            requester_notifications = app.list_leave_notifications(users["requester"])
+            team_notifications = app.list_leave_notifications(users["team"])
+            self.assertEqual(updated, 1)
+            self.assertTrue(any(item["id"] == requester_notification["id"] and item["is_read"] == 1 for item in requester_notifications))
+            self.assertTrue(any(item["id"] == team_notification["id"] and item["is_read"] == 0 for item in team_notifications))
+
     def test_three_step_approval_finalizes_only_after_ceo_approval(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             app = load_app(Path(directory))

@@ -670,9 +670,15 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         html_source = (SCRIPTS / "workhub_delivery_app.py").read_text(encoding="utf-8")
 
         self.assertIn("/api/leave-notifications", html_source)
+        self.assertIn("/api/leave-notifications-read", html_source)
         self.assertIn("function fetchLeaveNotifications", html_source)
+        self.assertIn("function showLeaveNotificationWidget", html_source)
+        self.assertIn("function startLeaveNotificationWatcher", html_source)
+        self.assertIn("function markLeaveNotificationsRead", html_source)
         self.assertIn("function canUseLeaveNotifications", html_source)
         self.assertIn("leaveNotificationText", html_source)
+        self.assertIn("data-leave-notification-read", html_source)
+        self.assertIn("확인 완료", html_source)
         self.assertIn("연차 알림", html_source)
 
     def test_delivery_modal_title_matches_menu_label(self) -> None:
