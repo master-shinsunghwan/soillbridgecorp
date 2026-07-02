@@ -15508,7 +15508,7 @@ HTML = r"""<!doctype html>
       }
     }
 
-    function dashboardRecentSalesRows(dailyRows = [], baseDateText = "", periodText = "") {
+    function dashboardRecentSalesRows(dailyRows = [], baseDateText = "") {
       const rowsByDate = new Map();
       dailyRows.forEach((row) => {
         const date = parseLocalDate(row.report_date || "");
@@ -15528,19 +15528,12 @@ HTML = r"""<!doctype html>
         .at(-1);
       const baseDate = parseLocalDate(baseDateText || fallbackDate || todayString());
       if (!baseDate) return [];
-      const periodStart = parseLocalDate(periodText ? `${periodText}-01` : "");
-      const startDate = periodStart && localDateString(baseDate).slice(0, 7) === periodText
-        ? periodStart
-        : (() => {
-            const fallbackStart = new Date(baseDate);
-            fallbackStart.setDate(baseDate.getDate() - 6);
-            return fallbackStart;
-          })();
-      const dayCount = Math.min(31, Math.max(1, Math.round((baseDate - startDate) / 86400000) + 1));
-      return Array.from({ length: dayCount }, (_, index) => {
-        const day = new Date(startDate);
-        day.setDate(startDate.getDate() + index);
-        const key = localDateString(day);
+      const recentKeys = Array.from(rowsByDate.keys())
+        .filter((key) => key <= localDateString(baseDate))
+        .sort((left, right) => left.localeCompare(right, "ko"))
+        .slice(-7);
+      return recentKeys.map((key) => {
+        const day = parseLocalDate(key);
         const row = rowsByDate.get(key);
         return {
           key,
@@ -15555,7 +15548,7 @@ HTML = r"""<!doctype html>
 
     function renderDashboardRecentSalesChart(data, { comparisonDelta = 0, hasComparison = false } = {}) {
       if (!dashboardSalesMessage) return;
-      const recentRows = dashboardRecentSalesRows(data.daily_rows || [], data.selected_date || data.today?.report_date || "", data.period || "");
+      const recentRows = dashboardRecentSalesRows(data.recent_daily_rows || data.daily_rows || [], data.selected_date || data.today?.report_date || "");
       const dataRows = recentRows.filter((row) => row.hasData);
       if (!recentRows.length || !dataRows.length) {
         dashboardSalesMessage.classList.remove("has-chart");
@@ -25656,6 +25649,56 @@ def sales_report_combined_daily_summary_rows(connection: sqlite3.Connection, per
     return sorted(rows_by_date.values(), key=lambda row: str(row["report_date"] or ""), reverse=True)
 
 
+def sales_report_recent_daily_summary_rows(
+    connection: sqlite3.Connection,
+    selected_date: str = "",
+    limit: int = 7,
+) -> list[sqlite3.Row]:
+    cutoff_date = str(selected_date or "")
+    cutoff_sql = "report_date != '' AND (? = '' OR report_date <= ?)"
+    daily_rows = connection.execute(
+        f"""
+        SELECT report_date, label, quantity, sales_amount, sales_total, profit_sales_amount,
+               profit_supply_amount, profit_shipping, profit_margin, margin_rate
+          FROM sales_report_daily_rows
+         WHERE {cutoff_sql}
+         ORDER BY report_date DESC
+         LIMIT 60
+        """,
+        (cutoff_date, cutoff_date),
+    ).fetchall()
+    rows_by_date = {str(row["report_date"] or ""): row for row in daily_rows if str(row["report_date"] or "")}
+    seller_rows = connection.execute(
+        f"""
+        SELECT report_date,
+               report_date AS label,
+               COALESCE(SUM(quantity), 0) AS quantity,
+               COALESCE(SUM(sales_amount), 0) AS sales_amount,
+               COALESCE(SUM(sales_total), 0) AS sales_total,
+               COALESCE(SUM(profit_sales_amount), 0) AS profit_sales_amount,
+               COALESCE(SUM(profit_supply_amount), 0) AS profit_supply_amount,
+               COALESCE(SUM(profit_shipping), 0) AS profit_shipping,
+               COALESCE(SUM(profit_margin), 0) AS profit_margin,
+               0 AS margin_rate
+          FROM sales_report_seller_rows
+         WHERE {cutoff_sql}
+         GROUP BY report_date
+         ORDER BY report_date DESC
+         LIMIT 60
+        """,
+        (cutoff_date, cutoff_date),
+    ).fetchall()
+    for row in seller_rows:
+        report_date = str(row["report_date"] or "")
+        if report_date:
+            rows_by_date[report_date] = row
+    return sorted(
+        rows_by_date.values(),
+        key=lambda row: str(row["report_date"] or ""),
+        reverse=True,
+    )[:max(1, int(limit or 7))]
+
+
 def previous_sales_period(period: str) -> str:
     match = re.match(r"^(20\d{2})-(\d{1,2})$", str(period or ""))
     if not match:
@@ -26348,6 +26391,7 @@ def sales_report_dashboard_payload(period: str = "", report_date: str = "") -> d
             (previous_period, SALES_REPORT_PRODUCT_EXCLUDE_PATTERN),
         ).fetchone()
         daily_rows = sales_report_combined_daily_summary_rows(connection, selected_period)
+        recent_daily_rows = sales_report_recent_daily_summary_rows(connection, selected_date)
         seller_rows = connection.execute(
             f"""
             SELECT seller_name AS name,
@@ -26587,6 +26631,7 @@ def sales_report_dashboard_payload(period: str = "", report_date: str = "") -> d
     quantity_delta = today_quantity - yesterday_quantity
     quantity_delta_rate = round((quantity_delta / yesterday_quantity) * 100, 1) if yesterday_quantity else 0
     daily_rows_public = [_sales_report_daily_public(row) for row in daily_rows]
+    recent_daily_rows_public = [_sales_report_daily_public(row) for row in recent_daily_rows]
     month_total = {
         "quantity": int(month["quantity"] or 0),
         "sales_amount": int(month["sales_amount"] or 0),
@@ -26697,6 +26742,7 @@ def sales_report_dashboard_payload(period: str = "", report_date: str = "") -> d
         },
         "margin_check": margin_check,
         "daily_rows": daily_rows_public,
+        "recent_daily_rows": recent_daily_rows_public,
         "seller_top": [_sales_report_named_public(row) for row in seller_rows],
         "product_top": [_sales_report_named_public(row) for row in product_rows],
         "supplier_purchase_totals": [_sales_report_purchase_public(row) for row in supplier_purchase_rows],

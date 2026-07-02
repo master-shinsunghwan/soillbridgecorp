@@ -381,6 +381,43 @@ class SalesReportUploadTests(unittest.TestCase):
         self.assertEqual(june_dashboard["period_options"], ["2026-07", "2026-06"])
         self.assertEqual(june_dashboard["month"]["profit_sales_amount"], 6000)
 
+    def test_sales_report_dashboard_keeps_recent_sales_dates_across_month_boundary(self) -> None:
+        connection = self.app.connect_db()
+        try:
+            cursor = connection.execute(
+                """
+                INSERT INTO sales_report_uploads
+                    (stored_name, original_name, report_type, report_date, period, size, uploaded_by, uploaded_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                ("daily.xlsx", "daily.xlsx", "daily", "2026-07-01", "2026-07", 1, "admin", "2026-07-01"),
+            )
+            file_id = int(cursor.lastrowid)
+            connection.executemany(
+                """
+                INSERT INTO sales_report_daily_rows
+                    (report_date, period, file_id, label, quantity, sales_amount, sales_total,
+                     profit_sales_amount, profit_supply_amount, profit_shipping, profit_margin)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                [
+                    ("2026-06-30", "2026-06", file_id, "2026-06-30", 10, 1000, 1000, 1000, 500, 0, 500),
+                    ("2026-07-01", "2026-07", file_id, "2026-07-01", 20, 2000, 2000, 2000, 1000, 0, 1000),
+                ],
+            )
+            connection.commit()
+        finally:
+            connection.close()
+
+        dashboard = self.app.sales_report_dashboard_payload("2026-07", "2026-07-01")
+
+        self.assertEqual([row["report_date"] for row in dashboard["daily_rows"]], ["2026-07-01"])
+        self.assertEqual(
+            [row["report_date"] for row in dashboard["recent_daily_rows"]],
+            ["2026-07-01", "2026-06-30"],
+        )
+        self.assertEqual(dashboard["month"]["profit_sales_amount"], 2000)
+
     def test_daily_dimension_files_use_filename_date_for_dashboard_daily_summary(self) -> None:
         base = Path(self.tempdir.name)
         seller = base / "20260630_seller.xlsx"
