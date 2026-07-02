@@ -15508,7 +15508,7 @@ HTML = r"""<!doctype html>
       }
     }
 
-    function dashboardRecentSalesRows(dailyRows = [], baseDateText = "") {
+    function dashboardRecentSalesRows(dailyRows = [], baseDateText = "", periodText = "") {
       const rowsByDate = new Map();
       dailyRows.forEach((row) => {
         const date = parseLocalDate(row.report_date || "");
@@ -15528,9 +15528,16 @@ HTML = r"""<!doctype html>
         .at(-1);
       const baseDate = parseLocalDate(baseDateText || fallbackDate || todayString());
       if (!baseDate) return [];
-      const startDate = new Date(baseDate);
-      startDate.setDate(baseDate.getDate() - 6);
-      return Array.from({ length: 7 }, (_, index) => {
+      const periodStart = parseLocalDate(periodText ? `${periodText}-01` : "");
+      const startDate = periodStart && localDateString(baseDate).slice(0, 7) === periodText
+        ? periodStart
+        : (() => {
+            const fallbackStart = new Date(baseDate);
+            fallbackStart.setDate(baseDate.getDate() - 6);
+            return fallbackStart;
+          })();
+      const dayCount = Math.min(31, Math.max(1, Math.round((baseDate - startDate) / 86400000) + 1));
+      return Array.from({ length: dayCount }, (_, index) => {
         const day = new Date(startDate);
         day.setDate(startDate.getDate() + index);
         const key = localDateString(day);
@@ -15548,7 +15555,7 @@ HTML = r"""<!doctype html>
 
     function renderDashboardRecentSalesChart(data, { comparisonDelta = 0, hasComparison = false } = {}) {
       if (!dashboardSalesMessage) return;
-      const recentRows = dashboardRecentSalesRows(data.daily_rows || [], data.selected_date || data.today?.report_date || "");
+      const recentRows = dashboardRecentSalesRows(data.daily_rows || [], data.selected_date || data.today?.report_date || "", data.period || "");
       const dataRows = recentRows.filter((row) => row.hasData);
       if (!recentRows.length || !dataRows.length) {
         dashboardSalesMessage.classList.remove("has-chart");
@@ -15562,7 +15569,8 @@ HTML = r"""<!doctype html>
       const chartTop = 8;
       const chartBottom = 64;
       const pointForRow = (row, index) => {
-        const x = 4 + (index * (92 / 6));
+        const denominator = Math.max(recentRows.length - 1, 1);
+        const x = recentRows.length === 1 ? 50 : 4 + (index * (92 / denominator));
         const y = row.hasData
           ? chartBottom - (((row.amount - minAmount) / range) * (chartBottom - chartTop))
           : chartBottom;
@@ -15645,7 +15653,7 @@ HTML = r"""<!doctype html>
               }).join("")}
               </div>
             </div>
-            <div class="dashboard-recent-axis">
+            <div class="dashboard-recent-axis" style="grid-template-columns: repeat(${recentRows.length}, minmax(0, 1fr));">
               ${recentRows.map((row) => `<span>${escapeHtml(row.axisLabel)}</span>`).join("")}
             </div>
           </div>
