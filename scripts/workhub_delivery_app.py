@@ -2021,6 +2021,58 @@ HTML = r"""<!doctype html>
       gap: 12px;
       margin-top: 2px;
     }
+    .sales-period-toolbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 10px 12px;
+      border: 1px solid #d8e0ec;
+      border-radius: 8px;
+      background: #ffffff;
+      box-shadow: 0 4px 12px rgba(15, 23, 42, .03);
+    }
+    .sales-period-current {
+      min-width: 0;
+      display: grid;
+      gap: 2px;
+    }
+    .sales-period-current span,
+    .sales-period-select-label span {
+      color: #64748b;
+      font-size: 11px;
+      font-weight: 900;
+    }
+    .sales-period-current strong {
+      color: #0f172a;
+      font-size: 14px;
+      font-weight: 950;
+    }
+    .sales-period-select-label {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin: 0;
+      font-size: 12px;
+      font-weight: 900;
+      color: #475569;
+    }
+    .sales-period-select {
+      min-width: 160px;
+      height: 34px;
+      border: 1px solid #cbd5e1;
+      border-radius: 8px;
+      background: #f8fafc;
+      color: #0f172a;
+      padding: 0 34px 0 10px;
+      font-size: 12px;
+      font-weight: 900;
+    }
+    .sales-period-select:focus {
+      outline: 2px solid rgba(37, 99, 235, .18);
+      border-color: #2563eb;
+      background: #ffffff;
+    }
     .sales-kpi-grid {
       display: grid;
       grid-template-columns: repeat(6, minmax(0, 1fr));
@@ -2738,6 +2790,17 @@ HTML = r"""<!doctype html>
       .sales-dashboard-grid { grid-template-columns: 1fr; }
     }
     @media (max-width: 900px) {
+      .sales-period-toolbar {
+        align-items: stretch;
+        flex-direction: column;
+      }
+      .sales-period-select-label {
+        align-items: flex-start;
+        flex-direction: column;
+      }
+      .sales-period-select {
+        width: 100%;
+      }
       .sales-table-tabs,
       .sales-dashboard-grid.sales-tab-panels {
         grid-template-columns: 1fr;
@@ -11118,6 +11181,8 @@ HTML = r"""<!doctype html>
     const salesReportUploadMessage = document.querySelector("#salesReportUploadMessage");
     const salesReportRecentList = document.querySelector("#salesReportRecentList");
     const salesReportDashboard = document.querySelector("#salesReportDashboard");
+    const salesReportPeriodLabel = document.querySelector("#salesReportPeriodLabel");
+    const salesReportPeriodSelect = document.querySelector("#salesReportPeriodSelect");
     const salesReportKpiGrid = document.querySelector("#salesReportKpiGrid");
     const salesReportMarginDiagnosis = document.querySelector("#salesReportMarginDiagnosis");
     const salesDetailPopup = document.querySelector("#salesDetailPopup");
@@ -14152,6 +14217,24 @@ HTML = r"""<!doctype html>
       return match ? `${match[1]}년 ${Number(match[2])}월` : String(period || "");
     }
 
+    function renderSalesReportPeriodOptions(periodOptions = [], selectedPeriod = "") {
+      const periods = [...new Set((periodOptions || []).map((period) => String(period || "").trim()).filter(Boolean))];
+      if (selectedPeriod && !periods.includes(selectedPeriod)) periods.unshift(selectedPeriod);
+      if (salesReportPeriodLabel) salesReportPeriodLabel.textContent = formatSalesPeriodLabel(selectedPeriod) || "조회 월 없음";
+      if (!salesReportPeriodSelect) return;
+      if (!periods.length) {
+        salesReportPeriodSelect.innerHTML = `<option value="">데이터 없음</option>`;
+        salesReportPeriodSelect.value = "";
+        salesReportPeriodSelect.disabled = true;
+        return;
+      }
+      salesReportPeriodSelect.disabled = false;
+      salesReportPeriodSelect.innerHTML = periods.map((period) => `
+        <option value="${escapeHtml(period)}">${escapeHtml(formatSalesPeriodLabel(period))}</option>
+      `).join("");
+      salesReportPeriodSelect.value = selectedPeriod && periods.includes(selectedPeriod) ? selectedPeriod : periods[0];
+    }
+
     function closeSalesDetailPopup() {
       salesDetailPopup?.classList.remove("open");
       salesDetailPopup?.setAttribute("aria-hidden", "true");
@@ -14271,6 +14354,7 @@ HTML = r"""<!doctype html>
     function renderSalesReportDashboard(data) {
       if (!salesReportKpiGrid) return;
       activeSalesReportPeriod = data.period || "";
+      renderSalesReportPeriodOptions(data.period_options || [], activeSalesReportPeriod);
       const today = data.today || {};
       const yesterday = data.yesterday || {};
       const comparison = data.comparison || {};
@@ -14387,7 +14471,10 @@ HTML = r"""<!doctype html>
       if (!salesReportKpiGrid) return;
       setSalesReportLoading(true);
       try {
-        const response = await fetch("/api/sales-report-dashboard");
+        const params = new URLSearchParams();
+        if (activeSalesReportPeriod) params.set("period", activeSalesReportPeriod);
+        const endpoint = params.toString() ? `/api/sales-report-dashboard?${params.toString()}` : "/api/sales-report-dashboard";
+        const response = await fetch(endpoint);
         const data = await response.json();
         if (!response.ok) throw new Error(data.error || "매출현황을 불러오지 못했습니다.");
         renderSalesReportDashboard(data);
@@ -22410,6 +22497,10 @@ HTML = r"""<!doctype html>
       button.setAttribute("role", "tab");
       button.addEventListener("click", () => renderMonthlyCompareDetail(button.dataset.salesCompareDetail || "daily"));
     });
+    salesReportPeriodSelect?.addEventListener("change", () => {
+      activeSalesReportPeriod = salesReportPeriodSelect.value || "";
+      loadSalesReportDashboard();
+    });
     [salesReportDailyBody, salesReportSellerBody, salesReportProductBody, salesReportReviewBody].forEach((tbody) => {
       tbody?.addEventListener("dblclick", (event) => {
         const row = event.target.closest("[data-sales-detail]");
@@ -23718,6 +23809,16 @@ ADMIN_WORKSPACE_HTML = r"""
             <div class="admin-card" id="salesReportUploadCard">
               <div class="admin-section-title">매출현황</div>
               <div class="sales-dashboard" id="salesReportDashboard">
+                <div class="sales-period-toolbar" id="salesReportPeriodToolbar">
+                  <div class="sales-period-current">
+                    <span>조회 월</span>
+                    <strong id="salesReportPeriodLabel">월 선택</strong>
+                  </div>
+                  <label class="sales-period-select-label" for="salesReportPeriodSelect">
+                    <span>월별 보기</span>
+                    <select class="sales-period-select" id="salesReportPeriodSelect" aria-label="매출현황 조회 월"></select>
+                  </label>
+                </div>
                 <div class="sales-kpi-grid" id="salesReportKpiGrid"></div>
                 <div class="sales-margin-diagnosis" id="salesReportMarginDiagnosis">
                   <strong>마진 검증 대기</strong>
@@ -25581,8 +25682,8 @@ def sales_report_compare_detail_public(row: sqlite3.Row) -> dict[str, object]:
     }
 
 
-def latest_sales_report_period(connection: sqlite3.Connection) -> str:
-    row = connection.execute(
+def sales_report_period_options(connection: sqlite3.Connection) -> list[str]:
+    rows = connection.execute(
         """
         SELECT period
           FROM (
@@ -25594,11 +25695,16 @@ def latest_sales_report_period(connection: sqlite3.Connection) -> str:
                 UNION ALL
                 SELECT period FROM sales_report_product_rows WHERE period != ''
                )
+         GROUP BY period
          ORDER BY period DESC
-         LIMIT 1
         """
-    ).fetchone()
-    return str(row["period"] or "") if row else ""
+    ).fetchall()
+    return [str(row["period"] or "") for row in rows if row["period"]]
+
+
+def latest_sales_report_period(connection: sqlite3.Connection) -> str:
+    period_options = sales_report_period_options(connection)
+    return period_options[0] if period_options else ""
 
 
 def _sales_detail_metric(label: str, value: object) -> dict[str, object]:
@@ -26042,26 +26148,11 @@ def sales_report_dashboard_payload(period: str = "", report_date: str = "") -> d
     init_db()
     connection = connect_db()
     try:
+        period_options = sales_report_period_options(connection)
         selected_date = report_date or ""
         selected_period = period or selected_date[:7]
         if not selected_period:
-            row = connection.execute(
-                """
-                SELECT period
-                  FROM (
-                        SELECT period FROM sales_report_daily_rows WHERE period != ''
-                        UNION ALL
-                        SELECT period FROM sales_report_seller_rows WHERE period != ''
-                        UNION ALL
-                        SELECT period FROM sales_report_supplier_rows WHERE period != ''
-                        UNION ALL
-                        SELECT period FROM sales_report_product_rows WHERE period != ''
-                       )
-                 ORDER BY period DESC
-                 LIMIT 1
-                """
-            ).fetchone()
-            selected_period = str(row["period"] or "") if row else ""
+            selected_period = period_options[0] if period_options else ""
         if not selected_date and selected_period:
             row = connection.execute(
                 """
@@ -26543,6 +26634,7 @@ def sales_report_dashboard_payload(period: str = "", report_date: str = "") -> d
     difference = month_total["profit_sales_amount"] - seller_total_public["profit_sales_amount"]
     return {
         "period": selected_period,
+        "period_options": period_options,
         "previous_period": previous_period,
         "selected_date": selected_date,
         "previous_business_date": previous_date,

@@ -336,6 +336,51 @@ class SalesReportUploadTests(unittest.TestCase):
         self.assertEqual(dashboard["seller_top"][0]["profit_sales_amount"], 900)
         self.assertEqual(dashboard["product_top"][0]["profit_sales_amount"], 700)
 
+    def test_sales_report_dashboard_returns_selectable_month_options(self) -> None:
+        connection = self.app.connect_db()
+        try:
+            cursor = connection.execute(
+                """
+                INSERT INTO sales_report_uploads
+                    (stored_name, original_name, report_type, report_date, period, size, uploaded_by, uploaded_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                ("daily-june.xlsx", "daily-june.xlsx", "daily", "2026-06-30", "2026-06", 1, "admin", "2026-06-30"),
+            )
+            june_file_id = int(cursor.lastrowid)
+            cursor = connection.execute(
+                """
+                INSERT INTO sales_report_uploads
+                    (stored_name, original_name, report_type, report_date, period, size, uploaded_by, uploaded_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                ("daily-july.xlsx", "daily-july.xlsx", "daily", "2026-07-01", "2026-07", 1, "admin", "2026-07-01"),
+            )
+            july_file_id = int(cursor.lastrowid)
+            connection.executemany(
+                """
+                INSERT INTO sales_report_daily_rows
+                    (report_date, period, file_id, label, quantity, profit_sales_amount, profit_margin)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                [
+                    ("2026-06-30", "2026-06", june_file_id, "2026-06-30", 6, 6000, 900),
+                    ("2026-07-01", "2026-07", july_file_id, "2026-07-01", 7, 7000, 1000),
+                ],
+            )
+            connection.commit()
+        finally:
+            connection.close()
+
+        latest_dashboard = self.app.sales_report_dashboard_payload()
+        june_dashboard = self.app.sales_report_dashboard_payload("2026-06", "2026-06-30")
+
+        self.assertEqual(latest_dashboard["period"], "2026-07")
+        self.assertEqual(latest_dashboard["period_options"], ["2026-07", "2026-06"])
+        self.assertEqual(june_dashboard["period"], "2026-06")
+        self.assertEqual(june_dashboard["period_options"], ["2026-07", "2026-06"])
+        self.assertEqual(june_dashboard["month"]["profit_sales_amount"], 6000)
+
     def test_daily_dimension_files_use_filename_date_for_dashboard_daily_summary(self) -> None:
         base = Path(self.tempdir.name)
         seller = base / "20260630_seller.xlsx"
