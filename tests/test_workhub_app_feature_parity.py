@@ -983,17 +983,15 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
             self.assertNotIn('id="vendorContactsFileInput"', cs_contact_slice)
             self.assertNotIn('id="vendorContactsDropMain"', cs_contact_slice)
 
-    def test_sales_report_upload_has_dedicated_sales_workspace_mode(self) -> None:
+    def test_sales_report_has_dedicated_sales_workspace_mode_without_upload_form(self) -> None:
         html_source = (ROOT / "scripts" / "workhub_delivery_app.py").read_text(encoding="utf-8")
 
-        self.assertIn('id="salesReportFileInput"', html_source)
         self.assertIn('id="salesReportUploadCard"', html_source)
         self.assertIn('id="salesReportNavGroup"', html_source)
         self.assertIn('id="salesReportNavToggle"', html_source)
         self.assertIn('"sales_report_manage"', html_source)
         self.assertIn("__SALES_REPORT_NAV__", html_source)
-        self.assertIn('accept=".xlsx,.xlsm,.xls,.csv,.zip"', html_source)
-        self.assertIn('data-open="salesReport">매출표 업로드</button>', html_source)
+        self.assertIn('data-open="salesReport">매출현황</button>', html_source)
         self.assertIn('mode === "salesReport"', html_source)
         self.assertIn("sales-report-only", html_source)
         self.assertIn("#userAdminWorkspace.sales-report-only > .workspace-head", html_source)
@@ -1008,10 +1006,11 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         self.assertIn('button.closest("#salesReportNavGroup")', html_source)
         self.assertNotIn('id="salesReportDropMain"', html_source)
         self.assertNotIn('id="salesReportChooseFile"', html_source)
-        self.assertIn('id="salesReportManualUpload"', html_source)
-        self.assertIn('salesReportManualUpload?.addEventListener("click", openSalesReportUploadPicker);', html_source)
-        self.assertIn('id="salesReportUploadMessage"', html_source)
-        self.assertIn('id="salesReportRecentList"', html_source)
+        self.assertNotIn('id="salesReportFileInput"', html_source)
+        self.assertNotIn('id="salesReportManualUpload"', html_source)
+        self.assertNotIn('id="salesReportUploadMessage"', html_source)
+        self.assertNotIn('id="salesReportRecentList"', html_source)
+        self.assertNotIn("매출표 파일을 직접 업로드해서 현황을 갱신합니다.", html_source)
         self.assertNotIn('label[for=\'salesReportFileInput\']', html_source)
 
         admin_nav_start = html_source.index("ADMIN_TOOLS_NAV_HTML")
@@ -1023,9 +1022,9 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         admin_start = html_source.index('id="userAdminWorkspace"')
         admin_end = html_source.index('id="userAdminBody"', admin_start)
         admin_slice = html_source[admin_start:admin_end]
-        self.assertIn('id="salesReportFileInput"', admin_slice)
         self.assertIn('>매출현황</div>', admin_slice)
-        self.assertIn('id="salesReportManualUpload"', admin_slice)
+        self.assertNotIn('id="salesReportFileInput"', admin_slice)
+        self.assertNotIn('id="salesReportManualUpload"', admin_slice)
         self.assertNotIn('id="salesNasImportDir"', admin_slice)
         self.assertNotIn('id="salesNasScanNow"', admin_slice)
         self.assertNotIn("NAS 자동 업로드", admin_slice)
@@ -1041,7 +1040,7 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         })
 
         self.assertIn('id="salesReportNavGroup"', html_source)
-        self.assertIn('data-open="salesReport">매출표 업로드</button>', html_source)
+        self.assertIn('data-open="salesReport">매출현황</button>', html_source)
         self.assertIn('id="userAdminWorkspace"', html_source)
         self.assertIn('id="salesReportUploadCard"', html_source)
         self.assertNotIn('id="adminToolsNavGroup"', html_source)

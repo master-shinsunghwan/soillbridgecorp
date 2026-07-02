@@ -164,7 +164,7 @@ PERMISSION_DEFINITIONS = (
     ("user_admin", "사용자 관리", "계정 추가/수정/권한 변경"),
     ("backup_manage", "백업 관리", "수동/자동 백업 파일 관리"),
     ("system_update", "시스템 업데이트", "GitHub 업데이트 확인/적용"),
-    ("sales_report_manage", "매출현황 관리", "매출표 업로드 및 매출현황 관리"),
+    ("sales_report_manage", "매출현황 관리", "매출현황 조회 및 관리"),
     ("leave_view", "연차 조회", "연차 내역 조회"),
     ("leave_approve", "연차 승인", "연차 신청 승인/반려"),
     ("leave_approve_team", "\uC5F0\uCC28 \uD300\uC7A5 \uC2B9\uC778", "\uC5F0\uCC28 \uC2E0\uCCAD \uD300\uC7A5 \uD655\uC778"),
@@ -15591,16 +15591,16 @@ HTML = r"""<!doctype html>
       const marginAmount = Number(month.profit_margin || 0);
       const marginRate = monthSalesAmount ? (marginAmount / monthSalesAmount) * 100 : 0;
       const hasComparison = hasTodaySalesData && Boolean(yesterday.report_date);
-      setDashboardSalesStatus(hasTodaySalesData ? "연동 완료" : "금일 미업로드", hasTodaySalesData ? "connected" : "warning");
+      setDashboardSalesStatus(hasTodaySalesData ? "연동 완료" : "금일 데이터 대기", hasTodaySalesData ? "connected" : "warning");
       if (dashboardSalesDecisionTitle) {
         dashboardSalesDecisionTitle.textContent = hasTodaySalesData
           ? `${selectedDateLabel || "선택일"} 손익 ${formatSalesCompactMoney(todaySalesAmount)} · 전영업일 대비 ${hasComparison ? formatSalesCompactMoney(comparisonDelta, true) : "비교 대기"}`
-          : "금일 매출 업로드가 아직 필요합니다";
+          : "금일 매출 데이터가 아직 연결되지 않았습니다";
       }
       if (dashboardSalesDecisionNote) {
         dashboardSalesDecisionNote.textContent = hasTodaySalesData
           ? `월 마진 ${formatSalesCompactMoney(marginAmount)}(${formatSalesPercent(marginRate)})는 택배비 제외 기준입니다.`
-          : "매출표 업로드 후 손익, 매입, 마진 기준을 바로 확인할 수 있습니다.";
+          : "매출 데이터 연결 후 손익, 매입, 마진 기준을 바로 확인할 수 있습니다.";
       }
       setDashboardDecisionChip(
         dashboardDecisionTodayChip,
@@ -23311,7 +23311,7 @@ SALES_REPORT_NAV_HTML = r"""
           <i class="nav-chevron" data-lucide="chevron-right"></i>
         </button>
         <div class="nav-submenu">
-          <button class="nav-subitem" type="button" data-open="salesReport">매출표 업로드</button>
+          <button class="nav-subitem" type="button" data-open="salesReport">매출현황</button>
         </div>
       </div>
 """
@@ -23717,19 +23717,11 @@ ADMIN_WORKSPACE_HTML = r"""
             </div>
             <div class="admin-card" id="salesReportUploadCard">
               <div class="admin-section-title">매출현황</div>
-              <input id="salesReportFileInput" name="sales_report" type="file" accept=".xlsx,.xlsm,.xls,.csv,.zip" hidden />
-              <div class="admin-form compact-form">
-                <div class="form-actions">
-                  <button id="salesReportManualUpload" type="button">매출표 업로드</button>
-                </div>
-                <div class="admin-message" id="salesReportUploadMessage">매출표 파일을 직접 업로드해서 현황을 갱신합니다.</div>
-                <div class="admin-message" id="salesReportRecentList">업로드된 매출표가 없습니다.</div>
-              </div>
               <div class="sales-dashboard" id="salesReportDashboard">
                 <div class="sales-kpi-grid" id="salesReportKpiGrid"></div>
                 <div class="sales-margin-diagnosis" id="salesReportMarginDiagnosis">
                   <strong>마진 검증 대기</strong>
-                  <span>매출표 업로드 후 손익매출과 마진 관계를 확인합니다.</span>
+                  <span>매출 데이터 연결 후 손익매출과 마진 관계를 확인합니다.</span>
                 </div>
                 <div class="sales-table-tabs" id="salesReportTabs" role="tablist">
                   <button class="sales-table-tab active" type="button" data-sales-tab="salesProduct">
