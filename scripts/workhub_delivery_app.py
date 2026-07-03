@@ -26027,6 +26027,20 @@ def sales_report_detail_payload(kind: str, key: str, period: str = "") -> dict[s
                     """,
                     (detail_key,),
                 ).fetchall()
+            product_rows = connection.execute(
+                """
+                SELECT TRIM(COALESCE(NULLIF(product_name, ''), '상품명 미입력')) AS product_name,
+                       TRIM(COALESCE(NULLIF(sales_vendor, ''), '판매처 미입력')) AS seller_name,
+                       COUNT(*) AS order_count,
+                       COALESCE(SUM(CAST(REPLACE(quantity, ',', '') AS INTEGER)), 0) AS quantity
+                  FROM management_records
+                 WHERE substr(COALESCE(NULLIF(ship_date, ''), NULLIF(order_date, '')), 1, 10) = ?
+                 GROUP BY TRIM(COALESCE(NULLIF(product_name, ''), '상품명 미입력')),
+                          TRIM(COALESCE(NULLIF(sales_vendor, ''), '판매처 미입력'))
+                 ORDER BY seller_name COLLATE NOCASE, quantity DESC, order_count DESC, product_name COLLATE NOCASE
+                """,
+                (detail_key,),
+            ).fetchall()
             return {
                 "kind": "daily",
                 "title": f"{detail_key} 판매사별 당일 현황",
@@ -26054,6 +26068,20 @@ def sales_report_detail_payload(kind: str, key: str, period: str = "") -> dict[s
                             for row in seller_rows
                         ],
                         "empty": "해당 날짜에 발생한 판매사별 주문/출고 데이터가 없습니다.",
+                    },
+                    {
+                        "title": "출고 제품 리스트",
+                        "headers": ["제품명", "판매처", "주문건수", "출고수량"],
+                        "rows": [
+                            [
+                                str(row["product_name"] or ""),
+                                str(row["seller_name"] or ""),
+                                int(row["order_count"] or 0),
+                                int(row["quantity"] or 0),
+                            ]
+                            for row in product_rows
+                        ],
+                        "empty": "해당 날짜의 출고 제품 데이터를 찾지 못했습니다.",
                     }
                 ],
             }
@@ -26165,6 +26193,21 @@ def sales_report_detail_payload(kind: str, key: str, period: str = "") -> dict[s
                 """,
                 (f"{selected_period}%", detail_key),
             ).fetchall()
+            product_rows = connection.execute(
+                f"""
+                SELECT substr(COALESCE(NULLIF(ship_date, ''), NULLIF(order_date, '')), 1, 10) AS activity_date,
+                       TRIM(COALESCE(NULLIF(product_name, ''), '상품명 미입력')) AS product_name,
+                       COUNT(*) AS order_count,
+                       COALESCE(SUM(CAST(REPLACE(quantity, ',', '') AS INTEGER)), 0) AS quantity
+                  FROM management_records
+                 WHERE COALESCE(NULLIF(ship_date, ''), NULLIF(order_date, '')) LIKE ?
+                   AND {vendor_column} = ?
+                 GROUP BY substr(COALESCE(NULLIF(ship_date, ''), NULLIF(order_date, '')), 1, 10),
+                          TRIM(COALESCE(NULLIF(product_name, ''), '상품명 미입력'))
+                 ORDER BY activity_date DESC, quantity DESC, order_count DESC, product_name COLLATE NOCASE
+                """,
+                (f"{selected_period}%", detail_key),
+            ).fetchall()
             amount_date_stats = connection.execute(
                 f"""
                 SELECT COUNT(DISTINCT rows.report_date) AS date_count,
@@ -26175,10 +26218,7 @@ def sales_report_detail_payload(kind: str, key: str, period: str = "") -> dict[s
                 """,
                 (selected_period, detail_key),
             ).fetchone()
-            amount_detail_active = bool(amount_date_stats) and (
-                int(amount_date_stats["date_count"] or 0) > 1
-                or int(amount_date_stats["daily_zip_rows"] or 0) > 0
-            )
+            amount_detail_active = bool(amount_date_stats) and int(amount_date_stats["date_count"] or 0) > 0
             amount_rows = []
             if amount_detail_active:
                 amount_rows = connection.execute(
@@ -26233,7 +26273,7 @@ def sales_report_detail_payload(kind: str, key: str, period: str = "") -> dict[s
                 "kind": detail_kind,
                 "title": f"{detail_key} {'매출처' if is_seller else '매입처'} 월 전체 현황",
                 "period": selected_period,
-                "note": "월 전체 주문건수와 수량은 통합관리대장 기준입니다. 일자별 금액은 거래처별 누적 스냅샷이 연속으로 업로드된 날짜만 정확히 계산됩니다.",
+                "note": "월 전체 주문건수와 수량은 통합관리대장 기준입니다. 일자별 금액은 거래처별 업로드 파일의 일자 기준 금액을 표시합니다.",
                 "metrics": [
                     _sales_detail_metric("주문건수", total_orders),
                     _sales_detail_metric("관리대장 수량", total_quantity),
@@ -26253,6 +26293,20 @@ def sales_report_detail_payload(kind: str, key: str, period: str = "") -> dict[s
                             for row in rows
                         ],
                         "empty": "해당 거래처의 월 전체 관리대장 데이터가 없습니다.",
+                    },
+                    {
+                        "title": "출고 제품 리스트",
+                        "headers": ["출고일", "제품명", "주문건수", "출고수량"],
+                        "rows": [
+                            [
+                                str(row["activity_date"] or ""),
+                                str(row["product_name"] or ""),
+                                int(row["order_count"] or 0),
+                                int(row["quantity"] or 0),
+                            ]
+                            for row in product_rows
+                        ],
+                        "empty": "해당 거래처의 출고 제품 데이터를 찾지 못했습니다.",
                     },
                     {
                         "title": "일자별 금액",
