@@ -1152,6 +1152,49 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
                 html_source,
             )
 
+    def test_import_and_cargo_schedule_delete_buttons_are_wired(self) -> None:
+        html_source = (ROOT / "scripts" / "workhub_delivery_app.py").read_text(encoding="utf-8")
+
+        for token in (
+            'id="importShipmentDelete"',
+            'id="cargoShipmentDelete"',
+            "function deleteImportShipment()",
+            "function deleteCargoShipment()",
+            '"/api/import-shipment-delete"',
+            '"/api/cargo-shipment-delete"',
+            "delete_import_shipment(",
+            "delete_cargo_shipment(",
+        ):
+            self.assertIn(token, html_source)
+
+    def test_import_and_cargo_schedules_can_be_deleted(self) -> None:
+        app = self.load_app()
+        app.init_db()
+
+        import_id = app.save_import_shipment(
+            {
+                "warehouse_due_date": "2026-07-10",
+                "item": "Test import item",
+                "quantity": "1",
+            }
+        )
+        cargo_id = app.save_cargo_shipment(
+            {
+                "cargo_type": "outbound",
+                "ship_date": "2026-07-10",
+                "customer": "Test customer",
+                "item": "Test cargo item",
+                "quantity": "1",
+            }
+        )
+
+        self.assertEqual([row["id"] for row in app.list_import_shipments()], [import_id])
+        self.assertEqual([row["id"] for row in app.list_cargo_shipments()], [cargo_id])
+        self.assertEqual(app.delete_import_shipment(import_id), 1)
+        self.assertEqual(app.delete_cargo_shipment(cargo_id), 1)
+        self.assertEqual(app.list_import_shipments(), [])
+        self.assertEqual(app.list_cargo_shipments(), [])
+
 
 if __name__ == "__main__":
     unittest.main()

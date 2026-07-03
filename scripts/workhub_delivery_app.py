@@ -10222,6 +10222,7 @@ HTML = r"""<!doctype html>
         <div class="notice-template-actions">
           <button class="workspace-button" type="button" id="cargoVehicleReceiptLink">인수증 출력 연결</button>
           <button class="workspace-button" type="button" id="cargoShipmentReset">초기화</button>
+          <button class="workspace-button danger" type="button" id="cargoShipmentDelete" hidden>삭제</button>
           <button class="workspace-button" type="button" id="cargoShipmentSave">저장</button>
         </div>
       </div>
@@ -10259,6 +10260,7 @@ HTML = r"""<!doctype html>
         </div>
         <div class="notice-template-actions">
           <button class="workspace-button" type="button" id="importShipmentReset">초기화</button>
+          <button class="workspace-button danger" type="button" id="importShipmentDelete" hidden>삭제</button>
           <button class="workspace-button" type="button" id="importShipmentSave">저장</button>
         </div>
       </div>
@@ -11452,6 +11454,7 @@ HTML = r"""<!doctype html>
     const cargoShipmentClose = document.querySelector("#cargoShipmentClose");
     const cargoShipmentSave = document.querySelector("#cargoShipmentSave");
     const cargoShipmentReset = document.querySelector("#cargoShipmentReset");
+    const cargoShipmentDelete = document.querySelector("#cargoShipmentDelete");
     const cargoVehicleReceiptLink = document.querySelector("#cargoVehicleReceiptLink");
     const cargoShipmentId = document.querySelector("#cargoShipmentId");
     let cargoShipmentMode = "outbound";
@@ -11482,6 +11485,7 @@ HTML = r"""<!doctype html>
     const importShipmentClose = document.querySelector("#importShipmentClose");
     const importShipmentSave = document.querySelector("#importShipmentSave");
     const importShipmentReset = document.querySelector("#importShipmentReset");
+    const importShipmentDelete = document.querySelector("#importShipmentDelete");
     const importShipmentId = document.querySelector("#importShipmentId");
     const importDepartureDate = document.querySelector("#importDepartureDate");
     const importArrivalDate = document.querySelector("#importArrivalDate");
@@ -13149,6 +13153,7 @@ HTML = r"""<!doctype html>
       }
       if (cargoVehicleReceiptLink) cargoVehicleReceiptLink.classList.toggle("permission-hidden", isInbound);
       cargoShipmentId.value = record?.id || "";
+      if (cargoShipmentDelete) cargoShipmentDelete.hidden = !record?.id;
       cargoShipDate.value = record?.ship_date || todayStatusDate();
       cargoCustomer.value = record?.customer || "";
       cargoItem.value = record?.item || "";
@@ -13235,6 +13240,38 @@ HTML = r"""<!doctype html>
       if (companyActiveTab === "calendar") await loadCompanyCalendar().catch(() => {});
     }
 
+    async function deleteCargoShipment() {
+      if (!canManageCargoShipments()) {
+        notice.textContent = "화물 입출고건 입력 권한이 없습니다.";
+        return;
+      }
+      const shipmentId = String(cargoShipmentId?.value || "").trim();
+      if (!shipmentId) {
+        notice.textContent = "삭제할 화물 입출고건을 선택해주세요.";
+        return;
+      }
+      const label = cargoShipmentMode === "inbound" ? "화물 입고 예정건" : "화물 출고건";
+      const ok = await requestAppConfirm({
+        kicker: "일정 삭제",
+        title: `${label}을 삭제할까요?`,
+        message: [cargoShipDate?.value, cargoCustomer?.value, cargoItem?.value].filter(Boolean).join(" · "),
+        okText: "삭제",
+        cancelText: "취소",
+      });
+      if (!ok) return;
+      const response = await fetch("/api/cargo-shipment-delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: shipmentId }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || "화물 입출고건 삭제에 실패했습니다.");
+      notice.textContent = data.message || "화물 입출고건을 삭제했습니다.";
+      closeCargoShipmentPopup();
+      await loadCargoShipments();
+      if (companyActiveTab === "calendar") await loadCompanyCalendar().catch(() => {});
+    }
+
     function linkCargoToVehicleReceipt() {
       const payload = cargoShipmentPayload();
       closeCargoShipmentPopup();
@@ -13268,6 +13305,7 @@ HTML = r"""<!doctype html>
       importProgressStatus.value = record?.progress_status || "";
       importFreeTime.value = record?.free_time || "";
       importWarehouseDueDate.value = record?.warehouse_due_date || "";
+      if (importShipmentDelete) importShipmentDelete.hidden = !record?.id;
     }
 
     function importShipmentPayload() {
@@ -13412,6 +13450,37 @@ HTML = r"""<!doctype html>
       notice.textContent = data.message || "수입제품 입고 진행 상황을 저장했습니다.";
       closeImportShipmentPopup();
       await loadImportShipments();
+    }
+
+    async function deleteImportShipment() {
+      if (!can("import_shipment_manage")) {
+        notice.textContent = "수입제품 진행 관리 권한이 없습니다.";
+        return;
+      }
+      const shipmentId = String(importShipmentId?.value || "").trim();
+      if (!shipmentId) {
+        notice.textContent = "삭제할 수입제품 입고 일정을 선택해주세요.";
+        return;
+      }
+      const ok = await requestAppConfirm({
+        kicker: "일정 삭제",
+        title: "수입제품 입고 일정을 삭제할까요?",
+        message: [importWarehouseDueDate?.value, importItem?.value, importQuantity?.value].filter(Boolean).join(" · "),
+        okText: "삭제",
+        cancelText: "취소",
+      });
+      if (!ok) return;
+      const response = await fetch("/api/import-shipment-delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: shipmentId }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || "수입제품 입고 일정 삭제에 실패했습니다.");
+      notice.textContent = data.message || "수입제품 입고 일정을 삭제했습니다.";
+      closeImportShipmentPopup();
+      await loadImportShipments();
+      if (companyActiveTab === "calendar") await loadCompanyCalendar().catch(() => {});
     }
 
     async function completeImportShipment(id) {
@@ -22550,6 +22619,11 @@ HTML = r"""<!doctype html>
     cargoShipmentInputOpen?.addEventListener("click", () => openCargoShipmentPopup(null, "outbound"));
     cargoShipmentClose?.addEventListener("click", closeCargoShipmentPopup);
     cargoShipmentReset?.addEventListener("click", () => resetCargoShipmentForm());
+    cargoShipmentDelete?.addEventListener("click", () => {
+      deleteCargoShipment().catch((error) => {
+        notice.textContent = error.message;
+      });
+    });
     cargoVehicleReceiptLink?.addEventListener("click", linkCargoToVehicleReceipt);
     cargoShipmentSave?.addEventListener("click", () => {
       saveCargoShipment().catch((error) => {
@@ -22575,6 +22649,11 @@ HTML = r"""<!doctype html>
     });
     importShipmentClose.addEventListener("click", closeImportShipmentPopup);
     importShipmentReset.addEventListener("click", () => resetImportShipmentForm());
+    importShipmentDelete?.addEventListener("click", () => {
+      deleteImportShipment().catch((error) => {
+        notice.textContent = error.message;
+      });
+    });
     importShipmentSave.addEventListener("click", () => {
       saveImportShipment().catch((error) => {
         notice.textContent = error.message;
@@ -31315,6 +31394,21 @@ def save_cargo_shipment(payload: dict) -> int:
         connection.close()
 
 
+def delete_cargo_shipment(shipment_id: int) -> int:
+    if not shipment_id:
+        raise ValueError("삭제할 화물 입출고건을 선택해주세요.")
+    init_db()
+    connection = connect_db()
+    try:
+        cursor = connection.execute("DELETE FROM cargo_shipments WHERE id = ?", (shipment_id,))
+        connection.commit()
+        if cursor.rowcount == 0:
+            raise ValueError("삭제할 화물 입출고건을 찾지 못했습니다.")
+        return int(cursor.rowcount or 0)
+    finally:
+        connection.close()
+
+
 def save_import_shipment(payload: dict) -> int:
     init_db()
     now = now_text()
@@ -31342,6 +31436,21 @@ def save_import_shipment(payload: dict) -> int:
             shipment_id = int(cursor.lastrowid)
         connection.commit()
         return shipment_id
+    finally:
+        connection.close()
+
+
+def delete_import_shipment(shipment_id: int) -> int:
+    if not shipment_id:
+        raise ValueError("삭제할 수입제품 입고 일정을 선택해주세요.")
+    init_db()
+    connection = connect_db()
+    try:
+        cursor = connection.execute("DELETE FROM import_shipments WHERE id = ?", (shipment_id,))
+        connection.commit()
+        if cursor.rowcount == 0:
+            raise ValueError("삭제할 수입제품 입고 일정을 찾지 못했습니다.")
+        return int(cursor.rowcount or 0)
     finally:
         connection.close()
 
@@ -35568,6 +35677,15 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                 self.send_json({"message": "수입제품 입고 진행 상황을 저장했습니다.", "shipment_id": shipment_id})
                 return
 
+            if self.path == "/api/import-shipment-delete":
+                if not self.require_permission(user, "import_shipment_manage", "수입제품 진행 관리"):
+                    return
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(length).decode("utf-8") or "{}")
+                deleted = delete_import_shipment(int(payload.get("id") or 0))
+                self.send_json({"message": "수입제품 입고 일정을 삭제했습니다.", "deleted": deleted})
+                return
+
             if self.path == "/api/cargo-shipment-save":
                 if not (user_has_permission(user, "notice_manage") or user_has_permission(user, "import_shipment_manage")):
                     self.send_json({"error": "화물 입출고건 입력 권한이 없습니다."}, status=403)
@@ -35576,6 +35694,16 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                 payload = json.loads(self.rfile.read(length).decode("utf-8"))
                 cargo_id = save_cargo_shipment(payload)
                 self.send_json({"message": "화물 입출고건을 저장했습니다.", "shipment_id": cargo_id})
+                return
+
+            if self.path == "/api/cargo-shipment-delete":
+                if not (user_has_permission(user, "notice_manage") or user_has_permission(user, "import_shipment_manage")):
+                    self.send_json({"error": "화물 입출고건 입력 권한이 없습니다."}, status=403)
+                    return
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(length).decode("utf-8") or "{}")
+                deleted = delete_cargo_shipment(int(payload.get("id") or 0))
+                self.send_json({"message": "화물 입출고건을 삭제했습니다.", "deleted": deleted})
                 return
 
             if self.path == "/api/notice-save":
