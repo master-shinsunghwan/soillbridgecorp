@@ -1328,6 +1328,8 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
 
         self.assertEqual(amount, "2034740")
         self.assertEqual(vat, "67103")
+        self.assertEqual(app.import_cost_amounts_from_text("TOTAL AMOUNT: KAW 2,101.843")[-1], "2101843")
+        self.assertEqual(app.import_cost_amounts_from_text("USD 1,506.60")[-1], "1506.60")
 
     def test_sales_report_dashboard_layout_uses_three_report_types(self) -> None:
         html_source = (ROOT / "scripts" / "workhub_delivery_app.py").read_text(encoding="utf-8")

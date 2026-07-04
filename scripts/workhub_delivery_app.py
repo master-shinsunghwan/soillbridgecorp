@@ -30158,7 +30158,11 @@ IMPORT_COST_CHARGE_TERM_EXPLANATIONS = [
 def import_cost_amounts_from_text(value: str) -> list[str]:
     amounts = []
     for match in IMPORT_COST_AMOUNT_PATTERN.finditer(value):
-        amount = match.group(0).replace(",", "")
+        token = match.group(0)
+        if re.fullmatch(r"-?\d{1,3}(?:,\d{3})+\.\d{3}", token):
+            amount = token.replace(",", "").replace(".", "")
+        else:
+            amount = token.replace(",", "")
         if amount in {"", "-"}:
             continue
         amounts.append(amount)
