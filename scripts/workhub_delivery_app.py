@@ -34,6 +34,7 @@ import urllib.error
 import urllib.request
 
 from openpyxl import Workbook, load_workbook
+from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 
 from delivery_text_summary import build_summary_payload
@@ -12194,6 +12195,7 @@ HTML = r"""<!doctype html>
     const importCostAddProduct = document.querySelector("#importCostAddProduct");
     const importCostReset = document.querySelector("#importCostReset");
     const importCostCalculate = document.querySelector("#importCostCalculate");
+    const importCostExportReport = document.querySelector("#importCostExportReport");
     const importCostProductBody = document.querySelector("#importCostProductBody");
     const importCostResultBody = document.querySelector("#importCostResultBody");
     const importCostSummary = document.querySelector("#importCostSummary");
@@ -16001,6 +16003,33 @@ HTML = r"""<!doctype html>
       }
     }
 
+    async function exportImportCostReport() {
+      if (!importCostMessage || !canViewImportCostProgram()) return;
+      importCostMessage.textContent = "보고서용 엑셀 파일을 생성하는 중입니다.";
+      setImportCostRunStatus("running", "수입원가 계산 보고서 엑셀을 생성하고 있습니다.");
+      if (importCostExportReport) importCostExportReport.disabled = true;
+      try {
+        const response = await fetch("/api/import-cost-report-export", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(collectImportCostPayload()),
+        });
+        if (!response.ok) {
+          const data = await response.json().catch(() => ({}));
+          throw new Error(data.error || "수입원가 보고서 생성에 실패했습니다.");
+        }
+        await downloadWorkbookResponse(response, "수입원가_계산보고서.xlsx");
+        importCostMessage.textContent = "보고서용 엑셀 다운로드를 시작했습니다.";
+        setImportCostRunStatus("done", "보고서용 엑셀 다운로드를 시작했습니다.");
+      } catch (error) {
+        const message = error.message || "수입원가 보고서 생성에 실패했습니다.";
+        importCostMessage.textContent = message;
+        setImportCostRunStatus("error", message);
+      } finally {
+        if (importCostExportReport) importCostExportReport.disabled = false;
+      }
+    }
+
     async function uploadImportCostFiles() {
       if (!importCostFileInput || !importCostMessage || !canViewImportCostProgram()) return;
       const files = selectedImportCostFiles;
@@ -16014,6 +16043,7 @@ HTML = r"""<!doctype html>
       if (importCostFileChoose) importCostFileChoose.disabled = true;
       if (importCostFileUpload) importCostFileUpload.disabled = true;
       if (importCostCalculate) importCostCalculate.disabled = true;
+      if (importCostExportReport) importCostExportReport.disabled = true;
       const formData = new FormData();
       files.forEach((file, index) => formData.append(`file_${index}`, file));
       const currentPayload = collectImportCostPayload();
@@ -16039,6 +16069,7 @@ HTML = r"""<!doctype html>
         if (importCostFileChoose) importCostFileChoose.disabled = false;
         if (importCostFileUpload) importCostFileUpload.disabled = false;
         if (importCostCalculate) importCostCalculate.disabled = false;
+        if (importCostExportReport) importCostExportReport.disabled = false;
       }
     }
 
@@ -24152,6 +24183,7 @@ HTML = r"""<!doctype html>
     importCostAddProduct?.addEventListener("click", () => addImportCostProductRow());
     importCostReset?.addEventListener("click", resetImportCostProgram);
     importCostCalculate?.addEventListener("click", calculateImportCost);
+    importCostExportReport?.addEventListener("click", exportImportCostReport);
     importCostWorkspace?.addEventListener("input", (event) => {
       const target = event.target;
       if (target?.matches?.("#importCostDocFee, #importCostDuty, #importCostBrokerFee, #importCostOtherCost, #importCostImportVat, #importCostServiceVat, #importCostIncludeImportVat, #importCostIncludeServiceVat")) {
@@ -25254,6 +25286,7 @@ IMPORT_COST_WORKSPACE_HTML = r"""
             </div>
             <div class="import-cost-actions">
               <button class="workspace-button" type="button" id="importCostCalculate">제품별 원가 계산</button>
+              <button class="workspace-button" type="button" id="importCostExportReport">보고서 엑셀 출력</button>
               <span id="importCostMessage">인보이스와 패킹리스트 값을 입력해주세요.</span>
             </div>
           </section>
@@ -29983,6 +30016,200 @@ def calculate_import_cost(payload: dict) -> dict[str, object]:
         "charges": {key: import_cost_money(value) for key, value in charge_values.items()},
         "products": result_rows,
     }
+
+
+IMPORT_COST_ALLOCATION_LABELS = {
+    "amount": "인보이스 금액 기준",
+    "quantity": "수량 기준",
+    "weight": "총중량 기준",
+    "cbm": "CBM 기준",
+}
+
+
+IMPORT_COST_CHARGE_REPORT_ROWS = [
+    ("doc_fee", "D/O/운임비", True),
+    ("duty", "관세", True),
+    ("broker_fee", "통관수수료", True),
+    ("other_cost", "기타 비용", True),
+    ("import_vat", "수입부가세", False),
+    ("service_vat", "수수료 부가세", False),
+]
+
+
+def import_cost_report_input_charge(payload: dict, key: str) -> int:
+    try:
+        return import_cost_money(import_cost_decimal(payload.get(key)))
+    except ValueError:
+        return 0
+
+
+def import_cost_report_workbook_bytes(payload: dict, result: dict[str, object]) -> bytes:
+    workbook = Workbook()
+    worksheet = workbook.active
+    worksheet.title = "수입원가 계산보고서"
+    worksheet.sheet_view.showGridLines = False
+
+    navy = "1E3A8A"
+    blue = "2563EB"
+    pale_blue = "EAF2FF"
+    light_fill = "F8FAFC"
+    border_color = "CBD5E1"
+    white_font = Font(color="FFFFFF", bold=True)
+    title_font = Font(size=16, bold=True, color="0F172A")
+    section_font = Font(size=11, bold=True, color="0F172A")
+    header_font = Font(bold=True, color="0F172A")
+    thin = Side(style="thin", color=border_color)
+    border = Border(left=thin, right=thin, top=thin, bottom=thin)
+    center = Alignment(horizontal="center", vertical="center")
+    left = Alignment(horizontal="left", vertical="center")
+    right = Alignment(horizontal="right", vertical="center")
+    money_format = '#,##0"원"'
+    usd_format = '$#,##0.00'
+    number_format = '#,##0.##'
+
+    def style_range(row: int, start_col: int, end_col: int, fill: str = light_fill, font: Font | None = None) -> None:
+        for col in range(start_col, end_col + 1):
+            cell = worksheet.cell(row, col)
+            cell.fill = PatternFill("solid", fgColor=fill)
+            cell.font = font or header_font
+            cell.border = border
+            cell.alignment = center
+
+    def write_pair(row: int, col: int, label: str, value: object, number_format_value: str | None = None) -> None:
+        label_cell = worksheet.cell(row, col, label)
+        value_cell = worksheet.cell(row, col + 1, value)
+        label_cell.fill = PatternFill("solid", fgColor=pale_blue)
+        label_cell.font = header_font
+        value_cell.fill = PatternFill("solid", fgColor="FFFFFF")
+        for cell in (label_cell, value_cell):
+            cell.border = border
+            cell.alignment = left if cell is label_cell else right
+        if number_format_value:
+            value_cell.number_format = number_format_value
+
+    created_at = datetime.now().strftime("%Y-%m-%d %H:%M")
+    summary = result.get("summary") if isinstance(result.get("summary"), dict) else {}
+    charges = result.get("charges") if isinstance(result.get("charges"), dict) else {}
+    products = result.get("products") if isinstance(result.get("products"), list) else []
+    allocation_basis = str(result.get("basis") or payload.get("allocation_basis") or "amount")
+    include_import_vat = bool(result.get("include_import_vat"))
+    include_service_vat = bool(result.get("include_service_vat"))
+
+    worksheet.merge_cells("A1:H1")
+    worksheet["A1"] = "수입 원가 계산 보고서"
+    worksheet["A1"].font = title_font
+    worksheet["A1"].alignment = left
+    worksheet["A1"].fill = PatternFill("solid", fgColor="FFFFFF")
+    worksheet.row_dimensions[1].height = 28
+
+    worksheet.merge_cells("A2:H2")
+    worksheet["A2"] = f"생성일시: {created_at}"
+    worksheet["A2"].font = Font(color="475569")
+    worksheet["A2"].alignment = left
+
+    section_row = 4
+    worksheet.merge_cells(start_row=section_row, start_column=1, end_row=section_row, end_column=8)
+    worksheet.cell(section_row, 1, "기본 정보")
+    style_range(section_row, 1, 8, navy, white_font)
+    write_pair(5, 1, "HBL/컨테이너 번호", str(payload.get("hbl_no") or ""))
+    write_pair(5, 5, "Invoice No.", str(payload.get("invoice_no") or ""))
+    write_pair(6, 1, "송금환율", float(import_cost_decimal(payload.get("remittance_rate"))), number_format)
+    write_pair(6, 5, "배부 기준", IMPORT_COST_ALLOCATION_LABELS.get(allocation_basis, allocation_basis))
+
+    worksheet.merge_cells("A8:H8")
+    worksheet["A8"] = "계산 요약"
+    style_range(8, 1, 8, blue, white_font)
+    summary_rows = [
+        ("인보이스 합계", float(summary.get("invoice_total_usd") or 0), usd_format),
+        ("송금 기준 매입원가", int(summary.get("purchase_total_krw") or 0), money_format),
+        ("배부 비용 합계", int(summary.get("allocated_cost_total") or 0), money_format),
+        ("제품 수입원가 합계", int(summary.get("landed_total") or 0), money_format),
+    ]
+    for index, (label, value, fmt) in enumerate(summary_rows):
+        col = 1 + index * 2
+        write_pair(9, col, label, value, fmt)
+
+    worksheet.merge_cells("A11:H11")
+    worksheet["A11"] = "정산 비용"
+    style_range(11, 1, 8, blue, white_font)
+    charge_headers = ["항목", "입력 금액", "원가 반영 금액", "원가 포함 여부", "비고"]
+    for col, header in enumerate(charge_headers, start=1):
+        cell = worksheet.cell(12, col, header)
+        cell.fill = PatternFill("solid", fgColor=pale_blue)
+        cell.font = header_font
+        cell.border = border
+        cell.alignment = center
+    charge_row = 13
+    for key, label, always_include in IMPORT_COST_CHARGE_REPORT_ROWS:
+        input_amount = import_cost_report_input_charge(payload, key)
+        applied_amount = int(charges.get(key) or 0)
+        if key == "import_vat":
+            included_text = "포함" if include_import_vat else "제외"
+            note = "체크 여부에 따라 원가 반영"
+        elif key == "service_vat":
+            included_text = "포함" if include_service_vat else "제외"
+            note = "체크 여부에 따라 원가 반영"
+        else:
+            included_text = "포함" if always_include else "제외"
+            note = ""
+        values = [label, input_amount, applied_amount, included_text, note]
+        for col, value in enumerate(values, start=1):
+            cell = worksheet.cell(charge_row, col, value)
+            cell.border = border
+            cell.alignment = right if col in {2, 3} else left
+            if col in {2, 3}:
+                cell.number_format = money_format
+        charge_row += 1
+
+    product_start = charge_row + 2
+    worksheet.merge_cells(start_row=product_start, start_column=1, end_row=product_start, end_column=8)
+    worksheet.cell(product_start, 1, "제품별 원가 계산 결과")
+    style_range(product_start, 1, 8, blue, white_font)
+    headers = ["제품명", "수량", "단가 USD", "금액 USD", "매입원가", "배부비용", "총 수입원가", "개당 원가"]
+    for col, header in enumerate(headers, start=1):
+        cell = worksheet.cell(product_start + 1, col, header)
+        cell.fill = PatternFill("solid", fgColor=pale_blue)
+        cell.font = header_font
+        cell.border = border
+        cell.alignment = center
+    row_index = product_start + 2
+    for product in products:
+        row_values = [
+            str(product.get("name") or ""),
+            float(product.get("quantity") or 0),
+            float(product.get("unit_usd") or 0),
+            float(product.get("amount_usd") or 0),
+            int(product.get("purchase_krw") or 0),
+            int(product.get("allocated_cost") or 0),
+            int(product.get("landed_total") or 0),
+            float(product.get("landed_unit") or 0),
+        ]
+        for col, value in enumerate(row_values, start=1):
+            cell = worksheet.cell(row_index, col, value)
+            cell.border = border
+            cell.alignment = left if col == 1 else right
+            if col in {3, 4}:
+                cell.number_format = usd_format
+            elif col in {5, 6, 7, 8}:
+                cell.number_format = money_format
+            elif col == 2:
+                cell.number_format = number_format
+        row_index += 1
+
+    note_row = row_index + 1
+    worksheet.merge_cells(start_row=note_row, start_column=1, end_row=note_row, end_column=8)
+    worksheet.cell(note_row, 1, "참고: 제품별 배부비용은 선택한 배부 기준에 따라 계산되며, 원 단위 반올림으로 마지막 제품에서 차액을 조정합니다.")
+    worksheet.cell(note_row, 1).font = Font(color="475569")
+    worksheet.cell(note_row, 1).alignment = left
+
+    widths = [28, 16, 14, 16, 18, 18, 18, 18]
+    for index, width in enumerate(widths, start=1):
+        worksheet.column_dimensions[get_column_letter(index)].width = width
+    worksheet.freeze_panes = "A13"
+
+    stream = BytesIO()
+    workbook.save(stream)
+    return stream.getvalue()
 
 
 def import_cost_cell_text(value: object) -> str:
@@ -39530,6 +39757,30 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                     self.send_json({"error": str(exc)}, status=400)
                     return
                 self.send_json(result)
+                return
+
+            if self.path == "/api/import-cost-report-export":
+                if not can_view_import_cost_program(user):
+                    self.send_json({"error": "수입 원가 계산 권한이 없습니다."}, status=403)
+                    return
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(length).decode("utf-8") or "{}")
+                if not isinstance(payload, dict):
+                    self.send_json({"error": "보고서 생성 요청이 올바르지 않습니다."}, status=400)
+                    return
+                try:
+                    result = calculate_import_cost(payload)
+                    data = import_cost_report_workbook_bytes(payload, result)
+                except ValueError as exc:
+                    self.send_json({"error": str(exc)}, status=400)
+                    return
+                filename = quote(f"수입원가_계산보고서_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx")
+                self.send_response(200)
+                self.send_header("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+                self.send_header("Content-Disposition", f"attachment; filename*=UTF-8''{filename}")
+                self.send_header("Content-Length", str(len(data)))
+                self.end_headers()
+                self.wfile.write(data)
                 return
 
             if self.path == "/api/internal-message-save":

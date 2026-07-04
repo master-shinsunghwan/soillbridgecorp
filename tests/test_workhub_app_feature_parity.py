@@ -5,8 +5,9 @@ import os
 import sys
 import tempfile
 import unittest
+from io import BytesIO
 from pathlib import Path
-from openpyxl import Workbook
+from openpyxl import Workbook, load_workbook
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -1158,6 +1159,10 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         self.assertIn("function renderImportCostChargeSummary", admin_html)
         self.assertIn("D/O/운임비", admin_html)
         self.assertIn("function setImportCostRunStatus", admin_html)
+        self.assertIn('id="importCostExportReport"', admin_html)
+        self.assertIn("function exportImportCostReport", admin_html)
+        self.assertIn('"/api/import-cost-report-export"', admin_html)
+        self.assertIn('await downloadWorkbookResponse(response, "수입원가_계산보고서.xlsx")', admin_html)
         self.assertIn('setImportCostRunStatus("running"', admin_html)
         self.assertIn('setImportCostRunStatus("done"', admin_html)
         self.assertIn('setImportCostRunStatus("error"', admin_html)
@@ -1190,6 +1195,48 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         self.assertEqual(result["summary"]["allocated_cost_total"], 2289195)
         self.assertEqual(result["products"][0]["landed_total"], 25086082)
         self.assertEqual(result["products"][0]["landed_unit"], 6295.13)
+
+    def test_import_cost_report_workbook_contains_summary_charges_and_product_rows(self) -> None:
+        app = self.load_app()
+        payload = {
+            "hbl_no": "XLTNGB26040216",
+            "invoice_no": "SXT20260420",
+            "remittance_rate": "1482.04",
+            "allocation_basis": "amount",
+            "doc_fee": "2191192",
+            "duty": "0",
+            "broker_fee": "53240",
+            "other_cost": "",
+            "import_vat": "2418290",
+            "service_vat": "49603",
+            "include_import_vat": True,
+            "include_service_vat": True,
+            "products": [{
+                "name": "28CM POT",
+                "quantity": "3985",
+                "unit_usd": "3.86",
+                "amount_usd": "15382.10",
+                "gross_weight": "6463.7",
+                "cbm": "68",
+            }],
+        }
+
+        result = app.calculate_import_cost(payload)
+        data = app.import_cost_report_workbook_bytes(payload, result)
+        workbook = load_workbook(BytesIO(data), data_only=True)
+        try:
+            sheet = workbook["수입원가 계산보고서"]
+            values = [cell.value for row in sheet.iter_rows() for cell in row if cell.value is not None]
+            self.assertIn("수입 원가 계산 보고서", values)
+            self.assertIn("HBL/컨테이너 번호", values)
+            self.assertIn("XLTNGB26040216", values)
+            self.assertIn("정산 비용", values)
+            self.assertIn("D/O/운임비", values)
+            self.assertIn("제품별 원가 계산 결과", values)
+            self.assertIn("28CM POT", values)
+            self.assertIn(result["summary"]["landed_total"], values)
+        finally:
+            workbook.close()
 
     def test_import_cost_upload_analysis_reads_invoice_and_packing_files(self) -> None:
         app = self.load_app()
