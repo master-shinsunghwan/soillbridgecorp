@@ -593,6 +593,10 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
 
         self.assertIn('id="automationCenterOpen"', html_source)
         self.assertIn('id="automationCenterPopup"', html_source)
+        self.assertIn("automation-center-popup", html_source)
+        self.assertIn("automation-center-body", html_source)
+        self.assertIn("function canViewAutomationCenter()", html_source)
+        self.assertIn("can_view_automation_center", html_source)
         self.assertIn("/api/automation-center", html_source)
         self.assertIn("/api/automation-center-preview", html_source)
         self.assertIn("/api/automation-center-execute", html_source)

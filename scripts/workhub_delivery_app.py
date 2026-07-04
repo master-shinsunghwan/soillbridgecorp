@@ -5389,6 +5389,9 @@ HTML = r"""<!doctype html>
       display: grid;
       gap: 10px;
     }
+    .automation-overview-card.permission-hidden {
+      display: none;
+    }
     .automation-overview-status {
       border-radius: 999px;
       padding: 3px 8px;
@@ -5408,6 +5411,9 @@ HTML = r"""<!doctype html>
       gap: 7px;
     }
     .automation-overview-item {
+      appearance: none;
+      width: 100%;
+      text-align: left;
       display: grid;
       grid-template-columns: 86px minmax(0, 1fr);
       gap: 8px;
@@ -5416,6 +5422,16 @@ HTML = r"""<!doctype html>
       border: 1px solid #e2e8f0;
       border-radius: 8px;
       background: #f8fafc;
+      color: inherit;
+    }
+    button.automation-overview-item {
+      cursor: pointer;
+    }
+    button.automation-overview-item:hover,
+    .automation-overview-item.active {
+      border-color: #2563eb;
+      background: #eff6ff;
+      box-shadow: 0 0 0 2px rgba(37, 99, 235, .08);
     }
     .automation-overview-item.warning,
     .automation-overview-item.critical {
@@ -5439,6 +5455,85 @@ HTML = r"""<!doctype html>
       margin-top: 2px;
       color: #64748b;
       font-weight: 800;
+    }
+    .automation-center-popup {
+      width: min(1120px, calc(100vw - 56px));
+      max-height: min(860px, calc(100vh - 48px));
+      padding: 0;
+      overflow: hidden;
+      border-radius: 12px;
+      border: 1px solid #cbd5e1;
+      background: #f8fafc;
+      box-shadow: 0 24px 72px rgba(15, 23, 42, .22);
+    }
+    .automation-center-popup .notice-popup-head {
+      height: 58px;
+      padding: 0 18px 0 22px;
+      background: #eef4ff;
+      border-bottom: 1px solid #d8e3f8;
+    }
+    .automation-center-body {
+      height: calc(min(860px, calc(100vh - 48px)) - 58px);
+      display: grid;
+      grid-template-columns: 320px minmax(0, 1fr);
+      gap: 0;
+      overflow: hidden;
+    }
+    .automation-center-sidebar {
+      padding: 14px;
+      border-right: 1px solid #dbe4f0;
+      background: #f1f5fb;
+      overflow-y: auto;
+    }
+    .automation-center-main {
+      padding: 16px;
+      display: grid;
+      grid-template-rows: auto auto auto minmax(0, 1fr);
+      gap: 12px;
+      overflow: hidden;
+      background: #ffffff;
+    }
+    .automation-center-title {
+      font-size: 13px;
+      font-weight: 950;
+      color: #0f172a;
+    }
+    .automation-center-controls {
+      display: grid;
+      grid-template-columns: 150px minmax(0, 1fr) minmax(0, 1fr);
+      gap: 8px;
+    }
+    .automation-center-controls input,
+    .automation-center-controls select {
+      height: 36px;
+      border: 1px solid #cbd5e1;
+      border-radius: 8px;
+      padding: 0 10px;
+      font-size: 12px;
+      font-weight: 800;
+      background: #fff;
+    }
+    .automation-center-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+    }
+    .automation-center-message {
+      min-height: 34px;
+      padding: 9px 11px;
+      border: 1px solid #dbeafe;
+      border-radius: 8px;
+      background: #eff6ff;
+      color: #1e3a8a;
+      font-size: 12px;
+      font-weight: 850;
+    }
+    .automation-preview-panel {
+      min-height: 0;
+      overflow: auto;
+      border: 1px solid #dbe4f0;
+      border-radius: 8px;
+      background: #fff;
     }
     .company-notice {
       margin: 0;
@@ -10278,40 +10373,36 @@ HTML = r"""<!doctype html>
   </div>
 
   <div class="notice-popup-backdrop" id="automationCenterPopup" aria-hidden="true">
-    <div class="notice-popup sales-detail-popup expanded" role="dialog" aria-modal="true" aria-labelledby="automationCenterTitle">
+    <div class="notice-popup automation-center-popup" role="dialog" aria-modal="true" aria-labelledby="automationCenterTitle">
       <div class="notice-popup-head">
         <span id="automationCenterTitle">업무 자동화 실행</span>
         <button class="close popup-close-button" id="automationCenterClose" type="button" aria-label="닫기"><i data-lucide="x"></i></button>
       </div>
-      <div class="sales-detail-body multi-section" id="automationCenterBody">
-        <div class="sales-detail-sections">
-          <section class="sales-detail-section">
-            <div class="sales-detail-section-title">자동화 기능</div>
-            <div class="sales-table-scroll">
-              <div class="automation-overview-list" id="automationActionList"></div>
-            </div>
-          </section>
-          <section class="sales-detail-section">
-            <div class="sales-detail-section-title">조건 및 미리보기</div>
-            <div class="notice-template-grid">
-              <select id="automationBulkField">
-                <option value="sales_vendor">매출처</option>
-                <option value="purchase_vendor">매입처</option>
-                <option value="product_name">상품명</option>
-                <option value="courier">택배사</option>
-                <option value="memo">메모</option>
-              </select>
-              <input id="automationBulkFind" type="text" placeholder="찾을 값" />
-              <input id="automationBulkReplace" type="text" placeholder="바꿀 값" />
-            </div>
-            <div class="notice-template-actions">
-              <button class="workspace-button" type="button" id="automationPreviewButton">미리보기</button>
-              <button class="workspace-button" type="button" id="automationExecuteButton">승인 실행</button>
-            </div>
-            <div class="admin-message" id="automationCenterMessage">기능을 선택하면 미리보기가 표시됩니다.</div>
-            <div class="sales-table-scroll" id="automationPreviewPanel"></div>
-          </section>
-        </div>
+      <div class="automation-center-body" id="automationCenterBody">
+        <aside class="automation-center-sidebar">
+          <div class="automation-center-title">자동화 기능</div>
+          <div class="automation-overview-list" id="automationActionList"></div>
+        </aside>
+        <section class="automation-center-main">
+          <div class="automation-center-title">조건 및 미리보기</div>
+          <div class="automation-center-controls">
+            <select id="automationBulkField">
+              <option value="sales_vendor">매출처</option>
+              <option value="purchase_vendor">매입처</option>
+              <option value="product_name">상품명</option>
+              <option value="courier">택배사</option>
+              <option value="memo">메모</option>
+            </select>
+            <input id="automationBulkFind" type="text" placeholder="찾을 값" />
+            <input id="automationBulkReplace" type="text" placeholder="바꿀 값" />
+          </div>
+          <div class="automation-center-actions">
+            <button class="workspace-button" type="button" id="automationPreviewButton">미리보기</button>
+            <button class="workspace-button" type="button" id="automationExecuteButton">승인 실행</button>
+          </div>
+          <div class="automation-center-message" id="automationCenterMessage">기능을 선택하면 미리보기가 표시됩니다.</div>
+          <div class="automation-preview-panel" id="automationPreviewPanel"></div>
+        </section>
       </div>
     </div>
   </div>
@@ -11243,6 +11334,15 @@ HTML = r"""<!doctype html>
       return can("notice_manage") || can("import_shipment_manage");
     }
 
+    function canViewAutomationCenter() {
+      const username = String(currentUser.username || "").trim();
+      const displayName = String(currentUser.display_name || "").trim();
+      return currentUser.role === "admin"
+        || username === "신성환 실장"
+        || displayName === "신성환 실장"
+        || displayName.startsWith("신성환");
+    }
+
     function permissionLabel(permission) {
       return permissionLabels[permission] || permission;
     }
@@ -11288,6 +11388,7 @@ HTML = r"""<!doctype html>
       document.querySelectorAll('[data-open="hermes"]').forEach((button) => setHidden(button, !can("hermes_use")));
       document.querySelectorAll('[data-hermes-tab="automation"], [data-hermes-tab-button="automation"]').forEach((button) => setHidden(button, !can("hermes_automation")));
       document.querySelectorAll('[data-hermes-tab="settings"], [data-hermes-tab-button="settings"]').forEach((button) => setHidden(button, !can("hermes_admin")));
+      setHidden(document.querySelector("#automationOverviewCard"), !canViewAutomationCenter());
       setHidden(crmAccountQuick, !can("crm_view"));
       setHidden(crmTaskQuick, !can("crm_manage"));
       setHidden(crmAccountForm, !can("crm_manage"));
@@ -16316,6 +16417,12 @@ HTML = r"""<!doctype html>
           </button>
         `).join("")
         : '<div class="automation-overview-item"><div class="automation-overview-label">대기</div><div class="automation-overview-text">사용 가능한 자동화 기능이 없습니다.</div></div>';
+      updateAutomationConditionVisibility();
+    }
+
+    function updateAutomationConditionVisibility() {
+      const controls = automationBulkField?.closest(".automation-center-controls");
+      if (controls) controls.hidden = activeAutomationAction !== "bulk_db_change";
     }
 
     function automationValueText(value) {
@@ -16393,6 +16500,7 @@ HTML = r"""<!doctype html>
     }
 
     function openAutomationCenterPopup() {
+      if (!canViewAutomationCenter()) return;
       automationCenterPopup?.classList.add("open");
       automationCenterPopup?.setAttribute("aria-hidden", "false");
       loadAutomationCenter().catch((error) => {
@@ -16406,7 +16514,8 @@ HTML = r"""<!doctype html>
     }
 
     async function loadDashboardEntryData() {
-      const tasks = [loadPortalNotices(), loadImportShipments(), loadCargoShipments(), loadDashboardSalesSummary(), loadAutomationOverview()];
+      const tasks = [loadPortalNotices(), loadImportShipments(), loadCargoShipments(), loadDashboardSalesSummary()];
+      if (canViewAutomationCenter()) tasks.push(loadAutomationOverview());
       tasks.push(loadCompanyCalendar().catch(() => {
         if (companyCalendarGrid) companyCalendarGrid.innerHTML = `<div class="calendar-empty">캘린더를 불러오지 못했습니다.</div>`;
       }));
@@ -26931,6 +27040,8 @@ def user_can_use_action(user: dict[str, str], action: dict[str, object]) -> bool
 
 
 def automation_center_payload(user: dict[str, str]) -> dict[str, object]:
+    if not can_view_automation_center(user):
+        raise PermissionError("업무 자동화 실행 권한이 없습니다.")
     actions = [
         {
             "id": action["id"],
@@ -26944,6 +27055,8 @@ def automation_center_payload(user: dict[str, str]) -> dict[str, object]:
 
 
 def automation_action_config(action_id: str, user: dict[str, str]) -> dict[str, object]:
+    if not can_view_automation_center(user):
+        raise PermissionError("업무 자동화 실행 권한이 없습니다.")
     for action in AUTOMATION_CENTER_ACTIONS:
         if action["id"] == action_id:
             if not user_can_use_action(user, action):
@@ -28446,6 +28559,16 @@ def sales_report_alert_sender_id(connection: sqlite3.Connection) -> int | None:
     if not row:
         return None
     return int(row["id"])
+
+
+def can_view_automation_center(user: dict[str, object] | None) -> bool:
+    if not user:
+        return False
+    if str(user.get("role") or "") == "admin":
+        return True
+    username = str(user.get("username") or "").strip()
+    display_name = str(user.get("display_name") or "").strip()
+    return username == "신성환 실장" or display_name == "신성환 실장" or display_name.startswith("신성환")
 
 
 def maybe_send_sales_report_upload_alert(now: datetime | None = None) -> bool:
@@ -36433,14 +36556,14 @@ class WorkhubHandler(BaseHTTPRequestHandler):
             return
 
         if self.path == "/api/automation-overview":
-            if not any(user_has_permission(user, permission) for permission in ("crm_view", "ledger_edit", "hermes_use")):
+            if not can_view_automation_center(user):
                 self.send_json({"error": "업무 자동화 점검 권한이 없습니다."}, status=403)
                 return
             self.send_json(workhub_automation_overview(user))
             return
 
         if self.path == "/api/automation-center":
-            if not any(user_has_permission(user, permission) for permission in ("ledger_edit", "mail_send", "notice_manage", "backup_manage")):
+            if not can_view_automation_center(user):
                 self.send_json({"error": "업무 자동화 실행 권한이 없습니다."}, status=403)
                 return
             self.send_json(automation_center_payload(user))
@@ -37335,7 +37458,7 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                 return
 
             if self.path == "/api/automation-center-preview":
-                if not any(user_has_permission(user, permission) for permission in ("ledger_edit", "mail_send", "notice_manage", "backup_manage")):
+                if not can_view_automation_center(user):
                     self.send_json({"error": "업무 자동화 실행 권한이 없습니다."}, status=403)
                     return
                 length = int(self.headers.get("Content-Length", "0"))
@@ -37346,7 +37469,7 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                 return
 
             if self.path == "/api/automation-center-execute":
-                if not any(user_has_permission(user, permission) for permission in ("ledger_edit", "mail_send", "notice_manage", "backup_manage")):
+                if not can_view_automation_center(user):
                     self.send_json({"error": "업무 자동화 실행 권한이 없습니다."}, status=403)
                     return
                 length = int(self.headers.get("Content-Length", "0"))

@@ -30,6 +30,26 @@ def admin_user() -> dict[str, object]:
     }
 
 
+def director_user() -> dict[str, object]:
+    return {
+        "id": 2,
+        "username": "ssh19",
+        "display_name": "신성환 실장",
+        "role": "user",
+        "permissions": ["ledger_edit", "mail_send", "notice_manage", "backup_manage"],
+    }
+
+
+def staff_user() -> dict[str, object]:
+    return {
+        "id": 3,
+        "username": "staff",
+        "display_name": "직원",
+        "role": "user",
+        "permissions": ["ledger_edit", "mail_send", "notice_manage", "backup_manage"],
+    }
+
+
 class WorkhubAutomationCenterTests(unittest.TestCase):
     def insert_management_record(self, app, **overrides) -> int:
         app.init_db()
@@ -75,6 +95,16 @@ class WorkhubAutomationCenterTests(unittest.TestCase):
             self.assertIn("cs_bulk_mail", action_ids)
             self.assertIn("notice_auto", action_ids)
             self.assertIn("backup_ops", action_ids)
+
+    def test_automation_center_visibility_is_limited_to_admin_and_director(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            app = load_app(Path(directory))
+
+            self.assertTrue(app.can_view_automation_center(admin_user()))
+            self.assertTrue(app.can_view_automation_center(director_user()))
+            self.assertFalse(app.can_view_automation_center(staff_user()))
+            with self.assertRaises(PermissionError):
+                app.automation_center_payload(staff_user())
 
     def test_management_rules_preview_and_execute_updates_records(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
