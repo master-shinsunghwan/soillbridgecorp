@@ -20,6 +20,7 @@ import secrets
 import tempfile
 import zipfile
 from copy import copy
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from io import BytesIO
 from datetime import date, datetime, timedelta
 from email.message import EmailMessage
@@ -2017,6 +2018,136 @@ HTML = r"""<!doctype html>
     #userAdminWorkspace.sales-report-only .admin-panel {
       flex: 0 0 auto;
       min-height: auto;
+    }
+    .import-cost-panel {
+      display: grid;
+      gap: 12px;
+      padding: 14px;
+      overflow-y: auto;
+    }
+    .import-cost-card {
+      display: grid;
+      gap: 12px;
+      padding: 14px;
+      border: 1px solid #d7e0ed;
+      border-radius: 8px;
+      background: #fbfcff;
+    }
+    .import-cost-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(160px, 1fr));
+      gap: 10px;
+    }
+    .import-cost-grid label,
+    .import-cost-table td label {
+      display: grid;
+      gap: 5px;
+      color: #475569;
+      font-size: 12px;
+      font-weight: 760;
+    }
+    .import-cost-grid input,
+    .import-cost-grid select,
+    .import-cost-table input {
+      width: 100%;
+      height: 34px;
+      border: 1px solid #cbd5e1;
+      border-radius: 7px;
+      padding: 0 9px;
+      background: #fff;
+      color: #0f172a;
+      font-size: 13px;
+    }
+    .import-cost-options {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      color: #334155;
+      font-size: 13px;
+      font-weight: 700;
+    }
+    .import-cost-options label {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .import-cost-table-wrap {
+      overflow-x: auto;
+      border: 1px solid #dce5f2;
+      border-radius: 8px;
+      background: #fff;
+    }
+    .import-cost-table {
+      width: 100%;
+      min-width: 840px;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+    .import-cost-table th,
+    .import-cost-table td {
+      border-bottom: 1px solid #e6edf6;
+      padding: 8px;
+      text-align: right;
+      white-space: nowrap;
+    }
+    .import-cost-table th:first-child,
+    .import-cost-table td:first-child {
+      text-align: left;
+    }
+    .import-cost-table th {
+      background: #eaf1fb;
+      color: #0f172a;
+      font-weight: 820;
+    }
+    .import-cost-table tbody tr:last-child td {
+      border-bottom: 0;
+    }
+    .import-cost-actions {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      flex-wrap: wrap;
+      color: #64748b;
+      font-size: 13px;
+      font-weight: 700;
+    }
+    .import-cost-summary {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(140px, 1fr));
+      gap: 8px;
+    }
+    .import-cost-summary-card {
+      padding: 10px 12px;
+      border: 1px solid #bfd3f7;
+      border-radius: 8px;
+      background: #f8fbff;
+    }
+    .import-cost-summary-card span {
+      display: block;
+      color: #64748b;
+      font-size: 12px;
+      font-weight: 760;
+    }
+    .import-cost-summary-card strong {
+      display: block;
+      margin-top: 3px;
+      color: #0f172a;
+      font-size: 18px;
+      font-weight: 880;
+    }
+    .import-cost-remove {
+      width: 34px;
+      min-width: 34px;
+      height: 30px;
+      border-radius: 7px;
+      font-size: 13px;
+    }
+    @media (max-width: 1100px) {
+      .import-cost-grid,
+      .import-cost-summary {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
     }
     .sales-dashboard {
       display: grid;
@@ -9639,6 +9770,7 @@ HTML = r"""<!doctype html>
         </div>
       </div>
       __SALES_REPORT_NAV__
+      __IMPORT_COST_NAV__
       <div class="nav-group" id="importNavGroup">
         <button class="nav-item" id="importNavToggle" type="button" data-open="import" data-nav-tone="import">
           <span class="nav-label"><i data-lucide="truck"></i> <span>수출입 업무 및 화물 입 출고 관리</span></span>
@@ -10453,6 +10585,7 @@ HTML = r"""<!doctype html>
       </section>
       __LEAVE_WORKSPACE__
       __ADMIN_WORKSPACE__
+      __IMPORT_COST_WORKSPACE__
       __BACKUP_WORKSPACE__
       __SYSTEM_WORKSPACE__
     </main>
@@ -11498,6 +11631,10 @@ HTML = r"""<!doctype html>
         || displayName.startsWith("신성환");
     }
 
+    function canViewImportCostProgram() {
+      return canViewAutomationCenter();
+    }
+
     function permissionLabel(permission) {
       return permissionLabels[permission] || permission;
     }
@@ -11954,6 +12091,14 @@ HTML = r"""<!doctype html>
     const managementWorkspace = document.querySelector("#managementWorkspace");
     const ledgerWorkspace = document.querySelector("#ledgerWorkspace");
     const importWorkspace = document.querySelector("#importWorkspace");
+    const importCostWorkspace = document.querySelector("#importCostWorkspace");
+    const importCostAddProduct = document.querySelector("#importCostAddProduct");
+    const importCostReset = document.querySelector("#importCostReset");
+    const importCostCalculate = document.querySelector("#importCostCalculate");
+    const importCostProductBody = document.querySelector("#importCostProductBody");
+    const importCostResultBody = document.querySelector("#importCostResultBody");
+    const importCostSummary = document.querySelector("#importCostSummary");
+    const importCostMessage = document.querySelector("#importCostMessage");
     const orderWorkspace = document.querySelector("#orderWorkspace");
     const orderWorkspaceTitle = document.querySelector("#orderWorkspaceTitle");
     const orderWorkspacePanelTitle = document.querySelector("#orderWorkspacePanelTitle");
@@ -15476,6 +15621,129 @@ HTML = r"""<!doctype html>
         .replaceAll("<", "&lt;")
         .replaceAll(">", "&gt;")
         .replaceAll('"', "&quot;");
+    }
+
+    function formatImportCostWon(value) {
+      const number = Number(value || 0);
+      return `${number.toLocaleString("ko-KR", { maximumFractionDigits: 0 })}원`;
+    }
+
+    function formatImportCostUsd(value) {
+      const number = Number(value || 0);
+      return `$${number.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    }
+
+    function importCostInputValue(id) {
+      return document.querySelector(`#${id}`)?.value || "";
+    }
+
+    function addImportCostProductRow(product = {}) {
+      if (!importCostProductBody) return;
+      const row = document.createElement("tr");
+      row.innerHTML = `
+        <td><input data-import-cost-field="name" type="text" value="${escapeHtml(product.name || "")}" placeholder="제품명" /></td>
+        <td><input data-import-cost-field="quantity" type="number" min="0" step="1" value="${escapeHtml(product.quantity || "")}" /></td>
+        <td><input data-import-cost-field="unit_usd" type="number" min="0" step="0.0001" value="${escapeHtml(product.unit_usd || "")}" /></td>
+        <td><input data-import-cost-field="amount_usd" type="number" min="0" step="0.01" value="${escapeHtml(product.amount_usd || "")}" /></td>
+        <td><input data-import-cost-field="gross_weight" type="number" min="0" step="0.0001" value="${escapeHtml(product.gross_weight || "")}" /></td>
+        <td><input data-import-cost-field="cbm" type="number" min="0" step="0.0001" value="${escapeHtml(product.cbm || "")}" /></td>
+        <td><button class="btn import-cost-remove" type="button" data-import-cost-remove>삭제</button></td>
+      `;
+      importCostProductBody.appendChild(row);
+    }
+
+    function collectImportCostPayload() {
+      const products = [...(importCostProductBody?.querySelectorAll("tr") || [])].map((row) => {
+        const product = {};
+        row.querySelectorAll("[data-import-cost-field]").forEach((input) => {
+          product[input.dataset.importCostField] = input.value;
+        });
+        return product;
+      }).filter((product) => Object.values(product).some((value) => String(value || "").trim()));
+      return {
+        hbl_no: importCostInputValue("importCostHbl"),
+        invoice_no: importCostInputValue("importCostInvoiceNo"),
+        remittance_rate: importCostInputValue("importCostRemittanceRate"),
+        allocation_basis: importCostInputValue("importCostAllocationBasis"),
+        doc_fee: importCostInputValue("importCostDocFee"),
+        duty: importCostInputValue("importCostDuty"),
+        broker_fee: importCostInputValue("importCostBrokerFee"),
+        other_cost: importCostInputValue("importCostOtherCost"),
+        import_vat: importCostInputValue("importCostImportVat"),
+        service_vat: importCostInputValue("importCostServiceVat"),
+        include_import_vat: Boolean(document.querySelector("#importCostIncludeImportVat")?.checked),
+        include_service_vat: Boolean(document.querySelector("#importCostIncludeServiceVat")?.checked),
+        products,
+      };
+    }
+
+    function renderImportCostResult(data) {
+      const summary = data.summary || {};
+      if (importCostSummary) {
+        const cards = [
+          ["인보이스 합계", formatImportCostUsd(summary.invoice_total_usd)],
+          ["송금 기준 매입원가", formatImportCostWon(summary.purchase_total_krw)],
+          ["배부 비용 합계", formatImportCostWon(summary.allocated_cost_total)],
+          ["제품 수입원가 합계", formatImportCostWon(summary.landed_total)],
+        ];
+        importCostSummary.innerHTML = cards.map(([label, value]) => `
+          <div class="import-cost-summary-card"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></div>
+        `).join("");
+      }
+      if (importCostResultBody) {
+        const rows = data.products || [];
+        importCostResultBody.innerHTML = rows.length ? rows.map((row) => `
+          <tr>
+            <td>${escapeHtml(row.name || "")}</td>
+            <td>${Number(row.quantity || 0).toLocaleString("ko-KR")}</td>
+            <td>${formatImportCostWon(row.purchase_krw)}</td>
+            <td>${formatImportCostWon(row.allocated_cost)}</td>
+            <td>${formatImportCostWon(row.landed_total)}</td>
+            <td><strong>${formatImportCostWon(row.landed_unit)}</strong></td>
+            <td>${Number(row.allocation_ratio || 0).toLocaleString("ko-KR", { maximumFractionDigits: 2 })}%</td>
+          </tr>
+        `).join("") : `<tr><td colspan="7" class="empty">계산 결과가 없습니다.</td></tr>`;
+      }
+    }
+
+    async function calculateImportCost() {
+      if (!importCostMessage || !canViewImportCostProgram()) return;
+      importCostMessage.textContent = "제품별 수입원가를 계산하는 중입니다.";
+      try {
+        const response = await fetch("/api/import-cost-calculate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(collectImportCostPayload()),
+        });
+        const data = await response.json();
+        if (!response.ok || data.error) throw new Error(data.error || "수입원가 계산에 실패했습니다.");
+        renderImportCostResult(data);
+        importCostMessage.textContent = "제품별 수입원가 계산이 완료됐습니다.";
+      } catch (error) {
+        importCostMessage.textContent = error.message || "수입원가 계산에 실패했습니다.";
+      }
+    }
+
+    function resetImportCostProgram() {
+      if (!importCostWorkspace) return;
+      importCostWorkspace.querySelectorAll("input").forEach((input) => {
+        if (input.type === "checkbox") input.checked = false;
+        else input.value = "";
+      });
+      const basis = document.querySelector("#importCostAllocationBasis");
+      if (basis) basis.value = "amount";
+      if (importCostProductBody) importCostProductBody.innerHTML = "";
+      addImportCostProductRow({
+        name: "28CM POT",
+        quantity: "3985",
+        unit_usd: "3.86",
+        amount_usd: "15382.10",
+        gross_weight: "6463.7",
+        cbm: "68",
+      });
+      if (importCostSummary) importCostSummary.innerHTML = "";
+      if (importCostResultBody) importCostResultBody.innerHTML = `<tr><td colspan="7" class="empty">계산 전입니다.</td></tr>`;
+      if (importCostMessage) importCostMessage.textContent = "인보이스와 패킹리스트 값을 입력해주세요.";
     }
 
     function crmStatusClass(status) {
@@ -22346,6 +22614,11 @@ HTML = r"""<!doctype html>
         document.querySelector("#ledgerNavGroup")?.classList.add("open");
         return;
       }
+      if (mode === "importCost") {
+        document.querySelector("#importCostNavToggle")?.classList.add("active");
+        document.querySelector("#importCostNavGroup")?.classList.add("open");
+        return;
+      }
       if (mode === "salesReport") {
         document.querySelector("#salesReportNavToggle")?.classList.add("active");
         document.querySelector("#salesReportNavGroup")?.classList.add("open");
@@ -22368,6 +22641,7 @@ HTML = r"""<!doctype html>
       if (mode === "fileLibrary" && !fileLibraryWorkspace) mode = "dashboard";
       if (mode === "crm" && !can("crm_view")) mode = "dashboard";
       if (mode === "hermes" && (!hermesWorkspace || !can("hermes_use"))) mode = "dashboard";
+      if (mode === "importCost" && (!importCostWorkspace || !canViewImportCostProgram())) mode = "dashboard";
       currentMode = mode;
       updateTopbarSearchPlaceholder(mode);
       const showImport = mode === "import";
@@ -22375,6 +22649,7 @@ HTML = r"""<!doctype html>
       const showLedger = mode === "ledger";
       const showCrm = mode === "crm";
       const showHermes = mode === "hermes";
+      const showImportCost = mode === "importCost" && Boolean(importCostWorkspace);
       const showLeave = mode === "leave";
       const showFileLibrary = mode === "fileLibrary" && Boolean(fileLibraryWorkspace);
       const showUserAdmin = mode === "userAdmin" && Boolean(userAdminWorkspace);
@@ -22384,6 +22659,7 @@ HTML = r"""<!doctype html>
       document.querySelector("main")?.classList.toggle(
         "workspace-scroll-mode",
         showUserAdmin || showBackup || showSystemUpdate
+        || showImportCost
       );
       dashboardContent.style.display = mode === "dashboard" ? "" : "none";
       if (importWorkspace) importWorkspace.classList.toggle("active", showImport);
@@ -22393,6 +22669,7 @@ HTML = r"""<!doctype html>
       ledgerWorkspace.classList.toggle("active", showLedger);
       crmWorkspace.classList.toggle("active", showCrm);
       if (hermesWorkspace) hermesWorkspace.classList.toggle("active", showHermes);
+      if (importCostWorkspace) importCostWorkspace.classList.toggle("active", showImportCost);
       if (leaveWorkspace) leaveWorkspace.classList.toggle("active", showLeave);
       if (userAdminWorkspace) {
         userAdminWorkspace.classList.toggle("active", showUserAdmin || showSalesReport);
@@ -22433,6 +22710,10 @@ HTML = r"""<!doctype html>
         setPageTitle("수출입 업무 및 화물 입 출고 관리");
         closeLedgerFilter();
         loadImportShipments();
+      } else if (showImportCost) {
+        setPageTitle("수입 원가 계산");
+        closeLedgerFilter();
+        if (!importCostProductBody?.querySelector("tr")) resetImportCostProgram();
       } else if (showFileLibrary) {
         setPageTitle("업무 파일 자료실");
         closeLedgerFilter();
@@ -22483,6 +22764,7 @@ HTML = r"""<!doctype html>
       else if (mode === "ledger") topbarSearchInput.placeholder = "수령인, 송장번호, CS내용 검색";
       else if (mode === "crm") topbarSearchInput.placeholder = "업무명, 직원, 번호 검색";
       else if (mode === "hermes") topbarSearchInput.placeholder = "헤르메스 업무채팅 내용 입력";
+      else if (mode === "importCost") topbarSearchInput.placeholder = "HBL, 인보이스, 제품명 검색";
       else topbarSearchInput.placeholder = "검색어 입력 시 CS 처리대장 조회";
     }
 
@@ -23537,6 +23819,18 @@ HTML = r"""<!doctype html>
     document.querySelector("#salesReportNavToggle")?.addEventListener("click", () => {
       showWorkspace("salesReport");
     });
+    document.querySelector("#importCostNavToggle")?.addEventListener("click", () => {
+      showWorkspace("importCost");
+    });
+    importCostAddProduct?.addEventListener("click", () => addImportCostProductRow());
+    importCostReset?.addEventListener("click", resetImportCostProgram);
+    importCostCalculate?.addEventListener("click", calculateImportCost);
+    importCostProductBody?.addEventListener("click", (event) => {
+      const button = event.target.closest("[data-import-cost-remove]");
+      if (!button) return;
+      button.closest("tr")?.remove();
+      if (!importCostProductBody.querySelector("tr")) addImportCostProductRow();
+    });
     salesReportTabButtons.forEach((button) => {
       button.setAttribute("role", "tab");
       button.addEventListener("click", () => setSalesReportTab(button.dataset.salesTab || "salesProduct"));
@@ -24276,7 +24570,7 @@ HTML = r"""<!doctype html>
     });
 
     const initialView = new URLSearchParams(window.location.search).get("view");
-    showWorkspace(["management", "ledger", "crm", "hermes", "import", "fileLibrary", "leave", "userAdmin", "salesReport", "backup", "systemUpdate"].includes(initialView) ? initialView : "dashboard");
+    showWorkspace(["management", "ledger", "crm", "hermes", "import", "importCost", "fileLibrary", "leave", "userAdmin", "salesReport", "backup", "systemUpdate"].includes(initialView) ? initialView : "dashboard");
   </script>
 </body>
 </html>
@@ -24498,6 +24792,124 @@ SALES_REPORT_NAV_HTML = r"""
           <span class="nav-label"><i data-lucide="bar-chart-3"></i> <span>매출현황 및 관리</span></span>
         </button>
       </div>
+"""
+
+IMPORT_COST_NAV_HTML = r"""
+      <div class="nav-group" id="importCostNavGroup">
+        <button class="nav-item" id="importCostNavToggle" type="button" data-open="importCost" data-nav-tone="import">
+          <span class="nav-label"><i data-lucide="circle-dollar-sign"></i> <span>수입 원가 계산</span></span>
+        </button>
+      </div>
+"""
+
+IMPORT_COST_WORKSPACE_HTML = r"""
+      <section class="workspace-view" id="importCostWorkspace">
+        <div class="workspace-head">
+          <div>
+            <div class="workspace-title">수입 원가 계산</div>
+            <div class="workspace-subtitle">송금환율 기준 매입원가와 정산서 비용을 제품별로 배부합니다.</div>
+          </div>
+          <div class="workspace-actions">
+            <button class="workspace-button" type="button" id="importCostAddProduct">제품 추가</button>
+            <button class="workspace-button ghost" type="button" id="importCostReset">초기화</button>
+          </div>
+        </div>
+        <div class="import-cost-panel">
+          <section class="import-cost-card">
+            <div class="admin-section-title">컨테이너/인보이스 기준</div>
+            <div class="import-cost-grid">
+              <label>HBL/컨테이너 번호
+                <input id="importCostHbl" type="text" placeholder="예) XLTNGB26040216" />
+              </label>
+              <label>Invoice No.
+                <input id="importCostInvoiceNo" type="text" placeholder="예) SXT20260420" />
+              </label>
+              <label>송금환율
+                <input id="importCostRemittanceRate" type="number" min="0" step="0.0001" placeholder="예) 1482.04" />
+              </label>
+              <label>배부 기준
+                <select id="importCostAllocationBasis">
+                  <option value="amount">인보이스 금액 기준</option>
+                  <option value="quantity">수량 기준</option>
+                  <option value="weight">총중량 기준</option>
+                  <option value="cbm">CBM 기준</option>
+                </select>
+              </label>
+            </div>
+          </section>
+          <section class="import-cost-card">
+            <div class="admin-section-title">정산서 비용</div>
+            <div class="import-cost-grid">
+              <label>DOC/FEE
+                <input id="importCostDocFee" type="number" min="0" step="1" />
+              </label>
+              <label>관세
+                <input id="importCostDuty" type="number" min="0" step="1" />
+              </label>
+              <label>통관수수료
+                <input id="importCostBrokerFee" type="number" min="0" step="1" />
+              </label>
+              <label>기타 비용
+                <input id="importCostOtherCost" type="number" min="0" step="1" />
+              </label>
+              <label>수입부가세
+                <input id="importCostImportVat" type="number" min="0" step="1" />
+              </label>
+              <label>수수료 부가세
+                <input id="importCostServiceVat" type="number" min="0" step="1" />
+              </label>
+            </div>
+            <div class="import-cost-options">
+              <label><input id="importCostIncludeImportVat" type="checkbox" /> 수입부가세를 제품 원가에 포함</label>
+              <label><input id="importCostIncludeServiceVat" type="checkbox" /> 수수료 부가세를 제품 원가에 포함</label>
+            </div>
+            <div class="hint-line">부가세는 회계 처리 기준에 따라 공제 대상일 수 있어 기본값은 원가 제외입니다.</div>
+          </section>
+          <section class="import-cost-card import-cost-products-card">
+            <div class="admin-section-title">제품별 인보이스/패킹 라인</div>
+            <div class="import-cost-table-wrap">
+              <table class="import-cost-table">
+                <thead>
+                  <tr>
+                    <th>제품명</th>
+                    <th>수량</th>
+                    <th>단가 USD</th>
+                    <th>금액 USD</th>
+                    <th>총중량 KG</th>
+                    <th>CBM</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody id="importCostProductBody"></tbody>
+              </table>
+            </div>
+            <div class="import-cost-actions">
+              <button class="workspace-button" type="button" id="importCostCalculate">제품별 원가 계산</button>
+              <span id="importCostMessage">인보이스와 패킹리스트 값을 입력해주세요.</span>
+            </div>
+          </section>
+          <section class="import-cost-card">
+            <div class="admin-section-title">계산 결과</div>
+            <div class="import-cost-summary" id="importCostSummary"></div>
+            <div class="import-cost-table-wrap">
+              <table class="import-cost-table">
+                <thead>
+                  <tr>
+                    <th>제품명</th>
+                    <th>수량</th>
+                    <th>매입원가</th>
+                    <th>배부비용</th>
+                    <th>총 수입원가</th>
+                    <th>개당 원가</th>
+                    <th>배부율</th>
+                  </tr>
+                </thead>
+                <tbody id="importCostResultBody"></tbody>
+              </table>
+            </div>
+          </section>
+        </div>
+      </section>
 """
 
 SALES_REPORT_PRODUCT_EXCLUDE_PATTERN = "%★사입건★%"
@@ -29054,6 +29466,133 @@ def can_view_automation_center(user: dict[str, object] | None) -> bool:
     return username == "신성환 실장" or display_name == "신성환 실장" or display_name.startswith("신성환")
 
 
+def can_view_import_cost_program(user: dict[str, object] | None) -> bool:
+    return can_view_automation_center(user)
+
+
+def import_cost_decimal(value: object, default: str = "0") -> Decimal:
+    if value is None:
+        return Decimal(default)
+    text = str(value).strip().replace(",", "")
+    if not text:
+        return Decimal(default)
+    try:
+        return Decimal(text)
+    except InvalidOperation as exc:
+        raise ValueError(f"숫자 형식이 올바르지 않습니다: {value}") from exc
+
+
+def import_cost_money(value: Decimal) -> int:
+    return int(value.quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+
+
+def import_cost_unit(value: Decimal) -> float:
+    return float(value.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
+
+
+def calculate_import_cost(payload: dict) -> dict[str, object]:
+    products = payload.get("products")
+    if not isinstance(products, list) or not products:
+        raise ValueError("제품 라인을 1개 이상 입력해주세요.")
+    remittance_rate = import_cost_decimal(payload.get("remittance_rate"))
+    if remittance_rate <= 0:
+        raise ValueError("송금환율을 입력해주세요.")
+    allocation_basis = str(payload.get("allocation_basis") or "amount").strip() or "amount"
+    if allocation_basis not in {"amount", "quantity", "weight", "cbm"}:
+        allocation_basis = "amount"
+    include_import_vat = bool(payload.get("include_import_vat"))
+    include_service_vat = bool(payload.get("include_service_vat"))
+    charge_values = {
+        "doc_fee": import_cost_decimal(payload.get("doc_fee")),
+        "duty": import_cost_decimal(payload.get("duty")),
+        "broker_fee": import_cost_decimal(payload.get("broker_fee")),
+        "other_cost": import_cost_decimal(payload.get("other_cost")),
+        "import_vat": import_cost_decimal(payload.get("import_vat")) if include_import_vat else Decimal("0"),
+        "service_vat": import_cost_decimal(payload.get("service_vat")) if include_service_vat else Decimal("0"),
+    }
+    parsed_rows: list[dict[str, object]] = []
+    basis_total = Decimal("0")
+    invoice_total_usd = Decimal("0")
+    purchase_total_krw = Decimal("0")
+    for index, item in enumerate(products, start=1):
+        if not isinstance(item, dict):
+            raise ValueError(f"{index}번째 제품 라인이 올바르지 않습니다.")
+        name = str(item.get("name") or "").strip() or f"제품 {index}"
+        quantity = import_cost_decimal(item.get("quantity"))
+        unit_usd = import_cost_decimal(item.get("unit_usd"))
+        amount_usd = import_cost_decimal(item.get("amount_usd"))
+        if amount_usd <= 0 and quantity > 0 and unit_usd > 0:
+            amount_usd = quantity * unit_usd
+        if quantity <= 0:
+            raise ValueError(f"{name} 수량을 입력해주세요.")
+        if amount_usd <= 0:
+            raise ValueError(f"{name} 인보이스 금액을 입력해주세요.")
+        gross_weight = import_cost_decimal(item.get("gross_weight"))
+        cbm = import_cost_decimal(item.get("cbm"))
+        purchase_krw = amount_usd * remittance_rate
+        if allocation_basis == "quantity":
+            basis_value = quantity
+        elif allocation_basis == "weight":
+            basis_value = gross_weight
+        elif allocation_basis == "cbm":
+            basis_value = cbm
+        else:
+            basis_value = amount_usd
+        if basis_value <= 0:
+            basis_value = amount_usd
+        basis_total += basis_value
+        invoice_total_usd += amount_usd
+        purchase_total_krw += purchase_krw
+        parsed_rows.append({
+            "name": name,
+            "quantity": quantity,
+            "unit_usd": unit_usd if unit_usd > 0 else amount_usd / quantity,
+            "amount_usd": amount_usd,
+            "gross_weight": gross_weight,
+            "cbm": cbm,
+            "purchase_krw": purchase_krw,
+            "basis_value": basis_value,
+        })
+    if basis_total <= 0:
+        raise ValueError("배부 기준 합계가 0입니다.")
+    allocatable_total = sum(charge_values.values(), Decimal("0"))
+    result_rows: list[dict[str, object]] = []
+    allocated_running = Decimal("0")
+    for index, row in enumerate(parsed_rows, start=1):
+        ratio = Decimal(row["basis_value"]) / basis_total
+        if index == len(parsed_rows):
+            allocated = allocatable_total - allocated_running
+        else:
+            allocated = (allocatable_total * ratio).quantize(Decimal("1"), rounding=ROUND_HALF_UP)
+            allocated_running += allocated
+        landed_total = Decimal(row["purchase_krw"]) + allocated
+        quantity = Decimal(row["quantity"])
+        result_rows.append({
+            "name": row["name"],
+            "quantity": import_cost_unit(quantity),
+            "unit_usd": import_cost_unit(Decimal(row["unit_usd"])),
+            "amount_usd": import_cost_unit(Decimal(row["amount_usd"])),
+            "purchase_krw": import_cost_money(Decimal(row["purchase_krw"])),
+            "allocated_cost": import_cost_money(allocated),
+            "landed_total": import_cost_money(landed_total),
+            "landed_unit": import_cost_unit(landed_total / quantity),
+            "allocation_ratio": import_cost_unit(ratio * Decimal("100")),
+        })
+    return {
+        "basis": allocation_basis,
+        "include_import_vat": include_import_vat,
+        "include_service_vat": include_service_vat,
+        "summary": {
+            "invoice_total_usd": import_cost_unit(invoice_total_usd),
+            "purchase_total_krw": import_cost_money(purchase_total_krw),
+            "allocated_cost_total": import_cost_money(allocatable_total),
+            "landed_total": import_cost_money(purchase_total_krw + allocatable_total),
+        },
+        "charges": {key: import_cost_money(value) for key, value in charge_values.items()},
+        "products": result_rows,
+    }
+
+
 def maybe_send_sales_report_upload_alert(now: datetime | None = None) -> bool:
     current = now or datetime.now()
     if current.hour < SALES_REPORT_UPLOAD_ALERT_HOUR:
@@ -29568,6 +30107,9 @@ def render_app_html(user: dict[str, str]) -> str:
     hermes_workspace = HERMES_WORKSPACE_HTML if hermes_enabled else ""
     sales_report_enabled = "sales_report_manage" in permissions
     sales_report_nav = SALES_REPORT_NAV_HTML if sales_report_enabled else ""
+    import_cost_enabled = can_view_import_cost_program(user)
+    import_cost_nav = IMPORT_COST_NAV_HTML if import_cost_enabled else ""
+    import_cost_workspace = IMPORT_COST_WORKSPACE_HTML if import_cost_enabled else ""
     admin_tools_nav = ADMIN_TOOLS_NAV_HTML if is_admin else ""
     admin_workspace = ADMIN_WORKSPACE_HTML.replace("__PERMISSION_CHECKBOXES__", permissions_html()) if is_admin or sales_report_enabled else ""
     backup_workspace = BACKUP_WORKSPACE_HTML if is_admin else ""
@@ -29584,10 +30126,12 @@ def render_app_html(user: dict[str, str]) -> str:
         .replace("__LEAVE_NAV__", leave_nav)
         .replace("__HERMES_NAV__", hermes_nav)
         .replace("__SALES_REPORT_NAV__", sales_report_nav)
+        .replace("__IMPORT_COST_NAV__", import_cost_nav)
         .replace("__LEAVE_WORKSPACE__", leave_workspace)
         .replace("__HERMES_WORKSPACE__", hermes_workspace)
         .replace("__ADMIN_TOOLS_NAV__", admin_tools_nav)
         .replace("__ADMIN_WORKSPACE__", admin_workspace)
+        .replace("__IMPORT_COST_WORKSPACE__", import_cost_workspace)
         .replace("__BACKUP_WORKSPACE__", backup_workspace)
         .replace("__SYSTEM_WORKSPACE__", system_workspace)
         .replace("__USER_PERMISSIONS__", json.dumps(permissions, ensure_ascii=False))
@@ -37815,6 +38359,20 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                     "entry": entry,
                     "files": list_sales_report_uploads(),
                 })
+                return
+
+            if self.path == "/api/import-cost-calculate":
+                if not can_view_import_cost_program(user):
+                    self.send_json({"error": "수입 원가 계산 권한이 없습니다."}, status=403)
+                    return
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(length).decode("utf-8") or "{}")
+                try:
+                    result = calculate_import_cost(payload if isinstance(payload, dict) else {})
+                except ValueError as exc:
+                    self.send_json({"error": str(exc)}, status=400)
+                    return
+                self.send_json(result)
                 return
 
             if self.path == "/api/internal-message-save":

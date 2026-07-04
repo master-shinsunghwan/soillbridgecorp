@@ -1107,6 +1107,66 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         self.assertNotIn('id="adminToolsNavGroup"', html_source)
         self.assertIn('mode === "userAdmin" && (!userAdminWorkspace || currentUser.role !== "admin")', html_source)
 
+    def test_import_cost_program_is_limited_to_admin_and_director(self) -> None:
+        app = self.load_app()
+
+        admin_html = app.render_app_html({
+            "username": "admin",
+            "display_name": "관리자",
+            "role": "admin",
+            "permissions": app.ALL_PERMISSIONS,
+        })
+        director_html = app.render_app_html({
+            "username": "ssh19",
+            "display_name": "신성환 실장",
+            "role": "user",
+            "permissions": ["ledger_edit"],
+        })
+        staff_html = app.render_app_html({
+            "username": "staff",
+            "display_name": "직원",
+            "role": "user",
+            "permissions": app.ALL_PERMISSIONS,
+        })
+
+        self.assertIn('id="importCostNavGroup"', admin_html)
+        self.assertIn('id="importCostWorkspace"', admin_html)
+        self.assertIn('id="importCostNavGroup"', director_html)
+        self.assertIn('id="importCostWorkspace"', director_html)
+        self.assertNotIn('id="importCostNavGroup"', staff_html)
+        self.assertNotIn('id="importCostWorkspace"', staff_html)
+        self.assertIn("function calculateImportCost()", admin_html)
+        self.assertIn('"/api/import-cost-calculate"', admin_html)
+
+    def test_import_cost_calculation_allocates_to_product_unit_cost(self) -> None:
+        app = self.load_app()
+
+        result = app.calculate_import_cost({
+            "remittance_rate": "1482.04",
+            "allocation_basis": "amount",
+            "doc_fee": "2240795",
+            "duty": "0",
+            "broker_fee": "48400",
+            "import_vat": "2418290",
+            "service_vat": "4840",
+            "include_import_vat": False,
+            "include_service_vat": False,
+            "products": [{
+                "name": "28CM POT",
+                "quantity": "3985",
+                "unit_usd": "3.86",
+                "amount_usd": "15382.10",
+                "gross_weight": "6463.7",
+                "cbm": "68",
+            }],
+        })
+
+        self.assertEqual(result["summary"]["invoice_total_usd"], 15382.10)
+        self.assertEqual(result["summary"]["purchase_total_krw"], 22796887)
+        self.assertEqual(result["summary"]["allocated_cost_total"], 2289195)
+        self.assertEqual(result["products"][0]["landed_total"], 25086082)
+        self.assertEqual(result["products"][0]["landed_unit"], 6295.13)
+
     def test_sales_report_dashboard_layout_uses_three_report_types(self) -> None:
         html_source = (ROOT / "scripts" / "workhub_delivery_app.py").read_text(encoding="utf-8")
 
