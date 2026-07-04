@@ -12138,6 +12138,7 @@ HTML = r"""<!doctype html>
     const importCostFileUpload = document.querySelector("#importCostFileUpload");
     const importCostFileSummary = document.querySelector("#importCostFileSummary");
     const importCostDetailList = document.querySelector("#importCostDetailList");
+    let selectedImportCostFiles = [];
     const orderWorkspace = document.querySelector("#orderWorkspace");
     const orderWorkspaceTitle = document.querySelector("#orderWorkspaceTitle");
     const orderWorkspacePanelTitle = document.querySelector("#orderWorkspacePanelTitle");
@@ -15718,8 +15719,8 @@ HTML = r"""<!doctype html>
       setImportCostInputValue("importCostServiceVat", payload.service_vat);
       const includeImportVat = document.querySelector("#importCostIncludeImportVat");
       const includeServiceVat = document.querySelector("#importCostIncludeServiceVat");
-      if (includeImportVat) includeImportVat.checked = Boolean(payload.include_import_vat);
-      if (includeServiceVat) includeServiceVat.checked = Boolean(payload.include_service_vat);
+      if (includeImportVat) includeImportVat.checked = payload.include_import_vat !== false;
+      if (includeServiceVat) includeServiceVat.checked = payload.include_service_vat !== false;
       fillImportCostProductRows(payload.products || []);
     }
 
@@ -15744,6 +15745,32 @@ HTML = r"""<!doctype html>
         </div>
       ` : "";
       importCostDetailList.innerHTML = fileHtml + missingHtml;
+    }
+
+    function importCostFileKey(file) {
+      return [file.name, file.size, file.lastModified].join("|");
+    }
+
+    function renderSelectedImportCostFiles(prefix = "") {
+      if (!importCostFileSummary) return;
+      if (!selectedImportCostFiles.length) {
+        importCostFileSummary.textContent = "인보이스, 패킹리스트, 수입정산서를 함께 업로드해주세요.";
+        return;
+      }
+      const names = selectedImportCostFiles.map((file) => file.name).join(", ");
+      importCostFileSummary.textContent = `${prefix}${selectedImportCostFiles.length}개 파일 선택됨: ${names}`;
+    }
+
+    function appendImportCostSelectedFiles(files) {
+      const existingKeys = new Set(selectedImportCostFiles.map(importCostFileKey));
+      files.forEach((file) => {
+        const key = importCostFileKey(file);
+        if (!existingKeys.has(key)) {
+          selectedImportCostFiles.push(file);
+          existingKeys.add(key);
+        }
+      });
+      renderSelectedImportCostFiles();
     }
 
     function collectImportCostPayload() {
@@ -15820,7 +15847,7 @@ HTML = r"""<!doctype html>
 
     async function uploadImportCostFiles() {
       if (!importCostFileInput || !importCostMessage || !canViewImportCostProgram()) return;
-      const files = Array.from(importCostFileInput.files || []);
+      const files = selectedImportCostFiles;
       if (!files.length) {
         importCostMessage.textContent = "업로드할 파일을 선택해주세요.";
         return;
@@ -15840,7 +15867,7 @@ HTML = r"""<!doctype html>
         fillImportCostForm(data.payload || {});
         renderImportCostDetails(data);
         if (data.result) renderImportCostResult(data.result);
-        if (importCostFileSummary) importCostFileSummary.textContent = `${files.length}개 파일 분석 완료`;
+        renderSelectedImportCostFiles("분석 완료 · ");
         importCostMessage.textContent = data.calculation_error || "업로드 파일 기준 제품별 수입원가 계산이 완료됐습니다.";
       } catch (error) {
         importCostMessage.textContent = error.message || "파일 분석에 실패했습니다.";
@@ -15853,6 +15880,10 @@ HTML = r"""<!doctype html>
         if (input.type === "checkbox") input.checked = false;
         else input.value = "";
       });
+      const includeImportVat = document.querySelector("#importCostIncludeImportVat");
+      const includeServiceVat = document.querySelector("#importCostIncludeServiceVat");
+      if (includeImportVat) includeImportVat.checked = true;
+      if (includeServiceVat) includeServiceVat.checked = true;
       const basis = document.querySelector("#importCostAllocationBasis");
       if (basis) basis.value = "amount";
       if (importCostProductBody) importCostProductBody.innerHTML = "";
@@ -15867,8 +15898,9 @@ HTML = r"""<!doctype html>
       if (importCostSummary) importCostSummary.innerHTML = "";
       if (importCostResultBody) importCostResultBody.innerHTML = `<tr><td colspan="7" class="empty">계산 전입니다.</td></tr>`;
       if (importCostDetailList) importCostDetailList.innerHTML = "";
+      selectedImportCostFiles = [];
       if (importCostFileInput) importCostFileInput.value = "";
-      if (importCostFileSummary) importCostFileSummary.textContent = "인보이스, 패킹리스트, 수입정산서를 함께 업로드해주세요.";
+      renderSelectedImportCostFiles();
       if (importCostMessage) importCostMessage.textContent = "인보이스와 패킹리스트 값을 입력해주세요.";
     }
 
@@ -23955,11 +23987,8 @@ HTML = r"""<!doctype html>
     importCostFileUpload?.addEventListener("click", uploadImportCostFiles);
     importCostFileInput?.addEventListener("change", () => {
       const files = Array.from(importCostFileInput.files || []);
-      if (importCostFileSummary) {
-        importCostFileSummary.textContent = files.length
-          ? files.map((file) => file.name).join(", ")
-          : "인보이스, 패킹리스트, 수입정산서를 함께 업로드해주세요.";
-      }
+      appendImportCostSelectedFiles(files);
+      importCostFileInput.value = "";
     });
     importCostProductBody?.addEventListener("click", (event) => {
       const button = event.target.closest("[data-import-cost-remove]");
@@ -25006,8 +25035,8 @@ IMPORT_COST_WORKSPACE_HTML = r"""
               </label>
             </div>
             <div class="import-cost-options">
-              <label><input id="importCostIncludeImportVat" type="checkbox" /> 수입부가세를 제품 원가에 포함</label>
-              <label><input id="importCostIncludeServiceVat" type="checkbox" /> 수수료 부가세를 제품 원가에 포함</label>
+              <label><input id="importCostIncludeImportVat" type="checkbox" checked /> 수입부가세를 제품 원가에 포함</label>
+              <label><input id="importCostIncludeServiceVat" type="checkbox" checked /> 수수료 부가세를 제품 원가에 포함</label>
             </div>
             <div class="hint-line">부가세는 회계 처리 기준에 따라 공제 대상일 수 있어 기본값은 원가 제외입니다.</div>
           </section>
@@ -30201,8 +30230,8 @@ def analyze_import_cost_files(paths: list[Path], options: dict[str, object] | No
         "other_cost": options.get("other_cost") or "",
         "import_vat": options.get("import_vat") or charges.get("import_vat") or "",
         "service_vat": options.get("service_vat") or charges.get("service_vat") or "",
-        "include_import_vat": bool(options.get("include_import_vat")),
-        "include_service_vat": bool(options.get("include_service_vat")),
+        "include_import_vat": bool(options.get("include_import_vat", True)),
+        "include_service_vat": bool(options.get("include_service_vat", True)),
         "products": products,
     }
     result = None

@@ -1140,6 +1140,12 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         self.assertIn('"/api/import-cost-calculate"', admin_html)
         self.assertIn('id="importCostFileInput"', admin_html)
         self.assertIn('"/api/import-cost-upload"', admin_html)
+        self.assertIn("selectedImportCostFiles", admin_html)
+        self.assertIn("appendImportCostSelectedFiles(files)", admin_html)
+        self.assertIn('id="importCostIncludeImportVat" type="checkbox" checked', admin_html)
+        self.assertIn('id="importCostIncludeServiceVat" type="checkbox" checked', admin_html)
+        self.assertIn("includeImportVat.checked = true", admin_html)
+        self.assertIn("includeServiceVat.checked = true", admin_html)
 
     def test_import_cost_calculation_allocates_to_product_unit_cost(self) -> None:
         app = self.load_app()
@@ -1215,6 +1221,8 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
             )
 
             self.assertEqual(analysis["payload"]["invoice_no"], "SXT20260420")
+            self.assertTrue(analysis["payload"]["include_import_vat"])
+            self.assertTrue(analysis["payload"]["include_service_vat"])
             self.assertEqual(len(analysis["payload"]["products"]), 1)
             product = analysis["payload"]["products"][0]
             self.assertEqual(product["name"], "28CM POT")
