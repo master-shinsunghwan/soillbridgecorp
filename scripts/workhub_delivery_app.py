@@ -84,6 +84,7 @@ ORDER_DOWNLOAD_LIMIT = 10
 SHARED_FILE_DIR = RUNTIME_ROOT / "shared_files"
 HERMES_RESULT_DIR = RUNTIME_ROOT / "hermes_results"
 SALES_REPORT_DIR = RUNTIME_ROOT / "sales_reports"
+IMPORT_COST_ORIGINAL_DIR = RUNTIME_ROOT / "import_cost_originals"
 CONFIG_DIR = RUNTIME_ROOT / "config"
 DB_PATH = CONFIG_DIR / "workhub.db"
 MAIL_SETTINGS_PATH = CONFIG_DIR / "mail_settings.json"
@@ -2049,6 +2050,26 @@ HTML = r"""<!doctype html>
       color: #475569;
       font-size: 12px;
       font-weight: 760;
+    }
+    .import-cost-rate-field {
+      position: relative;
+      padding: 10px;
+      border: 2px solid #2563eb;
+      border-radius: 10px;
+      background: linear-gradient(180deg, #eff6ff 0%, #ffffff 100%);
+      box-shadow: 0 8px 18px rgba(37, 99, 235, 0.14);
+    }
+    .import-cost-rate-field input {
+      height: 40px !important;
+      border-color: #2563eb !important;
+      color: #0f172a !important;
+      font-size: 18px !important;
+      font-weight: 900 !important;
+    }
+    .import-cost-rate-field span {
+      color: #1d4ed8;
+      font-size: 11px;
+      font-weight: 800;
     }
     .import-cost-grid input,
     .import-cost-grid select,
@@ -10394,13 +10415,14 @@ HTML = r"""<!doctype html>
                   <th>제품수량</th>
                   <th>선명</th>
                   <th>HBL NO.</th>
+                  <th>수입원가</th>
                   <th>SIZE</th>
                   <th>진행상황</th>
                   <th>프리타임</th>
                 </tr>
               </thead>
               <tbody id="importShipmentBody">
-                <tr><td colspan="10"><div class="import-empty">등록된 수입제품 입고 진행 건이 없습니다.</div></td></tr>
+                <tr><td colspan="12"><div class="import-empty">등록된 수입제품 입고 진행 건이 없습니다.</div></td></tr>
               </tbody>
             </table>
           </div>
@@ -12207,7 +12229,11 @@ HTML = r"""<!doctype html>
     const importCostFileSummary = document.querySelector("#importCostFileSummary");
     const importCostDetailList = document.querySelector("#importCostDetailList");
     const importCostRunStatus = document.querySelector("#importCostRunStatus");
+    const importCostSaveReport = document.querySelector("#importCostSaveReport");
+    const importCostSavedRefresh = document.querySelector("#importCostSavedRefresh");
+    const importCostSavedBody = document.querySelector("#importCostSavedBody");
     let selectedImportCostFiles = [];
+    let importCostSavedReports = [];
     const orderWorkspace = document.querySelector("#orderWorkspace");
     const orderWorkspaceTitle = document.querySelector("#orderWorkspaceTitle");
     const orderWorkspacePanelTitle = document.querySelector("#orderWorkspacePanelTitle");
@@ -12588,6 +12614,7 @@ HTML = r"""<!doctype html>
       notice.textContent = error.message || "공지사항을 불러오지 못했습니다.";
     });
     loadImportShipments();
+    loadImportCostSavedReports();
     loadCargoShipments();
 
     function addProductRow(productName = "", quantity = "", packQuantity = "") {
@@ -14102,7 +14129,7 @@ HTML = r"""<!doctype html>
       importShipmentSummary.textContent = `진행 ${activeCount}건 / 완료 ${doneCount}건`;
       renderDashboardImportSchedule();
       if (!importShipments.length) {
-        importShipmentBody.innerHTML = `<tr><td colspan="10"><div class="import-empty">등록된 수입제품 입고 진행 건이 없습니다.</div></td></tr>`;
+        importShipmentBody.innerHTML = `<tr><td colspan="12"><div class="import-empty">등록된 수입제품 입고 진행 건이 없습니다.</div></td></tr>`;
         return;
       }
       importShipmentBody.innerHTML = "";
@@ -14130,6 +14157,11 @@ HTML = r"""<!doctype html>
           <td class="${escapeHtml(quantityLevelClass(record.quantity))}">${escapeHtml(record.quantity)}</td>
           <td>${escapeHtml(record.vessel_name)}</td>
           <td>${escapeHtml(record.hbl_no)}</td>
+          <td>${record.import_cost_report_id ? `
+            <button class="btn" type="button" data-import-cost-open="${escapeHtml(record.import_cost_report_id)}">
+              ${escapeHtml(formatImportCostWon(record.import_cost_landed_total || 0))}
+            </button>
+          ` : "-"}</td>
           <td>${escapeHtml(record.size)}</td>
           ${progressCell}
           <td>${escapeHtml(record.free_time)}</td>
@@ -15978,6 +16010,104 @@ HTML = r"""<!doctype html>
       }
     }
 
+    function renderImportCostSavedReports() {
+      if (!importCostSavedBody) return;
+      if (!importCostSavedReports.length) {
+        importCostSavedBody.innerHTML = `<tr><td colspan="6" class="empty">저장된 수입 원가 데이터가 없습니다.</td></tr>`;
+        return;
+      }
+      importCostSavedBody.innerHTML = importCostSavedReports.map((report) => `
+        <tr>
+          <td>${escapeHtml(report.hbl_no || "-")}</td>
+          <td>${escapeHtml(report.invoice_no || "-")}</td>
+          <td>${escapeHtml(report.remittance_rate || "-")}</td>
+          <td>${formatImportCostWon(report.landed_total || 0)}</td>
+          <td>${escapeHtml(report.updated_at || "-")}</td>
+          <td>
+            <button class="btn" type="button" data-import-cost-load="${escapeHtml(report.id)}">불러오기</button>
+          </td>
+        </tr>
+      `).join("");
+    }
+
+    async function loadImportCostSavedReports() {
+      if (!canViewImportCostProgram()) return;
+      try {
+        const response = await fetch("/api/import-cost-reports");
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "저장된 수입 원가 데이터를 불러오지 못했습니다.");
+        importCostSavedReports = data.reports || [];
+        renderImportCostSavedReports();
+      } catch (error) {
+        importCostSavedReports = [];
+        renderImportCostSavedReports();
+        if (importCostMessage) importCostMessage.textContent = error.message || "저장된 수입 원가 데이터를 불러오지 못했습니다.";
+      }
+    }
+
+    function renderImportCostSavedFiles(report = {}) {
+      if (!importCostDetailList) return;
+      const files = report.files || [];
+      const fileHtml = files.length ? files.map((file) => `
+        <div class="import-cost-detail-item">
+          <strong>저장 원본 · ${escapeHtml(file.original_name || "")}</strong>
+          <span>${Number(file.file_size || 0).toLocaleString("ko-KR")} bytes · ${escapeHtml(file.created_at || "")}</span>
+          <span><a href="/api/import-cost-original-download?id=${encodeURIComponent(file.id)}" download>원본 파일 다운로드</a></span>
+        </div>
+      `).join("") : `
+        <div class="import-cost-detail-item warn">
+          <strong>저장 원본 없음</strong>
+          <span>이 계산 데이터에는 연결된 원본 업로드 파일이 없습니다.</span>
+        </div>
+      `;
+      importCostDetailList.innerHTML = fileHtml;
+    }
+
+    async function loadImportCostReport(reportId) {
+      if (!reportId || !canViewImportCostProgram()) return;
+      try {
+        const response = await fetch(`/api/import-cost-report?id=${encodeURIComponent(reportId)}`);
+        const data = await response.json();
+        if (!response.ok || data.error) throw new Error(data.error || "수입 원가 데이터를 불러오지 못했습니다.");
+        fillImportCostForm(data.report?.payload || {});
+        if (data.report?.result) renderImportCostResult(data.report.result);
+        renderImportCostSavedFiles(data.report || {});
+        importCostMessage.textContent = "저장된 수입 원가 데이터를 불러왔습니다.";
+        setImportCostRunStatus("done", "저장된 DB 데이터와 원본 파일 목록을 불러왔습니다.");
+      } catch (error) {
+        const message = error.message || "수입 원가 데이터를 불러오지 못했습니다.";
+        importCostMessage.textContent = message;
+        setImportCostRunStatus("error", message);
+      }
+    }
+
+    async function saveCurrentImportCostReport() {
+      if (!importCostMessage || !canViewImportCostProgram()) return;
+      importCostMessage.textContent = "현재 수입 원가 계산 데이터를 DB에 저장하는 중입니다.";
+      setImportCostRunStatus("running", "현재 입력값 기준으로 계산 후 DB에 저장합니다.");
+      if (importCostSaveReport) importCostSaveReport.disabled = true;
+      try {
+        const response = await fetch("/api/import-cost-report-save", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(collectImportCostPayload()),
+        });
+        const data = await response.json();
+        if (!response.ok || data.error) throw new Error(data.error || "수입 원가 데이터 저장에 실패했습니다.");
+        if (data.result) renderImportCostResult(data.result);
+        importCostMessage.textContent = data.message || "수입 원가 데이터를 DB에 저장했습니다.";
+        setImportCostRunStatus("done", "수입 원가 데이터가 DB에 저장됐습니다.");
+        await loadImportCostSavedReports();
+        await loadImportShipments().catch(() => {});
+      } catch (error) {
+        const message = error.message || "수입 원가 데이터 저장에 실패했습니다.";
+        importCostMessage.textContent = message;
+        setImportCostRunStatus("error", message);
+      } finally {
+        if (importCostSaveReport) importCostSaveReport.disabled = false;
+      }
+    }
+
     async function calculateImportCost() {
       if (!importCostMessage || !canViewImportCostProgram()) return;
       importCostMessage.textContent = "제품별 수입원가를 계산하는 중입니다.";
@@ -16058,6 +16188,10 @@ HTML = r"""<!doctype html>
         fillImportCostForm(data.payload || {});
         renderImportCostDetails(data);
         if (data.result) renderImportCostResult(data.result);
+        if (data.report) {
+          await loadImportCostSavedReports();
+          await loadImportShipments().catch(() => {});
+        }
         renderSelectedImportCostFiles("분석 완료 · ");
         importCostMessage.textContent = data.calculation_error || "업로드 파일 기준 제품별 수입원가 계산이 완료됐습니다.";
         setImportCostRunStatus(data.calculation_error ? "error" : "done", data.calculation_error || "업로드 파일 기준 제품별 수입원가 계산이 완료됐습니다.");
@@ -23072,6 +23206,7 @@ HTML = r"""<!doctype html>
         setPageTitle("수입 원가 계산");
         closeLedgerFilter();
         if (!importCostProductBody?.querySelector("tr")) resetImportCostProgram();
+        loadImportCostSavedReports();
       } else if (showFileLibrary) {
         setPageTitle("업무 파일 자료실");
         closeLedgerFilter();
@@ -24184,6 +24319,13 @@ HTML = r"""<!doctype html>
     importCostReset?.addEventListener("click", resetImportCostProgram);
     importCostCalculate?.addEventListener("click", calculateImportCost);
     importCostExportReport?.addEventListener("click", exportImportCostReport);
+    importCostSaveReport?.addEventListener("click", saveCurrentImportCostReport);
+    importCostSavedRefresh?.addEventListener("click", loadImportCostSavedReports);
+    importCostSavedBody?.addEventListener("click", (event) => {
+      const button = event.target.closest("[data-import-cost-load]");
+      if (!button) return;
+      loadImportCostReport(button.dataset.importCostLoad);
+    });
     importCostWorkspace?.addEventListener("input", (event) => {
       const target = event.target;
       if (target?.matches?.("#importCostDocFee, #importCostDuty, #importCostBrokerFee, #importCostOtherCost, #importCostImportVat, #importCostServiceVat, #importCostIncludeImportVat, #importCostIncludeServiceVat")) {
@@ -24333,6 +24475,12 @@ HTML = r"""<!doctype html>
       if (event.target === importShipmentPopup) closeImportShipmentPopup();
     });
     importShipmentBody.addEventListener("click", (event) => {
+      const costButton = event.target.closest("[data-import-cost-open]");
+      if (costButton) {
+        showWorkspace("importCost");
+        loadImportCostReport(costButton.dataset.importCostOpen);
+        return;
+      }
       const editButton = event.target.closest("[data-import-edit]");
       const completeButton = event.target.closest("[data-import-complete]");
       if (completeButton) {
@@ -25221,6 +25369,31 @@ IMPORT_COST_WORKSPACE_HTML = r"""
             <div class="import-cost-detail-list" id="importCostDetailList"></div>
           </section>
           <section class="import-cost-card">
+            <div class="admin-section-title">저장된 수입 원가 데이터</div>
+            <div class="import-cost-upload-panel">
+              <button class="workspace-button" type="button" id="importCostSaveReport">현재 계산 DB 저장</button>
+              <button class="workspace-button ghost" type="button" id="importCostSavedRefresh">저장 목록 새로고침</button>
+              <span>업로드 원본 파일도 계산 데이터와 함께 보관됩니다.</span>
+            </div>
+            <div class="import-cost-table-wrap">
+              <table class="import-cost-table">
+                <thead>
+                  <tr>
+                    <th>HBL</th>
+                    <th>Invoice</th>
+                    <th>송금환율</th>
+                    <th>총 수입원가</th>
+                    <th>저장일</th>
+                    <th>작업</th>
+                  </tr>
+                </thead>
+                <tbody id="importCostSavedBody">
+                  <tr><td colspan="6" class="empty">저장된 수입 원가 데이터가 없습니다.</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+          <section class="import-cost-card">
             <div class="admin-section-title">기준 정보 / 정산 비용</div>
             <div class="import-cost-grid compact">
               <label>HBL/컨테이너 번호
@@ -25229,8 +25402,9 @@ IMPORT_COST_WORKSPACE_HTML = r"""
               <label>Invoice No.
                 <input id="importCostInvoiceNo" type="text" placeholder="예) SXT20260420" />
               </label>
-              <label>송금환율
+              <label class="import-cost-rate-field">송금환율
                 <input id="importCostRemittanceRate" type="number" min="0" step="0.0001" placeholder="예) 1482.04" />
+                <span>제품 원가 계산의 기준 환율입니다.</span>
               </label>
               <label>배부 기준
                 <select id="importCostAllocationBasis">
@@ -30219,6 +30393,243 @@ def import_cost_report_workbook_bytes(payload: dict, result: dict[str, object]) 
     return stream.getvalue()
 
 
+def import_cost_public_report(row: sqlite3.Row | dict[str, object], include_payload: bool = False) -> dict[str, object]:
+    item = dict(row)
+    result = json.loads(str(item.get("result_json") or "{}"))
+    payload = json.loads(str(item.get("payload_json") or "{}"))
+    public = {
+        "id": int(item.get("id") or 0),
+        "created_at": str(item.get("created_at") or ""),
+        "updated_at": str(item.get("updated_at") or ""),
+        "hbl_no": str(item.get("hbl_no") or ""),
+        "invoice_no": str(item.get("invoice_no") or ""),
+        "remittance_rate": str(item.get("remittance_rate") or ""),
+        "allocation_basis": str(item.get("allocation_basis") or ""),
+        "landed_total": int(item.get("landed_total") or 0),
+        "allocated_cost_total": int(item.get("allocated_cost_total") or 0),
+        "created_by": str(item.get("created_by") or ""),
+        "summary": result.get("summary") if isinstance(result, dict) else {},
+    }
+    if include_payload:
+        public["payload"] = payload
+        public["result"] = result
+    return public
+
+
+def import_cost_report_files(report_id: int) -> list[dict[str, object]]:
+    init_db()
+    connection = connect_db()
+    try:
+        rows = connection.execute(
+            """
+            SELECT id, report_id, created_at, original_name, stored_name, file_size
+              FROM import_cost_report_files
+             WHERE report_id = ?
+             ORDER BY id
+            """,
+            (report_id,),
+        ).fetchall()
+    finally:
+        connection.close()
+    return [dict(row) for row in rows]
+
+
+def save_import_cost_report(
+    payload: dict,
+    result: dict[str, object],
+    user: dict[str, object] | None = None,
+    upload_paths: list[Path] | None = None,
+) -> dict[str, object]:
+    init_db()
+    IMPORT_COST_ORIGINAL_DIR.mkdir(parents=True, exist_ok=True)
+    now = now_text()
+    hbl_no = str(payload.get("hbl_no") or "").strip().upper()
+    invoice_no = str(payload.get("invoice_no") or "").strip()
+    summary = result.get("summary") if isinstance(result.get("summary"), dict) else {}
+    created_by = str((user or {}).get("display_name") or (user or {}).get("username") or "")
+    payload_json = json.dumps(payload, ensure_ascii=False, default=str)
+    result_json = json.dumps(result, ensure_ascii=False, default=str)
+    landed_total = int(summary.get("landed_total") or 0)
+    allocated_cost_total = int(summary.get("allocated_cost_total") or 0)
+    connection = connect_db()
+    try:
+        existing_id = 0
+        if hbl_no:
+            row = connection.execute(
+                "SELECT id FROM import_cost_reports WHERE UPPER(COALESCE(hbl_no, '')) = ? ORDER BY id DESC LIMIT 1",
+                (hbl_no,),
+            ).fetchone()
+            existing_id = int(row["id"]) if row else 0
+        if existing_id:
+            connection.execute(
+                """
+                UPDATE import_cost_reports
+                   SET updated_at = ?, hbl_no = ?, invoice_no = ?, remittance_rate = ?,
+                       allocation_basis = ?, landed_total = ?, allocated_cost_total = ?,
+                       payload_json = ?, result_json = ?, created_by = ?
+                 WHERE id = ?
+                """,
+                (
+                    now,
+                    hbl_no,
+                    invoice_no,
+                    str(payload.get("remittance_rate") or ""),
+                    str(payload.get("allocation_basis") or ""),
+                    landed_total,
+                    allocated_cost_total,
+                    payload_json,
+                    result_json,
+                    created_by,
+                    existing_id,
+                ),
+            )
+            report_id = existing_id
+        else:
+            cursor = connection.execute(
+                """
+                INSERT INTO import_cost_reports (
+                    created_at, updated_at, hbl_no, invoice_no, remittance_rate, allocation_basis,
+                    landed_total, allocated_cost_total, payload_json, result_json, created_by
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    now,
+                    now,
+                    hbl_no,
+                    invoice_no,
+                    str(payload.get("remittance_rate") or ""),
+                    str(payload.get("allocation_basis") or ""),
+                    landed_total,
+                    allocated_cost_total,
+                    payload_json,
+                    result_json,
+                    created_by,
+                ),
+            )
+            report_id = int(cursor.lastrowid)
+
+        for path in upload_paths or []:
+            if not path.exists():
+                continue
+            original_name = original_uploaded_filename(path.name)
+            stored_name = f"{report_id}_{int(time.time() * 1000)}_{safe_filename(original_name)}"
+            stored_path = IMPORT_COST_ORIGINAL_DIR / stored_name
+            shutil.copy2(path, stored_path)
+            connection.execute(
+                """
+                INSERT INTO import_cost_report_files (report_id, created_at, original_name, stored_name, file_path, file_size)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (report_id, now, original_name, stored_name, str(stored_path), stored_path.stat().st_size),
+            )
+        if hbl_no:
+            shipment_row = connection.execute(
+                "SELECT id FROM import_shipments WHERE UPPER(COALESCE(hbl_no, '')) = ? LIMIT 1",
+                (hbl_no,),
+            ).fetchone()
+            products = payload.get("products") if isinstance(payload.get("products"), list) else []
+            item_names = [str(product.get("name") or "").strip() for product in products if isinstance(product, dict) and str(product.get("name") or "").strip()]
+            quantities = [str(product.get("quantity") or "").strip() for product in products if isinstance(product, dict) and str(product.get("quantity") or "").strip()]
+            if not shipment_row:
+                columns = ["created_at", "updated_at", *IMPORT_SHIPMENT_FIELDS]
+                values = {field: "" for field in IMPORT_SHIPMENT_FIELDS}
+                values.update({
+                    "item": " / ".join(item_names[:3]),
+                    "quantity": " / ".join(quantities[:3]),
+                    "hbl_no": hbl_no,
+                    "progress_status": "원가 계산 완료",
+                })
+                placeholders = ", ".join("?" for _ in columns)
+                connection.execute(
+                    f"INSERT INTO import_shipments ({', '.join(columns)}) VALUES ({placeholders})",
+                    [now, now] + [values[field] for field in IMPORT_SHIPMENT_FIELDS],
+                )
+            else:
+                connection.execute(
+                    """
+                    UPDATE import_shipments
+                       SET item = CASE WHEN COALESCE(item, '') = '' THEN ? ELSE item END,
+                           quantity = CASE WHEN COALESCE(quantity, '') = '' THEN ? ELSE quantity END,
+                           updated_at = ?
+                     WHERE id = ?
+                    """,
+                    (" / ".join(item_names[:3]), " / ".join(quantities[:3]), now, int(shipment_row["id"])),
+                )
+        connection.commit()
+    finally:
+        connection.close()
+    saved = get_import_cost_report(report_id)
+    return saved or {"id": report_id}
+
+
+def list_import_cost_reports(limit: int = 100) -> list[dict[str, object]]:
+    init_db()
+    safe_limit = max(1, min(int(limit or 100), 300))
+    connection = connect_db()
+    try:
+        rows = connection.execute(
+            """
+            SELECT id, created_at, updated_at, hbl_no, invoice_no, remittance_rate,
+                   allocation_basis, landed_total, allocated_cost_total, payload_json,
+                   result_json, created_by
+              FROM import_cost_reports
+             ORDER BY updated_at DESC, id DESC
+             LIMIT ?
+            """,
+            (safe_limit,),
+        ).fetchall()
+    finally:
+        connection.close()
+    return [import_cost_public_report(row) for row in rows]
+
+
+def get_import_cost_report(report_id: int) -> dict[str, object] | None:
+    if not report_id:
+        return None
+    init_db()
+    connection = connect_db()
+    try:
+        row = connection.execute(
+            """
+            SELECT id, created_at, updated_at, hbl_no, invoice_no, remittance_rate,
+                   allocation_basis, landed_total, allocated_cost_total, payload_json,
+                   result_json, created_by
+              FROM import_cost_reports
+             WHERE id = ?
+            """,
+            (report_id,),
+        ).fetchone()
+    finally:
+        connection.close()
+    if not row:
+        return None
+    report = import_cost_public_report(row, include_payload=True)
+    report["files"] = import_cost_report_files(report_id)
+    return report
+
+
+def import_cost_file_download_info(file_id: object) -> tuple[Path, dict[str, object]]:
+    init_db()
+    connection = connect_db()
+    try:
+        row = connection.execute(
+            """
+            SELECT id, report_id, original_name, file_path, file_size
+              FROM import_cost_report_files
+             WHERE id = ?
+            """,
+            (int(file_id or 0),),
+        ).fetchone()
+    finally:
+        connection.close()
+    if not row:
+        raise FileNotFoundError("수입원가 원본 파일을 찾지 못했습니다.")
+    path = Path(str(row["file_path"] or ""))
+    if not path.exists():
+        raise FileNotFoundError("저장된 수입원가 원본 파일이 없습니다.")
+    return path, dict(row)
+
+
 def import_cost_cell_text(value: object) -> str:
     if value is None:
         return ""
@@ -32295,6 +32706,39 @@ def init_db() -> None:
         }
         if "quantity" not in import_shipment_columns:
             connection.execute("ALTER TABLE import_shipments ADD COLUMN quantity TEXT")
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS import_cost_reports (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                hbl_no TEXT,
+                invoice_no TEXT,
+                remittance_rate TEXT,
+                allocation_basis TEXT,
+                landed_total INTEGER NOT NULL DEFAULT 0,
+                allocated_cost_total INTEGER NOT NULL DEFAULT 0,
+                payload_json TEXT NOT NULL,
+                result_json TEXT NOT NULL,
+                created_by TEXT
+            )
+            """
+        )
+        connection.execute("CREATE INDEX IF NOT EXISTS idx_import_cost_reports_hbl ON import_cost_reports(hbl_no)")
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS import_cost_report_files (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                report_id INTEGER NOT NULL,
+                created_at TEXT NOT NULL,
+                original_name TEXT NOT NULL,
+                stored_name TEXT NOT NULL,
+                file_path TEXT NOT NULL,
+                file_size INTEGER NOT NULL DEFAULT 0,
+                FOREIGN KEY(report_id) REFERENCES import_cost_reports(id) ON DELETE CASCADE
+            )
+            """
+        )
         connection.execute(
             """
             CREATE TABLE IF NOT EXISTS cargo_shipments (
@@ -35597,7 +36041,31 @@ def list_import_shipments() -> list[dict[str, str | int]]:
             """
             SELECT id, created_at, updated_at, departure_date, arrival_date,
                    loading_port, arrival_port, shipper, item, quantity, vessel_name,
-                   hbl_no, size, progress_status, free_time, warehouse_due_date, completed_at
+                   hbl_no, size, progress_status, free_time, warehouse_due_date, completed_at,
+                   (
+                       SELECT id
+                         FROM import_cost_reports
+                        WHERE UPPER(COALESCE(import_cost_reports.hbl_no, '')) = UPPER(COALESCE(import_shipments.hbl_no, ''))
+                          AND COALESCE(import_shipments.hbl_no, '') <> ''
+                        ORDER BY updated_at DESC, id DESC
+                        LIMIT 1
+                   ) AS import_cost_report_id,
+                   (
+                       SELECT landed_total
+                         FROM import_cost_reports
+                        WHERE UPPER(COALESCE(import_cost_reports.hbl_no, '')) = UPPER(COALESCE(import_shipments.hbl_no, ''))
+                          AND COALESCE(import_shipments.hbl_no, '') <> ''
+                        ORDER BY updated_at DESC, id DESC
+                        LIMIT 1
+                   ) AS import_cost_landed_total,
+                   (
+                       SELECT remittance_rate
+                         FROM import_cost_reports
+                        WHERE UPPER(COALESCE(import_cost_reports.hbl_no, '')) = UPPER(COALESCE(import_shipments.hbl_no, ''))
+                          AND COALESCE(import_shipments.hbl_no, '') <> ''
+                        ORDER BY updated_at DESC, id DESC
+                        LIMIT 1
+                   ) AS import_cost_remittance_rate
               FROM import_shipments
              ORDER BY CASE WHEN completed_at IS NULL OR completed_at = '' THEN 0 ELSE 1 END,
                       id DESC
@@ -39316,6 +39784,30 @@ class WorkhubHandler(BaseHTTPRequestHandler):
             self.wfile.write(data)
             return
 
+        if self.path.startswith("/api/import-cost-original-download"):
+            if not can_view_import_cost_program(user):
+                self.send_json({"error": "수입 원가 계산 권한이 없습니다."}, status=403)
+                return
+            parsed = urlsplit(self.path)
+            params = parse_qs(parsed.query)
+            try:
+                path, metadata = import_cost_file_download_info(params.get("id", [""])[0])
+            except Exception as exc:  # noqa: BLE001
+                self.send_json({"error": str(exc)}, status=404)
+                return
+            data = path.read_bytes()
+            content_type = mimetypes.guess_type(str(path))[0] or "application/octet-stream"
+            filename = quote(str(metadata.get("original_name") or path.name))
+            self.send_response(200)
+            self.send_header("Content-Type", content_type)
+            self.send_header("Content-Disposition", f"attachment; filename*=UTF-8''{filename}")
+            self.send_header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
+            self.send_header("Pragma", "no-cache")
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+            return
+
         if self.path.startswith("/api/order-download"):
             if not self.require_permission(user, "excel_download", "엑셀 다운로드"):
                 return
@@ -39643,6 +40135,26 @@ class WorkhubHandler(BaseHTTPRequestHandler):
             self.send_json({"shipments": list_import_shipments()})
             return
 
+        if self.path == "/api/import-cost-reports":
+            if not can_view_import_cost_program(user):
+                self.send_json({"error": "수입 원가 계산 권한이 없습니다."}, status=403)
+                return
+            self.send_json({"reports": list_import_cost_reports()})
+            return
+
+        if self.path.startswith("/api/import-cost-report"):
+            if not can_view_import_cost_program(user):
+                self.send_json({"error": "수입 원가 계산 권한이 없습니다."}, status=403)
+                return
+            parsed = urlsplit(self.path)
+            params = parse_qs(parsed.query)
+            report = get_import_cost_report(int(params.get("id", ["0"])[0] or 0))
+            if not report:
+                self.send_json({"error": "수입 원가 데이터를 찾지 못했습니다."}, status=404)
+                return
+            self.send_json({"report": report})
+            return
+
         if self.path == "/api/cargo-shipments":
             self.send_json({"shipments": list_cargo_shipments()})
             return
@@ -39764,6 +40276,24 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                     self.send_json({"error": str(exc)}, status=400)
                     return
                 self.send_json(result)
+                return
+
+            if self.path == "/api/import-cost-report-save":
+                if not can_view_import_cost_program(user):
+                    self.send_json({"error": "수입 원가 계산 권한이 없습니다."}, status=403)
+                    return
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(length).decode("utf-8") or "{}")
+                if not isinstance(payload, dict):
+                    self.send_json({"error": "저장 요청이 올바르지 않습니다."}, status=400)
+                    return
+                try:
+                    result = calculate_import_cost(payload)
+                    report = save_import_cost_report(payload, result, user=user)
+                except ValueError as exc:
+                    self.send_json({"error": str(exc)}, status=400)
+                    return
+                self.send_json({"message": "수입 원가 데이터를 DB에 저장했습니다.", "report": report, "result": result})
                 return
 
             if self.path == "/api/import-cost-report-export":
@@ -40708,7 +41238,12 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                 }
                 options["include_import_vat"] = str(fields.get("include_import_vat") or "").strip() in {"1", "true", "on", "yes"}
                 options["include_service_vat"] = str(fields.get("include_service_vat") or "").strip() in {"1", "true", "on", "yes"}
-                self.send_json(analyze_import_cost_files(upload_paths, options))
+                analysis = analyze_import_cost_files(upload_paths, options)
+                result = analysis.get("result") if isinstance(analysis.get("result"), dict) else None
+                payload = analysis.get("payload") if isinstance(analysis.get("payload"), dict) else None
+                if result and payload:
+                    analysis["report"] = save_import_cost_report(payload, result, user=user, upload_paths=upload_paths)
+                self.send_json(analysis)
                 return
 
             if self.path == "/api/cs-cases-import-preview":

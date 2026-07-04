@@ -1162,6 +1162,14 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         self.assertIn("const freight = values.docFee + values.otherCost + values.serviceVat;", admin_html)
         self.assertIn("function setImportCostRunStatus", admin_html)
         self.assertIn('id="importCostExportReport"', admin_html)
+        self.assertIn('id="importCostSaveReport"', admin_html)
+        self.assertIn('id="importCostSavedBody"', admin_html)
+        self.assertIn("function loadImportCostSavedReports", admin_html)
+        self.assertIn("function saveCurrentImportCostReport", admin_html)
+        self.assertIn('"/api/import-cost-report-save"', admin_html)
+        self.assertIn('"/api/import-cost-reports"', admin_html)
+        self.assertIn("import-cost-rate-field", admin_html)
+        self.assertIn("제품 원가 계산의 기준 환율입니다.", admin_html)
         self.assertIn("function exportImportCostReport", admin_html)
         self.assertIn('"/api/import-cost-report-export"', admin_html)
         self.assertIn('await downloadWorkbookResponse(response, "수입원가_계산보고서.xlsx")', admin_html)
@@ -1242,6 +1250,55 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
             self.assertIn(result["summary"]["landed_total"], values)
         finally:
             workbook.close()
+
+    def test_import_cost_report_is_saved_with_original_files_and_synced_to_import_shipments(self) -> None:
+        app = self.load_app()
+        payload = {
+            "hbl_no": "XLTNGB26040216",
+            "invoice_no": "SXT20260420",
+            "remittance_rate": "1482.04",
+            "allocation_basis": "amount",
+            "doc_fee": "2191192",
+            "duty": "0",
+            "broker_fee": "53240",
+            "other_cost": "",
+            "import_vat": "2418290",
+            "service_vat": "49603",
+            "include_import_vat": True,
+            "include_service_vat": True,
+            "products": [{
+                "name": "28CM POT",
+                "quantity": "3985",
+                "unit_usd": "3.86",
+                "amount_usd": "15382.10",
+                "gross_weight": "6463.7",
+                "cbm": "68",
+            }],
+        }
+        result = app.calculate_import_cost(payload)
+        upload_path = Path(os.environ["WORKHUB_DATA_DIR"]) / "XLTNGB26040216.pdf"
+        upload_path.write_bytes(b"original pdf bytes")
+
+        report = app.save_import_cost_report(
+            payload,
+            result,
+            user={"display_name": "신성환 실장"},
+            upload_paths=[upload_path],
+        )
+
+        self.assertEqual(report["hbl_no"], "XLTNGB26040216")
+        self.assertEqual(report["remittance_rate"], "1482.04")
+        self.assertEqual(report["landed_total"], result["summary"]["landed_total"])
+        self.assertEqual(len(report["files"]), 1)
+        stored_path, metadata = app.import_cost_file_download_info(report["files"][0]["id"])
+        self.assertTrue(stored_path.exists())
+        self.assertEqual(metadata["original_name"], "XLTNGB26040216.pdf")
+        reports = app.list_import_cost_reports()
+        self.assertEqual(reports[0]["id"], report["id"])
+        shipments = app.list_import_shipments()
+        self.assertEqual(shipments[0]["hbl_no"], "XLTNGB26040216")
+        self.assertEqual(shipments[0]["import_cost_report_id"], report["id"])
+        self.assertEqual(shipments[0]["import_cost_landed_total"], result["summary"]["landed_total"])
 
     def test_import_cost_upload_analysis_reads_invoice_and_packing_files(self) -> None:
         app = self.load_app()
