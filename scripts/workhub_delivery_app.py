@@ -2071,6 +2071,40 @@ HTML = r"""<!doctype html>
       align-items: center;
       gap: 6px;
     }
+    .import-cost-upload-panel {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+      color: #64748b;
+      font-size: 13px;
+      font-weight: 760;
+    }
+    .import-cost-detail-list {
+      display: grid;
+      gap: 8px;
+    }
+    .import-cost-detail-item {
+      display: grid;
+      gap: 4px;
+      padding: 10px 12px;
+      border: 1px solid #dbe6f4;
+      border-radius: 8px;
+      background: #ffffff;
+      color: #334155;
+      font-size: 13px;
+    }
+    .import-cost-detail-item strong {
+      color: #0f172a;
+      font-size: 13px;
+    }
+    .import-cost-detail-item span {
+      color: #64748b;
+    }
+    .import-cost-detail-item.warn {
+      border-color: #f6c78f;
+      background: #fff8ef;
+    }
     .import-cost-table-wrap {
       overflow-x: auto;
       border: 1px solid #dce5f2;
@@ -12099,6 +12133,11 @@ HTML = r"""<!doctype html>
     const importCostResultBody = document.querySelector("#importCostResultBody");
     const importCostSummary = document.querySelector("#importCostSummary");
     const importCostMessage = document.querySelector("#importCostMessage");
+    const importCostFileInput = document.querySelector("#importCostFileInput");
+    const importCostFileChoose = document.querySelector("#importCostFileChoose");
+    const importCostFileUpload = document.querySelector("#importCostFileUpload");
+    const importCostFileSummary = document.querySelector("#importCostFileSummary");
+    const importCostDetailList = document.querySelector("#importCostDetailList");
     const orderWorkspace = document.querySelector("#orderWorkspace");
     const orderWorkspaceTitle = document.querySelector("#orderWorkspaceTitle");
     const orderWorkspacePanelTitle = document.querySelector("#orderWorkspacePanelTitle");
@@ -15637,6 +15676,11 @@ HTML = r"""<!doctype html>
       return document.querySelector(`#${id}`)?.value || "";
     }
 
+    function setImportCostInputValue(id, value) {
+      const input = document.querySelector(`#${id}`);
+      if (input && value !== undefined && value !== null && String(value) !== "") input.value = value;
+    }
+
     function addImportCostProductRow(product = {}) {
       if (!importCostProductBody) return;
       const row = document.createElement("tr");
@@ -15650,6 +15694,56 @@ HTML = r"""<!doctype html>
         <td><button class="btn import-cost-remove" type="button" data-import-cost-remove>삭제</button></td>
       `;
       importCostProductBody.appendChild(row);
+    }
+
+    function fillImportCostProductRows(products = []) {
+      if (!importCostProductBody) return;
+      importCostProductBody.innerHTML = "";
+      if (!products.length) {
+        addImportCostProductRow();
+        return;
+      }
+      products.forEach((product) => addImportCostProductRow(product));
+    }
+
+    function fillImportCostForm(payload = {}) {
+      setImportCostInputValue("importCostInvoiceNo", payload.invoice_no);
+      setImportCostInputValue("importCostRemittanceRate", payload.remittance_rate);
+      setImportCostInputValue("importCostAllocationBasis", payload.allocation_basis || "amount");
+      setImportCostInputValue("importCostDocFee", payload.doc_fee);
+      setImportCostInputValue("importCostDuty", payload.duty);
+      setImportCostInputValue("importCostBrokerFee", payload.broker_fee);
+      setImportCostInputValue("importCostOtherCost", payload.other_cost);
+      setImportCostInputValue("importCostImportVat", payload.import_vat);
+      setImportCostInputValue("importCostServiceVat", payload.service_vat);
+      const includeImportVat = document.querySelector("#importCostIncludeImportVat");
+      const includeServiceVat = document.querySelector("#importCostIncludeServiceVat");
+      if (includeImportVat) includeImportVat.checked = Boolean(payload.include_import_vat);
+      if (includeServiceVat) includeServiceVat.checked = Boolean(payload.include_service_vat);
+      fillImportCostProductRows(payload.products || []);
+    }
+
+    function renderImportCostDetails(data = {}) {
+      if (!importCostDetailList) return;
+      const files = data.files || [];
+      const missing = data.missing || [];
+      const fileHtml = files.map((file) => {
+        const details = (file.details || []).map((detail) => `<span>${escapeHtml(detail)}</span>`).join("");
+        const warn = (file.details || []).some((detail) => String(detail).includes("못") || String(detail).includes("미추출") || String(detail).includes("스캔"));
+        return `
+          <div class="import-cost-detail-item ${warn ? "warn" : ""}">
+            <strong>${escapeHtml(file.role || "파일")} · ${escapeHtml(file.name || "")}</strong>
+            ${details || "<span>세부사항 없음</span>"}
+          </div>
+        `;
+      }).join("");
+      const missingHtml = missing.length ? `
+        <div class="import-cost-detail-item warn">
+          <strong>추가 확인 필요</strong>
+          <span>${escapeHtml(missing.join(", "))} 항목이 자동 추출되지 않았습니다.</span>
+        </div>
+      ` : "";
+      importCostDetailList.innerHTML = fileHtml + missingHtml;
     }
 
     function collectImportCostPayload() {
@@ -15724,6 +15818,35 @@ HTML = r"""<!doctype html>
       }
     }
 
+    async function uploadImportCostFiles() {
+      if (!importCostFileInput || !importCostMessage || !canViewImportCostProgram()) return;
+      const files = Array.from(importCostFileInput.files || []);
+      if (!files.length) {
+        importCostMessage.textContent = "업로드할 파일을 선택해주세요.";
+        return;
+      }
+      importCostMessage.textContent = "파일을 분석하고 제품별 수입원가를 계산하는 중입니다.";
+      const formData = new FormData();
+      files.forEach((file, index) => formData.append(`file_${index}`, file));
+      const currentPayload = collectImportCostPayload();
+      Object.entries(currentPayload).forEach(([key, value]) => {
+        if (key === "products") return;
+        formData.append(key, typeof value === "boolean" ? (value ? "1" : "") : String(value ?? ""));
+      });
+      try {
+        const response = await fetch("/api/import-cost-upload", { method: "POST", body: formData });
+        const data = await response.json();
+        if (!response.ok || data.error) throw new Error(data.error || "파일 분석에 실패했습니다.");
+        fillImportCostForm(data.payload || {});
+        renderImportCostDetails(data);
+        if (data.result) renderImportCostResult(data.result);
+        if (importCostFileSummary) importCostFileSummary.textContent = `${files.length}개 파일 분석 완료`;
+        importCostMessage.textContent = data.calculation_error || "업로드 파일 기준 제품별 수입원가 계산이 완료됐습니다.";
+      } catch (error) {
+        importCostMessage.textContent = error.message || "파일 분석에 실패했습니다.";
+      }
+    }
+
     function resetImportCostProgram() {
       if (!importCostWorkspace) return;
       importCostWorkspace.querySelectorAll("input").forEach((input) => {
@@ -15743,6 +15866,9 @@ HTML = r"""<!doctype html>
       });
       if (importCostSummary) importCostSummary.innerHTML = "";
       if (importCostResultBody) importCostResultBody.innerHTML = `<tr><td colspan="7" class="empty">계산 전입니다.</td></tr>`;
+      if (importCostDetailList) importCostDetailList.innerHTML = "";
+      if (importCostFileInput) importCostFileInput.value = "";
+      if (importCostFileSummary) importCostFileSummary.textContent = "인보이스, 패킹리스트, 수입정산서를 함께 업로드해주세요.";
       if (importCostMessage) importCostMessage.textContent = "인보이스와 패킹리스트 값을 입력해주세요.";
     }
 
@@ -23825,6 +23951,16 @@ HTML = r"""<!doctype html>
     importCostAddProduct?.addEventListener("click", () => addImportCostProductRow());
     importCostReset?.addEventListener("click", resetImportCostProgram);
     importCostCalculate?.addEventListener("click", calculateImportCost);
+    importCostFileChoose?.addEventListener("click", () => importCostFileInput?.click());
+    importCostFileUpload?.addEventListener("click", uploadImportCostFiles);
+    importCostFileInput?.addEventListener("change", () => {
+      const files = Array.from(importCostFileInput.files || []);
+      if (importCostFileSummary) {
+        importCostFileSummary.textContent = files.length
+          ? files.map((file) => file.name).join(", ")
+          : "인보이스, 패킹리스트, 수입정산서를 함께 업로드해주세요.";
+      }
+    });
     importCostProductBody?.addEventListener("click", (event) => {
       const button = event.target.closest("[data-import-cost-remove]");
       if (!button) return;
@@ -24815,6 +24951,16 @@ IMPORT_COST_WORKSPACE_HTML = r"""
           </div>
         </div>
         <div class="import-cost-panel">
+          <section class="import-cost-card">
+            <div class="admin-section-title">파일 자동 분석</div>
+            <div class="import-cost-upload-panel">
+              <input id="importCostFileInput" type="file" accept=".xlsx,.xlsm,.xls,.csv,.pdf" multiple hidden />
+              <button class="workspace-button" type="button" id="importCostFileChoose">파일 선택</button>
+              <button class="workspace-button" type="button" id="importCostFileUpload">업로드 후 자동 계산</button>
+              <span id="importCostFileSummary">인보이스, 패킹리스트, 수입정산서를 함께 업로드해주세요.</span>
+            </div>
+            <div class="import-cost-detail-list" id="importCostDetailList"></div>
+          </section>
           <section class="import-cost-card">
             <div class="admin-section-title">컨테이너/인보이스 기준</div>
             <div class="import-cost-grid">
@@ -25847,6 +25993,29 @@ def save_uploaded_backup_zip(fields: dict[str, tuple[str, bytes] | str], field_n
     path = UPLOAD_DIR / f"{int(time.time() * 1000)}_{safe_filename(filename)}"
     path.write_bytes(data)
     return path
+
+
+IMPORT_COST_UPLOAD_SUFFIXES = {".xlsx", ".xlsm", ".xls", ".csv", ".pdf"}
+
+
+def save_uploaded_import_cost_files(fields: dict[str, tuple[str, bytes] | str]) -> list[Path]:
+    paths: list[Path] = []
+    UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    for field_name, uploaded in fields.items():
+        if not field_name.startswith("file_") or not isinstance(uploaded, tuple):
+            continue
+        filename, data = uploaded
+        filename = safe_filename(filename)
+        if not filename or not data:
+            continue
+        if Path(filename).suffix.lower() not in IMPORT_COST_UPLOAD_SUFFIXES:
+            raise ValueError("수입원가 파일은 xlsx, xlsm, xls, csv, pdf만 업로드할 수 있습니다.")
+        path = UPLOAD_DIR / f"{int(time.time() * 1000)}_{len(paths)}_{filename}"
+        path.write_bytes(data)
+        paths.append(path)
+    if not paths:
+        raise ValueError("업로드된 수입원가 파일이 없습니다.")
+    return paths
 
 
 def parse_receipt_date(value: object) -> date:
@@ -29590,6 +29759,359 @@ def calculate_import_cost(payload: dict) -> dict[str, object]:
         },
         "charges": {key: import_cost_money(value) for key, value in charge_values.items()},
         "products": result_rows,
+    }
+
+
+def import_cost_cell_text(value: object) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, datetime):
+        return value.date().isoformat()
+    if isinstance(value, date):
+        return value.isoformat()
+    if isinstance(value, float) and value.is_integer():
+        return str(int(value))
+    return str(value).strip()
+
+
+def import_cost_sheet_rows(path: Path) -> list[list[object]]:
+    suffix = path.suffix.lower()
+    if suffix in {".xlsx", ".xlsm"}:
+        workbook = load_workbook(path, data_only=True, read_only=True)
+        try:
+            rows: list[list[object]] = []
+            for worksheet in workbook.worksheets:
+                for row in worksheet.iter_rows(values_only=True):
+                    values = list(row)
+                    if any(import_cost_cell_text(value) for value in values):
+                        rows.append(values)
+            return rows
+        finally:
+            workbook.close()
+    if suffix == ".xls":
+        try:
+            import xlrd  # type: ignore
+        except ImportError as exc:
+            raise ValueError("xls 파일 자동 추출을 위해 서버에 xlrd 패키지가 필요합니다.") from exc
+        workbook = xlrd.open_workbook(str(path))
+        rows = []
+        for sheet in workbook.sheets():
+            for row_index in range(sheet.nrows):
+                values = [sheet.cell_value(row_index, col_index) for col_index in range(sheet.ncols)]
+                if any(import_cost_cell_text(value) for value in values):
+                    rows.append(values)
+        return rows
+    if suffix == ".csv":
+        text = path.read_text(encoding="utf-8-sig", errors="ignore")
+        return [line.split(",") for line in text.splitlines() if line.strip()]
+    return []
+
+
+def import_cost_find_next_value(rows: list[list[object]], label: str) -> str:
+    label_upper = label.upper()
+    blocked_labels = {"DATE", "DATE:", "일자", "작성일자"}
+    for row_index, row in enumerate(rows):
+        texts = [import_cost_cell_text(value) for value in row]
+        for col_index, text in enumerate(texts):
+            if label_upper in text.upper():
+                for next_value in texts[col_index + 1:]:
+                    if next_value and next_value.upper() not in blocked_labels and not next_value.endswith(":"):
+                        return next_value
+                if row_index + 1 < len(rows):
+                    next_row = [import_cost_cell_text(value) for value in rows[row_index + 1]]
+                    for next_value in next_row[col_index:]:
+                        if next_value:
+                            return next_value
+    return ""
+
+
+def import_cost_number_from_text(value: object) -> Decimal:
+    text = import_cost_cell_text(value)
+    match = re.search(r"-?\d+(?:,\d{3})*(?:\.\d+)?|-?\d+(?:\.\d+)?", text)
+    return import_cost_decimal(match.group(0) if match else "")
+
+
+def import_cost_product_name_from_row(values: list[object], start: int, end: int) -> str:
+    candidates = []
+    blocked = {"", "N/M", "NM", "TOTAL", "TOTEL"}
+    for value in values[start:end]:
+        text = import_cost_cell_text(value).replace("\n", " ").strip()
+        if not text or text.upper() in blocked:
+            continue
+        if re.fullmatch(r"\d+(?:\.\d+)?", text):
+            continue
+        candidates.append(text)
+    return candidates[-1] if candidates else ""
+
+
+def parse_import_cost_invoice_rows(rows: list[list[object]]) -> dict[str, object]:
+    header_index = -1
+    unit_index = amount_index = quantity_index = description_index = -1
+    for row_index, row in enumerate(rows):
+        headers = [import_cost_cell_text(value).upper().replace("\n", " ") for value in row]
+        if not any("AMOUNT" in header for header in headers):
+            continue
+        unit_candidates = [idx for idx, header in enumerate(headers) if "UNIT" in header and "PRICE" in header]
+        amount_candidates = [idx for idx, header in enumerate(headers) if "AMOUNT" in header]
+        quantity_candidates = [
+            idx for idx, header in enumerate(headers)
+            if "QTY" in header or "QUANTI" in header or "수량" in header
+        ]
+        if unit_candidates and amount_candidates and quantity_candidates:
+            header_index = row_index
+            unit_index = unit_candidates[-1]
+            amount_index = amount_candidates[-1]
+            quantity_index = quantity_candidates[-1]
+            desc_candidates = [idx for idx, header in enumerate(headers) if "DESC" in header or "품명" in header]
+            description_index = desc_candidates[-1] if desc_candidates else -1
+            break
+    if header_index < 0:
+        return {"products": [], "details": ["인보이스 상품 헤더를 찾지 못했습니다."]}
+
+    products: list[dict[str, object]] = []
+    for row in rows[header_index + 1:]:
+        values = list(row)
+        row_text = " ".join(import_cost_cell_text(value).upper() for value in values)
+        if "TOTAL" in row_text or "TOTEL" in row_text:
+            break
+        quantity = import_cost_number_from_text(values[quantity_index] if quantity_index < len(values) else "")
+        amount = import_cost_number_from_text(values[amount_index] if amount_index < len(values) else "")
+        unit = import_cost_number_from_text(values[unit_index] if unit_index < len(values) else "")
+        if quantity <= 0 and amount <= 0:
+            continue
+        name = ""
+        if 0 <= description_index < len(values):
+            name = import_cost_cell_text(values[description_index])
+        if not name:
+            name = import_cost_product_name_from_row(values, 0, max(quantity_index, description_index, 1))
+        if not name:
+            name = f"제품 {len(products) + 1}"
+        products.append({
+            "name": name,
+            "quantity": str(quantity.normalize()),
+            "unit_usd": str(unit.normalize()) if unit > 0 else "",
+            "amount_usd": str(amount.normalize()) if amount > 0 else "",
+        })
+    details = []
+    if products:
+        details.append(f"인보이스 상품 {len(products)}개 라인을 추출했습니다.")
+    else:
+        details.append("인보이스 상품 라인이 비어 있습니다.")
+    return {
+        "invoice_no": import_cost_find_next_value(rows, "INVOICE NO"),
+        "products": products,
+        "details": details,
+    }
+
+
+def parse_import_cost_packing_rows(rows: list[list[object]]) -> dict[str, object]:
+    header_index = -1
+    quantity_index = measurement_index = weight_index = description_index = -1
+    for row_index, row in enumerate(rows):
+        headers = [import_cost_cell_text(value).upper().replace("\n", " ") for value in row]
+        if not any("PACK" in header or "QUANTI" in header for header in headers):
+            continue
+        quantity_candidates = [idx for idx, header in enumerate(headers) if "QUANTI" in header or "QTY" in header]
+        measure_candidates = [idx for idx, header in enumerate(headers) if "MEAS" in header or "CBM" in header]
+        weight_candidates = [idx for idx, header in enumerate(headers) if "G.W" in header or "N.W" in header or "KGS" in header]
+        if quantity_candidates and (measure_candidates or weight_candidates):
+            header_index = row_index
+            quantity_index = quantity_candidates[-1]
+            measurement_index = measure_candidates[-1] if measure_candidates else -1
+            weight_index = weight_candidates[-1] if weight_candidates else -1
+            desc_candidates = [idx for idx, header in enumerate(headers) if "DESC" in header or "품명" in header]
+            description_index = desc_candidates[-1] if desc_candidates else -1
+            break
+    if header_index < 0:
+        return {"products": [], "details": ["패킹리스트 헤더를 찾지 못했습니다."]}
+    products: list[dict[str, object]] = []
+    for row in rows[header_index + 1:]:
+        values = list(row)
+        row_text = " ".join(import_cost_cell_text(value).upper() for value in values)
+        if "TOTAL" in row_text:
+            break
+        quantity_text = import_cost_cell_text(values[quantity_index] if quantity_index < len(values) else "")
+        quantity_matches = re.findall(r"\d+(?:,\d{3})*(?:\.\d+)?", quantity_text)
+        quantity = import_cost_decimal(quantity_matches[-1] if quantity_matches else "")
+        cbm = import_cost_number_from_text(values[measurement_index] if measurement_index < len(values) else "")
+        weight_text = import_cost_cell_text(values[weight_index] if weight_index < len(values) else "")
+        weight_matches = re.findall(r"\d+(?:,\d{3})*(?:\.\d+)?", weight_text)
+        gross_weight = import_cost_decimal(weight_matches[0] if weight_matches else "")
+        net_weight = import_cost_decimal(weight_matches[1] if len(weight_matches) > 1 else "")
+        if quantity <= 0 and cbm <= 0 and gross_weight <= 0:
+            continue
+        name = ""
+        if 0 <= description_index < len(values):
+            name = import_cost_cell_text(values[description_index])
+        if not name:
+            name = import_cost_product_name_from_row(values, 0, max(quantity_index, 1))
+        products.append({
+            "name": name or f"제품 {len(products) + 1}",
+            "quantity": str(quantity.normalize()) if quantity > 0 else "",
+            "gross_weight": str(gross_weight.normalize()) if gross_weight > 0 else "",
+            "net_weight": str(net_weight.normalize()) if net_weight > 0 else "",
+            "cbm": str(cbm.normalize()) if cbm > 0 else "",
+        })
+    return {
+        "products": products,
+        "details": [f"패킹리스트 {len(products)}개 라인을 추출했습니다." if products else "패킹리스트 상품 라인이 비어 있습니다."],
+    }
+
+
+def parse_import_cost_pdf_text(path: Path) -> dict[str, object]:
+    details = [f"{original_uploaded_filename(path.name)}: PDF 정산서 확인"]
+    text = ""
+    try:
+        from pypdf import PdfReader  # type: ignore
+        reader = PdfReader(str(path))
+        text = "\n".join(page.extract_text() or "" for page in reader.pages)
+    except Exception:
+        text = ""
+    if not text.strip():
+        details.append("스캔 PDF라 텍스트 금액 자동 추출이 되지 않았습니다.")
+        return {"charges": {}, "details": details}
+    charges: dict[str, str] = {}
+    patterns = {
+        "doc_fee": r"DOC\s*/\s*FEE[^\d]*(\d[\d,]*)",
+        "duty": r"관\s*세[^\d]*(\d[\d,]*)",
+        "import_vat": r"부\s*가\s*세[^\d]*(\d[\d,]*)",
+        "broker_fee": r"통\s*관\s*수\s*수\s*료[^\d]*(\d[\d,]*)",
+    }
+    for key, pattern in patterns.items():
+        match = re.search(pattern, text, re.I)
+        if match:
+            charges[key] = match.group(1).replace(",", "")
+    details.append("텍스트 PDF에서 정산 비용을 추출했습니다." if charges else "PDF 텍스트에서 정산 비용 항목을 찾지 못했습니다.")
+    return {"charges": charges, "details": details}
+
+
+def import_cost_normalize_name(value: object) -> str:
+    return re.sub(r"[^0-9a-z가-힣]+", "", str(value or "").lower())
+
+
+def dedupe_import_cost_products(products: list[dict[str, object]]) -> list[dict[str, object]]:
+    unique: list[dict[str, object]] = []
+    seen: set[tuple[str, str, str]] = set()
+    for product in products:
+        key = (
+            str(product.get("quantity") or "").strip(),
+            str(product.get("unit_usd") or "").strip(),
+            str(product.get("amount_usd") or "").strip(),
+        )
+        if all(key) and key in seen:
+            continue
+        if all(key):
+            seen.add(key)
+        unique.append(product)
+    return unique
+
+
+def merge_import_cost_products(invoice_products: list[dict[str, object]], packing_products: list[dict[str, object]]) -> list[dict[str, object]]:
+    products = [dict(product) for product in dedupe_import_cost_products(invoice_products)]
+    used_packing: set[int] = set()
+    for product in products:
+        product_key = import_cost_normalize_name(product.get("name"))
+        match_index = -1
+        for index, packing in enumerate(packing_products):
+            if index in used_packing:
+                continue
+            packing_key = import_cost_normalize_name(packing.get("name"))
+            if product_key and packing_key and (product_key in packing_key or packing_key in product_key):
+                match_index = index
+                break
+        if match_index < 0 and len(products) == len(packing_products):
+            candidate = len(used_packing)
+            if candidate < len(packing_products):
+                match_index = candidate
+        if match_index >= 0:
+            used_packing.add(match_index)
+            packing = packing_products[match_index]
+            for key in ("gross_weight", "net_weight", "cbm"):
+                if packing.get(key) and not product.get(key):
+                    product[key] = packing[key]
+            if packing.get("quantity") and not product.get("quantity"):
+                product["quantity"] = packing["quantity"]
+    if not products:
+        products = [dict(product) for product in packing_products]
+    return products
+
+
+def analyze_import_cost_files(paths: list[Path], options: dict[str, object] | None = None) -> dict[str, object]:
+    options = options or {}
+    invoice_products: list[dict[str, object]] = []
+    packing_products: list[dict[str, object]] = []
+    charges: dict[str, object] = {}
+    details: list[str] = []
+    invoice_no = ""
+    parsed_files: list[dict[str, object]] = []
+    for path in paths:
+        original_name = original_uploaded_filename(path.name)
+        suffix = path.suffix.lower()
+        file_details = []
+        role = "기타"
+        if suffix == ".pdf":
+            parsed = parse_import_cost_pdf_text(path)
+            charges.update(parsed.get("charges") or {})
+            file_details.extend(parsed.get("details") or [])
+            role = "정산서 PDF"
+        else:
+            rows = import_cost_sheet_rows(path)
+            flat_text = " ".join(import_cost_cell_text(value).upper() for row in rows for value in row[:12])
+            if "PACKING" in flat_text or "装箱" in flat_text or "裝箱" in flat_text:
+                parsed = parse_import_cost_packing_rows(rows)
+                packing_products.extend(parsed.get("products") or [])
+                file_details.extend(parsed.get("details") or [])
+                role = "패킹리스트"
+            elif "INVOICE" in flat_text or "发票" in flat_text or "PROFORMA" in flat_text:
+                parsed = parse_import_cost_invoice_rows(rows)
+                invoice_products.extend(parsed.get("products") or [])
+                if not invoice_no:
+                    invoice_no = str(parsed.get("invoice_no") or "")
+                file_details.extend(parsed.get("details") or [])
+                role = "인보이스"
+            else:
+                file_details.append("파일 역할을 자동 판별하지 못했습니다.")
+        parsed_files.append({"name": original_name, "role": role, "details": file_details})
+        details.extend(file_details)
+    products = merge_import_cost_products(invoice_products, packing_products)
+    payload: dict[str, object] = {
+        "invoice_no": options.get("invoice_no") or invoice_no,
+        "remittance_rate": options.get("remittance_rate") or "",
+        "allocation_basis": options.get("allocation_basis") or "amount",
+        "doc_fee": options.get("doc_fee") or charges.get("doc_fee") or "",
+        "duty": options.get("duty") or charges.get("duty") or "",
+        "broker_fee": options.get("broker_fee") or charges.get("broker_fee") or "",
+        "other_cost": options.get("other_cost") or "",
+        "import_vat": options.get("import_vat") or charges.get("import_vat") or "",
+        "service_vat": options.get("service_vat") or charges.get("service_vat") or "",
+        "include_import_vat": bool(options.get("include_import_vat")),
+        "include_service_vat": bool(options.get("include_service_vat")),
+        "products": products,
+    }
+    result = None
+    calculation_error = ""
+    if products and payload.get("remittance_rate"):
+        try:
+            result = calculate_import_cost(payload)
+        except ValueError as exc:
+            calculation_error = str(exc)
+    elif not payload.get("remittance_rate"):
+        calculation_error = "송금환율 입력 후 자동 계산됩니다."
+    missing = []
+    if not invoice_products:
+        missing.append("인보이스 상품")
+    if not packing_products:
+        missing.append("패킹리스트 중량/CBM")
+    if not any(payload.get(key) for key in ("doc_fee", "duty", "broker_fee", "other_cost", "import_vat", "service_vat")):
+        missing.append("정산서 비용")
+    return {
+        "message": "수입원가 파일 분석을 완료했습니다.",
+        "payload": payload,
+        "result": result,
+        "calculation_error": calculation_error,
+        "files": parsed_files,
+        "details": details,
+        "missing": missing,
     }
 
 
@@ -39269,6 +39791,30 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                     "file": saved,
                     "files": list_sales_report_uploads(),
                 })
+                return
+
+            if self.path == "/api/import-cost-upload":
+                if not can_view_import_cost_program(user):
+                    self.send_json({"error": "수입 원가 계산 권한이 없습니다."}, status=403)
+                    return
+                upload_paths = save_uploaded_import_cost_files(fields)
+                options = {
+                    key: fields.get(key, "")
+                    for key in (
+                        "invoice_no",
+                        "remittance_rate",
+                        "allocation_basis",
+                        "doc_fee",
+                        "duty",
+                        "broker_fee",
+                        "other_cost",
+                        "import_vat",
+                        "service_vat",
+                    )
+                }
+                options["include_import_vat"] = str(fields.get("include_import_vat") or "").strip() in {"1", "true", "on", "yes"}
+                options["include_service_vat"] = str(fields.get("include_service_vat") or "").strip() in {"1", "true", "on", "yes"}
+                self.send_json(analyze_import_cost_files(upload_paths, options))
                 return
 
             if self.path == "/api/cs-cases-import-preview":

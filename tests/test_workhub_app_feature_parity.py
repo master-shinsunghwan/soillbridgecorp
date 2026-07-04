@@ -6,6 +6,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from openpyxl import Workbook
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -1137,6 +1138,8 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         self.assertNotIn('id="importCostWorkspace"', staff_html)
         self.assertIn("function calculateImportCost()", admin_html)
         self.assertIn('"/api/import-cost-calculate"', admin_html)
+        self.assertIn('id="importCostFileInput"', admin_html)
+        self.assertIn('"/api/import-cost-upload"', admin_html)
 
     def test_import_cost_calculation_allocates_to_product_unit_cost(self) -> None:
         app = self.load_app()
@@ -1166,6 +1169,59 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         self.assertEqual(result["summary"]["allocated_cost_total"], 2289195)
         self.assertEqual(result["products"][0]["landed_total"], 25086082)
         self.assertEqual(result["products"][0]["landed_unit"], 6295.13)
+
+    def test_import_cost_upload_analysis_reads_invoice_and_packing_files(self) -> None:
+        app = self.load_app()
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            invoice_path = root / "INV.xlsx"
+            proforma_path = root / "PROFORMA.xlsx"
+            packing_path = root / "PACKING LIST.xlsx"
+
+            invoice = Workbook()
+            ws = invoice.active
+            ws.append(["COMMERCIAL INVOICE"])
+            ws.append(["", "", "INVOICE NO.", "", "DATE:"])
+            ws.append(["", "", "SXT20260420", "", "2026-04-20"])
+            ws.append(["SHIPPING MARK", "DESCRIPTIONS", "UNIT PRICE (FOB)", "QUANTITES (PCS)", "AMOUNT"])
+            ws.append(["N/M", "28CM POT", 3.86, 3985, 15382.10])
+            ws.append(["TOTAL", "", "", 3985, 15382.10])
+            invoice.save(invoice_path)
+
+            proforma = Workbook()
+            ws = proforma.active
+            ws.append(["PROFORMA INVOICE"])
+            ws.append(["NO", "", "Description of Goods", "", "Qty.", "", "UNITPRICE", "AMOUNT"])
+            ws.append([1, "", "", "28cm무쇄냄비", 3985, "PCS", 3.86, 15382.10])
+            ws.append(["TOTEL", "", "", "", 3985, "", "", 15382.10])
+            proforma.save(proforma_path)
+
+            packing = Workbook()
+            ws = packing.active
+            ws.append(["PACKING LIST"])
+            ws.append(["SHIPPING MARK", "DESCRIPTION", "QUANTITIES (CTNS)", "MEASUREMENT (CBM)", "G.W/N.W (KGS)"])
+            ws.append(["N/M", "28CM POT", "797CTNS /3985SETS", 68, "6463.7 KGS / 5738.4KGS"])
+            ws.append(["TOTAL", "", "797CTNS /3985SETS", "68 CBM", "6463.7 KGS / 5738.4KGS"])
+            packing.save(packing_path)
+
+            analysis = app.analyze_import_cost_files(
+                [invoice_path, packing_path, proforma_path],
+                {
+                    "remittance_rate": "1482.04",
+                    "allocation_basis": "amount",
+                    "doc_fee": "2240795",
+                    "broker_fee": "48400",
+                },
+            )
+
+            self.assertEqual(analysis["payload"]["invoice_no"], "SXT20260420")
+            self.assertEqual(len(analysis["payload"]["products"]), 1)
+            product = analysis["payload"]["products"][0]
+            self.assertEqual(product["name"], "28CM POT")
+            self.assertEqual(product["quantity"], "3985")
+            self.assertEqual(product["gross_weight"], "6463.7")
+            self.assertEqual(product["cbm"], "68")
+            self.assertEqual(analysis["result"]["products"][0]["landed_unit"], 6295.13)
 
     def test_sales_report_dashboard_layout_uses_three_report_types(self) -> None:
         html_source = (ROOT / "scripts" / "workhub_delivery_app.py").read_text(encoding="utf-8")
