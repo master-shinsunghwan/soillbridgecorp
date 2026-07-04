@@ -2080,6 +2080,57 @@ HTML = r"""<!doctype html>
       font-size: 13px;
       font-weight: 760;
     }
+    .import-cost-run-status {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-top: 10px;
+      padding: 10px 12px;
+      border: 1px solid #dbe6f4;
+      border-radius: 8px;
+      background: #f8fafc;
+      color: #475569;
+      font-size: 13px;
+      font-weight: 780;
+    }
+    .import-cost-run-status::before {
+      content: "";
+      width: 9px;
+      height: 9px;
+      border-radius: 999px;
+      background: #94a3b8;
+      flex: 0 0 auto;
+    }
+    .import-cost-run-status.running {
+      border-color: #93c5fd;
+      background: #eff6ff;
+      color: #1d4ed8;
+    }
+    .import-cost-run-status.running::before {
+      background: #2563eb;
+      box-shadow: 0 0 0 5px rgba(37, 99, 235, 0.14);
+      animation: import-cost-pulse 1s ease-in-out infinite;
+    }
+    .import-cost-run-status.done {
+      border-color: #86efac;
+      background: #f0fdf4;
+      color: #15803d;
+    }
+    .import-cost-run-status.done::before {
+      background: #16a34a;
+    }
+    .import-cost-run-status.error {
+      border-color: #fecaca;
+      background: #fef2f2;
+      color: #b91c1c;
+    }
+    .import-cost-run-status.error::before {
+      background: #dc2626;
+    }
+    @keyframes import-cost-pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.55; transform: scale(0.78); }
+    }
     .import-cost-detail-list {
       display: grid;
       gap: 8px;
@@ -12138,6 +12189,7 @@ HTML = r"""<!doctype html>
     const importCostFileUpload = document.querySelector("#importCostFileUpload");
     const importCostFileSummary = document.querySelector("#importCostFileSummary");
     const importCostDetailList = document.querySelector("#importCostDetailList");
+    const importCostRunStatus = document.querySelector("#importCostRunStatus");
     let selectedImportCostFiles = [];
     const orderWorkspace = document.querySelector("#orderWorkspace");
     const orderWorkspaceTitle = document.querySelector("#orderWorkspaceTitle");
@@ -15747,6 +15799,19 @@ HTML = r"""<!doctype html>
       importCostDetailList.innerHTML = fileHtml + missingHtml;
     }
 
+    function setImportCostRunStatus(state = "idle", message = "") {
+      if (!importCostRunStatus) return;
+      const labels = {
+        idle: "대기 중",
+        selected: "파일 선택됨",
+        running: "분석/계산 중",
+        done: "완료",
+        error: "오류",
+      };
+      importCostRunStatus.className = `import-cost-run-status ${state}`;
+      importCostRunStatus.textContent = `${labels[state] || labels.idle} · ${message || "인보이스, 패킹리스트, 수입정산서를 선택해주세요."}`;
+    }
+
     function importCostFileKey(file) {
       return [file.name, file.size, file.lastModified].join("|");
     }
@@ -15771,6 +15836,10 @@ HTML = r"""<!doctype html>
         }
       });
       renderSelectedImportCostFiles();
+      setImportCostRunStatus(
+        selectedImportCostFiles.length ? "selected" : "idle",
+        selectedImportCostFiles.length ? `${selectedImportCostFiles.length}개 파일이 업로드 대기 중입니다.` : ""
+      );
     }
 
     function collectImportCostPayload() {
@@ -15830,6 +15899,8 @@ HTML = r"""<!doctype html>
     async function calculateImportCost() {
       if (!importCostMessage || !canViewImportCostProgram()) return;
       importCostMessage.textContent = "제품별 수입원가를 계산하는 중입니다.";
+      setImportCostRunStatus("running", "입력값 기준으로 제품별 수입원가를 계산하고 있습니다.");
+      if (importCostCalculate) importCostCalculate.disabled = true;
       try {
         const response = await fetch("/api/import-cost-calculate", {
           method: "POST",
@@ -15840,8 +15911,13 @@ HTML = r"""<!doctype html>
         if (!response.ok || data.error) throw new Error(data.error || "수입원가 계산에 실패했습니다.");
         renderImportCostResult(data);
         importCostMessage.textContent = "제품별 수입원가 계산이 완료됐습니다.";
+        setImportCostRunStatus("done", "제품별 수입원가 계산이 완료됐습니다.");
       } catch (error) {
-        importCostMessage.textContent = error.message || "수입원가 계산에 실패했습니다.";
+        const message = error.message || "수입원가 계산에 실패했습니다.";
+        importCostMessage.textContent = message;
+        setImportCostRunStatus("error", message);
+      } finally {
+        if (importCostCalculate) importCostCalculate.disabled = false;
       }
     }
 
@@ -15850,9 +15926,14 @@ HTML = r"""<!doctype html>
       const files = selectedImportCostFiles;
       if (!files.length) {
         importCostMessage.textContent = "업로드할 파일을 선택해주세요.";
+        setImportCostRunStatus("error", "업로드할 파일이 선택되지 않았습니다.");
         return;
       }
       importCostMessage.textContent = "파일을 분석하고 제품별 수입원가를 계산하는 중입니다.";
+      setImportCostRunStatus("running", `${files.length}개 파일을 업로드하고 분석 중입니다. 스캔 PDF는 OCR 때문에 시간이 더 걸릴 수 있습니다.`);
+      if (importCostFileChoose) importCostFileChoose.disabled = true;
+      if (importCostFileUpload) importCostFileUpload.disabled = true;
+      if (importCostCalculate) importCostCalculate.disabled = true;
       const formData = new FormData();
       files.forEach((file, index) => formData.append(`file_${index}`, file));
       const currentPayload = collectImportCostPayload();
@@ -15869,8 +15950,15 @@ HTML = r"""<!doctype html>
         if (data.result) renderImportCostResult(data.result);
         renderSelectedImportCostFiles("분석 완료 · ");
         importCostMessage.textContent = data.calculation_error || "업로드 파일 기준 제품별 수입원가 계산이 완료됐습니다.";
+        setImportCostRunStatus(data.calculation_error ? "error" : "done", data.calculation_error || "업로드 파일 기준 제품별 수입원가 계산이 완료됐습니다.");
       } catch (error) {
-        importCostMessage.textContent = error.message || "파일 분석에 실패했습니다.";
+        const message = error.message || "파일 분석에 실패했습니다.";
+        importCostMessage.textContent = message;
+        setImportCostRunStatus("error", message);
+      } finally {
+        if (importCostFileChoose) importCostFileChoose.disabled = false;
+        if (importCostFileUpload) importCostFileUpload.disabled = false;
+        if (importCostCalculate) importCostCalculate.disabled = false;
       }
     }
 
@@ -15901,6 +15989,7 @@ HTML = r"""<!doctype html>
       selectedImportCostFiles = [];
       if (importCostFileInput) importCostFileInput.value = "";
       renderSelectedImportCostFiles();
+      setImportCostRunStatus("idle");
       if (importCostMessage) importCostMessage.textContent = "인보이스와 패킹리스트 값을 입력해주세요.";
     }
 
@@ -24988,6 +25077,7 @@ IMPORT_COST_WORKSPACE_HTML = r"""
               <button class="workspace-button" type="button" id="importCostFileUpload">업로드 후 자동 계산</button>
               <span id="importCostFileSummary">인보이스, 패킹리스트, 수입정산서를 함께 업로드해주세요.</span>
             </div>
+            <div class="import-cost-run-status" id="importCostRunStatus">대기 중 · 인보이스, 패킹리스트, 수입정산서를 선택해주세요.</div>
             <div class="import-cost-detail-list" id="importCostDetailList"></div>
           </section>
           <section class="import-cost-card">
@@ -25038,7 +25128,7 @@ IMPORT_COST_WORKSPACE_HTML = r"""
               <label><input id="importCostIncludeImportVat" type="checkbox" checked /> 수입부가세를 제품 원가에 포함</label>
               <label><input id="importCostIncludeServiceVat" type="checkbox" checked /> 수수료 부가세를 제품 원가에 포함</label>
             </div>
-            <div class="hint-line">부가세는 회계 처리 기준에 따라 공제 대상일 수 있어 기본값은 원가 제외입니다.</div>
+            <div class="hint-line">부가세 포함 여부는 기본 포함이며, 필요 시 체크 해제해서 원가에서 제외할 수 있습니다.</div>
           </section>
           <section class="import-cost-card import-cost-products-card">
             <div class="admin-section-title">제품별 인보이스/패킹 라인</div>
@@ -30111,6 +30201,7 @@ def ocr_import_cost_pdf_text(path: Path) -> tuple[str, list[str]]:
 def parse_import_cost_pdf_text(path: Path) -> dict[str, object]:
     details = [f"{original_uploaded_filename(path.name)}: PDF 정산서 확인"]
     text = ""
+    used_ocr = False
     try:
         from pypdf import PdfReader  # type: ignore
         reader = PdfReader(str(path))
@@ -30121,8 +30212,12 @@ def parse_import_cost_pdf_text(path: Path) -> dict[str, object]:
         ocr_text, ocr_details = ocr_import_cost_pdf_text(path)
         details.extend(ocr_details)
         text = ocr_text
+        used_ocr = bool(text.strip())
     charges = parse_import_cost_settlement_text(text)
-    if charges:
+    if charges and used_ocr:
+        details.append("스캔 PDF OCR 금액은 오인식 가능성이 있어 비용칸에 자동 반영하지 않았습니다. 정산서 원본 금액을 확인해 직접 입력해주세요.")
+        charges = {}
+    elif charges:
         details.append("정산 비용을 자동 추출했습니다.")
     elif text.strip():
         details.append("PDF/OCR 텍스트에서 정산 비용 항목을 찾지 못했습니다.")

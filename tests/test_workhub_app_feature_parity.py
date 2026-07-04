@@ -1146,6 +1146,11 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         self.assertIn('id="importCostIncludeServiceVat" type="checkbox" checked', admin_html)
         self.assertIn("includeImportVat.checked = true", admin_html)
         self.assertIn("includeServiceVat.checked = true", admin_html)
+        self.assertIn('id="importCostRunStatus"', admin_html)
+        self.assertIn("function setImportCostRunStatus", admin_html)
+        self.assertIn('setImportCostRunStatus("running"', admin_html)
+        self.assertIn('setImportCostRunStatus("done"', admin_html)
+        self.assertIn('setImportCostRunStatus("error"', admin_html)
 
     def test_import_cost_calculation_allocates_to_product_unit_cost(self) -> None:
         app = self.load_app()
@@ -1248,6 +1253,24 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         self.assertEqual(charges["import_vat"], "2418290")
         self.assertEqual(charges["broker_fee"], "48400")
         self.assertEqual(charges["service_vat"], "4840")
+
+    def test_import_cost_scanned_pdf_ocr_does_not_auto_apply_costs(self) -> None:
+        app = self.load_app()
+        with tempfile.TemporaryDirectory() as directory:
+            pdf_path = Path(directory) / "scanned.pdf"
+            pdf_path.write_bytes(b"not a readable pdf")
+
+            app.ocr_import_cost_pdf_text = lambda path: ("""
+            DOC / FEE 000
+            관 세 -00261
+            부 가 세 24102909
+            통관수수료 00000
+            """, ["스캔 PDF 1페이지를 OCR로 읽었습니다."])
+
+            parsed = app.parse_import_cost_pdf_text(pdf_path)
+
+        self.assertEqual(parsed["charges"], {})
+        self.assertTrue(any("자동 반영하지 않았습니다" in detail for detail in parsed["details"]))
 
     def test_sales_report_dashboard_layout_uses_three_report_types(self) -> None:
         html_source = (ROOT / "scripts" / "workhub_delivery_app.py").read_text(encoding="utf-8")
