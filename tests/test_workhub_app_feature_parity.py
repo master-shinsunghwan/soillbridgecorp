@@ -1324,6 +1324,8 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
             "9| 검역수수료 KRW 1.00 50,000 100,000 10,000",
             "10| TRUCKING CHARGE/김포신항 KRW 1.00 370,700 370,700 37,070",
             "11] X-RAY 검사료 KRW 1.00 125,000 125,000 12,500",
+            "1| OCEAN FREIGHT USD. 1,506.60 700.00 700.00 1,054,620",
+            "8 | HANDLING CHARGE(VAT) USD 1,506.60 50.00 50.00 75,330 7,533",
         ])
 
         self.assertEqual(amount, "2034740")

@@ -30214,8 +30214,10 @@ def import_cost_jts_line_totals(lines: list[str]) -> tuple[str, str]:
     amount_total = Decimal("0")
     vat_total = Decimal("0")
     matched = 0
+    seen: set[tuple[str, str, str]] = set()
     for line in lines:
-        if not any(re.search(pattern, line, re.I) for pattern, _ in IMPORT_COST_CHARGE_TERM_EXPLANATIONS):
+        matched_pattern = next((pattern for pattern, _ in IMPORT_COST_CHARGE_TERM_EXPLANATIONS if re.search(pattern, line, re.I)), "")
+        if not matched_pattern:
             continue
         amounts = [import_cost_decimal(value) for value in import_cost_amounts_from_text(line)]
         if not amounts:
@@ -30225,6 +30227,10 @@ def import_cost_jts_line_totals(lines: list[str]) -> tuple[str, str]:
         if len(amounts) >= 2 and amounts[-2] > 0 and Decimal("0") < amounts[-1] <= amounts[-2] * Decimal("0.15"):
             amount = amounts[-2]
             vat = amounts[-1]
+        key = (matched_pattern, str(amount), str(vat))
+        if key in seen:
+            continue
+        seen.add(key)
         amount_total += amount
         vat_total += vat
         matched += 1
