@@ -30257,9 +30257,9 @@ def parse_import_cost_domestic_settlement_text(text: str) -> dict[str, object]:
     import_vat = import_cost_last_amount_near_label(lines, [r"부가가치세", r"부가세"], 1)
     broker_fee = import_cost_last_amount_near_label(lines, [r"통관수수료"], 1)
     do_total = import_cost_last_amount_near_label(lines, [r"D/?O비용", r"D/O\s*비용", r"DO비용"], 1)
-    jts_amount, jts_vat = import_cost_amount_from_total_line(lines)
+    jts_amount, jts_vat = import_cost_jts_line_totals(lines)
     if not jts_amount:
-        jts_amount, jts_vat = import_cost_jts_line_totals(lines)
+        jts_amount, jts_vat = import_cost_amount_from_total_line(lines)
     customs_claim = import_cost_last_amount_near_label(lines, [r"청구금액"], 2)
     jts_claim = import_cost_last_amount_near_label(lines, [r"TOTALAMOUNT"], 2)
     trusted = False
