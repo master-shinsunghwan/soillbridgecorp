@@ -30260,30 +30260,36 @@ def parse_import_cost_domestic_settlement_text(text: str) -> dict[str, object]:
     jts_amount, jts_vat = import_cost_amount_from_total_line(lines)
     if not jts_amount:
         jts_amount, jts_vat = import_cost_jts_line_totals(lines)
-    if duty:
-        charges["duty"] = duty
-    if import_vat:
-        charges["import_vat"] = import_vat
-    if broker_fee:
-        charges["broker_fee"] = broker_fee
-    if jts_amount:
-        charges["doc_fee"] = jts_amount
-    elif do_total:
-        charges["doc_fee"] = do_total
-    if jts_vat:
-        charges["service_vat"] = jts_vat
-
-    claim_amount = import_cost_last_amount_near_label(lines, [r"청구금액", r"TOTALAMOUNT"], 2)
+    customs_claim = import_cost_last_amount_near_label(lines, [r"청구금액"], 2)
+    jts_claim = import_cost_last_amount_near_label(lines, [r"TOTALAMOUNT"], 2)
     trusted = False
-    if charges:
-        try:
-            calculated = sum(import_cost_decimal(value) for value in charges.values())
-            if claim_amount:
-                trusted = abs(calculated - import_cost_decimal(claim_amount)) <= Decimal("10")
-            else:
-                trusted = all(charges.get(key) for key in ("import_vat", "broker_fee", "doc_fee"))
-        except ValueError:
-            trusted = False
+    jts_total = Decimal("0")
+    try:
+        if jts_amount:
+            jts_total = import_cost_decimal(jts_amount) + import_cost_decimal(jts_vat or "0")
+            if not jts_claim or abs(jts_total - import_cost_decimal(jts_claim)) <= Decimal("10"):
+                charges["doc_fee"] = jts_amount
+                if jts_vat:
+                    charges["service_vat"] = jts_vat
+                trusted = True
+
+        customs_charges: dict[str, str] = {}
+        if duty:
+            customs_charges["duty"] = duty
+        if import_vat:
+            customs_charges["import_vat"] = import_vat
+        if broker_fee:
+            customs_charges["broker_fee"] = broker_fee
+        if do_total and not jts_amount:
+            customs_charges["doc_fee"] = do_total
+        if customs_charges and customs_claim:
+            customs_total = sum(import_cost_decimal(value) for value in customs_charges.values())
+            claim_value = import_cost_decimal(customs_claim)
+            if abs(customs_total - claim_value) <= Decimal("10") or (jts_total and abs(customs_total + jts_total - claim_value) <= Decimal("10")):
+                charges.update(customs_charges)
+                trusted = True
+    except ValueError:
+        trusted = False
 
     if trusted:
         details.append("국내 정산비 PDF에서 비용 합계 검증 후 자동 추출했습니다.")
