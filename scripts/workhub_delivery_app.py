@@ -30206,6 +30206,29 @@ def import_cost_amount_from_total_line(lines: list[str]) -> tuple[str, str]:
     return "", ""
 
 
+def import_cost_jts_line_totals(lines: list[str]) -> tuple[str, str]:
+    amount_total = Decimal("0")
+    vat_total = Decimal("0")
+    matched = 0
+    for line in lines:
+        if not any(re.search(pattern, line, re.I) for pattern, _ in IMPORT_COST_CHARGE_TERM_EXPLANATIONS):
+            continue
+        amounts = [import_cost_decimal(value) for value in import_cost_amounts_from_text(line)]
+        if not amounts:
+            continue
+        amount = amounts[-1]
+        vat = Decimal("0")
+        if len(amounts) >= 2 and amounts[-2] > 0 and Decimal("0") < amounts[-1] <= amounts[-2] * Decimal("0.15"):
+            amount = amounts[-2]
+            vat = amounts[-1]
+        amount_total += amount
+        vat_total += vat
+        matched += 1
+    if matched < 3:
+        return "", ""
+    return str(amount_total.quantize(Decimal("1"), rounding=ROUND_HALF_UP)), str(vat_total.quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+
+
 def parse_import_cost_domestic_settlement_text(text: str) -> dict[str, object]:
     lines = [line.strip() for line in text.splitlines() if line.strip()]
     joined = "\n".join(lines)
@@ -30225,6 +30248,8 @@ def parse_import_cost_domestic_settlement_text(text: str) -> dict[str, object]:
     broker_fee = import_cost_last_amount_near_label(lines, [r"통관수수료"], 1)
     do_total = import_cost_last_amount_near_label(lines, [r"D/?O비용", r"D/O\s*비용", r"DO비용"], 1)
     jts_amount, jts_vat = import_cost_amount_from_total_line(lines)
+    if not jts_amount:
+        jts_amount, jts_vat = import_cost_jts_line_totals(lines)
     if duty:
         charges["duty"] = duty
     if import_vat:

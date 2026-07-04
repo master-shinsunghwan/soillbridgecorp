@@ -1309,6 +1309,26 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         self.assertIn("TRUCKING CHARGE: 내륙 운송료", detail_text)
         self.assertIn("X-RAY 검사료", detail_text)
 
+    def test_import_cost_jts_invoice_line_items_are_summed_when_total_row_is_ocr_broken(self) -> None:
+        app = self.load_app()
+
+        amount, vat = app.import_cost_jts_line_totals([
+            "1 | OCEAN FREIGHT USD 1,506.60 700.00 700.00 1,054,620",
+            "2 | TERMINAL HANDLING CHARGE KRW 1.00 210,000 210,000",
+            "3| CONTAINER CLEANING FEE KRW 1.00 50,000 50,000",
+            "4| DOCUMENT FEE KRW 1.00 40,000 40,000",
+            "5 | WHARFAGE KRW 1.00 8,400 8,400",
+            "6| PORT FACILITY SECURITY KRW 1.00 172 172",
+            "7| PORT SAFETY MANAGEMENT CHARGE KRW 1.00 518 518",
+            "8 | HANDLING CHARGE(VAT) USD 1,506.60 50.00 50.00 75,330 7,533",
+            "9| 검역수수료 KRW 1.00 50,000 100,000 10,000",
+            "10| TRUCKING CHARGE/김포신항 KRW 1.00 370,700 370,700 37,070",
+            "11] X-RAY 검사료 KRW 1.00 125,000 125,000 12,500",
+        ])
+
+        self.assertEqual(amount, "2034740")
+        self.assertEqual(vat, "67103")
+
     def test_sales_report_dashboard_layout_uses_three_report_types(self) -> None:
         html_source = (ROOT / "scripts" / "workhub_delivery_app.py").read_text(encoding="utf-8")
 
