@@ -15740,13 +15740,40 @@ HTML = r"""<!doctype html>
       return `$${number.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
     }
 
+    const importCostWonInputIds = new Set([
+      "importCostDocFee",
+      "importCostDuty",
+      "importCostBrokerFee",
+      "importCostOtherCost",
+      "importCostImportVat",
+      "importCostServiceVat",
+    ]);
+
+    function normalizeImportCostMoneyValue(value) {
+      return String(value ?? "").replace(/[^\d.-]/g, "");
+    }
+
+    function formatImportCostMoneyValue(value) {
+      const normalized = normalizeImportCostMoneyValue(value);
+      if (!normalized) return "";
+      const number = Number(normalized);
+      return Number.isFinite(number) ? formatImportCostWon(number) : "";
+    }
+
+    function formatImportCostMoneyInput(input) {
+      if (!input || !importCostWonInputIds.has(input.id)) return;
+      input.value = formatImportCostMoneyValue(input.value);
+    }
+
     function importCostInputValue(id) {
-      return document.querySelector(`#${id}`)?.value || "";
+      const value = document.querySelector(`#${id}`)?.value || "";
+      return importCostWonInputIds.has(id) ? normalizeImportCostMoneyValue(value) : value;
     }
 
     function setImportCostInputValue(id, value) {
       const input = document.querySelector(`#${id}`);
-      if (input && value !== undefined && value !== null && String(value) !== "") input.value = value;
+      if (!input || value === undefined || value === null || String(value) === "") return;
+      input.value = importCostWonInputIds.has(id) ? formatImportCostMoneyValue(value) : value;
     }
 
     function addImportCostProductRow(product = {}) {
@@ -24131,8 +24158,24 @@ HTML = r"""<!doctype html>
         renderImportCostChargeSummary();
       }
     });
+    importCostWorkspace?.addEventListener("focusin", (event) => {
+      const target = event.target;
+      if (!target || !importCostWonInputIds.has(target.id)) return;
+      target.value = importCostInputValue(target.id);
+    });
+    importCostWorkspace?.addEventListener("focusout", (event) => {
+      const target = event.target;
+      if (!target || !importCostWonInputIds.has(target.id)) return;
+      formatImportCostMoneyInput(target);
+      renderImportCostChargeSummary();
+    });
     importCostWorkspace?.addEventListener("change", (event) => {
       const target = event.target;
+      if (target && importCostWonInputIds.has(target.id)) {
+        formatImportCostMoneyInput(target);
+        renderImportCostChargeSummary();
+        return;
+      }
       if (target?.matches?.("#importCostIncludeImportVat, #importCostIncludeServiceVat")) {
         renderImportCostChargeSummary();
       }
@@ -25166,22 +25209,22 @@ IMPORT_COST_WORKSPACE_HTML = r"""
                 </select>
               </label>
               <label>D/O/운임비
-                <input id="importCostDocFee" type="number" min="0" step="1" />
+                <input id="importCostDocFee" type="text" inputmode="numeric" placeholder="예) 2,191,192원" />
               </label>
               <label>관세
-                <input id="importCostDuty" type="number" min="0" step="1" />
+                <input id="importCostDuty" type="text" inputmode="numeric" placeholder="예) 0원" />
               </label>
               <label>통관수수료
-                <input id="importCostBrokerFee" type="number" min="0" step="1" />
+                <input id="importCostBrokerFee" type="text" inputmode="numeric" placeholder="예) 53,240원" />
               </label>
               <label>기타 비용
-                <input id="importCostOtherCost" type="number" min="0" step="1" />
+                <input id="importCostOtherCost" type="text" inputmode="numeric" placeholder="예) 0원" />
               </label>
               <label>수입부가세
-                <input id="importCostImportVat" type="number" min="0" step="1" />
+                <input id="importCostImportVat" type="text" inputmode="numeric" placeholder="예) 2,418,290원" />
               </label>
               <label>수수료 부가세
-                <input id="importCostServiceVat" type="number" min="0" step="1" />
+                <input id="importCostServiceVat" type="text" inputmode="numeric" placeholder="예) 49,603원" />
               </label>
             </div>
             <div class="import-cost-charge-summary" id="importCostChargeSummary"></div>
