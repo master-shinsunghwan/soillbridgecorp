@@ -14901,8 +14901,55 @@ HTML = r"""<!doctype html>
         const detailElement = document.createElement("span");
         detailElement.textContent = [subject, error].filter(Boolean).join(" / ");
         item.append(titleElement, detailElement);
+        if (log.status === "failed" && can("user_admin")) {
+          const targets = failedStockMailTargets(log).slice(0, 20);
+          if (targets.length) {
+            const approvalBox = document.createElement("div");
+            approvalBox.className = "vendor-picker-tree";
+            targets.forEach((target) => {
+              const row = document.createElement("div");
+              row.className = "vendor-picker-checkbox-row";
+              const label = document.createElement("span");
+              label.textContent = `${stockVendorTypeLabelText(target.vendor_type)} ${target.vendor_name || "업체명 없음"} / ${target.email || "메일 없음"}`;
+              const button = document.createElement("button");
+              button.className = "btn danger small";
+              button.type = "button";
+              button.textContent = "승인 삭제";
+              button.dataset.failedVendorDelete = "1";
+              button.dataset.logId = String(log.id || "");
+              button.dataset.vendorType = target.vendor_type || "purchase";
+              button.dataset.vendorName = target.vendor_name || "";
+              button.dataset.email = target.email || "";
+              row.append(label, button);
+              approvalBox.appendChild(row);
+            });
+            item.appendChild(approvalBox);
+          }
+        }
         stockMailHistoryList.appendChild(item);
       });
+    }
+
+    function failedStockMailTargets(log) {
+      const targets = [];
+      const seen = new Set();
+      const addTarget = (target) => {
+        const vendorType = target.vendor_type || log.vendor_type || "purchase";
+        const vendorName = target.vendor_name || "";
+        const email = target.email || "";
+        const key = `${vendorType}::${normalizeSearchKeyword(vendorName)}::${email.toLowerCase()}`;
+        if ((!vendorName && !email) || seen.has(key)) return;
+        seen.add(key);
+        targets.push({ vendor_type: vendorType, vendor_name: vendorName, email });
+      };
+      (log.bcc_vendors || []).forEach((vendor) => addTarget(vendor || {}));
+      if (!targets.length) (log.bcc_emails || []).forEach((email) => addTarget({ email }));
+      if (!targets.length) addTarget({
+        vendor_type: log.vendor_type,
+        vendor_name: log.vendor_name,
+        email: log.recipient_email,
+      });
+      return targets;
     }
 
     async function loadStockMailHistory() {
@@ -14911,6 +14958,46 @@ HTML = r"""<!doctype html>
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "발송 이력을 불러오지 못했습니다.");
       renderStockMailHistory(data.logs || []);
+    }
+
+    async function deleteFailedVendorContact(button) {
+      const vendorName = button.dataset.vendorName || "";
+      const email = button.dataset.email || "";
+      const label = [vendorName, email].filter(Boolean).join(" / ");
+      const approved = await requestAppConfirm({
+        kicker: "실패 업체 삭제 승인",
+        title: "업체 메일 주소를 주소록에서 삭제할까요?",
+        message: "실패 이력에 저장된 업체만 삭제 승인 처리됩니다.",
+        highlight: label,
+        okText: "삭제 승인",
+        cancelText: "취소",
+      });
+      if (!approved) return;
+      button.disabled = true;
+      try {
+        const response = await fetch("/api/vendor-contact-failure-delete", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            log_id: button.dataset.logId,
+            vendor_type: button.dataset.vendorType,
+            vendor_name: vendorName,
+            email,
+          }),
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "실패 업체 삭제 승인에 실패했습니다.");
+        vendorContacts = data.contacts || vendorContacts;
+        renderVendorContacts();
+        if (Array.isArray(data.logs)) renderStockMailHistory(data.logs);
+        notice.textContent = data.delete_count
+          ? `${label} 업체 메일 주소를 삭제 승인 처리했습니다.`
+          : `${label} 업체는 이미 주소록에서 삭제되어 승인 이력만 저장했습니다.`;
+      } catch (error) {
+        notice.textContent = error.message;
+      } finally {
+        button.disabled = false;
+      }
     }
 
     function renderCsCases(cases) {
@@ -23063,6 +23150,11 @@ HTML = r"""<!doctype html>
         fillVendorManageForm(selected);
       });
     }
+    stockMailHistoryList?.addEventListener("click", (event) => {
+      const button = event.target.closest("[data-failed-vendor-delete]");
+      if (!button || !can("user_admin")) return;
+      deleteFailedVendorContact(button);
+    });
     if (salesReportFileInput) salesReportFileInput.addEventListener("change", uploadSalesReportWorkbook);
     salesReportManualUpload?.addEventListener("click", openSalesReportUploadPicker);
     saveCsCaseButton.addEventListener("click", saveCurrentCsCase);
@@ -28650,6 +28742,23 @@ def init_db() -> None:
         }
         if "batch_count" not in existing_mail_log_columns:
             connection.execute("ALTER TABLE vendor_mail_send_logs ADD COLUMN batch_count INTEGER NOT NULL DEFAULT 1")
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS vendor_contact_delete_approvals (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                created_at TEXT NOT NULL,
+                source_log_id INTEGER NOT NULL,
+                vendor_type TEXT NOT NULL,
+                vendor_name TEXT NOT NULL,
+                email TEXT NOT NULL,
+                approved_by TEXT,
+                delete_count INTEGER NOT NULL DEFAULT 0
+            )
+            """
+        )
+        connection.execute(
+            "CREATE INDEX IF NOT EXISTS idx_vendor_contact_delete_approvals_log ON vendor_contact_delete_approvals(source_log_id)"
+        )
         if VENDOR_CONTACTS_PATH.exists():
             existing_count = connection.execute("SELECT COUNT(*) AS count FROM vendor_contacts").fetchone()["count"]
             if int(existing_count or 0) == 0:
@@ -34774,6 +34883,46 @@ def save_vendor_contact(vendor_name: str, email: str, vendor_type: str = "purcha
     return load_vendor_contacts()
 
 
+def delete_vendor_contact(vendor_type: str, vendor_name: str = "", email: str = "") -> int:
+    normalized_type = normalize_vendor_type(vendor_type)
+    vendor_name = str(vendor_name or "").strip()
+    email = str(email or "").strip()
+    if not vendor_name and not email:
+        raise ValueError("삭제할 업체명 또는 메일주소가 없습니다.")
+    init_db()
+    connection = connect_db()
+    try:
+        if email and vendor_name:
+            cursor = connection.execute(
+                """
+                DELETE FROM vendor_contacts
+                 WHERE vendor_type = ?
+                   AND vendor_name = ?
+                   AND email = ?
+                """,
+                (normalized_type, vendor_name, email),
+            )
+            if int(cursor.rowcount or 0) == 0:
+                cursor = connection.execute(
+                    "DELETE FROM vendor_contacts WHERE vendor_type = ? AND email = ?",
+                    (normalized_type, email),
+                )
+        elif email:
+            cursor = connection.execute(
+                "DELETE FROM vendor_contacts WHERE vendor_type = ? AND email = ?",
+                (normalized_type, email),
+            )
+        else:
+            cursor = connection.execute(
+                "DELETE FROM vendor_contacts WHERE vendor_type = ? AND vendor_name = ?",
+                (normalized_type, vendor_name),
+            )
+        connection.commit()
+        return int(cursor.rowcount or 0)
+    finally:
+        connection.close()
+
+
 def save_vendor_contacts_bulk(new_contacts: list[dict[str, str]]) -> tuple[list[dict[str, str]], int]:
     init_db()
     timestamp = now_text()
@@ -34833,6 +34982,99 @@ def vendor_mail_log_from_row(row: sqlite3.Row) -> dict[str, object]:
         "body": str(row["body"] or ""),
         "error": str(row["error"] or ""),
         "sent_by": str(row["sent_by"] or ""),
+    }
+
+
+def get_vendor_mail_send_log(log_id: int) -> dict[str, object] | None:
+    init_db()
+    connection = connect_db()
+    try:
+        row = connection.execute(
+            "SELECT * FROM vendor_mail_send_logs WHERE id = ?",
+            (int(log_id),),
+        ).fetchone()
+    finally:
+        connection.close()
+    return vendor_mail_log_from_row(row) if row else None
+
+
+def failed_vendor_targets_from_log(log: dict[str, object]) -> list[dict[str, str]]:
+    targets: list[dict[str, str]] = []
+    seen: set[tuple[str, str, str]] = set()
+
+    def add_target(vendor_type: object, vendor_name: object, email: object) -> None:
+        normalized_type = normalize_vendor_type(vendor_type)
+        clean_name = str(vendor_name or "").strip()
+        clean_email = str(email or "").strip()
+        if not clean_name and not clean_email:
+            return
+        key = (normalized_type, normalize_company_key(clean_name), clean_email.lower())
+        if key in seen:
+            return
+        seen.add(key)
+        targets.append({
+            "vendor_type": normalized_type,
+            "vendor_name": clean_name,
+            "email": clean_email,
+        })
+
+    for vendor in log.get("bcc_vendors") or []:
+        if isinstance(vendor, dict):
+            add_target(
+                vendor.get("vendor_type") or log.get("vendor_type"),
+                vendor.get("vendor_name"),
+                vendor.get("email"),
+            )
+    if not targets:
+        for email in log.get("bcc_emails") or []:
+            add_target(log.get("vendor_type"), "", email)
+    if not targets:
+        add_target(log.get("vendor_type"), log.get("vendor_name"), log.get("recipient_email"))
+    return targets
+
+
+def approve_failed_vendor_contact_delete(payload: dict, approved_by: str = "") -> dict[str, object]:
+    log_id = int(payload.get("log_id") or 0)
+    if not log_id:
+        raise ValueError("삭제 승인할 실패 이력 ID가 없습니다.")
+    log = get_vendor_mail_send_log(log_id)
+    if not log:
+        raise ValueError("삭제 승인할 실패 이력을 찾지 못했습니다.")
+    if log.get("status") != "failed":
+        raise ValueError("실패 이력에 포함된 업체만 승인 삭제할 수 있습니다.")
+
+    vendor_type = normalize_vendor_type(payload.get("vendor_type") or log.get("vendor_type"))
+    vendor_name = str(payload.get("vendor_name") or "").strip()
+    email = str(payload.get("email") or "").strip()
+    target_key = (vendor_type, normalize_company_key(vendor_name), email.lower())
+    valid_targets = failed_vendor_targets_from_log(log)
+    if target_key not in {
+        (target["vendor_type"], normalize_company_key(target["vendor_name"]), target["email"].lower())
+        for target in valid_targets
+    }:
+        raise ValueError("해당 실패 이력에 포함된 업체만 삭제 승인할 수 있습니다.")
+
+    delete_count = delete_vendor_contact(vendor_type, vendor_name, email)
+    timestamp = now_text()
+    connection = connect_db()
+    try:
+        connection.execute(
+            """
+            INSERT INTO vendor_contact_delete_approvals (
+                created_at, source_log_id, vendor_type, vendor_name, email, approved_by, delete_count
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (timestamp, log_id, vendor_type, vendor_name, email, str(approved_by or "").strip(), delete_count),
+        )
+        connection.commit()
+    finally:
+        connection.close()
+    return {
+        "message": "실패 이력 업체를 주소록에서 삭제 승인 처리했습니다.",
+        "delete_count": delete_count,
+        "contacts": load_vendor_contacts(),
+        "logs": list_vendor_mail_send_logs(mail_type="stock_notice", limit=20),
     }
 
 
@@ -36777,6 +37019,15 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                     str(payload.get("vendor_type", "purchase")),
                 )
                 self.send_json({"message": "거래처 메일 주소를 저장했습니다.", "contacts": contacts})
+                return
+
+            if self.path == "/api/vendor-contact-failure-delete":
+                if not self.require_admin(user, "실패 업체 주소록 삭제 승인"):
+                    return
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(length).decode("utf-8"))
+                approved_by = str(user.get("display_name") or user.get("username") or "")
+                self.send_json(approve_failed_vendor_contact_delete(payload, approved_by=approved_by))
                 return
 
             if self.path == "/api/shared-file-delete":

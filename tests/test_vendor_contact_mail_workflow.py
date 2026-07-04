@@ -547,6 +547,85 @@ class VendorContactMailWorkflowTests(unittest.TestCase):
             self.assertEqual(logs[0]["bcc_emails"], ["a@example.com", "b@example.com"])
             self.assertEqual(logs[0]["sent_by"], "admin")
 
+    def test_failed_stock_notice_vendor_can_be_admin_deleted_from_contacts(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            app = load_app(Path(directory))
+            app.save_vendor_contact("실패업체", "fail@example.com", vendor_type="purchase")
+            log = app.save_vendor_mail_send_log(
+                {
+                    "vendor_type": "purchase",
+                    "vendor_name": "매입처 1곳",
+                    "recipient_email": "soilbridge@naver.com",
+                    "bcc_emails": ["fail@example.com"],
+                    "bcc_vendors": [
+                        {"vendor_type": "purchase", "vendor_name": "실패업체", "email": "fail@example.com"}
+                    ],
+                    "subject": "입고 및 품절 공지",
+                    "body": "공지 내용",
+                },
+                "failed",
+                error="수신 거부",
+                sent_by="admin",
+            )
+
+            result = app.approve_failed_vendor_contact_delete(
+                {
+                    "log_id": log["id"],
+                    "vendor_type": "purchase",
+                    "vendor_name": "실패업체",
+                    "email": "fail@example.com",
+                },
+                approved_by="관리자",
+            )
+
+            self.assertEqual(result["delete_count"], 1)
+            self.assertIsNone(app.find_vendor_contact("실패업체", "purchase"))
+            connection = app.connect_db()
+            try:
+                approval = connection.execute(
+                    "SELECT source_log_id, vendor_name, email, approved_by, delete_count FROM vendor_contact_delete_approvals"
+                ).fetchone()
+            finally:
+                connection.close()
+            self.assertEqual(approval["source_log_id"], log["id"])
+            self.assertEqual(approval["vendor_name"], "실패업체")
+            self.assertEqual(approval["email"], "fail@example.com")
+            self.assertEqual(approval["approved_by"], "관리자")
+            self.assertEqual(approval["delete_count"], 1)
+
+    def test_failed_stock_notice_delete_rejects_vendor_not_in_log(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            app = load_app(Path(directory))
+            app.save_vendor_contact("다른업체", "other@example.com", vendor_type="purchase")
+            log = app.save_vendor_mail_send_log(
+                {
+                    "vendor_type": "purchase",
+                    "vendor_name": "매입처 1곳",
+                    "recipient_email": "soilbridge@naver.com",
+                    "bcc_emails": ["fail@example.com"],
+                    "bcc_vendors": [
+                        {"vendor_type": "purchase", "vendor_name": "실패업체", "email": "fail@example.com"}
+                    ],
+                    "subject": "입고 및 품절 공지",
+                    "body": "공지 내용",
+                },
+                "failed",
+                error="수신 거부",
+            )
+
+            with self.assertRaisesRegex(ValueError, "포함된 업체"):
+                app.approve_failed_vendor_contact_delete(
+                    {
+                        "log_id": log["id"],
+                        "vendor_type": "purchase",
+                        "vendor_name": "다른업체",
+                        "email": "other@example.com",
+                    },
+                    approved_by="관리자",
+                )
+
+            self.assertEqual(app.find_vendor_contact("다른업체", "purchase")["email"], "other@example.com")
+
     def test_naver_mail_message_sets_bcc_header(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             app = load_app(Path(directory))
