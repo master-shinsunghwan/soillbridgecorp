@@ -1309,6 +1309,23 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         self.assertIn("TRUCKING CHARGE: 내륙 운송료", detail_text)
         self.assertIn("X-RAY 검사료", detail_text)
 
+    def test_import_cost_verified_customs_charges_keeps_do_total_separate_when_jts_exists(self) -> None:
+        app = self.load_app()
+
+        charges, trusted = app.import_cost_verified_customs_charges({
+            "duty": "0",
+            "import_vat": "2418290",
+            "broker_fee": "53240",
+            "do_total": "2240795",
+            "claim_amount": "4712325",
+        })
+
+        self.assertTrue(trusted)
+        self.assertEqual(charges["duty"], "0")
+        self.assertEqual(charges["import_vat"], "2418290")
+        self.assertEqual(charges["broker_fee"], "53240")
+        self.assertNotIn("doc_fee", charges)
+
     def test_import_cost_jts_invoice_line_items_are_summed_when_total_row_is_ocr_broken(self) -> None:
         app = self.load_app()
 
@@ -1332,6 +1349,28 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         self.assertEqual(vat, "67103")
         self.assertEqual(app.import_cost_amounts_from_text("TOTAL AMOUNT: KAW 2,101.843")[-1], "2101843")
         self.assertEqual(app.import_cost_amounts_from_text("USD 1,506.60")[-1], "1506.60")
+
+    def test_import_cost_jts_invoice_includes_freight_surcharge_items(self) -> None:
+        app = self.load_app()
+
+        amount, vat = app.import_cost_jts_line_totals([
+            "1| OCEAN FREIGHT USD 1,482.04 406.62 406.62 602,640",
+            "2| B.A.F USD 1,482.04 386.30 386.30 572,508",
+            "3| C.A.F USD 1,482.04 61.00 61.00 90,396",
+            "4| CONTAINER IMBALANCE CHARGE USD 1,482.04 81.33 81.33 120,528",
+            "5| TERMINAL HANDLING CHARGE KRW 1.00 210,000 210,000",
+            "6| CONTAINER CLEANING FEE KRW 1.00 50,000 50,000",
+            "7| DOCUMENT FEE KRW 1.00 40,000 40,000",
+            "8| WHARFAGE KRW 1.00 8,400 8,400",
+            "9| PORT FACILITY SECURITY KRW 1.00 172 172",
+            "10| PORT SAFETY MANAGEMENT CHARGE KRW 1.00 518 518",
+            "11| HANDLING CHARGE(VAT) USD 1,506.60 50.83 50.83 75,330 7,533",
+            "12| 검역수수료 KRW 1.00 50,000 50,000 5,000",
+            "13| TRUCKING CHARGE/김포신항 KRW 1.00 370,700 370,700 37,070",
+        ])
+
+        self.assertEqual(amount, "2191192")
+        self.assertEqual(vat, "49603")
 
     def test_sales_report_dashboard_layout_uses_three_report_types(self) -> None:
         html_source = (ROOT / "scripts" / "workhub_delivery_app.py").read_text(encoding="utf-8")

@@ -30142,6 +30142,9 @@ IMPORT_COST_AMOUNT_PATTERN = re.compile(r"-?\d{1,3}(?:,\d{3})+(?:\.\d+)?|-?\d+(?
 
 IMPORT_COST_CHARGE_TERM_EXPLANATIONS = [
     (r"OCEAN\s+FREIGHT", "OCEAN FREIGHT: 해상운임, 선박으로 운송한 기본 운임입니다."),
+    (r"\bB\.?\s*A\.?\s*F\.?\b", "B.A.F: 유류할증료, 선박 연료비 변동에 따라 붙는 추가 운임입니다."),
+    (r"\bC\.?\s*A\.?\s*F\.?\b", "C.A.F: 통화할증료, 환율/통화 변동에 따라 붙는 추가 운임입니다."),
+    (r"CONTAINER\s+IMBALANCE\s+CHARGE", "CONTAINER IMBALANCE CHARGE: 컨테이너 불균형 할증료, 지역별 컨테이너 수급 불균형 비용입니다."),
     (r"TERMINAL\s+HANDLING\s+CHARGE", "TERMINAL HANDLING CHARGE: 터미널 작업료, 항만 터미널에서 컨테이너를 처리하는 비용입니다."),
     (r"CONTAINER\s+CLEANING\s+FEE", "CONTAINER CLEANING FEE: 컨테이너 청소비, 반납/사용 컨테이너 청소 비용입니다."),
     (r"DOCUMENT\s+FEE", "DOCUMENT FEE: 서류 발급/처리비, 운송 관련 서류 처리 비용입니다."),
@@ -30177,6 +30180,38 @@ def import_cost_charge_term_details(text: str) -> list[str]:
             details.append(explanation)
             seen.add(explanation)
     return details
+
+
+def import_cost_verified_customs_charges(values: dict[str, str], include_do_total: bool = False) -> tuple[dict[str, str], bool]:
+    duty = values.get("duty", "")
+    import_vat = values.get("import_vat", "")
+    broker_fee = values.get("broker_fee", "")
+    do_total = values.get("do_total", "")
+    claim_amount = values.get("claim_amount", "")
+    if not claim_amount:
+        return {}, False
+    try:
+        customs_total = (
+            import_cost_decimal(duty or "0")
+            + import_cost_decimal(import_vat or "0")
+            + import_cost_decimal(broker_fee or "0")
+            + import_cost_decimal(do_total or "0")
+        )
+        if abs(customs_total - import_cost_decimal(claim_amount)) > Decimal("10"):
+            return {}, False
+    except ValueError:
+        return {}, False
+
+    charges: dict[str, str] = {}
+    if duty:
+        charges["duty"] = duty
+    if import_vat:
+        charges["import_vat"] = import_vat
+    if broker_fee:
+        charges["broker_fee"] = broker_fee
+    if include_do_total and do_total:
+        charges["doc_fee"] = do_total
+    return charges, bool(charges)
 
 
 def import_cost_amount_near_line(lines: list[str], line_index: int, window: int = 2) -> str:
@@ -30400,6 +30435,90 @@ def ocr_import_cost_pdf_text(path: Path, max_pages: int = 2) -> tuple[str, list[
     return "\n".join(texts), details
 
 
+IMPORT_COST_CUSTOMS_LAYOUT_ROWS = {
+    "duty": (0.268, 0.302),
+    "import_vat": (0.302, 0.337),
+    "other_tax": (0.337, 0.371),
+    "subtotal": (0.371, 0.405),
+    "broker_fee": (0.405, 0.439),
+    "do_total": (0.439, 0.474),
+    "claim_amount": (0.728, 0.762),
+}
+
+
+def import_cost_ocr_crop_amount(image: object, box: tuple[int, int, int, int], lang: str) -> str:
+    try:
+        import pytesseract  # type: ignore
+        from PIL import ImageFilter, ImageOps  # type: ignore
+    except Exception:
+        return ""
+    try:
+        crop = ImageOps.autocontrast(image.crop(box).convert("L")).filter(ImageFilter.SHARPEN)
+        normal_text = pytesseract.image_to_string(crop, lang=lang or None, config="--psm 6")
+        digit_text = pytesseract.image_to_string(
+            crop,
+            lang="eng" if "eng" in lang else (lang or None),
+            config="--psm 6 -c tessedit_char_whitelist=0123456789,.-",
+        )
+        amounts = import_cost_amounts_from_text(f"{normal_text}\n{digit_text}")
+        return amounts[-1] if amounts else ""
+    except Exception:
+        return ""
+
+
+def ocr_import_cost_customs_layout(path: Path) -> dict[str, object]:
+    try:
+        import fitz  # type: ignore
+        import pytesseract  # type: ignore
+        from PIL import Image  # type: ignore
+    except Exception as exc:
+        return {"charges": {}, "details": [f"통관자금 표 OCR 패키지가 준비되지 않았습니다: {exc}"], "trusted": False}
+
+    try:
+        languages = set(pytesseract.get_languages(config=""))
+        lang = "kor+eng" if {"kor", "eng"}.issubset(languages) else ("eng" if "eng" in languages else "")
+        document = fitz.open(str(path))
+        try:
+            if document.page_count < 1:
+                return {"charges": {}, "details": [], "trusted": False}
+            pixmap = document.load_page(0).get_pixmap(matrix=fitz.Matrix(3, 3), alpha=False)
+            image = Image.open(BytesIO(pixmap.tobytes("png")))
+        finally:
+            document.close()
+    except Exception as exc:
+        return {"charges": {}, "details": [f"통관자금 표 이미지 변환에 실패했습니다: {exc}"], "trusted": False}
+
+    width, height = image.size
+    values: dict[str, str] = {}
+    for key, (start_ratio, end_ratio) in IMPORT_COST_CUSTOMS_LAYOUT_ROWS.items():
+        y1 = int(height * start_ratio)
+        y2 = int(height * end_ratio)
+        line_box = (int(width * 0.08), y1, int(width * 0.63), y2)
+        amount = import_cost_ocr_crop_amount(image, line_box, lang)
+        if not amount:
+            amount_box = (int(width * 0.43), y1, int(width * 0.63), y2)
+            amount = import_cost_ocr_crop_amount(image, amount_box, lang)
+        if amount:
+            values[key] = amount
+
+    charges, trusted = import_cost_verified_customs_charges(values)
+    if trusted:
+        return {
+            "charges": charges,
+            "details": ["통관자금 표 금액을 위치 기반 OCR로 읽고 청구금액 합계 검증 후 자동 추출했습니다."],
+            "trusted": True,
+            "values": values,
+        }
+    if values:
+        return {
+            "charges": {},
+            "details": ["통관자금 표 금액 일부를 읽었지만 청구금액 합계가 맞지 않아 자동 반영하지 않았습니다."],
+            "trusted": False,
+            "values": values,
+        }
+    return {"charges": {}, "details": [], "trusted": False, "values": values}
+
+
 def parse_import_cost_pdf_text(path: Path) -> dict[str, object]:
     details = [f"{original_uploaded_filename(path.name)}: PDF 정산서 확인"]
     text = ""
@@ -30420,9 +30539,14 @@ def parse_import_cost_pdf_text(path: Path) -> dict[str, object]:
         details.extend(domestic.get("details") or [])
     charges = dict(domestic.get("charges") or {})
     hbl_no = str(domestic.get("hbl_no") or "")
+    layout = ocr_import_cost_customs_layout(path)
+    if layout.get("details"):
+        details.extend(layout.get("details") or [])
+    if layout.get("trusted"):
+        charges.update(dict(layout.get("charges") or {}))
     if not charges:
         charges = parse_import_cost_settlement_text(text)
-    if charges and used_ocr and not domestic.get("trusted"):
+    if charges and used_ocr and not domestic.get("trusted") and not layout.get("trusted"):
         details.append("스캔 PDF OCR 금액은 오인식 가능성이 있어 비용칸에 자동 반영하지 않았습니다. 정산서 원본 금액을 확인해 직접 입력해주세요.")
         charges = {}
     elif charges:
