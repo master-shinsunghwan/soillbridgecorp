@@ -15840,15 +15840,15 @@ HTML = r"""<!doctype html>
         importVat: includeImportVat ? importCostNumericValue("importCostImportVat") : 0,
         serviceVat: includeServiceVat ? importCostNumericValue("importCostServiceVat") : 0,
       };
-      const freight = values.docFee + values.otherCost;
+      const freight = values.docFee + values.otherCost + values.serviceVat;
       const customs = values.duty + values.brokerFee;
-      const vat = values.importVat + values.serviceVat;
+      const vat = values.importVat;
       const total = freight + customs + vat;
       const cards = [
         ["배부 비용 합계", formatImportCostWon(total), total ? "" : "warning"],
         ["D/O/운임/기타", formatImportCostWon(freight), ""],
         ["관세/통관수수료", formatImportCostWon(customs), ""],
-        ["포함 부가세", formatImportCostWon(vat), ""],
+        ["수입부가세", formatImportCostWon(vat), ""],
       ];
       importCostChargeSummary.innerHTML = cards.map(([label, value, tone]) => `
         <div class="import-cost-summary-card ${tone}">
@@ -30143,12 +30143,19 @@ def import_cost_report_workbook_bytes(payload: dict, result: dict[str, object]) 
     for key, label, always_include in IMPORT_COST_CHARGE_REPORT_ROWS:
         input_amount = import_cost_report_input_charge(payload, key)
         applied_amount = int(charges.get(key) or 0)
-        if key == "import_vat":
+        if key == "doc_fee":
+            service_vat_input = import_cost_report_input_charge(payload, "service_vat") if include_service_vat else 0
+            input_amount += service_vat_input
+            applied_amount += int(charges.get("service_vat") or 0)
+            included_text = "포함"
+            note = "정산서 D/O 비용 기준"
+        elif key == "import_vat":
             included_text = "포함" if include_import_vat else "제외"
             note = "체크 여부에 따라 원가 반영"
         elif key == "service_vat":
-            included_text = "포함" if include_service_vat else "제외"
-            note = "체크 여부에 따라 원가 반영"
+            applied_amount = 0
+            included_text = "D/O 비용에 포함" if include_service_vat else "제외"
+            note = "D/O/운임비 행에 합산 표시"
         else:
             included_text = "포함" if always_include else "제외"
             note = ""
