@@ -316,6 +316,34 @@ class SalesReportUploadTests(unittest.TestCase):
         self.assertEqual(dashboard["seller_top"][0]["name"], "A판매사")
         self.assertEqual(dashboard["product_top"][0]["name"], "테스트 상품 A")
         self.assertTrue(dashboard["reviews"])
+        self.assertIn("closing_check", dashboard)
+        self.assertEqual(dashboard["closing_check"]["status"], "warning")
+        self.assertTrue(any(row["key"] == "supplier" and not row["uploaded"] for row in dashboard["closing_check"]["required_reports"]))
+
+
+    def test_sales_report_closing_check_tracks_required_uploads(self) -> None:
+        base = Path(self.tempdir.name)
+        daily = base / "매출 통계.xlsx"
+        seller = base / "20260619 매출처별 매출 현황.xlsx"
+        supplier = base / "20260619 매입처별 매출 현황.xls"
+        product = base / "Statistics_Good_2026-06-19.xls"
+        self.write_daily_report(daily)
+        self.write_seller_report(seller)
+        self.write_supplier_report(supplier)
+        self.write_product_report(product)
+
+        for source in (daily, seller, supplier, product):
+            self.app.save_sales_report_file(source, source.name, "admin")
+
+        dashboard = self.app.sales_report_dashboard_payload("2026-06", "2026-06-19")
+        required = {row["key"]: row for row in dashboard["closing_check"]["required_reports"]}
+
+        self.assertTrue(required["daily"]["uploaded"])
+        self.assertTrue(required["seller"]["uploaded"])
+        self.assertTrue(required["supplier"]["uploaded"])
+        self.assertTrue(required["product"]["uploaded"])
+        self.assertNotEqual(dashboard["closing_check"]["status"], "critical")
+        self.assertIn("closing_check", self.app.hermes_sales_report_context(dashboard, "today"))
 
 
     def test_sales_report_dashboard_uses_latest_period_without_daily_report(self) -> None:

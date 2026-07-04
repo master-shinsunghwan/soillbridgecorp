@@ -2524,11 +2524,28 @@ HTML = r"""<!doctype html>
       background: #fff7ed;
       color: #9a3412;
     }
+    .sales-margin-diagnosis.ok {
+      border-color: #bbf7d0;
+      background: #f0fdf4;
+      color: #166534;
+    }
+    .sales-margin-diagnosis.bad {
+      border-color: #fecaca;
+      background: #fff1f2;
+      color: #991b1b;
+    }
     .sales-margin-diagnosis strong {
       display: block;
       color: #111827;
       font-size: 13px;
       font-weight: 950;
+    }
+    .sales-margin-diagnosis ul {
+      margin: 2px 0 0;
+      padding-left: 18px;
+    }
+    .sales-margin-diagnosis li + li {
+      margin-top: 3px;
     }
     .sales-detail-popup {
       --detail-color: #2563eb;
@@ -14462,8 +14479,24 @@ HTML = r"""<!doctype html>
 
     function renderSalesReportMarginDiagnosis(check = {}) {
       if (!salesReportMarginDiagnosis) return;
+      const closingCheck = check.closing_check || null;
+      if (closingCheck) {
+        const status = closingCheck.status || "warning";
+        const issues = closingCheck.issues || [];
+        salesReportMarginDiagnosis.classList.toggle("ok", status === "ok");
+        salesReportMarginDiagnosis.classList.toggle("warn", status === "warning");
+        salesReportMarginDiagnosis.classList.toggle("bad", status === "critical");
+        salesReportMarginDiagnosis.innerHTML = `
+          <strong>${escapeHtml(closingCheck.title || "매출 마감 자동 점검")}</strong>
+          <span>${escapeHtml(closingCheck.message || "매출표 업로드 상태와 주요 합계를 점검합니다.")}</span>
+          ${issues.length ? `<ul>${issues.slice(0, 4).map((issue) => `<li>${escapeHtml(issue.title || "")}: ${escapeHtml(issue.message || "")}</li>`).join("")}</ul>` : ""}
+        `;
+        return;
+      }
       const anomalyCount = Number(check.anomaly_count || 0);
+      salesReportMarginDiagnosis.classList.toggle("ok", anomalyCount <= 0);
       salesReportMarginDiagnosis.classList.toggle("warn", anomalyCount > 0);
+      salesReportMarginDiagnosis.classList.remove("bad");
       if (anomalyCount > 0) {
         salesReportMarginDiagnosis.innerHTML = `
           <strong>택배비 제외 후 마진 이상 데이터 ${formatSalesNumber(anomalyCount)}건 확인</strong>
@@ -14586,7 +14619,7 @@ HTML = r"""<!doctype html>
       }
       salesReportMonthlyCompareDetails = data.monthly_comparison_details || {};
       renderMonthlyCompareDetail(activeMonthlyCompareDetail);
-      renderSalesReportMarginDiagnosis(data.margin_check || {});
+      renderSalesReportMarginDiagnosis(data);
       setSalesReportTabCount("salesProduct", dailyRows.length + productRows.length);
       setSalesReportTabCount("partner", sellerRows.length + purchaseRows.length);
       setSalesReportTabCount("monthlyCompare", monthlyCompareRows.length);
@@ -15805,14 +15838,28 @@ HTML = r"""<!doctype html>
       const marginAmount = Number(month.profit_margin || 0);
       const marginRate = monthSalesAmount ? (marginAmount / monthSalesAmount) * 100 : 0;
       const hasComparison = hasTodaySalesData && Boolean(yesterday.report_date);
-      setDashboardSalesStatus(hasTodaySalesData ? "연동 완료" : "금일 데이터 대기", hasTodaySalesData ? "connected" : "warning");
+      const closingCheck = data.closing_check || {};
+      const closingStatus = closingCheck.status || "";
+      const closingIssues = closingCheck.issues || [];
+      let dashboardStatusText = hasTodaySalesData ? "마감 점검 완료" : "금일 데이터 대기";
+      let dashboardStatusState = hasTodaySalesData ? "connected" : "warning";
+      if (closingStatus === "critical") {
+        dashboardStatusText = "필수 업로드 필요";
+        dashboardStatusState = "warning";
+      } else if (closingStatus === "warning") {
+        dashboardStatusText = "마감 확인 필요";
+        dashboardStatusState = "warning";
+      }
+      setDashboardSalesStatus(dashboardStatusText, dashboardStatusState);
       if (dashboardSalesDecisionTitle) {
         dashboardSalesDecisionTitle.textContent = hasTodaySalesData
           ? `${selectedDateLabel || "선택일"} 손익 ${formatSalesCompactMoney(todaySalesAmount)} · 전영업일 대비 ${hasComparison ? formatSalesCompactMoney(comparisonDelta, true) : "비교 대기"}`
           : "금일 매출 데이터가 아직 연결되지 않았습니다";
       }
       if (dashboardSalesDecisionNote) {
-        dashboardSalesDecisionNote.textContent = hasTodaySalesData
+        dashboardSalesDecisionNote.textContent = closingIssues.length
+          ? `${closingCheck.title || "매출 마감 확인 필요"} · ${closingIssues[0].title || ""}`
+          : hasTodaySalesData
           ? `월 마진 ${formatSalesCompactMoney(marginAmount)}(${formatSalesPercent(marginRate)})는 택배비 제외 기준입니다.`
           : "매출 데이터 연결 후 손익, 매입, 마진 기준을 바로 확인할 수 있습니다.";
       }
@@ -23972,8 +24019,8 @@ ADMIN_WORKSPACE_HTML = r"""
                 </div>
                 <div class="sales-kpi-grid" id="salesReportKpiGrid"></div>
                 <div class="sales-margin-diagnosis" id="salesReportMarginDiagnosis">
-                  <strong>마진 검증 대기</strong>
-                  <span>매출 데이터 연결 후 손익매출과 마진 관계를 확인합니다.</span>
+                  <strong>매출 마감 자동 점검 대기</strong>
+                  <span>매출 데이터 연결 후 필수 파일, 합계 차이, 마진 이상 여부를 확인합니다.</span>
                 </div>
                 <div class="sales-table-tabs" id="salesReportTabs" role="tablist">
                   <button class="sales-table-tab active" type="button" data-sales-tab="salesProduct">
@@ -25985,6 +26032,128 @@ def sales_report_margin_check(connection: sqlite3.Connection, period: str) -> di
     }
 
 
+def sales_report_row_count_for_date(
+    connection: sqlite3.Connection,
+    table_name: str,
+    period: str,
+    report_date: str,
+) -> int:
+    if not period:
+        return 0
+    if report_date:
+        row = connection.execute(
+            f"SELECT COUNT(*) AS count FROM {table_name} WHERE period = ? AND report_date = ?",
+            (period, report_date),
+        ).fetchone()
+    else:
+        row = connection.execute(
+            f"SELECT COUNT(*) AS count FROM {table_name} WHERE period = ?",
+            (period,),
+        ).fetchone()
+    return int(row["count"] or 0) if row else 0
+
+
+def sales_report_closing_check(
+    report_counts: dict[str, int],
+    period: str,
+    report_date: str,
+    month_total: dict[str, int],
+    seller_total: dict[str, int],
+    supplier_purchase_total: dict[str, int],
+    product_total: dict[str, int],
+    margin_check: dict[str, object],
+    review_count: int,
+) -> dict[str, object]:
+    required_reports = [
+        ("daily", "일자별 매출", "필수"),
+        ("seller", "매출처별 매출", "필수"),
+        ("supplier", "매입처별 매입", "필수"),
+        ("product", "상품별 매출", "필수"),
+    ]
+    report_statuses: list[dict[str, object]] = []
+    issues: list[dict[str, str]] = []
+    for key, label, required_label in required_reports:
+        count = int(report_counts.get(key, 0) or 0)
+        uploaded = count > 0
+        report_statuses.append({
+            "key": key,
+            "label": label,
+            "required": required_label,
+            "uploaded": uploaded,
+            "row_count": count,
+        })
+        if not uploaded:
+            level = "critical" if key in {"daily", "seller"} else "warning"
+            issues.append({
+                "level": level,
+                "title": f"{label} 데이터 없음",
+                "message": f"{report_date or period} 기준 {label} 파일을 업로드해야 마감 검증이 완성됩니다.",
+            })
+
+    month_sales = int(month_total.get("profit_sales_amount", 0) or 0)
+    seller_sales = int(seller_total.get("profit_sales_amount", 0) or 0)
+    difference = month_sales - seller_sales
+    if difference != 0:
+        issues.append({
+            "level": "warning",
+            "title": "월 누계와 매출처 합계 차이",
+            "message": f"월 손익매출과 매출처별 합계 차이가 {difference:,}원입니다.",
+        })
+    if int(margin_check.get("anomaly_count") or 0) > 0:
+        issues.append({
+            "level": "warning",
+            "title": "마진 이상 데이터 확인",
+            "message": str(margin_check.get("message") or "손익마진 검토가 필요한 행이 있습니다."),
+        })
+    if review_count > 0:
+        issues.append({
+            "level": "warning",
+            "title": "CS/음수 마진 검토건",
+            "message": f"CS 금액 또는 음수 마진이 포함된 검토 대상 {review_count:,}건이 있습니다.",
+        })
+    if int(supplier_purchase_total.get("purchase_total", 0) or 0) <= 0:
+        issues.append({
+            "level": "warning",
+            "title": "매입처 금액 확인 필요",
+            "message": "매입처별 총합계 금액이 0원 이하입니다. 매입처별 파일 업로드 여부를 확인하세요.",
+        })
+    if int(product_total.get("profit_sales_amount", 0) or 0) <= 0:
+        issues.append({
+            "level": "warning",
+            "title": "상품별 매출 확인 필요",
+            "message": "상품별 손익매출이 0원 이하입니다. 상품별 파일 업로드 여부를 확인하세요.",
+        })
+
+    has_critical = any(issue["level"] == "critical" for issue in issues)
+    status = "critical" if has_critical else ("warning" if issues else "ok")
+    if status == "ok":
+        title = "매출 마감 점검 완료"
+        message = "필수 매출표와 주요 합계, 마진 검증에서 추가 확인 항목이 없습니다."
+    elif status == "critical":
+        title = "매출 마감 전 필수 데이터 필요"
+        message = "일자별 또는 매출처별 필수 데이터가 없어 마감 판단 전 업로드가 필요합니다."
+    else:
+        title = "매출 마감 확인 필요"
+        message = "필수 데이터는 확인됐지만 합계 차이 또는 검토 항목이 있어 마감 전 확인이 필요합니다."
+    return {
+        "status": status,
+        "title": title,
+        "message": message,
+        "issue_count": len(issues),
+        "issues": issues[:8],
+        "required_reports": report_statuses,
+        "metrics": {
+            "month_profit_sales_amount": month_sales,
+            "seller_profit_sales_amount": seller_sales,
+            "supplier_purchase_total": int(supplier_purchase_total.get("purchase_total", 0) or 0),
+            "product_profit_sales_amount": int(product_total.get("profit_sales_amount", 0) or 0),
+            "difference": difference,
+            "margin_anomaly_count": int(margin_check.get("anomaly_count") or 0),
+            "review_count": review_count,
+        },
+    }
+
+
 def sales_report_detail_payload(kind: str, key: str, period: str = "") -> dict[str, object]:
     init_db()
     connection = connect_db()
@@ -26822,6 +26991,12 @@ def sales_report_dashboard_payload(period: str = "", report_date: str = "") -> d
             (selected_period, selected_period, selected_date, selected_date, selected_period),
         ).fetchall()
         margin_check = sales_report_margin_check(connection, selected_period)
+        report_counts = {
+            "daily": sales_report_row_count_for_date(connection, "sales_report_daily_rows", selected_period, selected_date),
+            "seller": sales_report_row_count_for_date(connection, "sales_report_seller_rows", selected_period, selected_date),
+            "supplier": sales_report_row_count_for_date(connection, "sales_report_supplier_rows", selected_period, selected_date),
+            "product": sales_report_row_count_for_date(connection, "sales_report_product_rows", selected_period, selected_date),
+        }
     finally:
         connection.close()
 
@@ -26889,6 +27064,17 @@ def sales_report_dashboard_payload(period: str = "", report_date: str = "") -> d
         "profit_margin": int(previous_product_total["profit_margin"] or 0),
     }
     difference = month_total["profit_sales_amount"] - seller_total_public["profit_sales_amount"]
+    closing_check = sales_report_closing_check(
+        report_counts,
+        selected_period,
+        selected_date,
+        month_total,
+        seller_total_public,
+        supplier_purchase_total_public,
+        product_total_public,
+        margin_check,
+        len(review_rows),
+    )
     return {
         "period": selected_period,
         "period_options": period_options,
@@ -26945,6 +27131,7 @@ def sales_report_dashboard_payload(period: str = "", report_date: str = "") -> d
             "ok": difference == 0,
         },
         "margin_check": margin_check,
+        "closing_check": closing_check,
         "daily_rows": daily_rows_public,
         "recent_daily_rows": recent_daily_rows_public,
         "seller_top": [_sales_report_named_public(row) for row in seller_rows],
@@ -33556,6 +33743,7 @@ def hermes_sales_report_context(payload: dict[str, object], scope: str = "defaul
             "previous_business_date": payload.get("previous_business_date", ""),
             "yesterday": payload.get("yesterday", {}),
             "comparison": payload.get("comparison", {}),
+            "closing_check": payload.get("closing_check", {}),
         }
     if scope == "month":
         return {
@@ -33567,6 +33755,7 @@ def hermes_sales_report_context(payload: dict[str, object], scope: str = "defaul
             "supplier_purchase_total": payload.get("supplier_purchase_total", {}),
             "top_sellers": payload.get("seller_top", [])[:5],
             "top_products": payload.get("product_top", [])[:5],
+            "closing_check": payload.get("closing_check", {}),
         }
     return {
         **base,
@@ -33579,6 +33768,7 @@ def hermes_sales_report_context(payload: dict[str, object], scope: str = "defaul
         "supplier_purchase_total": payload.get("supplier_purchase_total", {}),
         "top_sellers": payload.get("seller_top", [])[:5],
         "top_products": payload.get("product_top", [])[:5],
+        "closing_check": payload.get("closing_check", {}),
     }
 
 
