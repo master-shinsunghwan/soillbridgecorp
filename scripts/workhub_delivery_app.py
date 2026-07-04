@@ -2091,6 +2091,77 @@ HTML = r"""<!doctype html>
       font-size: 12px;
       font-weight: 800;
     }
+    .sales-upload-actions {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .sales-upload-button.secondary {
+      background: #ffffff;
+      color: #1d4ed8;
+    }
+    .sales-manual-form {
+      display: grid;
+      gap: 10px;
+      padding: 12px;
+      border: 1px solid #bfdbfe;
+      border-radius: 8px;
+      background: #ffffff;
+    }
+    .sales-manual-form[hidden] {
+      display: none !important;
+    }
+    .sales-manual-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 10px;
+    }
+    .sales-manual-field {
+      display: grid;
+      gap: 4px;
+      min-width: 0;
+      margin: 0;
+    }
+    .sales-manual-field.wide {
+      grid-column: span 2;
+    }
+    .sales-manual-field span {
+      color: #475569;
+      font-size: 11px;
+      font-weight: 900;
+    }
+    .sales-manual-field input,
+    .sales-manual-field select {
+      height: 34px;
+      min-width: 0;
+      border: 1px solid #cbd5e1;
+      border-radius: 8px;
+      background: #f8fafc;
+      color: #0f172a;
+      padding: 0 10px;
+      font-size: 12px;
+      font-weight: 850;
+    }
+    .sales-manual-field input:focus,
+    .sales-manual-field select:focus {
+      outline: 2px solid rgba(37, 99, 235, .18);
+      border-color: #2563eb;
+      background: #ffffff;
+    }
+    .sales-manual-footer {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    .sales-manual-help {
+      color: #64748b;
+      font-size: 12px;
+      font-weight: 800;
+    }
     .sales-period-current {
       min-width: 0;
       display: grid;
@@ -11549,6 +11620,11 @@ HTML = r"""<!doctype html>
     const vendorContactsDropMain = document.querySelector("#vendorContactsDropMain");
     const salesReportFileInput = document.querySelector("#salesReportFileInput");
     const salesReportManualUpload = document.querySelector("#salesReportManualUpload");
+    const salesReportManualEntryToggle = document.querySelector("#salesReportManualEntryToggle");
+    const salesReportManualEntryForm = document.querySelector("#salesReportManualEntryForm");
+    const salesManualProductSelect = document.querySelector("#salesManualProductSelect");
+    const salesManualEntrySave = document.querySelector("#salesManualEntrySave");
+    const salesManualEntryMessage = document.querySelector("#salesManualEntryMessage");
     const salesReportUploadMessage = document.querySelector("#salesReportUploadMessage");
     const salesReportRecentList = document.querySelector("#salesReportRecentList");
     const salesReportDashboard = document.querySelector("#salesReportDashboard");
@@ -14966,6 +15042,112 @@ HTML = r"""<!doctype html>
         renderSalesEmpty(salesReportMonthlyCompareDetailBody, 7, "매출현황을 불러오지 못했습니다.");
       } finally {
         setSalesReportLoading(false);
+      }
+    }
+
+    let salesManualProductOptions = [];
+
+    function salesManualField(name) {
+      return salesReportManualEntryForm?.querySelector(`[data-sales-manual-field="${name}"]`);
+    }
+
+    function salesManualNumber(name) {
+      const value = String(salesManualField(name)?.value || "").replace(/,/g, "").trim();
+      return Number(value || 0);
+    }
+
+    function setSalesManualMessage(message, tone = "") {
+      if (!salesManualEntryMessage) return;
+      salesManualEntryMessage.textContent = message;
+      salesManualEntryMessage.dataset.tone = tone;
+    }
+
+    function renderSalesManualProductOptions(products = []) {
+      salesManualProductOptions = Array.isArray(products) ? products : [];
+      if (!salesManualProductSelect) return;
+      if (!salesManualProductOptions.length) {
+        salesManualProductSelect.innerHTML = `<option value="">상품별 매출표를 먼저 업로드해주세요</option>`;
+        salesManualProductSelect.disabled = true;
+        return;
+      }
+      salesManualProductSelect.disabled = false;
+      salesManualProductSelect.innerHTML = [
+        `<option value="">업로드된 제품을 선택하세요</option>`,
+        ...salesManualProductOptions.map((product, index) => {
+          const code = product.code ? ` · ${product.code}` : "";
+          return `<option value="${index}">${escapeHtml(product.name || "")}${escapeHtml(code)}</option>`;
+        }),
+      ].join("");
+    }
+
+    async function loadSalesManualProducts() {
+      if (!salesManualProductSelect || !can("sales_report_manage")) return;
+      try {
+        const response = await fetch("/api/sales-report-products");
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "제품 목록을 불러오지 못했습니다.");
+        renderSalesManualProductOptions(data.products || []);
+      } catch (error) {
+        renderSalesManualProductOptions([]);
+        setSalesManualMessage(error.message, "error");
+      }
+    }
+
+    function resetSalesManualEntryForm() {
+      salesReportManualEntryForm?.querySelectorAll("[data-sales-manual-field]").forEach((input) => {
+        input.value = "";
+      });
+      const today = new Date().toISOString().slice(0, 10);
+      const dateInput = salesManualField("report_date");
+      if (dateInput) dateInput.value = today;
+      setSalesManualMessage("제품 목록은 기존 상품별 매출표 업로드 데이터에서 불러옵니다.");
+    }
+
+    function toggleSalesManualEntryForm() {
+      if (!salesReportManualEntryForm || !can("sales_report_manage")) return;
+      const willOpen = salesReportManualEntryForm.hidden;
+      salesReportManualEntryForm.hidden = !willOpen;
+      if (willOpen) {
+        if (!salesManualProductOptions.length) loadSalesManualProducts();
+        if (!salesManualField("report_date")?.value) resetSalesManualEntryForm();
+      }
+    }
+
+    async function saveSalesManualEntry() {
+      if (!salesReportManualEntryForm || !can("sales_report_manage")) return;
+      const selectedIndex = Number(salesManualProductSelect?.value || -1);
+      const selectedProduct = salesManualProductOptions[selectedIndex] || {};
+      const payload = {
+        report_date: salesManualField("report_date")?.value || "",
+        seller_name: salesManualField("seller_name")?.value.trim() || "",
+        product_code: selectedProduct.code || "",
+        product_name: selectedProduct.name || "",
+        quantity: salesManualNumber("quantity"),
+        sales_amount: salesManualNumber("sales_amount"),
+        supply_amount: salesManualNumber("supply_amount"),
+        sales_total: salesManualNumber("sales_total"),
+        profit_margin: salesManualNumber("profit_margin"),
+      };
+      if (!payload.report_date || !payload.seller_name || !payload.product_name || !payload.quantity) {
+        setSalesManualMessage("매출일자, 판매처, 제품, 수량은 필수입니다.", "error");
+        return;
+      }
+      setSalesManualMessage("수기 매출을 저장하는 중입니다.");
+      try {
+        const response = await fetch("/api/sales-report-manual-entry", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "수기 매출 저장에 실패했습니다.");
+        renderSalesReportUploads(data.files || []);
+        activeSalesReportPeriod = payload.report_date.slice(0, 7);
+        await loadSalesReportDashboard(activeSalesReportPeriod);
+        resetSalesManualEntryForm();
+        setSalesManualMessage(data.message || "수기 매출을 저장했습니다.", "ok");
+      } catch (error) {
+        setSalesManualMessage(error.message, "error");
       }
     }
 
@@ -23599,6 +23781,8 @@ HTML = r"""<!doctype html>
     automationExecuteButton?.addEventListener("click", executeAutomationAction);
     if (salesReportFileInput) salesReportFileInput.addEventListener("change", uploadSalesReportWorkbook);
     salesReportManualUpload?.addEventListener("click", openSalesReportUploadPicker);
+    salesReportManualEntryToggle?.addEventListener("click", toggleSalesManualEntryForm);
+    salesManualEntrySave?.addEventListener("click", saveSalesManualEntry);
     saveCsCaseButton.addEventListener("click", saveCurrentCsCase);
     sendCsMailButton?.addEventListener("click", async () => {
       if (!can("mail_send")) return;
@@ -24719,8 +24903,53 @@ ADMIN_WORKSPACE_HTML = r"""
                   <strong>매출표 업로드</strong>
                   <span>일자별, 매출처별, 매입처별, 상품별 매출표 파일을 업로드합니다.</span>
                 </div>
-                <input id="salesReportFileInput" name="sales_report" type="file" accept=".xlsx,.xlsm,.xls,.csv,.zip" hidden />
-                <button class="sales-upload-button" id="salesReportManualUpload" type="button">매출표 업로드</button>
+                <div class="sales-upload-actions">
+                  <input id="salesReportFileInput" name="sales_report" type="file" accept=".xlsx,.xlsm,.xls,.csv,.zip" hidden />
+                  <button class="sales-upload-button secondary" id="salesReportManualEntryToggle" type="button">수기 매출 등록</button>
+                  <button class="sales-upload-button" id="salesReportManualUpload" type="button">매출표 업로드</button>
+                </div>
+              </div>
+              <div class="sales-manual-form" id="salesReportManualEntryForm" hidden>
+                <div class="sales-manual-grid">
+                  <label class="sales-manual-field" for="salesManualReportDate">
+                    <span>매출일자</span>
+                    <input id="salesManualReportDate" data-sales-manual-field="report_date" type="date" />
+                  </label>
+                  <label class="sales-manual-field wide" for="salesManualSellerName">
+                    <span>판매처</span>
+                    <input id="salesManualSellerName" data-sales-manual-field="seller_name" type="text" placeholder="예) 네이버 스마트스토어" />
+                  </label>
+                  <label class="sales-manual-field wide" for="salesManualProductSelect">
+                    <span>제품 선택</span>
+                    <select id="salesManualProductSelect" data-sales-manual-field="product_key">
+                      <option value="">업로드된 제품을 선택하세요</option>
+                    </select>
+                  </label>
+                  <label class="sales-manual-field" for="salesManualQuantity">
+                    <span>수량</span>
+                    <input id="salesManualQuantity" data-sales-manual-field="quantity" type="number" min="1" step="1" />
+                  </label>
+                  <label class="sales-manual-field" for="salesManualSalesAmount">
+                    <span>매출금액</span>
+                    <input id="salesManualSalesAmount" data-sales-manual-field="sales_amount" type="number" min="0" step="1" />
+                  </label>
+                  <label class="sales-manual-field" for="salesManualSupplyAmount">
+                    <span>공급금액</span>
+                    <input id="salesManualSupplyAmount" data-sales-manual-field="supply_amount" type="number" min="0" step="1" />
+                  </label>
+                  <label class="sales-manual-field" for="salesManualSalesTotal">
+                    <span>판매합계</span>
+                    <input id="salesManualSalesTotal" data-sales-manual-field="sales_total" type="number" min="0" step="1" />
+                  </label>
+                  <label class="sales-manual-field" for="salesManualProfitMargin">
+                    <span>손익마진(택배비 제외)</span>
+                    <input id="salesManualProfitMargin" data-sales-manual-field="profit_margin" type="number" step="1" />
+                  </label>
+                </div>
+                <div class="sales-manual-footer">
+                  <div class="sales-manual-help" id="salesManualEntryMessage">제품 목록은 기존 상품별 매출표 업로드 데이터에서 불러옵니다.</div>
+                  <button class="sales-upload-button" id="salesManualEntrySave" type="button">수기 매출 저장</button>
+                </div>
               </div>
               <div class="sales-upload-status" hidden>
                 <div id="salesReportUploadMessage">매출표 파일을 직접 업로드해서 현황을 갱신합니다.</div>
@@ -25461,6 +25690,39 @@ def list_sales_report_uploads(limit: int = 5) -> list[dict[str, str | int]]:
             (safe_limit,),
         ).fetchall()
         return [_sales_report_public(row) for row in rows]
+    finally:
+        connection.close()
+
+
+def list_sales_report_product_options(limit: int = 500) -> list[dict[str, str | int]]:
+    init_db()
+    safe_limit = max(1, min(int(limit or 500), 1000))
+    connection = connect_db()
+    try:
+        rows = connection.execute(
+            """
+            SELECT product_name AS name,
+                   COALESCE(NULLIF(product_code, ''), '') AS code,
+                   COALESCE(SUM(quantity), 0) AS quantity,
+                   MAX(report_date) AS latest_report_date,
+                   MAX(id) AS latest_id
+              FROM sales_report_product_rows
+             WHERE product_name != ''
+             GROUP BY product_name, COALESCE(NULLIF(product_code, ''), '')
+             ORDER BY latest_report_date DESC, latest_id DESC, product_name ASC
+             LIMIT ?
+            """,
+            (safe_limit,),
+        ).fetchall()
+        return [
+            {
+                "name": str(row["name"] or ""),
+                "code": str(row["code"] or ""),
+                "quantity": int(row["quantity"] or 0),
+                "latest_report_date": str(row["latest_report_date"] or ""),
+            }
+            for row in rows
+        ]
     finally:
         connection.close()
 
@@ -28880,6 +29142,141 @@ def sales_report_date_from_upload_name(name: str, period: str = "") -> str:
             except ValueError:
                 return ""
     return ""
+
+
+def save_manual_sales_report_entry(payload: dict[str, object], uploaded_by: str = "") -> dict[str, object]:
+    init_db()
+    report_date = _sales_report_date(payload.get("report_date"))
+    if not report_date:
+        raise ValueError("매출일자를 선택해주세요.")
+    period = report_date[:7]
+    seller_name = _sales_report_text(payload.get("seller_name"))
+    product_name = _sales_report_text(payload.get("product_name"))
+    product_code = _sales_report_text(payload.get("product_code"))
+    quantity = _sales_report_int(payload.get("quantity"))
+    if not seller_name:
+        raise ValueError("판매처를 입력해주세요.")
+    if not product_name:
+        raise ValueError("기존 업로드 제품 목록에서 제품을 선택해주세요.")
+    if quantity <= 0:
+        raise ValueError("수량은 1 이상이어야 합니다.")
+
+    sales_amount = _sales_report_int(payload.get("sales_amount"))
+    supply_amount = _sales_report_int(payload.get("supply_amount"))
+    sales_total = _sales_report_int(payload.get("sales_total")) or sales_amount
+    supply_total = supply_amount
+    sales_margin = sales_amount - supply_amount
+    profit_sales_amount = sales_amount
+    profit_supply_amount = supply_amount
+    profit_sales_margin = sales_margin
+    profit_margin = _sales_report_int(payload.get("profit_margin"))
+    if profit_margin == 0 and (sales_amount or supply_amount):
+        profit_margin = sales_amount - supply_amount
+    margin_rate = round((profit_margin / profit_sales_amount) * 100, 1) if profit_sales_amount else 0
+    uploaded_at = now_text()
+    safe_product = _safe_shared_filename(product_name)[:80] or "manual-sales"
+    stored_name = f"manual_sales_{datetime.now().strftime('%Y%m%d%H%M%S')}_{secrets.token_hex(6)}.json"
+    original_name = f"수기 매출 등록 {report_date} {safe_product}"
+    connection = connect_db()
+    try:
+        cursor = connection.execute(
+            """
+            INSERT INTO sales_report_uploads (
+                stored_name, original_name, size, uploaded_by, uploaded_at,
+                report_type, report_date, period, source_kind, source_fingerprint
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                stored_name,
+                original_name,
+                0,
+                str(uploaded_by or ""),
+                uploaded_at,
+                "manual_sale",
+                report_date,
+                period,
+                "manual",
+                "",
+            ),
+        )
+        file_id = int(cursor.lastrowid)
+        connection.execute(
+            """
+            INSERT INTO sales_report_seller_rows (
+                period, report_date, file_id, seller_name, quantity, sales_amount, supply_amount,
+                sales_total, supply_total, sales_margin, cs_amount, cs_supply_amount, cs_margin,
+                profit_quantity_sales, profit_quantity_supply, profit_sales_amount, profit_supply_amount,
+                profit_sales_margin, profit_shipping, profit_margin, margin_rate
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 0, ?, ?, ?, ?, ?, 0, ?, ?)
+            """,
+            (
+                period,
+                report_date,
+                file_id,
+                seller_name,
+                quantity,
+                sales_amount,
+                supply_amount,
+                sales_total,
+                supply_total,
+                sales_margin,
+                quantity,
+                quantity,
+                profit_sales_amount,
+                profit_supply_amount,
+                profit_sales_margin,
+                profit_margin,
+                margin_rate,
+            ),
+        )
+        connection.execute(
+            """
+            INSERT INTO sales_report_product_rows (
+                period, report_date, file_id, product_code, product_name, quantity, sales_amount,
+                supply_amount, sales_total, sales_margin, cs_amount, cs_supply_amount, cs_margin,
+                profit_quantity_sales, profit_quantity_supply, profit_sales_amount, profit_supply_amount,
+                profit_margin, margin_rate
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 0, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                period,
+                report_date,
+                file_id,
+                product_code,
+                product_name,
+                quantity,
+                sales_amount,
+                supply_amount,
+                sales_total,
+                sales_margin,
+                quantity,
+                quantity,
+                profit_sales_amount,
+                profit_supply_amount,
+                profit_margin,
+                margin_rate,
+            ),
+        )
+        connection.commit()
+        return {
+            "id": file_id,
+            "original_name": original_name,
+            "uploaded_by": str(uploaded_by or ""),
+            "uploaded_at": uploaded_at,
+            "report_type": "manual_sale",
+            "report_date": report_date,
+            "period": period,
+            "seller_name": seller_name,
+            "product_name": product_name,
+            "quantity": quantity,
+            "profit_sales_amount": profit_sales_amount,
+            "profit_margin": profit_margin,
+        }
+    finally:
+        connection.close()
 
 
 def save_sales_report_file(
@@ -36825,6 +37222,12 @@ class WorkhubHandler(BaseHTTPRequestHandler):
             self.send_json({"files": list_sales_report_uploads()})
             return
 
+        if self.path == "/api/sales-report-products":
+            if not self.require_permission(user, "sales_report_manage", "매출현황"):
+                return
+            self.send_json({"products": list_sales_report_product_options()})
+            return
+
         if self.path == "/api/sales-automation-settings":
             if not self.require_permission(user, "sales_report_manage", "매출 자동화 설정"):
                 return
@@ -37322,6 +37725,20 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                 uploaded_by = str(user.get("display_name") or user.get("username") or SALES_REPORT_NAS_UPLOADER)
                 result = scan_sales_report_nas_folder(uploaded_by=uploaded_by)
                 self.send_json({"message": result.get("message") or "스캔을 완료했습니다.", "result": result, "files": list_sales_report_uploads()})
+                return
+
+            if self.path == "/api/sales-report-manual-entry":
+                if not self.require_permission(user, "sales_report_manage", "수기 매출 등록"):
+                    return
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(length).decode("utf-8") or "{}")
+                uploaded_by = str(user.get("display_name") or user.get("username") or "")
+                entry = save_manual_sales_report_entry(payload if isinstance(payload, dict) else {}, uploaded_by)
+                self.send_json({
+                    "message": "수기 매출을 저장했습니다.",
+                    "entry": entry,
+                    "files": list_sales_report_uploads(),
+                })
                 return
 
             if self.path == "/api/internal-message-save":
