@@ -1052,7 +1052,7 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         self.assertIn("function loadSalesReportUploads()", html_source)
         self.assertIn('document.querySelector("#salesReportNavToggle")?.addEventListener("click"', html_source)
         self.assertIn('showWorkspace("salesReport")', html_source)
-        self.assertIn('button.closest("#salesReportNavGroup")', html_source)
+        self.assertNotIn('button.closest("#salesReportNavGroup")', html_source)
         self.assertIn('id="salesReportFileInput"', html_source)
         self.assertIn('id="salesReportManualUpload"', html_source)
         self.assertIn('id="salesReportUploadMessage"', html_source)

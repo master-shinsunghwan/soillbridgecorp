@@ -291,6 +291,7 @@ HTML = r"""<!doctype html>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>(주)소일브릿지 발주 업무자동화</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%232563eb'/%3E%3Cpath d='M8 20h16v3H8zm2-11h12v3H10zm0 5h12v3H10z' fill='white'/%3E%3C/svg%3E" />
   <link rel="stylesheet" href="/static/workhub.css" />
   <link href="https://cdn.jsdelivr.net/npm/daisyui@5" rel="stylesheet" type="text/css" />
   <style>
@@ -4000,6 +4001,7 @@ HTML = r"""<!doctype html>
       background: #f8fbff;
     }
     .vendor-picker-check,
+    .vendor-picker-select-all,
     .vendor-picker-checkbox-row {
       display: flex;
       align-items: center;
@@ -4007,6 +4009,20 @@ HTML = r"""<!doctype html>
       color: #1f2937;
       font-size: 13px;
       font-weight: 850;
+    }
+    .vendor-picker-select-all {
+      min-height: 30px;
+      padding: 0 10px;
+      border: 1px solid #bfdbfe;
+      border-radius: 7px;
+      background: #eff6ff;
+      color: #1d4ed8;
+      font-family: inherit;
+      cursor: pointer;
+    }
+    .vendor-picker-select-all:hover {
+      border-color: #60a5fa;
+      background: #dbeafe;
     }
     .vendor-picker-check input,
     .vendor-picker-checkbox-row input {
@@ -10890,6 +10906,7 @@ HTML = r"""<!doctype html>
             <input class="vendor-picker-search-input" id="stockVendorSearchInput" type="search" placeholder="업체명 또는 이메일 검색" autocomplete="off" />
             <button class="vendor-picker-button" id="stockVendorPickerButton" type="button">업체를 선택해주세요</button>
             <div class="vendor-picker-selected" id="stockSelectedVendorLabel">선택된 업체 없음</div>
+            <div class="hint-line">선택 업체는 숨은참조(BCC)로 묶어 발송하며, 메일 설정의 대량 발송 묶음 수에 따라 자동 분할됩니다.</div>
             <div class="vendor-picker-tree" id="stockVendorTree" hidden></div>
             <input id="stockVendorTypeSelect" type="hidden" value="purchase" />
             <input id="stockRecipientEmailInput" type="hidden" />
@@ -14259,14 +14276,13 @@ HTML = r"""<!doctype html>
         <div class="vendor-picker-group">
           <div class="vendor-picker-group-title">${selectedLabel} 하위 업체</div>
           <div class="vendor-picker-toolbar">
-            <label class="vendor-picker-check">
-              <input type="checkbox" data-stock-vendor-select-all ${allChecked ? "checked" : ""} />
-              <span>${query ? "검색 결과 전체 선택" : `${selectedLabel} 전체 선택`}</span>
-            </label>
+            <button class="vendor-picker-select-all" type="button" data-stock-vendor-select-all-button="${allChecked ? "clear" : "select"}">
+              ${allChecked ? (query ? "검색 결과 선택 해제" : `${selectedLabel} 전체 선택 해제`) : (query ? "검색 결과 전체 선택" : `${selectedLabel} 전체 선택`)}
+            </button>
             <span class="vendor-picker-count">${query ? `검색 ${items.length}곳 / ` : ""}선택 ${selectedStockVendors.length}곳</span>
           </div>
           ${items.map((contact) => `
-            <label class="vendor-picker-checkbox-row">
+            <label class="vendor-picker-checkbox-row" aria-label="${escapeHtml(`${contact.vendor_name} ${contact.email} 선택`)}">
               <input type="checkbox" data-stock-vendor-checkbox data-stock-vendor-type="${escapeHtml(contact.vendor_type || selectedType)}" data-stock-vendor-name="${escapeHtml(contact.vendor_name)}" ${selectedKeys.has(stockVendorKey(contact)) ? "checked" : ""} />
               <span>${escapeHtml(contact.vendor_name)} / ${escapeHtml(contact.email)}</span>
             </label>
@@ -14681,6 +14697,7 @@ HTML = r"""<!doctype html>
     }
 
     function closeSalesDetailPopup() {
+      releaseDialogFocus(salesDetailPopup);
       salesDetailPopup?.classList.remove("open");
       salesDetailPopup?.setAttribute("aria-hidden", "true");
     }
@@ -16563,11 +16580,24 @@ HTML = r"""<!doctype html>
 
     async function previewAutomationAction() {
       if (!activeAutomationAction || !automationCenterMessage) return;
+      const payload = automationPayload();
+      if (activeAutomationAction === "bulk_db_change" && !payload.find) {
+        automationCenterMessage.textContent = "찾을 값을 입력하면 대량 변경 미리보기를 생성합니다.";
+        renderAutomationPreview({
+          summary: "찾을 값을 입력해주세요.",
+          columns: ["구분", "내용"],
+          rows: [
+            { "구분": "대상", "내용": "통합관리대장 대량 변경" },
+            { "구분": "필수값", "내용": "찾을 값" },
+          ],
+        });
+        return;
+      }
       automationCenterMessage.textContent = "자동화 미리보기를 생성하는 중입니다.";
       const data = await crmFetchJson("/api/automation-center-preview", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action_id: activeAutomationAction, payload: automationPayload() }),
+        body: JSON.stringify({ action_id: activeAutomationAction, payload }),
       });
       renderAutomationPreview(data.preview || {});
       automationCenterMessage.textContent = data.preview?.summary || "미리보기를 생성했습니다.";
@@ -16614,6 +16644,7 @@ HTML = r"""<!doctype html>
     }
 
     function closeAutomationCenterPopup() {
+      releaseDialogFocus(automationCenterPopup);
       automationCenterPopup?.classList.remove("open");
       automationCenterPopup?.setAttribute("aria-hidden", "true");
     }
@@ -18099,6 +18130,7 @@ HTML = r"""<!doctype html>
 
     function closeFocusWidget() {
       if (!focusWidget) return;
+      releaseDialogFocus(focusWidget);
       focusWidget.classList.remove("open");
       focusWidget.setAttribute("aria-hidden", "true");
       focusWidgetBody.innerHTML = "";
@@ -19284,7 +19316,7 @@ HTML = r"""<!doctype html>
             const value = option.value || "";
             const count = Number(option.count || 0);
             const suffix = count > 1 ? ` <span class="ledger-filter-option-count">${count.toLocaleString("ko-KR")}건</span>` : "";
-            return `<button class="ledger-filter-option" type="button" data-filter-value="${escapeHtml(value)}" data-filter-record-id="${escapeHtml(option.record_id || "")}">${escapeHtml(value)}${suffix}</button>`;
+            return `<button class="ledger-filter-option" type="button" data-filter-value="${escapeHtml(value)}" data-filter-record-id="${escapeHtml(option.record_id || "")}" aria-label="${escapeHtml(value)} 필터 적용" title="${escapeHtml(value)}">${escapeHtml(value)}${suffix}</button>`;
           }).join("")
           : `<button class="ledger-filter-option" type="button" disabled>해당 월 전체 데이터에 표시할 값이 없습니다.</button>`;
       } catch (error) {
@@ -21166,7 +21198,13 @@ HTML = r"""<!doctype html>
 
     let activeAppConfirmResolver = null;
 
+    function releaseDialogFocus(container) {
+      if (!container || !container.contains(document.activeElement)) return;
+      if (typeof document.activeElement?.blur === "function") document.activeElement.blur();
+    }
+
     function closeAppConfirmDialog(result = false) {
+      releaseDialogFocus(appConfirmDialog);
       appConfirmDialog?.classList.remove("open");
       appConfirmDialog?.setAttribute("aria-hidden", "true");
       const resolver = activeAppConfirmResolver;
@@ -22556,9 +22594,6 @@ HTML = r"""<!doctype html>
         if (mode === "management" || mode === "ledger" || mode === "crm" || mode === "hermes" || mode === "import" || mode === "fileLibrary" || mode === "userAdmin" || mode === "salesReport" || mode === "leave" || mode === "backup" || mode === "systemUpdate") {
           if (collapseCurrentPrimaryNav(button, mode)) return;
           if (showWorkspace(mode) === false) return;
-          if (mode === "salesReport" && button.closest("#salesReportNavGroup")) {
-            openSalesReportUploadPicker();
-          }
           return;
         }
         openModal(mode);
@@ -23918,6 +23953,11 @@ HTML = r"""<!doctype html>
       const checkbox = event.target.closest("[data-stock-vendor-checkbox]");
       if (checkbox) toggleSelectedStockVendorFromTree(checkbox);
     });
+    stockVendorTree?.addEventListener("click", (event) => {
+      const selectAllButton = event.target.closest("[data-stock-vendor-select-all-button]");
+      if (!selectAllButton) return;
+      toggleAllStockVendorsForType(selectAllButton.dataset.stockVendorSelectAllButton !== "clear");
+    });
     [
       stockNoticeDateInput,
       stockInboundProductInput,
@@ -24056,6 +24096,7 @@ LOGIN_HTML = r"""<!doctype html>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>(주)소일브릿지 업무자동화 로그인</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%232563eb'/%3E%3Cpath d='M8 20h16v3H8zm2-11h12v3H10zm0 5h12v3H10z' fill='white'/%3E%3C/svg%3E" />
   <link rel="stylesheet" href="/static/workhub.css" />
   <style>
     :root {
@@ -27610,7 +27651,6 @@ def automation_center_preview(action_id: str, payload: dict, user: dict[str, str
         preview = preview_backup_ops()
     else:
         raise ValueError("지원하지 않는 자동화 기능입니다.")
-    record_automation_operation(action, "preview", user, payload=payload, preview=preview, message=str(preview.get("summary") or ""))
     return {"action": action, "preview": preview}
 
 
@@ -27769,16 +27809,24 @@ def sales_report_detail_payload(kind: str, key: str, period: str = "") -> dict[s
                 """,
                 (detail_key,),
             ).fetchall()
+            seller_quantity_total = sum(int(row["quantity"] or 0) for row in seller_rows)
+            seller_profit_sales_total = sum(int(row["profit_sales_amount"] or 0) for row in seller_rows)
+            seller_sales_total = sum(int(row["sales_total"] or 0) for row in seller_rows)
+            seller_profit_margin_total = sum(int(row["profit_margin"] or 0) for row in seller_rows)
+            summary_quantity = int(summary["quantity"] or 0) if summary else 0
+            summary_profit_sales = int(summary["profit_sales_amount"] or 0) if summary else 0
+            summary_sales_total = int(summary["sales_total"] or 0) if summary else 0
+            summary_profit_margin = int((summary["profit_margin"] or 0) - (summary["profit_shipping"] or 0)) if summary else 0
             return {
                 "kind": "daily",
                 "title": f"{detail_key} 판매사별 당일 현황",
                 "period": selected_period,
                 "note": "판매금액은 매출처별 누적 스냅샷의 전일 대비 증가분으로 계산하고, 주문건수는 통합관리대장의 해당 날짜 기준으로 표시합니다." if use_seller_amounts else "해당 날짜의 전일 매출처 스냅샷이 없어 금액은 표시하지 않고 통합관리대장 기준 주문건수와 수량만 표시합니다.",
                 "metrics": [
-                    _sales_detail_metric("수량", int(summary["quantity"] or 0) if summary else 0),
-                    _sales_detail_metric("손익매출", int(summary["profit_sales_amount"] or 0) if summary else 0),
-                    _sales_detail_metric("판매합계", int(summary["sales_total"] or 0) if summary else 0),
-                    _sales_detail_metric("손익마진(택배비 제외)", int((summary["profit_margin"] or 0) - (summary["profit_shipping"] or 0)) if summary else 0),
+                    _sales_detail_metric("수량", summary_quantity or seller_quantity_total),
+                    _sales_detail_metric("손익매출", summary_profit_sales or seller_profit_sales_total),
+                    _sales_detail_metric("판매합계", summary_sales_total or seller_sales_total),
+                    _sales_detail_metric("손익마진(택배비 제외)", summary_profit_margin or seller_profit_margin_total),
                 ],
                 "sections": [
                     {
@@ -28551,6 +28599,8 @@ def sales_report_dashboard_payload(period: str = "", report_date: str = "") -> d
         "profit_sales_amount": int(previous_product_total["profit_sales_amount"] or 0),
         "profit_margin": int(previous_product_total["profit_margin"] or 0),
     }
+    if selected_date and any(str(row.get("report_date") or "") == selected_date for row in daily_rows_public):
+        report_counts["daily"] = max(int(report_counts.get("daily", 0) or 0), 1)
     difference = month_total["profit_sales_amount"] - seller_total_public["profit_sales_amount"]
     closing_check = sales_report_closing_check(
         report_counts,
@@ -31030,7 +31080,8 @@ def upload_backup_to_external_storage(backup_path: Path, settings: dict[str, obj
             "uploaded_at": now_text(),
         }
     output = (getattr(completed, "stderr", "") or getattr(completed, "stdout", "") or "").strip()
-    if int(getattr(completed, "returncode", 1)) != 0:
+    has_error_output = bool(re.search(r"\b(ERROR|Failed|failed|오류|실패)\b", output))
+    if int(getattr(completed, "returncode", 1)) != 0 or has_error_output:
         return {
             "status": "fail",
             "message": output or "rclone 업로드에 실패했습니다.",
@@ -32684,7 +32735,33 @@ def list_cs_cases(query: str = "", status: str = "", limit: int = 20, year: str 
         ).fetchall()
     finally:
         connection.close()
-    return [dict(row) for row in rows]
+    deduped: list[dict[str, str | int]] = []
+    seen_keys: set[tuple[str, ...]] = set()
+    for row in rows:
+        item = dict(row)
+        duplicate_key = tuple(
+            str(item.get(field) or "").strip()
+            for field in (
+                "occurred_at",
+                "order_date",
+                "ship_date",
+                "sales_vendor",
+                "purchase_vendor",
+                "receiver_name",
+                "receiver_phone",
+                "product_name",
+                "original_invoice",
+                "return_invoice",
+                "reship_invoice",
+                "cs_type",
+                "cs_content",
+            )
+        )
+        if duplicate_key in seen_keys:
+            continue
+        seen_keys.add(duplicate_key)
+        deduped.append(item)
+    return deduped
 
 
 def normalized_cs_type(value: str) -> str:
