@@ -2038,6 +2038,9 @@ HTML = r"""<!doctype html>
       grid-template-columns: repeat(4, minmax(160px, 1fr));
       gap: 10px;
     }
+    .import-cost-grid.compact {
+      grid-template-columns: repeat(6, minmax(120px, 1fr));
+    }
     .import-cost-grid label,
     .import-cost-table td label {
       display: grid;
@@ -2202,6 +2205,11 @@ HTML = r"""<!doctype html>
       grid-template-columns: repeat(4, minmax(140px, 1fr));
       gap: 8px;
     }
+    .import-cost-charge-summary {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(140px, 1fr));
+      gap: 8px;
+    }
     .import-cost-summary-card {
       padding: 10px 12px;
       border: 1px solid #bfd3f7;
@@ -2221,6 +2229,10 @@ HTML = r"""<!doctype html>
       font-size: 18px;
       font-weight: 880;
     }
+    .import-cost-summary-card.warning {
+      border-color: #f6c78f;
+      background: #fff8ef;
+    }
     .import-cost-remove {
       width: 34px;
       min-width: 34px;
@@ -2230,6 +2242,8 @@ HTML = r"""<!doctype html>
     }
     @media (max-width: 1100px) {
       .import-cost-grid,
+      .import-cost-grid.compact,
+      .import-cost-charge-summary,
       .import-cost-summary {
         grid-template-columns: repeat(2, minmax(0, 1fr));
       }
@@ -12183,6 +12197,7 @@ HTML = r"""<!doctype html>
     const importCostProductBody = document.querySelector("#importCostProductBody");
     const importCostResultBody = document.querySelector("#importCostResultBody");
     const importCostSummary = document.querySelector("#importCostSummary");
+    const importCostChargeSummary = document.querySelector("#importCostChargeSummary");
     const importCostMessage = document.querySelector("#importCostMessage");
     const importCostFileInput = document.querySelector("#importCostFileInput");
     const importCostFileChoose = document.querySelector("#importCostFileChoose");
@@ -15761,6 +15776,7 @@ HTML = r"""<!doctype html>
 
     function fillImportCostForm(payload = {}) {
       setImportCostInputValue("importCostInvoiceNo", payload.invoice_no);
+      setImportCostInputValue("importCostHbl", payload.hbl_no);
       setImportCostInputValue("importCostRemittanceRate", payload.remittance_rate);
       setImportCostInputValue("importCostAllocationBasis", payload.allocation_basis || "amount");
       setImportCostInputValue("importCostDocFee", payload.doc_fee);
@@ -15774,6 +15790,42 @@ HTML = r"""<!doctype html>
       if (includeImportVat) includeImportVat.checked = payload.include_import_vat !== false;
       if (includeServiceVat) includeServiceVat.checked = payload.include_service_vat !== false;
       fillImportCostProductRows(payload.products || []);
+      renderImportCostChargeSummary();
+    }
+
+    function importCostNumericValue(id) {
+      const value = importCostInputValue(id).replace(/,/g, "");
+      const number = Number(value || 0);
+      return Number.isFinite(number) ? number : 0;
+    }
+
+    function renderImportCostChargeSummary() {
+      if (!importCostChargeSummary) return;
+      const includeImportVat = Boolean(document.querySelector("#importCostIncludeImportVat")?.checked);
+      const includeServiceVat = Boolean(document.querySelector("#importCostIncludeServiceVat")?.checked);
+      const values = {
+        docFee: importCostNumericValue("importCostDocFee"),
+        duty: importCostNumericValue("importCostDuty"),
+        brokerFee: importCostNumericValue("importCostBrokerFee"),
+        otherCost: importCostNumericValue("importCostOtherCost"),
+        importVat: includeImportVat ? importCostNumericValue("importCostImportVat") : 0,
+        serviceVat: includeServiceVat ? importCostNumericValue("importCostServiceVat") : 0,
+      };
+      const freight = values.docFee + values.otherCost;
+      const customs = values.duty + values.brokerFee;
+      const vat = values.importVat + values.serviceVat;
+      const total = freight + customs + vat;
+      const cards = [
+        ["배부 비용 합계", formatImportCostWon(total), total ? "" : "warning"],
+        ["D/O/운임/기타", formatImportCostWon(freight), ""],
+        ["관세/통관수수료", formatImportCostWon(customs), ""],
+        ["포함 부가세", formatImportCostWon(vat), ""],
+      ];
+      importCostChargeSummary.innerHTML = cards.map(([label, value, tone]) => `
+        <div class="import-cost-summary-card ${tone}">
+          <span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong>
+        </div>
+      `).join("");
     }
 
     function renderImportCostDetails(data = {}) {
@@ -15869,6 +15921,7 @@ HTML = r"""<!doctype html>
 
     function renderImportCostResult(data) {
       const summary = data.summary || {};
+      renderImportCostChargeSummary();
       if (importCostSummary) {
         const cards = [
           ["인보이스 합계", formatImportCostUsd(summary.invoice_total_usd)],
@@ -24072,6 +24125,18 @@ HTML = r"""<!doctype html>
     importCostAddProduct?.addEventListener("click", () => addImportCostProductRow());
     importCostReset?.addEventListener("click", resetImportCostProgram);
     importCostCalculate?.addEventListener("click", calculateImportCost);
+    importCostWorkspace?.addEventListener("input", (event) => {
+      const target = event.target;
+      if (target?.matches?.("#importCostDocFee, #importCostDuty, #importCostBrokerFee, #importCostOtherCost, #importCostImportVat, #importCostServiceVat, #importCostIncludeImportVat, #importCostIncludeServiceVat")) {
+        renderImportCostChargeSummary();
+      }
+    });
+    importCostWorkspace?.addEventListener("change", (event) => {
+      const target = event.target;
+      if (target?.matches?.("#importCostIncludeImportVat, #importCostIncludeServiceVat")) {
+        renderImportCostChargeSummary();
+      }
+    });
     importCostFileChoose?.addEventListener("click", () => importCostFileInput?.click());
     importCostFileUpload?.addEventListener("click", uploadImportCostFiles);
     importCostFileInput?.addEventListener("change", () => {
@@ -25081,8 +25146,8 @@ IMPORT_COST_WORKSPACE_HTML = r"""
             <div class="import-cost-detail-list" id="importCostDetailList"></div>
           </section>
           <section class="import-cost-card">
-            <div class="admin-section-title">컨테이너/인보이스 기준</div>
-            <div class="import-cost-grid">
+            <div class="admin-section-title">기준 정보 / 정산 비용</div>
+            <div class="import-cost-grid compact">
               <label>HBL/컨테이너 번호
                 <input id="importCostHbl" type="text" placeholder="예) XLTNGB26040216" />
               </label>
@@ -25100,12 +25165,7 @@ IMPORT_COST_WORKSPACE_HTML = r"""
                   <option value="cbm">CBM 기준</option>
                 </select>
               </label>
-            </div>
-          </section>
-          <section class="import-cost-card">
-            <div class="admin-section-title">정산서 비용</div>
-            <div class="import-cost-grid">
-              <label>DOC/FEE
+              <label>D/O/운임비
                 <input id="importCostDocFee" type="number" min="0" step="1" />
               </label>
               <label>관세
@@ -25124,6 +25184,7 @@ IMPORT_COST_WORKSPACE_HTML = r"""
                 <input id="importCostServiceVat" type="number" min="0" step="1" />
               </label>
             </div>
+            <div class="import-cost-charge-summary" id="importCostChargeSummary"></div>
             <div class="import-cost-options">
               <label><input id="importCostIncludeImportVat" type="checkbox" checked /> 수입부가세를 제품 원가에 포함</label>
               <label><input id="importCostIncludeServiceVat" type="checkbox" checked /> 수수료 부가세를 제품 원가에 포함</label>
@@ -30079,6 +30140,20 @@ def parse_import_cost_packing_rows(rows: list[list[object]]) -> dict[str, object
 
 IMPORT_COST_AMOUNT_PATTERN = re.compile(r"-?\d{1,3}(?:,\d{3})+(?:\.\d+)?|-?\d+(?:\.\d+)?")
 
+IMPORT_COST_CHARGE_TERM_EXPLANATIONS = [
+    (r"OCEAN\s+FREIGHT", "OCEAN FREIGHT: 해상운임, 선박으로 운송한 기본 운임입니다."),
+    (r"TERMINAL\s+HANDLING\s+CHARGE", "TERMINAL HANDLING CHARGE: 터미널 작업료, 항만 터미널에서 컨테이너를 처리하는 비용입니다."),
+    (r"CONTAINER\s+CLEANING\s+FEE", "CONTAINER CLEANING FEE: 컨테이너 청소비, 반납/사용 컨테이너 청소 비용입니다."),
+    (r"DOCUMENT\s+FEE", "DOCUMENT FEE: 서류 발급/처리비, 운송 관련 서류 처리 비용입니다."),
+    (r"WHARFAGE", "WHARFAGE: 부두 사용료, 항만 시설 이용에 붙는 비용입니다."),
+    (r"PORT\s+FACILITY\s+SECURITY", "PORT FACILITY SECURITY: 항만 보안료, 항만 보안 시설 이용 비용입니다."),
+    (r"PORT\s+SAFETY\s+MANAGEMENT\s+CHARGE", "PORT SAFETY MANAGEMENT CHARGE: 항만 안전관리비, 항만 안전 관리 명목 비용입니다."),
+    (r"HANDLING\s+CHARGE", "HANDLING CHARGE: 취급/처리 수수료, 포워더 또는 운송사가 처리 업무에 부과하는 비용입니다."),
+    (r"TRUCKING\s+CHARGE", "TRUCKING CHARGE: 내륙 운송료, 항만에서 창고/목적지까지 차량 운송 비용입니다."),
+    (r"X-?RAY", "X-RAY 검사료: 화물 보안 검사 비용입니다."),
+    (r"검역수수료", "검역수수료: 수입 물품 검역 처리 비용입니다."),
+]
+
 
 def import_cost_amounts_from_text(value: str) -> list[str]:
     amounts = []
@@ -30090,6 +30165,16 @@ def import_cost_amounts_from_text(value: str) -> list[str]:
     return amounts
 
 
+def import_cost_charge_term_details(text: str) -> list[str]:
+    details = []
+    seen: set[str] = set()
+    for pattern, explanation in IMPORT_COST_CHARGE_TERM_EXPLANATIONS:
+        if re.search(pattern, text, re.I) and explanation not in seen:
+            details.append(explanation)
+            seen.add(explanation)
+    return details
+
+
 def import_cost_amount_near_line(lines: list[str], line_index: int, window: int = 2) -> str:
     end_index = min(len(lines), line_index + window + 1)
     for index in range(line_index, end_index):
@@ -30097,6 +30182,81 @@ def import_cost_amount_near_line(lines: list[str], line_index: int, window: int 
         if amounts:
             return amounts[-1]
     return ""
+
+
+def import_cost_last_amount_near_label(lines: list[str], label_patterns: list[str], window: int = 2) -> str:
+    for index, line in enumerate(lines):
+        compact = re.sub(r"\s+", "", line)
+        if not any(re.search(pattern, compact, re.I) or re.search(pattern, line, re.I) for pattern in label_patterns):
+            continue
+        amount = import_cost_amount_near_line(lines, index, window)
+        if amount:
+            return amount
+    return ""
+
+
+def import_cost_amount_from_total_line(lines: list[str]) -> tuple[str, str]:
+    for line in lines:
+        compact = re.sub(r"\s+", "", line).upper()
+        if "합계" not in compact and "TOTAL" not in compact:
+            continue
+        amounts = import_cost_amounts_from_text(line)
+        if len(amounts) >= 2:
+            return amounts[-2], amounts[-1]
+    return "", ""
+
+
+def parse_import_cost_domestic_settlement_text(text: str) -> dict[str, object]:
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    joined = "\n".join(lines)
+    compact_all = re.sub(r"\s+", "", joined).upper()
+    if not any(token in compact_all for token in ("통관자금", "청구정산서", "JTSSHIPPING", "TOTALAMOUNT")):
+        return {"charges": {}, "details": [], "trusted": False}
+
+    charges: dict[str, str] = {}
+    details: list[str] = []
+    hbl_no = ""
+    hbl_match = re.search(r"\b(?:XLTSWA|XLTNGB)[A-Z0-9-]{6,}\b", joined, re.I)
+    if hbl_match:
+        hbl_no = hbl_match.group(0).upper()
+
+    duty = import_cost_last_amount_near_label(lines, [r"관세"], 1)
+    import_vat = import_cost_last_amount_near_label(lines, [r"부가가치세", r"부가세"], 1)
+    broker_fee = import_cost_last_amount_near_label(lines, [r"통관수수료"], 1)
+    do_total = import_cost_last_amount_near_label(lines, [r"D/?O비용", r"D/O\s*비용", r"DO비용"], 1)
+    jts_amount, jts_vat = import_cost_amount_from_total_line(lines)
+    if duty:
+        charges["duty"] = duty
+    if import_vat:
+        charges["import_vat"] = import_vat
+    if broker_fee:
+        charges["broker_fee"] = broker_fee
+    if jts_amount:
+        charges["doc_fee"] = jts_amount
+    elif do_total:
+        charges["doc_fee"] = do_total
+    if jts_vat:
+        charges["service_vat"] = jts_vat
+
+    claim_amount = import_cost_last_amount_near_label(lines, [r"청구금액", r"TOTALAMOUNT"], 2)
+    trusted = False
+    if charges:
+        try:
+            calculated = sum(import_cost_decimal(value) for value in charges.values())
+            if claim_amount:
+                trusted = abs(calculated - import_cost_decimal(claim_amount)) <= Decimal("10")
+            else:
+                trusted = all(charges.get(key) for key in ("import_vat", "broker_fee", "doc_fee"))
+        except ValueError:
+            trusted = False
+
+    if trusted:
+        details.append("국내 정산비 PDF에서 비용 합계 검증 후 자동 추출했습니다.")
+    elif charges:
+        details.append("국내 정산비 PDF에서 일부 금액을 읽었지만 합계 검증이 되지 않아 자동 반영하지 않았습니다.")
+        charges = {}
+    details.extend(import_cost_charge_term_details(joined))
+    return {"charges": charges, "details": details, "trusted": trusted, "hbl_no": hbl_no}
 
 
 def parse_import_cost_settlement_text(text: str) -> dict[str, str]:
@@ -30150,7 +30310,7 @@ def parse_import_cost_settlement_text(text: str) -> dict[str, str]:
     return charges
 
 
-def ocr_import_cost_pdf_text(path: Path) -> tuple[str, list[str]]:
+def ocr_import_cost_pdf_text(path: Path, max_pages: int = 2) -> tuple[str, list[str]]:
     details: list[str] = []
     try:
         import fitz  # type: ignore
@@ -30166,33 +30326,34 @@ def ocr_import_cost_pdf_text(path: Path) -> tuple[str, list[str]]:
         try:
             if document.page_count < 1:
                 return "", ["PDF 페이지가 비어 있어 OCR을 실행하지 못했습니다."]
-            page = document.load_page(0)
-            pixmap = page.get_pixmap(matrix=fitz.Matrix(2, 2), alpha=False)
-            image = Image.open(BytesIO(pixmap.tobytes("png")))
+            images = []
+            for page_index in range(min(document.page_count, max_pages)):
+                page = document.load_page(page_index)
+                pixmap = page.get_pixmap(matrix=fitz.Matrix(2, 2), alpha=False)
+                images.append((page_index + 1, Image.open(BytesIO(pixmap.tobytes("png")))))
         finally:
             document.close()
     except Exception as exc:
         return "", [f"PDF 이미지 변환에 실패했습니다: {exc}"]
 
-    width, height = image.size
-    crop_regions = [
-        ("전체", (0, 0, width, height)),
-        ("DOC/FEE 영역", (int(width * 0.03), int(height * 0.30), int(width * 0.54), int(height * 0.58))),
-        ("관세/수입부가세 영역", (int(width * 0.48), int(height * 0.22), int(width * 0.98), int(height * 0.58))),
-        ("통관수수료 영역", (int(width * 0.48), int(height * 0.52), int(width * 0.98), int(height * 0.84))),
-    ]
     texts: list[str] = []
-    for label, box in crop_regions:
-        try:
-            region = image.crop(box).convert("L")
-            config = "--psm 6"
-            text = pytesseract.image_to_string(region, lang=lang or None, config=config)
-            if text.strip():
-                texts.append(f"[{label}]\n{text}")
-        except Exception as exc:
-            details.append(f"{label} OCR 실패: {exc}")
+    for page_number, image in images:
+        width, height = image.size
+        crop_regions = [
+            (f"{page_number}페이지 전체", (0, 0, width, height)),
+            (f"{page_number}페이지 비용 영역", (int(width * 0.03), int(height * 0.24), int(width * 0.98), int(height * 0.78))),
+        ]
+        for label, box in crop_regions:
+            try:
+                region = image.crop(box).convert("L")
+                config = "--psm 6"
+                text = pytesseract.image_to_string(region, lang=lang or None, config=config)
+                if text.strip():
+                    texts.append(f"[{label}]\n{text}")
+            except Exception as exc:
+                details.append(f"{label} OCR 실패: {exc}")
     if texts:
-        details.append("스캔 PDF 1페이지를 OCR로 읽었습니다.")
+        details.append(f"스캔 PDF {min(len(images), max_pages)}페이지를 OCR로 읽었습니다.")
     else:
         details.append("OCR을 실행했지만 읽을 수 있는 텍스트를 찾지 못했습니다.")
     return "\n".join(texts), details
@@ -30213,8 +30374,14 @@ def parse_import_cost_pdf_text(path: Path) -> dict[str, object]:
         details.extend(ocr_details)
         text = ocr_text
         used_ocr = bool(text.strip())
-    charges = parse_import_cost_settlement_text(text)
-    if charges and used_ocr:
+    domestic = parse_import_cost_domestic_settlement_text(text)
+    if domestic.get("details"):
+        details.extend(domestic.get("details") or [])
+    charges = dict(domestic.get("charges") or {})
+    hbl_no = str(domestic.get("hbl_no") or "")
+    if not charges:
+        charges = parse_import_cost_settlement_text(text)
+    if charges and used_ocr and not domestic.get("trusted"):
         details.append("스캔 PDF OCR 금액은 오인식 가능성이 있어 비용칸에 자동 반영하지 않았습니다. 정산서 원본 금액을 확인해 직접 입력해주세요.")
         charges = {}
     elif charges:
@@ -30223,7 +30390,7 @@ def parse_import_cost_pdf_text(path: Path) -> dict[str, object]:
         details.append("PDF/OCR 텍스트에서 정산 비용 항목을 찾지 못했습니다.")
     else:
         details.append("스캔 PDF라 텍스트 금액 자동 추출이 되지 않았습니다.")
-    return {"charges": charges, "details": details}
+    return {"charges": charges, "details": details, "hbl_no": hbl_no}
 
 
 def import_cost_normalize_name(value: object) -> str:
@@ -30284,6 +30451,7 @@ def analyze_import_cost_files(paths: list[Path], options: dict[str, object] | No
     charges: dict[str, object] = {}
     details: list[str] = []
     invoice_no = ""
+    hbl_no = ""
     parsed_files: list[dict[str, object]] = []
     for path in paths:
         original_name = original_uploaded_filename(path.name)
@@ -30293,8 +30461,10 @@ def analyze_import_cost_files(paths: list[Path], options: dict[str, object] | No
         if suffix == ".pdf":
             parsed = parse_import_cost_pdf_text(path)
             charges.update(parsed.get("charges") or {})
+            if not hbl_no:
+                hbl_no = str(parsed.get("hbl_no") or "")
             file_details.extend(parsed.get("details") or [])
-            role = "정산서 PDF"
+            role = "국내 정산비 PDF" if parsed.get("charges") else "정산서 PDF"
         else:
             rows = import_cost_sheet_rows(path)
             flat_text = " ".join(import_cost_cell_text(value).upper() for row in rows for value in row[:12])
@@ -30316,6 +30486,7 @@ def analyze_import_cost_files(paths: list[Path], options: dict[str, object] | No
         details.extend(file_details)
     products = merge_import_cost_products(invoice_products, packing_products)
     payload: dict[str, object] = {
+        "hbl_no": options.get("hbl_no") or hbl_no,
         "invoice_no": options.get("invoice_no") or invoice_no,
         "remittance_rate": options.get("remittance_rate") or "",
         "allocation_basis": options.get("allocation_basis") or "amount",
@@ -40042,6 +40213,7 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                 options = {
                     key: fields.get(key, "")
                     for key in (
+                        "hbl_no",
                         "invoice_no",
                         "remittance_rate",
                         "allocation_basis",

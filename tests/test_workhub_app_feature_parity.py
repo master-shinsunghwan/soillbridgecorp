@@ -1147,6 +1147,9 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         self.assertIn("includeImportVat.checked = true", admin_html)
         self.assertIn("includeServiceVat.checked = true", admin_html)
         self.assertIn('id="importCostRunStatus"', admin_html)
+        self.assertIn('id="importCostChargeSummary"', admin_html)
+        self.assertIn("function renderImportCostChargeSummary", admin_html)
+        self.assertIn("D/O/운임비", admin_html)
         self.assertIn("function setImportCostRunStatus", admin_html)
         self.assertIn('setImportCostRunStatus("running"', admin_html)
         self.assertIn('setImportCostRunStatus("done"', admin_html)
@@ -1271,6 +1274,40 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
 
         self.assertEqual(parsed["charges"], {})
         self.assertTrue(any("자동 반영하지 않았습니다" in detail for detail in parsed["details"]))
+
+    def test_import_cost_domestic_settlement_pdf_extracts_verified_charges(self) -> None:
+        app = self.load_app()
+
+        parsed = app.parse_import_cost_domestic_settlement_text("""
+        통관자금(청구)정산서
+        B / L XLTSWA26050065
+        관 세 0
+        부가가치세 2,798,180
+        통관수수료 61,600
+        D/O 비용 2,101,843
+        청구 금액 4,961,623
+        JTS SHIPPING CO., LTD.
+        OCEAN FREIGHT
+        TERMINAL HANDLING CHARGE
+        TRUCKING CHARGE/김포신항
+        X-RAY 검사료
+        INVOICE
+        합 계 750.00 2,034,740 67,103
+        TOTAL AMOUNT: KRW 2,101,843
+        """)
+
+        self.assertTrue(parsed["trusted"])
+        self.assertEqual(parsed["hbl_no"], "XLTSWA26050065")
+        self.assertEqual(parsed["charges"]["duty"], "0")
+        self.assertEqual(parsed["charges"]["import_vat"], "2798180")
+        self.assertEqual(parsed["charges"]["broker_fee"], "61600")
+        self.assertEqual(parsed["charges"]["doc_fee"], "2034740")
+        self.assertEqual(parsed["charges"]["service_vat"], "67103")
+        detail_text = "\n".join(parsed["details"])
+        self.assertIn("OCEAN FREIGHT: 해상운임", detail_text)
+        self.assertIn("TERMINAL HANDLING CHARGE: 터미널 작업료", detail_text)
+        self.assertIn("TRUCKING CHARGE: 내륙 운송료", detail_text)
+        self.assertIn("X-RAY 검사료", detail_text)
 
     def test_sales_report_dashboard_layout_uses_three_report_types(self) -> None:
         html_source = (ROOT / "scripts" / "workhub_delivery_app.py").read_text(encoding="utf-8")
