@@ -101,6 +101,13 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
             self.assertIn("renderDashboardImportSchedule();", html_source)
             self.assertIn('companyActiveTab === "notice" && panel.dataset.companyPanel === "calendar"', html_source)
             self.assertIn("loadDashboardEntryData().catch", html_source)
+        app_html_source = (ROOT / "scripts" / "workhub_delivery_app.py").read_text(encoding="utf-8")
+        self.assertIn('id="automationOverviewCard"', app_html_source)
+        self.assertIn('id="automationOverviewStatus"', app_html_source)
+        self.assertIn('id="automationOverviewBody"', app_html_source)
+        self.assertIn('/api/automation-overview', app_html_source)
+        self.assertIn('function renderAutomationOverview(data = {})', app_html_source)
+        self.assertIn("업무 자동화 점검", app_html_source)
 
     def test_portal_notice_records_are_stored_in_server_db(self) -> None:
         app = self.load_app()

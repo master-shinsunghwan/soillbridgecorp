@@ -345,6 +345,18 @@ class SalesReportUploadTests(unittest.TestCase):
         self.assertNotEqual(dashboard["closing_check"]["status"], "critical")
         self.assertIn("closing_check", self.app.hermes_sales_report_context(dashboard, "today"))
 
+    def test_workhub_automation_overview_returns_core_sections(self) -> None:
+        self.app.init_db()
+
+        overview = self.app.workhub_automation_overview({"role": "admin", "permissions": []})
+
+        self.assertIn("sales", overview["sections"])
+        self.assertIn("cs", overview["sections"])
+        self.assertIn("management", overview["sections"])
+        self.assertIn("inbound", overview["sections"])
+        self.assertIn("mail", overview["sections"])
+        self.assertIn("briefing", overview)
+
 
     def test_sales_report_dashboard_uses_latest_period_without_daily_report(self) -> None:
         base = Path(self.tempdir.name)

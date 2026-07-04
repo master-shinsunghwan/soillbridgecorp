@@ -5385,6 +5385,61 @@ HTML = r"""<!doctype html>
       font-weight: 750;
       line-height: 1.55;
     }
+    .automation-overview-card {
+      display: grid;
+      gap: 10px;
+    }
+    .automation-overview-status {
+      border-radius: 999px;
+      padding: 3px 8px;
+      border: 1px solid #bbf7d0;
+      background: #f0fdf4;
+      color: #166534;
+      font-size: 11px;
+      font-weight: 950;
+    }
+    .automation-overview-status.warning {
+      border-color: #fed7aa;
+      background: #fff7ed;
+      color: #9a3412;
+    }
+    .automation-overview-list {
+      display: grid;
+      gap: 7px;
+    }
+    .automation-overview-item {
+      display: grid;
+      grid-template-columns: 86px minmax(0, 1fr);
+      gap: 8px;
+      align-items: start;
+      padding: 8px;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      background: #f8fafc;
+    }
+    .automation-overview-item.warning,
+    .automation-overview-item.critical {
+      border-color: #fed7aa;
+      background: #fff7ed;
+    }
+    .automation-overview-label {
+      color: #64748b;
+      font-size: 11px;
+      font-weight: 950;
+    }
+    .automation-overview-text {
+      min-width: 0;
+      color: #0f172a;
+      font-size: 12px;
+      font-weight: 900;
+      line-height: 1.45;
+    }
+    .automation-overview-text span {
+      display: block;
+      margin-top: 2px;
+      color: #64748b;
+      font-weight: 800;
+    }
     .company-notice {
       margin: 0;
       min-height: 210px;
@@ -9499,6 +9554,17 @@ HTML = r"""<!doctype html>
               <div class="notice-board-title">등록된 공지 없음</div>
               <div class="notice-board-body">공지사항 입력 버튼을 눌러 내용을 입력해주세요.</div>
             </section>
+            <article class="company-card automation-overview-card" id="automationOverviewCard">
+              <div class="company-card-head"><span>업무 자동화 점검</span><span class="automation-overview-status" id="automationOverviewStatus">대기</span></div>
+              <div class="company-card-body">
+                <div class="automation-overview-list" id="automationOverviewBody">
+                  <div class="automation-overview-item">
+                    <div class="automation-overview-label">점검</div>
+                    <div class="automation-overview-text">업무 자동화 상태를 불러오는 중입니다.</div>
+                  </div>
+                </div>
+              </div>
+            </article>
           </div>
 
           <section class="import-progress-card dashboard-import-card open" id="dashboardImportScheduleCard">
@@ -11299,6 +11365,8 @@ HTML = r"""<!doctype html>
     const dashboardDecisionPurchaseChip = document.querySelector("#dashboardDecisionPurchaseChip");
     const dashboardDecisionMarginChip = document.querySelector("#dashboardDecisionMarginChip");
     const dashboardSalesMessage = document.querySelector("#dashboardSalesMessage");
+    const automationOverviewStatus = document.querySelector("#automationOverviewStatus");
+    const automationOverviewBody = document.querySelector("#automationOverviewBody");
     const salesReportDailyBody = document.querySelector("#salesReportDailyBody");
     const salesReportSellerBody = document.querySelector("#salesReportSellerBody");
     const salesReportProductBody = document.querySelector("#salesReportProductBody");
@@ -15979,8 +16047,66 @@ HTML = r"""<!doctype html>
       }
     }
 
+    function renderAutomationOverview(data = {}) {
+      if (!automationOverviewStatus || !automationOverviewBody) return;
+      const status = data.status || "ok";
+      automationOverviewStatus.textContent = status === "warning" ? `확인 ${formatSalesNumber(data.issue_count || 0)}건` : "정상";
+      automationOverviewStatus.className = `automation-overview-status${status === "warning" ? " warning" : ""}`;
+      const sections = data.sections || {};
+      const rows = [
+        ["sales", "매출", sections.sales],
+        ["cs", "CS", sections.cs],
+        ["management", "대장", sections.management],
+        ["inbound", "입고", sections.inbound],
+        ["mail", "메일", sections.mail],
+      ].filter(([, , section]) => section);
+      if (!rows.length) {
+        automationOverviewBody.innerHTML = `
+          <div class="automation-overview-item">
+            <div class="automation-overview-label">점검</div>
+            <div class="automation-overview-text">표시할 자동화 점검 결과가 없습니다.</div>
+          </div>
+        `;
+        return;
+      }
+      automationOverviewBody.innerHTML = rows.map(([, label, section]) => {
+        const issues = section.issues || [];
+        const firstIssue = issues[0] || {};
+        const itemStatus = section.status || "ok";
+        const summary = firstIssue.title ? `${firstIssue.title} · ${firstIssue.message || ""}` : (section.summary || "정상");
+        return `
+          <div class="automation-overview-item ${escapeHtml(itemStatus)}">
+            <div class="automation-overview-label">${escapeHtml(label)}</div>
+            <div class="automation-overview-text">
+              ${escapeHtml(section.title || label)}
+              <span>${escapeHtml(summary)}</span>
+            </div>
+          </div>
+        `;
+      }).join("");
+    }
+
+    async function loadAutomationOverview() {
+      if (!automationOverviewBody) return;
+      try {
+        const data = await crmFetchJson("/api/automation-overview");
+        renderAutomationOverview(data);
+      } catch (error) {
+        if (automationOverviewStatus) {
+          automationOverviewStatus.textContent = "오류";
+          automationOverviewStatus.className = "automation-overview-status warning";
+        }
+        automationOverviewBody.innerHTML = `
+          <div class="automation-overview-item warning">
+            <div class="automation-overview-label">오류</div>
+            <div class="automation-overview-text">자동화 점검을 불러오지 못했습니다.<span>${escapeHtml(error.message || "")}</span></div>
+          </div>
+        `;
+      }
+    }
+
     async function loadDashboardEntryData() {
-      const tasks = [loadPortalNotices(), loadImportShipments(), loadCargoShipments(), loadDashboardSalesSummary()];
+      const tasks = [loadPortalNotices(), loadImportShipments(), loadCargoShipments(), loadDashboardSalesSummary(), loadAutomationOverview()];
       tasks.push(loadCompanyCalendar().catch(() => {
         if (companyCalendarGrid) companyCalendarGrid.innerHTML = `<div class="calendar-empty">캘린더를 불러오지 못했습니다.</div>`;
       }));
@@ -26154,6 +26280,261 @@ def sales_report_closing_check(
     }
 
 
+def date_from_workhub_value(value: object) -> date | None:
+    text = clean_cell(value)
+    if not text:
+        return None
+    match = re.search(r"(20\d{2})[-./년\s]+(\d{1,2})[-./월\s]+(\d{1,2})", text)
+    if match:
+        try:
+            return date(int(match.group(1)), int(match.group(2)), int(match.group(3)))
+        except ValueError:
+            return None
+    match = re.search(r"(\d{1,2})\s*월\s*(\d{1,2})\s*일?", text)
+    if match:
+        try:
+            return date(date.today().year, int(match.group(1)), int(match.group(2)))
+        except ValueError:
+            return None
+    match = re.search(r"^(\d{1,2})[./-](\d{1,2})", text)
+    if match:
+        try:
+            return date(date.today().year, int(match.group(1)), int(match.group(2)))
+        except ValueError:
+            return None
+    return None
+
+
+def automation_section(status: str, title: str, summary: str, metrics: dict[str, object] | None = None, issues: list[dict[str, object]] | None = None) -> dict[str, object]:
+    return {
+        "status": status,
+        "title": title,
+        "summary": summary,
+        "metrics": metrics or {},
+        "issues": issues or [],
+    }
+
+
+def cs_automation_check(connection: sqlite3.Connection, today: date) -> dict[str, object]:
+    open_rows = connection.execute(
+        """
+        SELECT id, created_at, status, cs_type, receiver_name, product_name,
+               return_invoice, reship_invoice, occurred_at, completed_at
+          FROM cs_cases
+         WHERE COALESCE(completed_at, '') = ''
+           AND COALESCE(status, '') NOT LIKE '%완료%'
+         ORDER BY COALESCE(NULLIF(occurred_at, ''), created_at) ASC
+         LIMIT 500
+        """
+    ).fetchall()
+    old_count = 0
+    missing_return = 0
+    missing_reship = 0
+    for row in open_rows:
+        base_date = date_from_workhub_value(row["occurred_at"]) or date_from_workhub_value(row["created_at"])
+        if base_date and (today - base_date).days >= 3:
+            old_count += 1
+        cs_type = clean_cell(row["cs_type"])
+        if any(token in cs_type for token in ("회수", "반품", "오배송")) and not clean_cell(row["return_invoice"]):
+            missing_return += 1
+        if any(token in cs_type for token in ("재발송", "교환", "오출고", "파손", "누락")) and not clean_cell(row["reship_invoice"]):
+            missing_reship += 1
+    issues: list[dict[str, object]] = []
+    if old_count:
+        issues.append({"level": "warning", "title": "3일 이상 미처리 CS", "message": f"{old_count:,}건이 3일 이상 완료되지 않았습니다."})
+    if missing_return:
+        issues.append({"level": "warning", "title": "회수 송장 누락", "message": f"회수/반품 관련 CS 중 회수 송장 없는 건이 {missing_return:,}건입니다."})
+    if missing_reship:
+        issues.append({"level": "warning", "title": "재발송 송장 누락", "message": f"재발송/교환 관련 CS 중 재발송 송장 없는 건이 {missing_reship:,}건입니다."})
+    status = "warning" if issues else "ok"
+    return automation_section(
+        status,
+        "CS 미처리 자동 점검",
+        "미처리 CS, 회수 송장, 재발송 송장 누락을 확인했습니다." if issues else "미처리 CS 주요 위험 항목이 없습니다.",
+        {"open_count": len(open_rows), "old_count": old_count, "missing_return_invoice": missing_return, "missing_reship_invoice": missing_reship},
+        issues,
+    )
+
+
+def management_automation_check(connection: sqlite3.Connection, today: date) -> dict[str, object]:
+    month_prefix = today.strftime("%Y-%m")
+    row = connection.execute(
+        """
+        SELECT COUNT(*) AS total,
+               SUM(CASE WHEN COALESCE(product_name, '') = '' THEN 1 ELSE 0 END) AS missing_product,
+               SUM(CASE WHEN COALESCE(purchase_vendor, '') = '' AND COALESCE(sales_vendor, '') = '' THEN 1 ELSE 0 END) AS missing_vendor,
+               SUM(CASE WHEN COALESCE(quantity, '') = '' THEN 1 ELSE 0 END) AS missing_quantity,
+               SUM(CASE WHEN COALESCE(courier, '') != '' AND COALESCE(invoice_number, '') = '' THEN 1 ELSE 0 END) AS missing_invoice
+          FROM management_records
+         WHERE substr(COALESCE(NULLIF(ship_date, ''), NULLIF(order_date, '')), 1, 7) = ?
+        """,
+        (month_prefix,),
+    ).fetchone()
+    duplicate_row = connection.execute(
+        """
+        SELECT COUNT(*) AS count
+          FROM (
+                SELECT COALESCE(NULLIF(order_number, ''), NULLIF(order_item_id, ''), NULLIF(invoice_number, '')) AS key_value,
+                       COUNT(*) AS duplicate_count
+                  FROM management_records
+                 WHERE substr(COALESCE(NULLIF(ship_date, ''), NULLIF(order_date, '')), 1, 7) = ?
+                   AND COALESCE(NULLIF(order_number, ''), NULLIF(order_item_id, ''), NULLIF(invoice_number, '')) IS NOT NULL
+                 GROUP BY key_value
+                HAVING duplicate_count > 1
+               )
+        """,
+        (month_prefix,),
+    ).fetchone()
+    metrics = {
+        "month": month_prefix,
+        "total": int(row["total"] or 0) if row else 0,
+        "missing_product": int(row["missing_product"] or 0) if row else 0,
+        "missing_vendor": int(row["missing_vendor"] or 0) if row else 0,
+        "missing_quantity": int(row["missing_quantity"] or 0) if row else 0,
+        "missing_invoice": int(row["missing_invoice"] or 0) if row else 0,
+        "duplicate_groups": int(duplicate_row["count"] or 0) if duplicate_row else 0,
+    }
+    issues: list[dict[str, object]] = []
+    for key, title in (
+        ("missing_product", "상품명 누락"),
+        ("missing_vendor", "거래처 누락"),
+        ("missing_quantity", "수량 누락"),
+        ("missing_invoice", "송장번호 누락"),
+        ("duplicate_groups", "중복 의심 주문"),
+    ):
+        count = int(metrics[key] or 0)
+        if count:
+            issues.append({"level": "warning", "title": title, "message": f"{month_prefix} 기준 {count:,}건 확인이 필요합니다."})
+    return automation_section(
+        "warning" if issues else "ok",
+        "통합관리대장 오류 자동 점검",
+        "이번 달 통합관리대장 누락/중복 의심 항목을 확인했습니다." if issues else "이번 달 통합관리대장 주요 누락 항목이 없습니다.",
+        metrics,
+        issues,
+    )
+
+
+def inbound_automation_check(connection: sqlite3.Connection, today: date) -> dict[str, object]:
+    import_rows = connection.execute(
+        "SELECT warehouse_due_date, item, progress_status, completed_at FROM import_shipments WHERE COALESCE(completed_at, '') = ''"
+    ).fetchall()
+    cargo_rows = connection.execute(
+        "SELECT ship_date, cargo_type, item, customer, status, completed_at FROM cargo_shipments WHERE COALESCE(completed_at, '') = ''"
+    ).fetchall()
+    overdue = 0
+    due_soon = 0
+    for row in import_rows:
+        due = date_from_workhub_value(row["warehouse_due_date"])
+        if not due:
+            continue
+        if due < today:
+            overdue += 1
+        elif (due - today).days <= 3:
+            due_soon += 1
+    cargo_due_today = 0
+    for row in cargo_rows:
+        due = date_from_workhub_value(row["ship_date"])
+        if due == today:
+            cargo_due_today += 1
+    issues: list[dict[str, object]] = []
+    if overdue:
+        issues.append({"level": "warning", "title": "입고 예정일 경과", "message": f"완료 처리되지 않은 입고 지연 의심 {overdue:,}건이 있습니다."})
+    if due_soon:
+        issues.append({"level": "notice", "title": "3일 이내 입고 예정", "message": f"3일 이내 창고 입고 예정 {due_soon:,}건이 있습니다."})
+    if cargo_due_today:
+        issues.append({"level": "notice", "title": "오늘 화물 일정", "message": f"오늘 처리할 화물 입출고 일정 {cargo_due_today:,}건이 있습니다."})
+    return automation_section(
+        "warning" if overdue else ("notice" if issues else "ok"),
+        "입고 일정 자동 점검",
+        "수입제품 입고 예정과 화물 일정을 확인했습니다." if issues else "오늘 기준 임박/지연 입고 일정이 없습니다.",
+        {"active_imports": len(import_rows), "active_cargo": len(cargo_rows), "overdue": overdue, "due_soon": due_soon, "cargo_due_today": cargo_due_today},
+        issues,
+    )
+
+
+def mail_automation_check(connection: sqlite3.Connection) -> dict[str, object]:
+    settings = load_mail_settings(include_password=False)
+    purchase_count = connection.execute(
+        "SELECT COUNT(*) AS count FROM vendor_contacts WHERE vendor_type = 'purchase'"
+    ).fetchone()
+    sales_count = connection.execute(
+        "SELECT COUNT(*) AS count FROM vendor_contacts WHERE vendor_type = 'sales'"
+    ).fetchone()
+    metrics = {
+        "mail_account_configured": bool(clean_cell(settings.get("naver_email"))),
+        "purchase_contacts": int(purchase_count["count"] or 0) if purchase_count else 0,
+        "sales_contacts": int(sales_count["count"] or 0) if sales_count else 0,
+    }
+    issues: list[dict[str, object]] = []
+    if not metrics["mail_account_configured"]:
+        issues.append({"level": "warning", "title": "메일 계정 미설정", "message": "네이버 메일 연동을 저장해야 승인 후 발송 자동화를 사용할 수 있습니다."})
+    if int(metrics["purchase_contacts"] or 0) <= 0:
+        issues.append({"level": "warning", "title": "매입처 주소록 없음", "message": "입고/품절 공지 대상 매입처 주소록을 업로드해주세요."})
+    if int(metrics["sales_contacts"] or 0) <= 0:
+        issues.append({"level": "warning", "title": "매출처 주소록 없음", "message": "입고/품절 공지 대상 매출처 주소록을 업로드해주세요."})
+    return automation_section(
+        "warning" if issues else "ok",
+        "입고/품절 메일 자동화",
+        "메일 발송 계정과 업체 주소록 준비 상태를 확인했습니다." if issues else "입고/품절 공지 메일 자동화 준비가 완료됐습니다.",
+        metrics,
+        issues,
+    )
+
+
+def workhub_automation_overview(user: dict[str, str] | None = None) -> dict[str, object]:
+    init_db()
+    today = date.today()
+    sections: dict[str, object] = {}
+    sales_payload: dict[str, object] = {}
+    if not user or user_has_permission(user, "sales_report_manage"):
+        try:
+            sales_payload = sales_report_dashboard_payload()
+            closing = sales_payload.get("closing_check") or {}
+            sections["sales"] = automation_section(
+                str(closing.get("status") or "ok"),
+                str(closing.get("title") or "매출 마감 자동 점검"),
+                str(closing.get("message") or "매출 마감 데이터를 확인했습니다."),
+                dict(closing.get("metrics") or {}),
+                list(closing.get("issues") or []),
+            )
+        except Exception as exc:  # noqa: BLE001
+            sections["sales"] = automation_section("warning", "매출 마감 자동 점검", f"매출 점검 중 오류가 발생했습니다: {exc}")
+    else:
+        sections["sales"] = automation_section("locked", "매출 마감 자동 점검", "매출현황 권한이 없어 점검 결과를 표시하지 않습니다.")
+
+    connection = connect_db()
+    try:
+        sections["cs"] = cs_automation_check(connection, today)
+        sections["management"] = management_automation_check(connection, today)
+        sections["inbound"] = inbound_automation_check(connection, today)
+        sections["mail"] = mail_automation_check(connection)
+    finally:
+        connection.close()
+
+    ordered = [sections[key] for key in ("sales", "cs", "management", "inbound", "mail")]
+    issue_count = sum(int(section.get("issue_count", len(section.get("issues", []))) or 0) for section in ordered)
+    warning_count = sum(1 for section in ordered if section.get("status") in {"critical", "warning"})
+    status = "warning" if warning_count else "ok"
+    briefing_lines: list[str] = []
+    for section in ordered:
+        issues = list(section.get("issues") or [])
+        if issues:
+            briefing_lines.append(f"{section.get('title')}: {issues[0].get('title')}")
+    if not briefing_lines:
+        briefing_lines.append("오늘 자동화 점검에서 즉시 확인할 위험 항목은 없습니다.")
+    return {
+        "generated_at": now_text(),
+        "date": today.isoformat(),
+        "status": status,
+        "title": "업무 자동화 점검",
+        "summary": "확인 필요 항목이 있습니다." if warning_count else "주요 자동화 점검이 정상입니다.",
+        "issue_count": issue_count,
+        "sections": sections,
+        "briefing": briefing_lines[:6],
+        "sales_report": sales_payload,
+    }
+
+
 def sales_report_detail_payload(kind: str, key: str, period: str = "") -> dict[str, object]:
     init_db()
     connection = connect_db()
@@ -33812,10 +34193,21 @@ def hermes_workhub_context_snapshot(message: object = "") -> dict[str, object]:
             sales_summary = hermes_sales_report_context(payload, hermes_sales_report_scope(message))
         except Exception as exc:
             sales_summary = {"error": str(exc)}
+    try:
+        automation_overview = workhub_automation_overview()
+        automation_summary = {
+            "status": automation_overview.get("status", ""),
+            "issue_count": automation_overview.get("issue_count", 0),
+            "briefing": automation_overview.get("briefing", []),
+            "sections": automation_overview.get("sections", {}),
+        }
+    except Exception as exc:  # noqa: BLE001
+        automation_summary = {"error": str(exc)}
 
     return {
         "generated_at": now_text(),
         "sales_report": sales_summary,
+        "automation_overview": automation_summary,
         "cs_status_counts": [{"status": str(row["status"]), "count": int(row["count"] or 0)} for row in cs_status_rows],
         "management": {
             "total_records": int(latest_management["count"] or 0) if latest_management else 0,
@@ -34820,6 +35212,13 @@ class WorkhubHandler(BaseHTTPRequestHandler):
 
         if self.path == "/api/shared-files":
             self.send_json({"files": list_shared_files()})
+            return
+
+        if self.path == "/api/automation-overview":
+            if not any(user_has_permission(user, permission) for permission in ("crm_view", "ledger_edit", "hermes_use")):
+                self.send_json({"error": "업무 자동화 점검 권한이 없습니다."}, status=403)
+                return
+            self.send_json(workhub_automation_overview(user))
             return
 
         if self.path == "/api/hermes-status":
