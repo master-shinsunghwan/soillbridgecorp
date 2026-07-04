@@ -1223,6 +1223,24 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
             self.assertEqual(product["cbm"], "68")
             self.assertEqual(analysis["result"]["products"][0]["landed_unit"], 6295.13)
 
+    def test_import_cost_settlement_text_extracts_cost_items(self) -> None:
+        app = self.load_app()
+
+        charges = app.parse_import_cost_settlement_text("""
+        DOC / FEE
+        2,240,795
+        관 세 0
+        부 가 세 2,418,290
+        통관수수료 48,400
+        부가세 4,840
+        """)
+
+        self.assertEqual(charges["doc_fee"], "2240795")
+        self.assertEqual(charges["duty"], "0")
+        self.assertEqual(charges["import_vat"], "2418290")
+        self.assertEqual(charges["broker_fee"], "48400")
+        self.assertEqual(charges["service_vat"], "4840")
+
     def test_sales_report_dashboard_layout_uses_three_report_types(self) -> None:
         html_source = (ROOT / "scripts" / "workhub_delivery_app.py").read_text(encoding="utf-8")
 

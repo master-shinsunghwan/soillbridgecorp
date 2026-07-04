@@ -29958,6 +29958,127 @@ def parse_import_cost_packing_rows(rows: list[list[object]]) -> dict[str, object
     }
 
 
+IMPORT_COST_AMOUNT_PATTERN = re.compile(r"-?\d{1,3}(?:,\d{3})+(?:\.\d+)?|-?\d+(?:\.\d+)?")
+
+
+def import_cost_amounts_from_text(value: str) -> list[str]:
+    amounts = []
+    for match in IMPORT_COST_AMOUNT_PATTERN.finditer(value):
+        amount = match.group(0).replace(",", "")
+        if amount in {"", "-"}:
+            continue
+        amounts.append(amount)
+    return amounts
+
+
+def import_cost_amount_near_line(lines: list[str], line_index: int, window: int = 2) -> str:
+    end_index = min(len(lines), line_index + window + 1)
+    for index in range(line_index, end_index):
+        amounts = import_cost_amounts_from_text(lines[index])
+        if amounts:
+            return amounts[-1]
+    return ""
+
+
+def parse_import_cost_settlement_text(text: str) -> dict[str, str]:
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    charges: dict[str, str] = {}
+    broker_index = -1
+    vat_indices: list[int] = []
+
+    for index, line in enumerate(lines):
+        compact = re.sub(r"\s+", "", line)
+        upper_line = line.upper()
+        if "통관수수료" in compact and broker_index < 0:
+            broker_index = index
+        if "부가세" in compact:
+            vat_indices.append(index)
+        if "DOC" in upper_line and "FEE" in upper_line and not charges.get("doc_fee"):
+            amount = import_cost_amount_near_line(lines, index)
+            if amount:
+                charges["doc_fee"] = amount
+        if "관세" in compact and "부가세" not in compact and "통관" not in compact and not charges.get("duty"):
+            amount = import_cost_amount_near_line(lines, index)
+            if amount:
+                charges["duty"] = amount
+        if "통관수수료" in compact and not charges.get("broker_fee"):
+            amount = import_cost_amount_near_line(lines, index)
+            if amount:
+                charges["broker_fee"] = amount
+
+    import_vat_index = next((index for index in vat_indices if broker_index < 0 or index < broker_index), -1)
+    service_vat_index = next((index for index in vat_indices if broker_index >= 0 and index > broker_index), -1)
+    if import_vat_index >= 0:
+        amount = import_cost_amount_near_line(lines, import_vat_index)
+        if amount:
+            charges["import_vat"] = amount
+    if service_vat_index >= 0:
+        amount = import_cost_amount_near_line(lines, service_vat_index)
+        if amount:
+            charges["service_vat"] = amount
+
+    if not charges:
+        fallback_patterns = {
+            "doc_fee": r"DOC\s*/\s*FEE[^\d-]{0,40}(-?\d[\d,]*(?:\.\d+)?)",
+            "duty": r"관\s*세[^\d-]{0,40}(-?\d[\d,]*(?:\.\d+)?)",
+            "import_vat": r"부\s*가\s*세[^\d-]{0,40}(-?\d[\d,]*(?:\.\d+)?)",
+            "broker_fee": r"통\s*관\s*수\s*수\s*료[^\d-]{0,40}(-?\d[\d,]*(?:\.\d+)?)",
+        }
+        for key, pattern in fallback_patterns.items():
+            match = re.search(pattern, text, re.I)
+            if match:
+                charges[key] = match.group(1).replace(",", "")
+    return charges
+
+
+def ocr_import_cost_pdf_text(path: Path) -> tuple[str, list[str]]:
+    details: list[str] = []
+    try:
+        import fitz  # type: ignore
+        import pytesseract  # type: ignore
+        from PIL import Image  # type: ignore
+    except Exception as exc:
+        return "", [f"OCR 패키지가 준비되지 않아 스캔 PDF를 읽지 못했습니다: {exc}"]
+
+    try:
+        languages = set(pytesseract.get_languages(config=""))
+        lang = "kor+eng" if {"kor", "eng"}.issubset(languages) else ("eng" if "eng" in languages else "")
+        document = fitz.open(str(path))
+        try:
+            if document.page_count < 1:
+                return "", ["PDF 페이지가 비어 있어 OCR을 실행하지 못했습니다."]
+            page = document.load_page(0)
+            pixmap = page.get_pixmap(matrix=fitz.Matrix(2, 2), alpha=False)
+            image = Image.open(BytesIO(pixmap.tobytes("png")))
+        finally:
+            document.close()
+    except Exception as exc:
+        return "", [f"PDF 이미지 변환에 실패했습니다: {exc}"]
+
+    width, height = image.size
+    crop_regions = [
+        ("전체", (0, 0, width, height)),
+        ("DOC/FEE 영역", (int(width * 0.03), int(height * 0.30), int(width * 0.54), int(height * 0.58))),
+        ("관세/수입부가세 영역", (int(width * 0.48), int(height * 0.22), int(width * 0.98), int(height * 0.58))),
+        ("통관수수료 영역", (int(width * 0.48), int(height * 0.52), int(width * 0.98), int(height * 0.84))),
+    ]
+    texts: list[str] = []
+    for label, box in crop_regions:
+        try:
+            region = image.crop(box).convert("L")
+            config = "--psm 6"
+            text = pytesseract.image_to_string(region, lang=lang or None, config=config)
+            if text.strip():
+                texts.append(f"[{label}]\n{text}")
+        except Exception as exc:
+            details.append(f"{label} OCR 실패: {exc}")
+    if texts:
+        details.append("스캔 PDF 1페이지를 OCR로 읽었습니다.")
+    else:
+        details.append("OCR을 실행했지만 읽을 수 있는 텍스트를 찾지 못했습니다.")
+    return "\n".join(texts), details
+
+
 def parse_import_cost_pdf_text(path: Path) -> dict[str, object]:
     details = [f"{original_uploaded_filename(path.name)}: PDF 정산서 확인"]
     text = ""
@@ -29968,20 +30089,16 @@ def parse_import_cost_pdf_text(path: Path) -> dict[str, object]:
     except Exception:
         text = ""
     if not text.strip():
+        ocr_text, ocr_details = ocr_import_cost_pdf_text(path)
+        details.extend(ocr_details)
+        text = ocr_text
+    charges = parse_import_cost_settlement_text(text)
+    if charges:
+        details.append("정산 비용을 자동 추출했습니다.")
+    elif text.strip():
+        details.append("PDF/OCR 텍스트에서 정산 비용 항목을 찾지 못했습니다.")
+    else:
         details.append("스캔 PDF라 텍스트 금액 자동 추출이 되지 않았습니다.")
-        return {"charges": {}, "details": details}
-    charges: dict[str, str] = {}
-    patterns = {
-        "doc_fee": r"DOC\s*/\s*FEE[^\d]*(\d[\d,]*)",
-        "duty": r"관\s*세[^\d]*(\d[\d,]*)",
-        "import_vat": r"부\s*가\s*세[^\d]*(\d[\d,]*)",
-        "broker_fee": r"통\s*관\s*수\s*수\s*료[^\d]*(\d[\d,]*)",
-    }
-    for key, pattern in patterns.items():
-        match = re.search(pattern, text, re.I)
-        if match:
-            charges[key] = match.group(1).replace(",", "")
-    details.append("텍스트 PDF에서 정산 비용을 추출했습니다." if charges else "PDF 텍스트에서 정산 비용 항목을 찾지 못했습니다.")
     return {"charges": charges, "details": details}
 
 

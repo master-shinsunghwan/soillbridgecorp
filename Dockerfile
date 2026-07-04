@@ -10,7 +10,7 @@ WORKDIR /app
 
 COPY requirements.txt /app/requirements.txt
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates rclone \
+    && apt-get install -y --no-install-recommends ca-certificates rclone tesseract-ocr tesseract-ocr-eng tesseract-ocr-kor \
     && rm -rf /var/lib/apt/lists/*
 RUN pip install --no-cache-dir -r /app/requirements.txt
 
