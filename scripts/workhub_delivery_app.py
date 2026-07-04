@@ -28042,18 +28042,10 @@ def sales_report_detail_payload(kind: str, key: str, period: str = "") -> dict[s
                 "SELECT * FROM sales_report_daily_rows WHERE period = ? AND report_date = ?",
                 (selected_period, detail_key),
             ).fetchone()
-            previous_seller_date_row = connection.execute(
-                """
-                SELECT MAX(report_date) AS report_date
-                  FROM sales_report_seller_rows
-                 WHERE period = ? AND report_date < ?
-                """,
-                (selected_period, detail_key),
-            ).fetchone()
-            previous_seller_date = str(previous_seller_date_row["report_date"] or "") if previous_seller_date_row else ""
             current_seller_total = connection.execute(
                 """
-                SELECT COALESCE(SUM(profit_sales_amount), 0) AS profit_sales_amount
+                SELECT COUNT(*) AS row_count,
+                       COALESCE(SUM(profit_sales_amount), 0) AS profit_sales_amount
                   FROM sales_report_seller_rows
                  WHERE period = ? AND report_date = ?
                 """,
@@ -28061,83 +28053,55 @@ def sales_report_detail_payload(kind: str, key: str, period: str = "") -> dict[s
             ).fetchone()
             daily_profit_sales = int(summary["profit_sales_amount"] or 0) if summary else 0
             current_profit_sales = int(current_seller_total["profit_sales_amount"] or 0) if current_seller_total else 0
-            use_seller_amounts = bool(previous_seller_date) or (
+            current_seller_count = int(current_seller_total["row_count"] or 0) if current_seller_total else 0
+            use_seller_amounts = current_seller_count > 0 or (
                 daily_profit_sales > 0 and abs(current_profit_sales - daily_profit_sales) <= max(1000, int(abs(daily_profit_sales) * 0.05))
             )
-            if use_seller_amounts:
-                seller_rows = connection.execute(
-                    """
-                    WITH current_rows AS (
-                        SELECT TRIM(seller_name) AS seller_name,
-                               COALESCE(SUM(quantity), 0) AS quantity,
-                               COALESCE(SUM(profit_sales_amount), 0) AS profit_sales_amount,
-                               COALESCE(SUM(sales_total), 0) AS sales_total,
-                               COALESCE(SUM(profit_margin - profit_shipping), 0) AS profit_margin
-                          FROM sales_report_seller_rows
-                         WHERE period = ? AND report_date = ?
-                         GROUP BY TRIM(seller_name)
-                    ),
-                    previous_rows AS (
-                        SELECT TRIM(seller_name) AS seller_name,
-                               COALESCE(SUM(quantity), 0) AS quantity,
-                               COALESCE(SUM(profit_sales_amount), 0) AS profit_sales_amount,
-                               COALESCE(SUM(sales_total), 0) AS sales_total,
-                               COALESCE(SUM(profit_margin - profit_shipping), 0) AS profit_margin
-                          FROM sales_report_seller_rows
-                         WHERE period = ? AND report_date = ?
-                         GROUP BY TRIM(seller_name)
-                    ),
-                    ledger_rows AS (
-                        SELECT TRIM(COALESCE(NULLIF(sales_vendor, ''), '판매처 미입력')) AS seller_name,
-                               COUNT(*) AS order_count,
-                               COALESCE(SUM(CAST(REPLACE(quantity, ',', '') AS INTEGER)), 0) AS ledger_quantity
-                          FROM management_records
-                         WHERE substr(COALESCE(NULLIF(ship_date, ''), NULLIF(order_date, '')), 1, 10) = ?
-                         GROUP BY TRIM(COALESCE(NULLIF(sales_vendor, ''), '판매처 미입력'))
-                    ),
-                    keys AS (
-                        SELECT seller_name FROM current_rows
-                        UNION
-                        SELECT seller_name FROM previous_rows
-                        UNION
-                        SELECT seller_name FROM ledger_rows
-                    )
-                    SELECT keys.seller_name,
-                           COALESCE(ledger_rows.order_count, 0) AS order_count,
-                           CASE
-                               WHEN ledger_rows.seller_name IS NOT NULL THEN COALESCE(ledger_rows.ledger_quantity, 0)
-                               ELSE COALESCE(current_rows.quantity, 0) - COALESCE(previous_rows.quantity, 0)
-                           END AS quantity,
-                           COALESCE(current_rows.profit_sales_amount, 0) - COALESCE(previous_rows.profit_sales_amount, 0) AS profit_sales_amount,
-                           COALESCE(current_rows.sales_total, 0) - COALESCE(previous_rows.sales_total, 0) AS sales_total,
-                           COALESCE(current_rows.profit_margin, 0) - COALESCE(previous_rows.profit_margin, 0) AS profit_margin
-                      FROM keys
-                      LEFT JOIN current_rows ON current_rows.seller_name = keys.seller_name
-                      LEFT JOIN previous_rows ON previous_rows.seller_name = keys.seller_name
-                      LEFT JOIN ledger_rows ON ledger_rows.seller_name = keys.seller_name
-                     WHERE COALESCE(ledger_rows.order_count, 0) != 0
-                        OR COALESCE(current_rows.quantity, 0) - COALESCE(previous_rows.quantity, 0) != 0
-                        OR COALESCE(current_rows.profit_sales_amount, 0) - COALESCE(previous_rows.profit_sales_amount, 0) != 0
-                     ORDER BY profit_sales_amount DESC, quantity DESC, order_count DESC, keys.seller_name COLLATE NOCASE
-                    """,
-                    (selected_period, detail_key, selected_period, previous_seller_date, detail_key),
-                ).fetchall()
-            else:
-                seller_rows = connection.execute(
-                    """
+            seller_rows = connection.execute(
+                """
+                WITH current_rows AS (
+                    SELECT TRIM(seller_name) AS seller_name,
+                           COALESCE(SUM(quantity), 0) AS quantity,
+                           COALESCE(SUM(profit_sales_amount), 0) AS profit_sales_amount,
+                           COALESCE(SUM(sales_total), 0) AS sales_total,
+                           COALESCE(SUM(profit_margin - profit_shipping), 0) AS profit_margin
+                      FROM sales_report_seller_rows
+                     WHERE period = ? AND report_date = ?
+                     GROUP BY TRIM(seller_name)
+                ),
+                ledger_rows AS (
                     SELECT TRIM(COALESCE(NULLIF(sales_vendor, ''), '판매처 미입력')) AS seller_name,
                            COUNT(*) AS order_count,
-                           COALESCE(SUM(CAST(REPLACE(quantity, ',', '') AS INTEGER)), 0) AS quantity,
-                           0 AS profit_sales_amount,
-                           0 AS sales_total,
-                           0 AS profit_margin
+                           COALESCE(SUM(CAST(REPLACE(quantity, ',', '') AS INTEGER)), 0) AS ledger_quantity
                       FROM management_records
                      WHERE substr(COALESCE(NULLIF(ship_date, ''), NULLIF(order_date, '')), 1, 10) = ?
                      GROUP BY TRIM(COALESCE(NULLIF(sales_vendor, ''), '판매처 미입력'))
-                     ORDER BY quantity DESC, order_count DESC, seller_name COLLATE NOCASE
-                    """,
-                    (detail_key,),
-                ).fetchall()
+                ),
+                keys AS (
+                    SELECT seller_name FROM current_rows
+                    UNION
+                    SELECT seller_name FROM ledger_rows
+                )
+                SELECT keys.seller_name,
+                       COALESCE(ledger_rows.order_count, 0) AS order_count,
+                       CASE
+                           WHEN ledger_rows.seller_name IS NOT NULL THEN COALESCE(ledger_rows.ledger_quantity, 0)
+                           ELSE COALESCE(current_rows.quantity, 0)
+                       END AS quantity,
+                       COALESCE(current_rows.profit_sales_amount, 0) AS profit_sales_amount,
+                       COALESCE(current_rows.sales_total, 0) AS sales_total,
+                       COALESCE(current_rows.profit_margin, 0) AS profit_margin
+                  FROM keys
+                  LEFT JOIN current_rows ON current_rows.seller_name = keys.seller_name
+                  LEFT JOIN ledger_rows ON ledger_rows.seller_name = keys.seller_name
+                 WHERE COALESCE(ledger_rows.order_count, 0) != 0
+                    OR COALESCE(current_rows.quantity, 0) != 0
+                    OR COALESCE(current_rows.profit_sales_amount, 0) != 0
+                    OR COALESCE(current_rows.sales_total, 0) != 0
+                 ORDER BY profit_sales_amount DESC, sales_total DESC, quantity DESC, order_count DESC, keys.seller_name COLLATE NOCASE
+                """,
+                (selected_period, detail_key, detail_key),
+            ).fetchall()
             product_rows = connection.execute(
                 """
                 SELECT TRIM(COALESCE(NULLIF(product_name, ''), '상품명 미입력')) AS product_name,
@@ -28164,7 +28128,7 @@ def sales_report_detail_payload(kind: str, key: str, period: str = "") -> dict[s
                 "kind": "daily",
                 "title": f"{detail_key} 판매사별 당일 현황",
                 "period": selected_period,
-                "note": "판매금액은 매출처별 누적 스냅샷의 전일 대비 증가분으로 계산하고, 주문건수는 통합관리대장의 해당 날짜 기준으로 표시합니다." if use_seller_amounts else "해당 날짜의 전일 매출처 스냅샷이 없어 금액은 표시하지 않고 통합관리대장 기준 주문건수와 수량만 표시합니다.",
+                "note": "판매금액은 해당 날짜 매출처별 매출표 기준으로 표시하고, 주문건수는 통합관리대장의 해당 날짜 기준으로 보조 표시합니다." if use_seller_amounts else "해당 날짜의 매출처별 금액 데이터가 없어 통합관리대장 기준 주문건수와 수량만 표시합니다.",
                 "metrics": [
                     _sales_detail_metric("수량", summary_quantity or seller_quantity_total),
                     _sales_detail_metric("손익매출", summary_profit_sales or seller_profit_sales_total),

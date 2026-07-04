@@ -128,6 +128,48 @@ class SalesReportUploadTests(unittest.TestCase):
         self.assertIn("테스트 제품", product_names)
         self.assertEqual(dashboard["supplier_purchase_total"]["purchase_total"], 12400)
 
+    def test_daily_sales_detail_uses_same_day_seller_amounts_without_previous_snapshot(self) -> None:
+        connection = self.app.connect_db()
+        try:
+            cursor = connection.execute(
+                """
+                INSERT INTO sales_report_uploads
+                    (stored_name, original_name, size, uploaded_by, uploaded_at, report_type, report_date, period)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                ("seller-20260701.xlsx", "매출처별 매출 현황.xlsx", 100, "admin", "2026-07-01 09:00:00", "seller", "2026-07-01", "2026-07"),
+            )
+            file_id = int(cursor.lastrowid)
+            connection.execute(
+                """
+                INSERT INTO sales_report_seller_rows
+                    (period, report_date, file_id, seller_name, quantity, sales_amount, supply_amount,
+                     sales_total, supply_total, sales_margin, profit_quantity_sales, profit_quantity_supply,
+                     profit_sales_amount, profit_supply_amount, profit_sales_margin, profit_shipping, profit_margin, margin_rate)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                ("2026-07", "2026-07-01", file_id, "A판매처", 3, 1000, 400, 1200, 400, 600, 3, 3, 1000, 400, 600, 100, 1100, 100),
+            )
+            for row_no, quantity in enumerate([1, 2], start=1):
+                connection.execute(
+                    """
+                    INSERT INTO management_records
+                        (created_at, source_file, source_sheet, source_row, sales_vendor, order_date, ship_date, product_name, quantity)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    ("2026-07-01", "manual-test", "sheet", row_no, "A판매처", "2026-07-01", "2026-07-01", "테스트 상품", str(quantity)),
+                )
+            connection.commit()
+        finally:
+            connection.close()
+
+        detail = self.app.sales_report_detail_payload("daily", "2026-07-01", "2026-07")
+        seller_rows = detail["sections"][0]["rows"]
+
+        self.assertEqual(seller_rows[0], ["A판매처", 2, 3, 1000, 1200, 1000])
+        self.assertEqual(detail["metrics"][1]["value"], 1000)
+        self.assertIn("해당 날짜 매출처별 매출표", detail["note"])
+
     def test_hermes_sales_report_context_uses_today_only_for_today_request(self) -> None:
         payload = {
             "period": "2026-06",
