@@ -30436,13 +30436,13 @@ def ocr_import_cost_pdf_text(path: Path, max_pages: int = 2) -> tuple[str, list[
 
 
 IMPORT_COST_CUSTOMS_LAYOUT_ROWS = {
-    "duty": (0.268, 0.302),
-    "import_vat": (0.302, 0.337),
-    "other_tax": (0.337, 0.371),
-    "subtotal": (0.371, 0.405),
-    "broker_fee": (0.405, 0.439),
-    "do_total": (0.439, 0.474),
-    "claim_amount": (0.728, 0.762),
+    "duty": (0.260, 0.290),
+    "import_vat": (0.300, 0.330),
+    "other_tax": (0.320, 0.350),
+    "subtotal": (0.360, 0.390),
+    "broker_fee": (0.380, 0.410),
+    "do_total": (0.420, 0.450),
+    "claim_amount": (0.720, 0.750),
 }
 
 
