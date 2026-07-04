@@ -1372,6 +1372,34 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         self.assertEqual(amount, "2191192")
         self.assertEqual(vat, "49603")
 
+    def test_import_cost_domestic_settlement_uses_jts_total_when_one_line_is_missed_by_ocr(self) -> None:
+        app = self.load_app()
+
+        parsed = app.parse_import_cost_domestic_settlement_text("""
+        통관자금(청구)정산서
+        B / L XLTNGB26040216
+        청구 금액 4,712,325
+        JTS SHIPPING CO., LTD.
+        OCEAN FREIGHT USD 1,506.60 400.00 400.00 602,640
+        B.A.F USD 1,506.60 380.00 380.00 572,508
+        C.A.F USD 1,506.60 60.00 60.00 90,396
+        CONTAINER IMBALANCE CHARGE USD 1,506.60 80.00 80.00 120,528
+        TERMINAL HANDLING CHARGE KRW 1.00 210,000 210,000
+        CONTAINER CLEANING FEE KRW 1.00 50,000 50,000
+        WHARFAGE KRW 1.00 8,400 8,400
+        PORT FACILITY SECURITY KRW 1.00 172 172
+        PORT SAFETY MANAGEMENT CHARGE KRW 1.00 518 518
+        HANDLING CHARGE(VAT) USD 1,506.60 50.00 50.00 75,330 7,533
+        검역수수료 KRW 1.00 50,000 50,000 5,000
+        TRUCKING CHARGE/김포신항 KRW 1.00 370,700 370,700 37,070
+        TOTAL AMOUNT: KRW 2,240,795
+        """)
+
+        self.assertTrue(parsed["trusted"])
+        self.assertEqual(parsed["charges"]["doc_fee"], "2191192")
+        self.assertEqual(parsed["charges"]["service_vat"], "49603")
+        self.assertTrue(any("TOTAL AMOUNT" in detail for detail in parsed["details"]))
+
     def test_sales_report_dashboard_layout_uses_three_report_types(self) -> None:
         html_source = (ROOT / "scripts" / "workhub_delivery_app.py").read_text(encoding="utf-8")
 

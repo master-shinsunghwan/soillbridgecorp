@@ -30237,11 +30237,18 @@ def import_cost_last_amount_near_label(lines: list[str], label_patterns: list[st
 def import_cost_amount_from_total_line(lines: list[str]) -> tuple[str, str]:
     for line in lines:
         compact = re.sub(r"\s+", "", line).upper()
-        if "합계" not in compact and "TOTAL" not in compact:
+        if "합계" not in compact:
             continue
         amounts = import_cost_amounts_from_text(line)
         if len(amounts) >= 2:
             return amounts[-2], amounts[-1]
+    for line in lines:
+        compact = re.sub(r"\s+", "", line).upper()
+        if "TOTALAMOUNT" not in compact:
+            continue
+        amounts = import_cost_amounts_from_text(line)
+        if amounts:
+            return "", amounts[-1]
     return "", ""
 
 
@@ -30302,6 +30309,14 @@ def parse_import_cost_domestic_settlement_text(text: str) -> dict[str, object]:
     try:
         if jts_amount:
             jts_total = import_cost_decimal(jts_amount) + import_cost_decimal(jts_vat or "0")
+            if jts_claim and abs(jts_total - import_cost_decimal(jts_claim)) > Decimal("10"):
+                claim_value = import_cost_decimal(jts_claim)
+                vat_value = import_cost_decimal(jts_vat or "0")
+                missing_amount = claim_value - vat_value - import_cost_decimal(jts_amount)
+                if Decimal("0") < missing_amount <= Decimal("200000"):
+                    jts_amount = str((claim_value - vat_value).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+                    jts_total = claim_value
+                    details.append("JTS 청구서 일부 항목 OCR 누락을 TOTAL AMOUNT와 VAT 기준으로 보정했습니다.")
             if not jts_claim or abs(jts_total - import_cost_decimal(jts_claim)) <= Decimal("10"):
                 charges["doc_fee"] = jts_amount
                 if jts_vat:
