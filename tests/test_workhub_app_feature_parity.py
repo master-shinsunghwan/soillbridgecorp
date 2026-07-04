@@ -1040,7 +1040,7 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         self.assertIn('id="salesReportNavToggle"', html_source)
         self.assertIn('"sales_report_manage"', html_source)
         self.assertIn("__SALES_REPORT_NAV__", html_source)
-        self.assertIn('data-open="salesReport">매출현황</button>', html_source)
+        self.assertNotIn('data-open="salesReport">매출현황</button>', html_source)
         self.assertIn('mode === "salesReport"', html_source)
         self.assertIn("sales-report-only", html_source)
         self.assertIn("#userAdminWorkspace.sales-report-only > .workspace-head", html_source)
@@ -1101,7 +1101,7 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         })
 
         self.assertIn('id="salesReportNavGroup"', html_source)
-        self.assertIn('data-open="salesReport">매출현황</button>', html_source)
+        self.assertNotIn('data-open="salesReport">매출현황</button>', html_source)
         self.assertIn('id="userAdminWorkspace"', html_source)
         self.assertIn('id="salesReportUploadCard"', html_source)
         self.assertNotIn('id="adminToolsNavGroup"', html_source)

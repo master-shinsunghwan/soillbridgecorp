@@ -23535,11 +23535,6 @@ HTML = r"""<!doctype html>
       document.querySelector("#adminNavGroup")?.classList.toggle("open");
     });
     document.querySelector("#salesReportNavToggle")?.addEventListener("click", () => {
-      const salesReportGroup = document.querySelector("#salesReportNavGroup");
-      if (currentMode === "salesReport" && salesReportGroup?.classList.contains("open")) {
-        salesReportGroup.classList.remove("open");
-        return;
-      }
       showWorkspace("salesReport");
     });
     salesReportTabButtons.forEach((button) => {
@@ -24501,11 +24496,7 @@ SALES_REPORT_NAV_HTML = r"""
       <div class="nav-group" id="salesReportNavGroup">
         <button class="nav-item" id="salesReportNavToggle" type="button" data-nav-tone="sales">
           <span class="nav-label"><i data-lucide="bar-chart-3"></i> <span>매출현황 및 관리</span></span>
-          <i class="nav-chevron" data-lucide="chevron-right"></i>
         </button>
-        <div class="nav-submenu">
-          <button class="nav-subitem" type="button" data-open="salesReport">매출현황</button>
-        </div>
       </div>
 """
 
