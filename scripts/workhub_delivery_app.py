@@ -9557,6 +9557,7 @@ HTML = r"""<!doctype html>
             <article class="company-card automation-overview-card" id="automationOverviewCard">
               <div class="company-card-head"><span>업무 자동화 점검</span><span class="automation-overview-status" id="automationOverviewStatus">대기</span></div>
               <div class="company-card-body">
+                <button class="workspace-button" type="button" id="automationCenterOpen">자동화 실행</button>
                 <div class="automation-overview-list" id="automationOverviewBody">
                   <div class="automation-overview-item">
                     <div class="automation-overview-label">점검</div>
@@ -10271,6 +10272,45 @@ HTML = r"""<!doctype html>
         <div class="notice-template-actions">
           <button class="workspace-button" type="button" id="returnCheckCancel">취소</button>
           <button class="workspace-button" type="button" id="returnCheckSave">적용</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="notice-popup-backdrop" id="automationCenterPopup" aria-hidden="true">
+    <div class="notice-popup sales-detail-popup expanded" role="dialog" aria-modal="true" aria-labelledby="automationCenterTitle">
+      <div class="notice-popup-head">
+        <span id="automationCenterTitle">업무 자동화 실행</span>
+        <button class="close popup-close-button" id="automationCenterClose" type="button" aria-label="닫기"><i data-lucide="x"></i></button>
+      </div>
+      <div class="sales-detail-body multi-section" id="automationCenterBody">
+        <div class="sales-detail-sections">
+          <section class="sales-detail-section">
+            <div class="sales-detail-section-title">자동화 기능</div>
+            <div class="sales-table-scroll">
+              <div class="automation-overview-list" id="automationActionList"></div>
+            </div>
+          </section>
+          <section class="sales-detail-section">
+            <div class="sales-detail-section-title">조건 및 미리보기</div>
+            <div class="notice-template-grid">
+              <select id="automationBulkField">
+                <option value="sales_vendor">매출처</option>
+                <option value="purchase_vendor">매입처</option>
+                <option value="product_name">상품명</option>
+                <option value="courier">택배사</option>
+                <option value="memo">메모</option>
+              </select>
+              <input id="automationBulkFind" type="text" placeholder="찾을 값" />
+              <input id="automationBulkReplace" type="text" placeholder="바꿀 값" />
+            </div>
+            <div class="notice-template-actions">
+              <button class="workspace-button" type="button" id="automationPreviewButton">미리보기</button>
+              <button class="workspace-button" type="button" id="automationExecuteButton">승인 실행</button>
+            </div>
+            <div class="admin-message" id="automationCenterMessage">기능을 선택하면 미리보기가 표시됩니다.</div>
+            <div class="sales-table-scroll" id="automationPreviewPanel"></div>
+          </section>
         </div>
       </div>
     </div>
@@ -11804,6 +11844,17 @@ HTML = r"""<!doctype html>
     const systemUpdateState = document.querySelector("#systemUpdateState");
     const systemUpdateMessage = document.querySelector("#systemUpdateMessage");
     const systemUpdateHistoryBody = document.querySelector("#systemUpdateHistoryBody");
+    const automationCenterOpen = document.querySelector("#automationCenterOpen");
+    const automationCenterPopup = document.querySelector("#automationCenterPopup");
+    const automationCenterClose = document.querySelector("#automationCenterClose");
+    const automationActionList = document.querySelector("#automationActionList");
+    const automationPreviewPanel = document.querySelector("#automationPreviewPanel");
+    const automationCenterMessage = document.querySelector("#automationCenterMessage");
+    const automationPreviewButton = document.querySelector("#automationPreviewButton");
+    const automationExecuteButton = document.querySelector("#automationExecuteButton");
+    const automationBulkField = document.querySelector("#automationBulkField");
+    const automationBulkFind = document.querySelector("#automationBulkFind");
+    const automationBulkReplace = document.querySelector("#automationBulkReplace");
     const crmWorkspace = document.querySelector("#crmWorkspace");
     const crmRefresh = document.querySelector("#crmRefresh");
     const crmAccountQuick = document.querySelector("#crmAccountQuick");
@@ -16241,6 +16292,117 @@ HTML = r"""<!doctype html>
           </div>
         `;
       }
+    }
+
+    let automationActions = [];
+    let activeAutomationAction = "";
+    let lastAutomationPreview = null;
+
+    function automationPayload() {
+      return {
+        field: automationBulkField?.value || "sales_vendor",
+        find: automationBulkFind?.value.trim() || "",
+        replace: automationBulkReplace?.value.trim() || "",
+      };
+    }
+
+    function renderAutomationActions() {
+      if (!automationActionList) return;
+      automationActionList.innerHTML = automationActions.length
+        ? automationActions.map((action) => `
+          <button class="automation-overview-item ${action.id === activeAutomationAction ? "active" : ""}" type="button" data-automation-action="${escapeHtml(action.id)}">
+            <div class="automation-overview-label">${escapeHtml(action.label)}</div>
+            <div class="automation-overview-text">${escapeHtml(action.description || "")}</div>
+          </button>
+        `).join("")
+        : '<div class="automation-overview-item"><div class="automation-overview-label">대기</div><div class="automation-overview-text">사용 가능한 자동화 기능이 없습니다.</div></div>';
+    }
+
+    function automationValueText(value) {
+      if (Array.isArray(value)) return value.join(", ");
+      if (value && typeof value === "object") return JSON.stringify(value);
+      return String(value ?? "");
+    }
+
+    function renderAutomationPreview(preview) {
+      if (!automationPreviewPanel) return;
+      lastAutomationPreview = preview;
+      const rows = Array.isArray(preview?.rows) ? preview.rows : [];
+      const columns = Array.isArray(preview?.columns) && preview.columns.length ? preview.columns : ["구분", "내용"];
+      automationPreviewPanel.innerHTML = `
+        <div class="admin-message">${escapeHtml(preview?.summary || "미리보기 결과가 없습니다.")}</div>
+        <table class="sales-table">
+          <thead><tr>${columns.map((column) => `<th>${escapeHtml(column)}</th>`).join("")}</tr></thead>
+          <tbody>
+            ${rows.length ? rows.map((row) => `
+              <tr>${columns.map((column) => `<td>${escapeHtml(automationValueText(row[column] ?? row[column.toLowerCase()] ?? ""))}</td>`).join("")}</tr>
+            `).join("") : `<tr><td colspan="${columns.length}">적용 대상이 없습니다.</td></tr>`}
+          </tbody>
+        </table>
+      `;
+    }
+
+    async function loadAutomationCenter() {
+      const data = await crmFetchJson("/api/automation-center");
+      automationActions = data.actions || [];
+      activeAutomationAction = activeAutomationAction || automationActions[0]?.id || "";
+      renderAutomationActions();
+      if (activeAutomationAction) await previewAutomationAction();
+    }
+
+    async function previewAutomationAction() {
+      if (!activeAutomationAction || !automationCenterMessage) return;
+      automationCenterMessage.textContent = "자동화 미리보기를 생성하는 중입니다.";
+      const data = await crmFetchJson("/api/automation-center-preview", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action_id: activeAutomationAction, payload: automationPayload() }),
+      });
+      renderAutomationPreview(data.preview || {});
+      automationCenterMessage.textContent = data.preview?.summary || "미리보기를 생성했습니다.";
+    }
+
+    async function executeAutomationAction() {
+      if (!activeAutomationAction || !automationExecuteButton) return;
+      const action = automationActions.find((item) => item.id === activeAutomationAction);
+      const approved = await requestAppConfirm({
+        kicker: "자동화 승인 실행",
+        title: `${action?.label || "자동화"}을 실행할까요?`,
+        message: "실행 전 필요한 경우 자동 백업과 실행 이력을 남깁니다.",
+        highlight: lastAutomationPreview?.summary || "",
+        okText: "승인 실행",
+        cancelText: "취소",
+      });
+      if (!approved) return;
+      automationExecuteButton.disabled = true;
+      automationCenterMessage.textContent = "자동화를 실행하는 중입니다.";
+      try {
+        const data = await crmFetchJson("/api/automation-center-execute", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action_id: activeAutomationAction, payload: automationPayload() }),
+        });
+        automationCenterMessage.textContent = data.message || "자동화 실행이 완료되었습니다.";
+        renderAutomationPreview(data.result || data.preview || {});
+        await loadAutomationOverview();
+      } catch (error) {
+        automationCenterMessage.textContent = error.message;
+      } finally {
+        automationExecuteButton.disabled = false;
+      }
+    }
+
+    function openAutomationCenterPopup() {
+      automationCenterPopup?.classList.add("open");
+      automationCenterPopup?.setAttribute("aria-hidden", "false");
+      loadAutomationCenter().catch((error) => {
+        if (automationCenterMessage) automationCenterMessage.textContent = error.message;
+      });
+    }
+
+    function closeAutomationCenterPopup() {
+      automationCenterPopup?.classList.remove("open");
+      automationCenterPopup?.setAttribute("aria-hidden", "true");
     }
 
     async function loadDashboardEntryData() {
@@ -23155,6 +23317,28 @@ HTML = r"""<!doctype html>
       if (!button || !can("user_admin")) return;
       deleteFailedVendorContact(button);
     });
+    automationCenterOpen?.addEventListener("click", openAutomationCenterPopup);
+    automationCenterClose?.addEventListener("click", closeAutomationCenterPopup);
+    automationCenterPopup?.addEventListener("click", (event) => {
+      if (event.target === automationCenterPopup) closeAutomationCenterPopup();
+    });
+    automationActionList?.addEventListener("click", async (event) => {
+      const button = event.target.closest("[data-automation-action]");
+      if (!button) return;
+      activeAutomationAction = button.dataset.automationAction || "";
+      renderAutomationActions();
+      try {
+        await previewAutomationAction();
+      } catch (error) {
+        automationCenterMessage.textContent = error.message;
+      }
+    });
+    automationPreviewButton?.addEventListener("click", () => {
+      previewAutomationAction().catch((error) => {
+        automationCenterMessage.textContent = error.message;
+      });
+    });
+    automationExecuteButton?.addEventListener("click", executeAutomationAction);
     if (salesReportFileInput) salesReportFileInput.addEventListener("change", uploadSalesReportWorkbook);
     salesReportManualUpload?.addEventListener("click", openSalesReportUploadPicker);
     saveCsCaseButton.addEventListener("click", saveCurrentCsCase);
@@ -26682,6 +26866,534 @@ def workhub_automation_overview(user: dict[str, str] | None = None) -> dict[str,
     }
 
 
+AUTOMATION_CENTER_ACTIONS = [
+    {
+        "id": "management_rules",
+        "label": "통합관리대장 자동 수정",
+        "description": "수량/택배사/거래유형 등 반복 보정 대상을 미리보고 승인 적용합니다.",
+        "permissions": ("ledger_edit",),
+    },
+    {
+        "id": "bulk_db_change",
+        "label": "DB 대량 변경 승인",
+        "description": "통합관리대장 특정 컬럼의 값을 찾기/바꾸기로 일괄 변경합니다.",
+        "permissions": ("ledger_edit", "backup_manage"),
+    },
+    {
+        "id": "mail_failure_ops",
+        "label": "메일 실패 분류/재발송",
+        "description": "메일 실패 원인을 분류하고 일시 오류는 승인 후 재발송합니다.",
+        "permissions": ("mail_send",),
+    },
+    {
+        "id": "cs_bulk_mail",
+        "label": "CS 메일 대량 발송",
+        "description": "미발송 CS를 매입처별로 묶어 미리보고 승인 발송합니다.",
+        "permissions": ("mail_send", "ledger_edit"),
+    },
+    {
+        "id": "notice_auto",
+        "label": "공지 자동 등록",
+        "description": "자동화 점검 결과를 공지 초안으로 만들고 승인 등록합니다.",
+        "permissions": ("notice_manage",),
+    },
+    {
+        "id": "backup_ops",
+        "label": "백업 생성/복구 점검",
+        "description": "현재 백업 상태를 점검하고 승인 후 즉시 백업을 생성합니다.",
+        "permissions": ("backup_manage",),
+    },
+]
+
+MANAGEMENT_BULK_CHANGE_FIELDS = {
+    "sales_vendor": "매출처",
+    "purchase_vendor": "매입처",
+    "product_name": "상품명",
+    "courier": "택배사",
+    "memo": "메모",
+}
+
+COURIER_NORMALIZATION_RULES = {
+    "cj 대한통운": "CJ대한통운",
+    "cj대한통운": "CJ대한통운",
+    "대한통운": "CJ대한통운",
+    "롯데 택배": "롯데택배",
+    "롯데택배": "롯데택배",
+    "한진 택배": "한진택배",
+    "한진택배": "한진택배",
+    "로젠 택배": "로젠택배",
+    "로젠택배": "로젠택배",
+}
+
+
+def user_can_use_action(user: dict[str, str], action: dict[str, object]) -> bool:
+    return all(user_has_permission(user, permission) for permission in action.get("permissions", ()))
+
+
+def automation_center_payload(user: dict[str, str]) -> dict[str, object]:
+    actions = [
+        {
+            "id": action["id"],
+            "label": action["label"],
+            "description": action["description"],
+        }
+        for action in AUTOMATION_CENTER_ACTIONS
+        if user_can_use_action(user, action)
+    ]
+    return {"actions": actions}
+
+
+def automation_action_config(action_id: str, user: dict[str, str]) -> dict[str, object]:
+    for action in AUTOMATION_CENTER_ACTIONS:
+        if action["id"] == action_id:
+            if not user_can_use_action(user, action):
+                raise PermissionError(f"{action['label']} 권한이 없습니다.")
+            return action
+    raise ValueError("지원하지 않는 자동화 기능입니다.")
+
+
+def record_automation_operation(
+    action: dict[str, object],
+    status: str,
+    user: dict[str, str],
+    payload: dict | None = None,
+    preview: dict | None = None,
+    result: dict | None = None,
+    backup_name: str = "",
+    message: str = "",
+) -> None:
+    init_db()
+    connection = connect_db()
+    try:
+        connection.execute(
+            """
+            INSERT INTO automation_operation_logs (
+                created_at, action_id, action_label, status, requested_by,
+                payload, preview, result, backup_name, message
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                now_text(),
+                str(action.get("id") or ""),
+                str(action.get("label") or ""),
+                status,
+                str(user.get("display_name") or user.get("username") or ""),
+                json.dumps(payload or {}, ensure_ascii=False),
+                json.dumps(preview or {}, ensure_ascii=False),
+                json.dumps(result or {}, ensure_ascii=False),
+                backup_name,
+                message,
+            ),
+        )
+        connection.commit()
+    finally:
+        connection.close()
+
+
+def automation_table_preview(summary: str, columns: list[str], rows: list[dict[str, object]]) -> dict[str, object]:
+    return {"summary": summary, "columns": columns, "rows": rows[:100], "row_count": len(rows)}
+
+
+def management_rule_target_rows(limit: int = 500) -> list[dict[str, object]]:
+    init_db()
+    connection = connect_db()
+    try:
+        rows = connection.execute(
+            """
+            SELECT id, sales_vendor, purchase_vendor, product_name, quantity, courier,
+                   transaction_type, memo, order_date, ship_date
+              FROM management_records
+             ORDER BY id DESC
+             LIMIT ?
+            """,
+            (limit,),
+        ).fetchall()
+    finally:
+        connection.close()
+    return [dict(row) for row in rows]
+
+
+def normalized_courier_name(value: object) -> str:
+    text = clean_cell(value)
+    key = re.sub(r"\s+", " ", text).strip().lower()
+    return COURIER_NORMALIZATION_RULES.get(key, text)
+
+
+def management_rule_changes_for_row(row: dict[str, object]) -> dict[str, str]:
+    changes: dict[str, str] = {}
+    quantity = clean_cell(row.get("quantity"))
+    if not quantity:
+        changes["quantity"] = "1"
+    courier = clean_cell(row.get("courier"))
+    normalized_courier = normalized_courier_name(courier)
+    if courier and normalized_courier != courier:
+        changes["courier"] = normalized_courier
+    transaction_type = clean_cell(row.get("transaction_type"))
+    expected_transaction = auto_management_transaction_type(row.get("purchase_vendor"))
+    if expected_transaction and transaction_type != expected_transaction:
+        changes["transaction_type"] = expected_transaction
+    for field in ("sales_vendor", "purchase_vendor", "product_name", "memo"):
+        value = str(row.get(field) or "")
+        trimmed = value.strip()
+        if value and value != trimmed:
+            changes[field] = trimmed
+    return changes
+
+
+def preview_management_rules() -> dict[str, object]:
+    preview_rows: list[dict[str, object]] = []
+    for row in management_rule_target_rows():
+        changes = management_rule_changes_for_row(row)
+        for field, after in changes.items():
+            preview_rows.append({
+                "ID": row["id"],
+                "필드": field,
+                "변경 전": clean_cell(row.get(field)),
+                "변경 후": after,
+            })
+    return automation_table_preview(
+        f"통합관리대장 자동 수정 대상 {len(preview_rows):,}건을 찾았습니다.",
+        ["ID", "필드", "변경 전", "변경 후"],
+        preview_rows,
+    )
+
+
+def execute_management_rules() -> dict[str, object]:
+    preview = preview_management_rules()
+    rows = management_rule_target_rows()
+    connection = connect_db()
+    updated = 0
+    try:
+        for row in rows:
+            changes = management_rule_changes_for_row(row)
+            if not changes:
+                continue
+            assignments = ", ".join(f"{field} = ?" for field in changes)
+            connection.execute(
+                f"UPDATE management_records SET {assignments} WHERE id = ?",
+                [*changes.values(), row["id"]],
+            )
+            updated += len(changes)
+        connection.commit()
+    finally:
+        connection.close()
+    return {
+        **preview,
+        "summary": f"통합관리대장 자동 수정 {updated:,}건을 적용했습니다.",
+        "updated": updated,
+    }
+
+
+def preview_bulk_db_change(payload: dict) -> dict[str, object]:
+    field = str(payload.get("field") or "sales_vendor")
+    find = str(payload.get("find") or "").strip()
+    replace = str(payload.get("replace") or "").strip()
+    if field not in MANAGEMENT_BULK_CHANGE_FIELDS:
+        raise ValueError("대량 변경할 필드가 올바르지 않습니다.")
+    if not find:
+        raise ValueError("찾을 값을 입력해주세요.")
+    connection = connect_db()
+    try:
+        rows = connection.execute(
+            f"""
+            SELECT id, {field} AS value, sales_vendor, purchase_vendor, product_name
+              FROM management_records
+             WHERE COALESCE({field}, '') LIKE ?
+             ORDER BY id DESC
+             LIMIT 500
+            """,
+            (f"%{find}%",),
+        ).fetchall()
+    finally:
+        connection.close()
+    preview_rows = [
+        {
+            "ID": row["id"],
+            "필드": MANAGEMENT_BULK_CHANGE_FIELDS[field],
+            "변경 전": str(row["value"] or ""),
+            "변경 후": str(row["value"] or "").replace(find, replace),
+        }
+        for row in rows
+    ]
+    return automation_table_preview(
+        f"{MANAGEMENT_BULK_CHANGE_FIELDS[field]}에서 '{find}' → '{replace}' 변경 대상 {len(preview_rows):,}건입니다.",
+        ["ID", "필드", "변경 전", "변경 후"],
+        preview_rows,
+    )
+
+
+def execute_bulk_db_change(payload: dict) -> dict[str, object]:
+    preview = preview_bulk_db_change(payload)
+    field = str(payload.get("field") or "sales_vendor")
+    find = str(payload.get("find") or "").strip()
+    replace = str(payload.get("replace") or "").strip()
+    connection = connect_db()
+    updated = 0
+    try:
+        rows = connection.execute(
+            f"SELECT id, {field} AS value FROM management_records WHERE COALESCE({field}, '') LIKE ?",
+            (f"%{find}%",),
+        ).fetchall()
+        for row in rows:
+            new_value = str(row["value"] or "").replace(find, replace)
+            connection.execute(f"UPDATE management_records SET {field} = ? WHERE id = ?", (new_value, row["id"]))
+            updated += 1
+        connection.commit()
+    finally:
+        connection.close()
+    return {**preview, "summary": f"DB 대량 변경 {updated:,}건을 적용했습니다.", "updated": updated}
+
+
+def classify_mail_failure(error: object) -> str:
+    text = str(error or "").lower()
+    if any(token in text for token in ("login", "auth", "인증", "로그인", "비밀번호")):
+        return "SMTP 설정 오류"
+    if any(token in text for token in ("recipient", "수신", "user unknown", "no such", "invalid")):
+        return "수신자 주소 오류"
+    if any(token in text for token in ("timeout", "timed out", "network", "connection", "temporar")):
+        return "일시 오류"
+    if any(token in text for token in ("spam", "rate", "limit", "blocked", "차단", "제한")):
+        return "발송 제한"
+    if "attachment" in text or "첨부" in text:
+        return "첨부 오류"
+    return "기타 오류"
+
+
+def preview_mail_failure_ops() -> dict[str, object]:
+    logs = [log for log in list_vendor_mail_send_logs(mail_type="stock_notice", limit=200) if log.get("status") == "failed"]
+    rows = []
+    for log in logs:
+        category = classify_mail_failure(log.get("error"))
+        rows.append({
+            "ID": log["id"],
+            "원인": category,
+            "업체": log.get("vendor_name") or "",
+            "대상수": log.get("recipient_count") or 0,
+            "오류": log.get("error") or "",
+        })
+    return automation_table_preview(
+        f"메일 실패 이력 {len(rows):,}건을 원인별로 분류했습니다.",
+        ["ID", "원인", "업체", "대상수", "오류"],
+        rows,
+    )
+
+
+def execute_mail_failure_ops(user: dict[str, str]) -> dict[str, object]:
+    preview = preview_mail_failure_ops()
+    connection = connect_db()
+    try:
+        for row in preview.get("rows", []):
+            connection.execute(
+                """
+                UPDATE vendor_mail_send_logs
+                   SET error = COALESCE(error, '') || ?
+                 WHERE id = ?
+                """,
+                (f"\n[분류:{row['원인']} {now_text()}]", row["ID"]),
+            )
+        connection.commit()
+    finally:
+        connection.close()
+    return {**preview, "summary": f"메일 실패 {preview.get('row_count', 0):,}건을 원인별로 분류해 이력에 표시했습니다."}
+
+
+def cs_bulk_mail_groups(limit: int = 200) -> list[dict[str, object]]:
+    init_db()
+    rows = list_cs_cases(query="", status="", limit=limit)
+    groups: dict[str, dict[str, object]] = {}
+    for case in rows:
+        if str(case.get("mail_sent_at") or "").strip() or str(case.get("status") or "") == "메일발송":
+            continue
+        vendor_name = str(case.get("purchase_vendor") or case.get("vendor_name") or "").strip()
+        if not vendor_name or not is_purchase_vendor_cs_target(vendor_name):
+            continue
+        contact = find_vendor_contact(vendor_name, "purchase")
+        email = contact["email"] if contact else ""
+        key = f"{vendor_name}::{email}"
+        group = groups.setdefault(key, {"vendor_name": vendor_name, "email": email, "cases": []})
+        group["cases"].append(case)
+    return list(groups.values())
+
+
+def preview_cs_bulk_mail() -> dict[str, object]:
+    groups = cs_bulk_mail_groups()
+    rows = [
+        {
+            "업체": group["vendor_name"],
+            "메일": group["email"] or "주소 없음",
+            "CS건수": len(group["cases"]),
+            "첫 상품": str(group["cases"][0].get("product_name") or "") if group["cases"] else "",
+        }
+        for group in groups
+    ]
+    return automation_table_preview(
+        f"매입처별 CS 메일 발송 묶음 {len(rows):,}개를 만들었습니다.",
+        ["업체", "메일", "CS건수", "첫 상품"],
+        rows,
+    )
+
+
+def cs_bulk_mail_body(vendor_name: str, cases: list[dict[str, object]]) -> str:
+    lines = [
+        "안녕하세요. (주)소일브릿지 입니다.",
+        "",
+        f"{vendor_name} CS 요청 건을 아래와 같이 전달드립니다.",
+        "",
+    ]
+    for index, case in enumerate(cases, start=1):
+        lines.extend([
+            f"{index}. {case.get('product_name') or '상품명 미입력'}",
+            f"- 수령인: {case.get('receiver_name') or ''}",
+            f"- 연락처: {case.get('receiver_phone') or ''}",
+            f"- CS내용: {case.get('cs_content') or case.get('cs_type') or ''}",
+            f"- 원송장: {case.get('original_invoice') or ''}",
+            "",
+        ])
+    lines.append("확인 후 회신 부탁드립니다.")
+    return "\n".join(lines)
+
+
+def execute_cs_bulk_mail(user: dict[str, str]) -> dict[str, object]:
+    groups = cs_bulk_mail_groups()
+    sent_groups = 0
+    sent_cases = 0
+    failed_rows: list[dict[str, object]] = []
+    for group in groups:
+        email = str(group.get("email") or "").strip()
+        if not email:
+            failed_rows.append({"업체": group["vendor_name"], "메일": "주소 없음", "CS건수": len(group["cases"]), "오류": "업체 메일주소 없음"})
+            continue
+        subject = f"[CS 요청] {group['vendor_name']} {len(group['cases'])}건 확인 부탁드립니다"
+        body = cs_bulk_mail_body(str(group["vendor_name"]), group["cases"])
+        payload = {
+            "vendor_type": "purchase",
+            "vendor_name": str(group["vendor_name"]),
+            "recipient_email": email,
+            "subject": subject,
+            "body": body,
+            "save_credentials": False,
+        }
+        try:
+            send_cs_mail(payload)
+        except Exception as exc:  # noqa: BLE001
+            failed_rows.append({"업체": group["vendor_name"], "메일": email, "CS건수": len(group["cases"]), "오류": str(exc)})
+            continue
+        now = now_text()
+        connection = connect_db()
+        try:
+            for case in group["cases"]:
+                connection.execute(
+                    """
+                    UPDATE cs_cases
+                       SET status = '메일발송', mail_subject = ?, mail_body = ?, mail_sent_at = ?, updated_at = ?
+                     WHERE id = ?
+                    """,
+                    (subject, body, now, now, case["id"]),
+                )
+                sent_cases += 1
+            connection.commit()
+        finally:
+            connection.close()
+        sent_groups += 1
+    rows = failed_rows or [{"업체": "완료", "메일": "", "CS건수": sent_cases, "오류": ""}]
+    return automation_table_preview(
+        f"CS 대량 메일 {sent_groups:,}개 업체 / {sent_cases:,}건을 발송 처리했습니다. 실패 {len(failed_rows):,}건",
+        ["업체", "메일", "CS건수", "오류"],
+        rows,
+    )
+
+
+def preview_notice_auto(user: dict[str, str]) -> dict[str, object]:
+    overview = workhub_automation_overview(user)
+    lines = [overview.get("summary", "업무 자동화 점검 결과입니다.")]
+    lines.extend(f"- {line}" for line in overview.get("briefing", []))
+    rows = [{"구분": "제목", "내용": "업무 자동화 점검 공지"}, {"구분": "본문", "내용": "\n".join(lines)}]
+    return automation_table_preview("자동화 점검 결과 기반 공지 초안을 생성했습니다.", ["구분", "내용"], rows)
+
+
+def execute_notice_auto(user: dict[str, str]) -> dict[str, object]:
+    preview = preview_notice_auto(user)
+    body = str(preview["rows"][1]["내용"])
+    saved = save_portal_notice(
+        {"date": date.today().isoformat(), "title": "업무 자동화 점검 공지", "owner": "Workhub", "body": body},
+        user,
+    )
+    return {**preview, "summary": f"공지사항 #{saved['id']}번을 등록했습니다.", "notice_id": saved["id"]}
+
+
+def preview_backup_ops() -> dict[str, object]:
+    settings = load_backup_settings()
+    backups = list_backup_files()
+    rows = [
+        {"구분": "백업 위치", "내용": str(backup_dir_path(settings))},
+        {"구분": "자동 백업", "내용": "사용" if settings.get("auto_enabled") else "미사용"},
+        {"구분": "최근 백업", "내용": backups[0]["created_at"] if backups else "없음"},
+        {"구분": "보관 파일", "내용": f"{len(backups):,}개"},
+        {"구분": "외부 백업", "내용": str(settings.get("last_external_status") or "미확인")},
+    ]
+    return automation_table_preview("백업 운영 상태를 점검했습니다.", ["구분", "내용"], rows)
+
+
+def execute_backup_ops() -> dict[str, object]:
+    backup = create_workhub_backup(reason="automation-center", upload_external=True)
+    rows = [
+        {"구분": "백업 파일", "내용": backup["name"]},
+        {"구분": "크기", "내용": f"{int(backup['size']):,} bytes"},
+        {"구분": "생성일", "내용": backup["created_at"]},
+        {"구분": "외부 백업", "내용": dict(backup.get("external_backup") or {}).get("message", "")},
+    ]
+    return automation_table_preview("자동화 승인 백업을 생성했습니다.", ["구분", "내용"], rows)
+
+
+def automation_center_preview(action_id: str, payload: dict, user: dict[str, str]) -> dict[str, object]:
+    action = automation_action_config(action_id, user)
+    if action_id == "management_rules":
+        preview = preview_management_rules()
+    elif action_id == "bulk_db_change":
+        preview = preview_bulk_db_change(payload)
+    elif action_id == "mail_failure_ops":
+        preview = preview_mail_failure_ops()
+    elif action_id == "cs_bulk_mail":
+        preview = preview_cs_bulk_mail()
+    elif action_id == "notice_auto":
+        preview = preview_notice_auto(user)
+    elif action_id == "backup_ops":
+        preview = preview_backup_ops()
+    else:
+        raise ValueError("지원하지 않는 자동화 기능입니다.")
+    record_automation_operation(action, "preview", user, payload=payload, preview=preview, message=str(preview.get("summary") or ""))
+    return {"action": action, "preview": preview}
+
+
+def automation_center_execute(action_id: str, payload: dict, user: dict[str, str]) -> dict[str, object]:
+    action = automation_action_config(action_id, user)
+    backup_name = ""
+    if action_id in {"management_rules", "bulk_db_change"}:
+        backup = create_workhub_backup(reason=f"automation-{action_id}", upload_external=False)
+        backup_name = str(backup["name"])
+    preview = automation_center_preview(action_id, payload, user)["preview"]
+    if action_id == "management_rules":
+        result = execute_management_rules()
+    elif action_id == "bulk_db_change":
+        result = execute_bulk_db_change(payload)
+    elif action_id == "mail_failure_ops":
+        result = execute_mail_failure_ops(user)
+    elif action_id == "cs_bulk_mail":
+        result = execute_cs_bulk_mail(user)
+    elif action_id == "notice_auto":
+        result = execute_notice_auto(user)
+    elif action_id == "backup_ops":
+        result = execute_backup_ops()
+        first = result.get("rows", [{}])[0] if result.get("rows") else {}
+        backup_name = str(first.get("내용") or "")
+    else:
+        raise ValueError("지원하지 않는 자동화 기능입니다.")
+    message = str(result.get("summary") or "자동화 실행이 완료되었습니다.")
+    record_automation_operation(action, "executed", user, payload=payload, preview=preview, result=result, backup_name=backup_name, message=message)
+    return {"message": message, "result": result, "backup_name": backup_name}
+
+
 def sales_report_detail_payload(kind: str, key: str, period: str = "") -> dict[str, object]:
     init_db()
     connection = connect_db()
@@ -28912,6 +29624,25 @@ def init_db() -> None:
             """
         )
         connection.execute("CREATE INDEX IF NOT EXISTS idx_portal_notices_created ON portal_notices(created_at)")
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS automation_operation_logs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                created_at TEXT NOT NULL,
+                action_id TEXT NOT NULL,
+                action_label TEXT,
+                status TEXT NOT NULL,
+                requested_by TEXT,
+                payload TEXT,
+                preview TEXT,
+                result TEXT,
+                backup_name TEXT,
+                message TEXT
+            )
+            """
+        )
+        connection.execute("CREATE INDEX IF NOT EXISTS idx_automation_operation_logs_created ON automation_operation_logs(created_at)")
+        connection.execute("CREATE INDEX IF NOT EXISTS idx_automation_operation_logs_action ON automation_operation_logs(action_id)")
         connection.execute(
             """
             CREATE TABLE IF NOT EXISTS leave_types (
@@ -35708,6 +36439,13 @@ class WorkhubHandler(BaseHTTPRequestHandler):
             self.send_json(workhub_automation_overview(user))
             return
 
+        if self.path == "/api/automation-center":
+            if not any(user_has_permission(user, permission) for permission in ("ledger_edit", "mail_send", "notice_manage", "backup_manage")):
+                self.send_json({"error": "업무 자동화 실행 권한이 없습니다."}, status=403)
+                return
+            self.send_json(automation_center_payload(user))
+            return
+
         if self.path == "/api/hermes-status":
             if not self.require_permission(user, "hermes_use", "헤르메스"):
                 return
@@ -36594,6 +37332,28 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                     "settings": settings,
                     "backup_dir": str(backup_dir_path(settings)),
                 })
+                return
+
+            if self.path == "/api/automation-center-preview":
+                if not any(user_has_permission(user, permission) for permission in ("ledger_edit", "mail_send", "notice_manage", "backup_manage")):
+                    self.send_json({"error": "업무 자동화 실행 권한이 없습니다."}, status=403)
+                    return
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(length).decode("utf-8") or "{}") if length else {}
+                action_id = str(payload.get("action_id") or "")
+                action_payload = payload.get("payload") if isinstance(payload.get("payload"), dict) else {}
+                self.send_json(automation_center_preview(action_id, action_payload, user))
+                return
+
+            if self.path == "/api/automation-center-execute":
+                if not any(user_has_permission(user, permission) for permission in ("ledger_edit", "mail_send", "notice_manage", "backup_manage")):
+                    self.send_json({"error": "업무 자동화 실행 권한이 없습니다."}, status=403)
+                    return
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(length).decode("utf-8") or "{}") if length else {}
+                action_id = str(payload.get("action_id") or "")
+                action_payload = payload.get("payload") if isinstance(payload.get("payload"), dict) else {}
+                self.send_json(automation_center_execute(action_id, action_payload, user))
                 return
 
             if self.path == "/api/system-update-check":

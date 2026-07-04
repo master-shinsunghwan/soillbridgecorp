@@ -588,6 +588,20 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         self.assertNotIn("if (!confirm(", html_source)
         self.assertNotIn("alert(error.message)", html_source)
 
+    def test_automation_center_popup_and_apis_exist(self) -> None:
+        html_source = (ROOT / "scripts" / "workhub_delivery_app.py").read_text(encoding="utf-8")
+
+        self.assertIn('id="automationCenterOpen"', html_source)
+        self.assertIn('id="automationCenterPopup"', html_source)
+        self.assertIn("/api/automation-center", html_source)
+        self.assertIn("/api/automation-center-preview", html_source)
+        self.assertIn("/api/automation-center-execute", html_source)
+        self.assertIn("automation_operation_logs", html_source)
+        self.assertIn("preview_management_rules", html_source)
+        self.assertIn("execute_bulk_db_change", html_source)
+        self.assertIn("execute_cs_bulk_mail", html_source)
+        self.assertIn("execute_notice_auto", html_source)
+
     def test_excel_style_filter_reset_controls_exist_for_ledgers(self) -> None:
         html_source = (ROOT / "scripts" / "workhub_delivery_app.py").read_text(encoding="utf-8")
 
