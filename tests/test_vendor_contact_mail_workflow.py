@@ -496,6 +496,57 @@ class VendorContactMailWorkflowTests(unittest.TestCase):
             self.assertEqual(args[:3], ("soilbridge@naver.com", "application-password", "soilbridge@naver.com"))
             self.assertEqual(kwargs["bcc_recipients"], ["purchase@example.com", "sales@example.com"])
 
+    def test_stock_notice_mail_splits_large_bcc_batches(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            app = load_app(Path(directory))
+            app.save_mail_settings(
+                "soilbridge@naver.com",
+                "application-password",
+                bulk_settings={"bulk_batch_size": "20"},
+            )
+            recipients = [f"vendor{index}@example.com" for index in range(45)]
+
+            with patch.object(app, "send_naver_mail") as send_mail:
+                result = app.send_general_mail({
+                    "recipient_email": "",
+                    "bcc_emails": recipients,
+                    "subject": "입고 및 품절 공지",
+                    "body": "공지 내용",
+                })
+
+            self.assertEqual(result["recipient_count"], 45)
+            self.assertEqual(result["batch_count"], 3)
+            self.assertEqual(send_mail.call_count, 3)
+            self.assertEqual(len(send_mail.call_args_list[0].kwargs["bcc_recipients"]), 20)
+            self.assertEqual(len(send_mail.call_args_list[1].kwargs["bcc_recipients"]), 20)
+            self.assertEqual(len(send_mail.call_args_list[2].kwargs["bcc_recipients"]), 5)
+
+    def test_stock_notice_send_log_persists_batch_result(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            app = load_app(Path(directory))
+            payload = {
+                "vendor_type": "purchase",
+                "vendor_name": "매입처 45곳",
+                "recipient_email": "soilbridge@naver.com",
+                "bcc_emails": ["a@example.com", "b@example.com"],
+                "bcc_vendors": [
+                    {"vendor_type": "purchase", "vendor_name": "A", "email": "a@example.com"},
+                    {"vendor_type": "purchase", "vendor_name": "B", "email": "b@example.com"},
+                ],
+                "subject": "입고 및 품절 공지",
+                "body": "공지 내용",
+                "batch_count": 2,
+            }
+
+            log = app.save_vendor_mail_send_log(payload, "sent", sent_by="admin")
+            logs = app.list_vendor_mail_send_logs()
+
+            self.assertEqual(log["recipient_count"], 2)
+            self.assertEqual(log["batch_count"], 2)
+            self.assertEqual(logs[0]["vendor_name"], "매입처 45곳")
+            self.assertEqual(logs[0]["bcc_emails"], ["a@example.com", "b@example.com"])
+            self.assertEqual(logs[0]["sent_by"], "admin")
+
     def test_naver_mail_message_sets_bcc_header(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             app = load_app(Path(directory))

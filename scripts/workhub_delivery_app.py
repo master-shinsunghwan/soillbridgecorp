@@ -10742,6 +10742,10 @@ HTML = r"""<!doctype html>
             <label class="field-label" for="stockBodyInput">공지 내용</label>
             <textarea id="stockBodyInput"></textarea>
           </div>
+          <div class="cs-case-list">
+            <div class="cs-case-head">최근 입고/품절 발송 이력</div>
+            <div id="stockMailHistoryList"></div>
+          </div>
         </div>
         <div class="ledger-fields" id="ledgerFields">
           <div class="ledger-toolbar">
@@ -11432,6 +11436,7 @@ HTML = r"""<!doctype html>
     const stockSoldoutNoteInput = document.querySelector("#stockSoldoutNoteInput");
     const stockSubjectInput = document.querySelector("#stockSubjectInput");
     const stockBodyInput = document.querySelector("#stockBodyInput");
+    const stockMailHistoryList = document.querySelector("#stockMailHistoryList");
     const ledgerCsPopupClose = document.querySelector("#ledgerCsPopupClose");
     const managementManualClose = document.querySelector("#managementManualClose");
     const ledgerSearchInput = document.querySelector("#ledgerSearchInput");
@@ -14859,9 +14864,53 @@ HTML = r"""<!doctype html>
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "공지 메일 발송에 실패했습니다.");
-      notice.textContent = recipients.length === 1
+      if (Array.isArray(data.logs)) renderStockMailHistory(data.logs);
+      notice.textContent = data.message || (recipients.length === 1
         ? "공지 메일을 숨은참조 방식으로 발송했습니다."
-        : `공지 메일을 ${recipients.length}곳에 숨은참조 방식으로 1회 발송했습니다.`;
+        : `공지 메일을 ${recipients.length}곳에 숨은참조 방식으로 1회 발송했습니다.`);
+    }
+
+    function renderStockMailHistory(logs) {
+      if (!stockMailHistoryList) return;
+      stockMailHistoryList.innerHTML = "";
+      if (!logs || logs.length === 0) {
+        const empty = document.createElement("div");
+        empty.className = "cs-case-item";
+        empty.textContent = "아직 발송 이력이 없습니다.";
+        stockMailHistoryList.appendChild(empty);
+        return;
+      }
+      logs.forEach((log) => {
+        const item = document.createElement("div");
+        item.className = "cs-case-item";
+        const status = log.status === "sent" ? "발송완료" : "실패";
+        const count = Number(log.recipient_count || 0);
+        const batches = Number(log.batch_count || 1);
+        const vendorName = log.vendor_name || "업체 미입력";
+        const title = [
+          status,
+          log.created_at || "",
+          vendorName,
+          count ? `${count}곳` : "",
+          batches ? `${batches}회차` : "",
+        ].filter(Boolean).join(" · ");
+        const subject = log.subject ? `제목: ${log.subject}` : "";
+        const error = log.error ? `오류: ${log.error}` : "";
+        const titleElement = document.createElement("strong");
+        titleElement.textContent = title;
+        const detailElement = document.createElement("span");
+        detailElement.textContent = [subject, error].filter(Boolean).join(" / ");
+        item.append(titleElement, detailElement);
+        stockMailHistoryList.appendChild(item);
+      });
+    }
+
+    async function loadStockMailHistory() {
+      if (!stockMailHistoryList) return;
+      const response = await fetch("/api/vendor-mail-send-logs?mail_type=stock_notice&limit=20");
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "발송 이력을 불러오지 못했습니다.");
+      renderStockMailHistory(data.logs || []);
     }
 
     function renderCsCases(cases) {
@@ -21458,6 +21507,10 @@ HTML = r"""<!doctype html>
         loadMailSettings().then(refreshStockNoticeBody);
         refreshStockNoticeBody();
         loadVendorContacts();
+        loadStockMailHistory().catch((error) => {
+          console.warn(error);
+          renderStockMailHistory([]);
+        });
       } else if (mode.startsWith("mail-")) {
         submitButton.textContent = "닫기";
         submitButton.className = "btn";
@@ -28569,6 +28622,34 @@ def init_db() -> None:
             """
         )
         connection.execute("CREATE INDEX IF NOT EXISTS idx_vendor_contacts_name ON vendor_contacts(vendor_name)")
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS vendor_mail_send_logs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                created_at TEXT NOT NULL,
+                mail_type TEXT NOT NULL DEFAULT 'stock_notice',
+                status TEXT NOT NULL,
+                vendor_type TEXT,
+                vendor_name TEXT,
+                recipient_email TEXT,
+                bcc_emails TEXT,
+                bcc_vendors TEXT,
+                recipient_count INTEGER NOT NULL DEFAULT 0,
+                batch_count INTEGER NOT NULL DEFAULT 1,
+                subject TEXT,
+                body TEXT,
+                error TEXT,
+                sent_by TEXT
+            )
+            """
+        )
+        connection.execute("CREATE INDEX IF NOT EXISTS idx_vendor_mail_send_logs_created ON vendor_mail_send_logs(created_at)")
+        connection.execute("CREATE INDEX IF NOT EXISTS idx_vendor_mail_send_logs_type ON vendor_mail_send_logs(mail_type)")
+        existing_mail_log_columns = {
+            row["name"] for row in connection.execute("PRAGMA table_info(vendor_mail_send_logs)").fetchall()
+        }
+        if "batch_count" not in existing_mail_log_columns:
+            connection.execute("ALTER TABLE vendor_mail_send_logs ADD COLUMN batch_count INTEGER NOT NULL DEFAULT 1")
         if VENDOR_CONTACTS_PATH.exists():
             existing_count = connection.execute("SELECT COUNT(*) AS count FROM vendor_contacts").fetchone()["count"]
             if int(existing_count or 0) == 0:
@@ -34721,6 +34802,122 @@ def save_vendor_contacts_bulk(new_contacts: list[dict[str, str]]) -> tuple[list[
     return load_vendor_contacts(), saved_count
 
 
+def vendor_mail_log_from_row(row: sqlite3.Row) -> dict[str, object]:
+    def parse_json_list(value: object) -> list[object]:
+        try:
+            loaded = json.loads(str(value or "[]"))
+        except json.JSONDecodeError:
+            return []
+        return loaded if isinstance(loaded, list) else []
+
+    bcc_emails = [str(item) for item in parse_json_list(row["bcc_emails"]) if str(item).strip()]
+    bcc_vendors = [
+        item
+        for item in parse_json_list(row["bcc_vendors"])
+        if isinstance(item, dict)
+    ]
+    return {
+        "id": int(row["id"]),
+        "created_at": str(row["created_at"] or ""),
+        "mail_type": str(row["mail_type"] or ""),
+        "status": str(row["status"] or ""),
+        "vendor_type": str(row["vendor_type"] or ""),
+        "vendor_type_label": vendor_type_label(row["vendor_type"]),
+        "vendor_name": str(row["vendor_name"] or ""),
+        "recipient_email": str(row["recipient_email"] or ""),
+        "bcc_emails": bcc_emails,
+        "bcc_vendors": bcc_vendors,
+        "recipient_count": int(row["recipient_count"] or 0),
+        "batch_count": int(row["batch_count"] or 1),
+        "subject": str(row["subject"] or ""),
+        "body": str(row["body"] or ""),
+        "error": str(row["error"] or ""),
+        "sent_by": str(row["sent_by"] or ""),
+    }
+
+
+def save_vendor_mail_send_log(
+    payload: dict,
+    status: str,
+    error: str = "",
+    sent_by: str = "",
+    mail_type: str = "stock_notice",
+) -> dict[str, object]:
+    init_db()
+    bcc_emails = normalize_mail_recipients(payload.get("bcc_emails") or payload.get("bcc_recipients"))
+    bcc_vendors = payload.get("bcc_vendors") if isinstance(payload.get("bcc_vendors"), list) else []
+    recipient_email = str(payload.get("recipient_email") or "").strip()
+    recipient_count = len(bcc_emails) if bcc_emails else (1 if recipient_email else 0)
+    batch_count = clean_int_setting(payload.get("batch_count"), 1, 1, 10000)
+    timestamp = now_text()
+    connection = connect_db()
+    try:
+        cursor = connection.execute(
+            """
+            INSERT INTO vendor_mail_send_logs (
+                created_at, mail_type, status, vendor_type, vendor_name, recipient_email,
+                bcc_emails, bcc_vendors, recipient_count, batch_count, subject, body, error, sent_by
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                timestamp,
+                mail_type,
+                "sent" if status == "sent" else "failed",
+                normalize_vendor_type(payload.get("vendor_type")),
+                str(payload.get("vendor_name") or "").strip(),
+                recipient_email,
+                json.dumps(bcc_emails, ensure_ascii=False),
+                json.dumps(bcc_vendors, ensure_ascii=False),
+                recipient_count,
+                batch_count,
+                str(payload.get("subject") or "").strip(),
+                str(payload.get("body") or "").strip(),
+                str(error or "").strip(),
+                str(sent_by or "").strip(),
+            ),
+        )
+        connection.commit()
+        row = connection.execute(
+            "SELECT * FROM vendor_mail_send_logs WHERE id = ?",
+            (cursor.lastrowid,),
+        ).fetchone()
+    finally:
+        connection.close()
+    return vendor_mail_log_from_row(row)
+
+
+def list_vendor_mail_send_logs(mail_type: str = "stock_notice", limit: int = 20) -> list[dict[str, object]]:
+    init_db()
+    limit = min(max(int(limit or 20), 1), 200)
+    connection = connect_db()
+    try:
+        if mail_type:
+            rows = connection.execute(
+                """
+                SELECT *
+                  FROM vendor_mail_send_logs
+                 WHERE mail_type = ?
+                 ORDER BY id DESC
+                 LIMIT ?
+                """,
+                (mail_type, limit),
+            ).fetchall()
+        else:
+            rows = connection.execute(
+                """
+                SELECT *
+                  FROM vendor_mail_send_logs
+                 ORDER BY id DESC
+                 LIMIT ?
+                """,
+                (limit,),
+            ).fetchall()
+    finally:
+        connection.close()
+    return [vendor_mail_log_from_row(row) for row in rows]
+
+
 def header_text(value: object) -> str:
     return re.sub(r"\s+", "", str(value or "")).strip().lower()
 
@@ -34962,7 +35159,12 @@ def normalize_mail_recipients(value: object) -> list[str]:
     return recipients
 
 
-def send_cs_mail(payload: dict, attachments: list[dict[str, object]] | None = None) -> None:
+def chunk_mail_recipients(recipients: list[str], size: int) -> list[list[str]]:
+    size = max(int(size or 1), 1)
+    return [recipients[index:index + size] for index in range(0, len(recipients), size)]
+
+
+def send_cs_mail(payload: dict, attachments: list[dict[str, object]] | None = None) -> dict[str, int]:
     saved = load_mail_settings(include_password=True)
     naver_email = normalize_naver_email(payload.get("naver_email")) or str(saved.get("naver_email", ""))
     naver_password = str(payload.get("naver_password") or saved.get("naver_password", ""))
@@ -34987,18 +35189,30 @@ def send_cs_mail(payload: dict, attachments: list[dict[str, object]] | None = No
 
     if payload.get("save_credentials", True):
         save_mail_settings(naver_email, naver_password)
-    send_naver_mail(
-        naver_email,
-        naver_password,
-        recipient,
-        subject,
-        body,
-        smtp_port=int(saved.get("smtp_port") or NAVER_SMTP_PORT),
-        smtp_security=str(saved.get("smtp_security") or "ssl"),
-        attachments=attachments,
-        bcc_recipients=bcc_recipients,
+    batch_size = clean_int_setting(
+        saved.get("bulk_batch_size"),
+        int(DEFAULT_MAIL_TECHNICAL_SETTINGS["bulk_batch_size"]),
+        1,
+        100,
     )
-    return
+    bcc_batches = chunk_mail_recipients(bcc_recipients, batch_size) if bcc_recipients else [[]]
+    for bcc_batch in bcc_batches:
+        send_naver_mail(
+            naver_email,
+            naver_password,
+            recipient,
+            subject,
+            body,
+            smtp_port=int(saved.get("smtp_port") or NAVER_SMTP_PORT),
+            smtp_security=str(saved.get("smtp_security") or "ssl"),
+            attachments=attachments,
+            bcc_recipients=bcc_batch,
+        )
+    return {
+        "recipient_count": len(bcc_recipients) if bcc_recipients else 1,
+        "batch_count": len(bcc_batches),
+        "batch_size": batch_size,
+    }
 
     message = EmailMessage()
     message["Subject"] = subject
@@ -35015,8 +35229,8 @@ def send_cs_mail(payload: dict, attachments: list[dict[str, object]] | None = No
         raise ValueError("네이버 메일 로그인에 실패했습니다. 아이디/비밀번호와 네이버 메일 SMTP 사용 설정을 확인해주세요.") from exc
 
 
-def send_general_mail(payload: dict, attachments: list[dict[str, object]] | None = None) -> None:
-    send_cs_mail(payload, attachments=attachments)
+def send_general_mail(payload: dict, attachments: list[dict[str, object]] | None = None) -> dict[str, int]:
+    return send_cs_mail(payload, attachments=attachments)
 
 
 def send_naver_mail(
@@ -35467,6 +35681,19 @@ class WorkhubHandler(BaseHTTPRequestHandler):
             if not self.require_permission(user, "mail_send", "메일 발송"):
                 return
             self.send_json({"contacts": load_vendor_contacts()})
+            return
+
+        if self.path.startswith("/api/vendor-mail-send-logs"):
+            if not self.require_permission(user, "mail_send", "메일 발송"):
+                return
+            parsed = urlsplit(self.path)
+            params = parse_qs(parsed.query)
+            try:
+                limit = min(max(int(params.get("limit", ["20"])[0]), 1), 200)
+            except ValueError:
+                limit = 20
+            mail_type = params.get("mail_type", ["stock_notice"])[0]
+            self.send_json({"logs": list_vendor_mail_send_logs(mail_type=mail_type, limit=limit)})
             return
 
         if self.path == "/api/cs-followup-alerts":
@@ -36270,8 +36497,33 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                     return
                 length = int(self.headers.get("Content-Length", "0"))
                 payload = json.loads(self.rfile.read(length).decode("utf-8"))
-                send_general_mail(payload)
-                self.send_json({"message": "메일 발송이 완료되었습니다."})
+                sent_by = str(user.get("username") or user.get("name") or "")
+                try:
+                    result = send_general_mail(payload)
+                except Exception as exc:  # noqa: BLE001
+                    failed_payload = {**payload, "batch_count": 1}
+                    log = save_vendor_mail_send_log(failed_payload, "failed", error=str(exc), sent_by=sent_by)
+                    self.send_json(
+                        {
+                            "error": str(exc),
+                            "log": log,
+                            "logs": list_vendor_mail_send_logs(mail_type="stock_notice", limit=20),
+                        },
+                        status=400,
+                    )
+                    return
+                success_payload = {**payload, "batch_count": result.get("batch_count", 1)}
+                log = save_vendor_mail_send_log(success_payload, "sent", sent_by=sent_by)
+                batch_count = int(result.get("batch_count", 1))
+                recipient_count = int(result.get("recipient_count", log.get("recipient_count", 0)))
+                self.send_json({
+                    "message": f"공지 메일을 {recipient_count}곳에 숨은참조 방식으로 {batch_count}회 나눠 발송했습니다.",
+                    "batch_count": batch_count,
+                    "recipient_count": recipient_count,
+                    "batch_size": int(result.get("batch_size", 0)),
+                    "log": log,
+                    "logs": list_vendor_mail_send_logs(mail_type="stock_notice", limit=20),
+                })
                 return
 
             if self.path == "/api/cs-mail":

@@ -4,6 +4,7 @@ import json
 import mimetypes
 import os
 import re
+import shutil
 import smtplib
 import ssl
 import sqlite3
@@ -48,6 +49,7 @@ from workhub_crm import (
     handle_crm_messenger_webhook,
     init_crm_db,
     list_crm_accounts,
+    list_crm_daily_logs,
     list_crm_message_events,
     list_crm_messenger_users,
     list_crm_saved_views,
@@ -55,6 +57,7 @@ from workhub_crm import (
     list_crm_tasks,
     rotate_webhook_token,
     save_crm_account,
+    save_crm_daily_log,
     save_crm_messenger_user,
     save_crm_saved_view,
     save_crm_task,
@@ -77,6 +80,7 @@ ORDER_DOWNLOAD_DIR = DOWNLOAD_DIR / "order_outputs"
 ORDER_DOWNLOAD_HISTORY_PATH = ORDER_DOWNLOAD_DIR / "history.json"
 ORDER_DOWNLOAD_LIMIT = 10
 SHARED_FILE_DIR = RUNTIME_ROOT / "shared_files"
+HERMES_RESULT_DIR = RUNTIME_ROOT / "hermes_results"
 SALES_REPORT_DIR = RUNTIME_ROOT / "sales_reports"
 CONFIG_DIR = RUNTIME_ROOT / "config"
 DB_PATH = CONFIG_DIR / "workhub.db"
@@ -84,6 +88,7 @@ MAIL_SETTINGS_PATH = CONFIG_DIR / "mail_settings.json"
 VENDOR_CONTACTS_PATH = CONFIG_DIR / "vendor_contacts.json"
 CRM_WEBHOOK_TOKEN_PATH = CONFIG_DIR / "crm_webhook_token.txt"
 BACKUP_SETTINGS_PATH = CONFIG_DIR / "backup_settings.json"
+SALES_AUTOMATION_SETTINGS_PATH = CONFIG_DIR / "sales_automation_settings.json"
 HERMES_SETTINGS_PATH = CONFIG_DIR / "hermes_settings.json"
 HERMES_HISTORY_PATH = CONFIG_DIR / "hermes_history.jsonl"
 BACKUP_DIR = Path(os.environ.get("WORKHUB_BACKUP_DIR", str(RUNTIME_ROOT / "backups")))
@@ -159,7 +164,7 @@ PERMISSION_DEFINITIONS = (
     ("user_admin", "사용자 관리", "계정 추가/수정/권한 변경"),
     ("backup_manage", "백업 관리", "수동/자동 백업 파일 관리"),
     ("system_update", "시스템 업데이트", "GitHub 업데이트 확인/적용"),
-    ("sales_report_manage", "매출현황 관리", "매출표 업로드 및 매출현황 관리"),
+    ("sales_report_manage", "매출현황 관리", "매출현황 조회 및 관리"),
     ("leave_view", "연차 조회", "연차 내역 조회"),
     ("leave_approve", "연차 승인", "연차 신청 승인/반려"),
     ("leave_approve_team", "\uC5F0\uCC28 \uD300\uC7A5 \uC2B9\uC778", "\uC5F0\uCC28 \uC2E0\uCCAD \uD300\uC7A5 \uD655\uC778"),
@@ -2016,6 +2021,115 @@ HTML = r"""<!doctype html>
       gap: 12px;
       margin-top: 2px;
     }
+    .sales-period-toolbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 10px 12px;
+      border: 1px solid #d8e0ec;
+      border-radius: 8px;
+      background: #ffffff;
+      box-shadow: 0 4px 12px rgba(15, 23, 42, .03);
+    }
+    .sales-period-actions {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .sales-upload-button {
+      height: 34px;
+      border: 1px solid var(--blue);
+      border-radius: 7px;
+      padding: 0 12px;
+      background: #2563eb;
+      color: white;
+      font-size: 12px;
+      font-weight: 950;
+      cursor: pointer;
+    }
+    .sales-upload-status {
+      display: grid;
+      gap: 4px;
+      padding: 8px 10px;
+      border: 1px solid #d8e0ec;
+      border-radius: 8px;
+      background: #f8fbff;
+      color: #475569;
+      font-size: 12px;
+      font-weight: 800;
+      line-height: 1.45;
+    }
+    .sales-upload-status[hidden] {
+      display: none !important;
+    }
+    .sales-upload-panel {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 10px;
+      align-items: center;
+      padding: 12px;
+      border: 1px solid #bfdbfe;
+      border-left: 4px solid #2563eb;
+      border-radius: 8px;
+      background: #eff6ff;
+    }
+    .sales-upload-panel strong {
+      display: block;
+      color: #0f172a;
+      font-size: 14px;
+      font-weight: 950;
+    }
+    .sales-upload-panel span {
+      display: block;
+      margin-top: 2px;
+      color: #475569;
+      font-size: 12px;
+      font-weight: 800;
+    }
+    .sales-period-current {
+      min-width: 0;
+      display: grid;
+      gap: 2px;
+    }
+    .sales-period-current span,
+    .sales-period-select-label span {
+      color: #64748b;
+      font-size: 11px;
+      font-weight: 900;
+    }
+    .sales-period-current strong {
+      color: #0f172a;
+      font-size: 14px;
+      font-weight: 950;
+    }
+    .sales-period-select-label {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin: 0;
+      font-size: 12px;
+      font-weight: 900;
+      color: #475569;
+    }
+    .sales-period-select {
+      min-width: 160px;
+      height: 34px;
+      border: 1px solid #cbd5e1;
+      border-radius: 8px;
+      background: #f8fafc;
+      color: #0f172a;
+      padding: 0 34px 0 10px;
+      font-size: 12px;
+      font-weight: 900;
+    }
+    .sales-period-select:focus {
+      outline: 2px solid rgba(37, 99, 235, .18);
+      border-color: #2563eb;
+      background: #ffffff;
+    }
     .sales-kpi-grid {
       display: grid;
       grid-template-columns: repeat(6, minmax(0, 1fr));
@@ -2325,6 +2439,9 @@ HTML = r"""<!doctype html>
     .sales-table tbody tr {
       transition: background .14s ease;
     }
+    .sales-table tbody tr[data-sales-detail] {
+      cursor: zoom-in;
+    }
     .sales-table tbody tr:hover td {
       background: color-mix(in srgb, var(--panel-color) 8%, white);
     }
@@ -2390,6 +2507,321 @@ HTML = r"""<!doctype html>
       overflow-x: auto;
       scrollbar-gutter: stable both-edges;
     }
+    .sales-margin-diagnosis {
+      display: grid;
+      gap: 6px;
+      padding: 12px;
+      border: 1px solid #d8e0ec;
+      border-radius: 8px;
+      background: #f8fafc;
+      color: #334155;
+      font-size: 12px;
+      font-weight: 800;
+      line-height: 1.45;
+    }
+    .sales-margin-diagnosis.warn {
+      border-color: #fed7aa;
+      background: #fff7ed;
+      color: #9a3412;
+    }
+    .sales-margin-diagnosis.ok {
+      border-color: #bbf7d0;
+      background: #f0fdf4;
+      color: #166534;
+    }
+    .sales-margin-diagnosis.bad {
+      border-color: #fecaca;
+      background: #fff1f2;
+      color: #991b1b;
+    }
+    .sales-margin-diagnosis strong {
+      display: block;
+      color: #111827;
+      font-size: 13px;
+      font-weight: 950;
+    }
+    .sales-margin-diagnosis ul {
+      margin: 2px 0 0;
+      padding-left: 18px;
+    }
+    .sales-margin-diagnosis li + li {
+      margin-top: 3px;
+    }
+    .sales-detail-popup {
+      --detail-color: #2563eb;
+      width: clamp(720px, 54vw, 1040px);
+      height: calc(100vh - 40px);
+      max-width: calc(100vw - 48px);
+      max-height: calc(100vh - 40px);
+      overflow: hidden;
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr);
+      padding: 0;
+      background: #f8fafc;
+      border: 1px solid #d8e0ec;
+      border-radius: 8px;
+      box-shadow: 0 24px 70px rgba(15, 23, 42, .20);
+    }
+    .sales-detail-popup.compact {
+      height: calc(100vh - 40px);
+      max-height: calc(100vh - 40px);
+      grid-template-rows: auto minmax(0, 1fr);
+    }
+    .sales-detail-popup.expanded {
+      height: calc(100vh - 40px) !important;
+      max-height: calc(100vh - 40px) !important;
+      grid-template-rows: auto minmax(0, 1fr) !important;
+    }
+    .sales-detail-popup .notice-popup-head {
+      min-height: 54px;
+      padding: 0 14px;
+      margin: 0;
+      border-bottom: 1px solid #e2e8f0;
+      background: linear-gradient(90deg, color-mix(in srgb, var(--detail-color) 12%, #ffffff), #f8fafc 72%);
+      color: #0f172a;
+    }
+    .sales-detail-popup .notice-popup-head::before {
+      content: "";
+      width: 26px;
+      height: 26px;
+      border-radius: 8px;
+      flex: 0 0 auto;
+      background: color-mix(in srgb, var(--detail-color) 14%, white);
+      box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--detail-color) 18%, transparent);
+    }
+    .sales-detail-popup .notice-popup-head span {
+      min-width: 0;
+      overflow: hidden;
+      color: #0f172a;
+      font-size: 15px;
+      font-weight: 950;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .sales-detail-popup .popup-close-button {
+      width: 32px;
+      height: 32px;
+      color: #475569;
+      background: #ffffff;
+      border-color: #d8e0ec;
+      border-radius: 8px;
+      box-shadow: 0 4px 10px rgba(15, 23, 42, .06);
+    }
+    .sales-detail-body {
+      display: grid;
+      align-content: start;
+      gap: 10px;
+      min-height: 0;
+      overflow: auto;
+      padding: 12px;
+      background: #f8fafc;
+    }
+    .sales-detail-popup.compact .sales-detail-body {
+      max-height: none;
+      gap: 8px;
+      align-content: stretch;
+      overflow: hidden;
+      grid-template-rows: auto auto minmax(0, 1fr);
+    }
+    .sales-detail-popup.expanded .sales-detail-body {
+      align-content: stretch !important;
+      overflow: hidden;
+    }
+    .sales-detail-popup.expanded .sales-detail-body.has-note {
+      grid-template-rows: auto auto minmax(0, 1fr);
+    }
+    .sales-detail-popup.expanded .sales-detail-body:not(.has-note) {
+      grid-template-rows: auto minmax(0, 1fr);
+    }
+    .sales-detail-summary {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 8px;
+    }
+    .sales-detail-metric {
+      position: relative;
+      min-height: 72px;
+      padding: 9px 10px 9px 14px;
+      overflow: hidden;
+      border: 1px solid color-mix(in srgb, var(--detail-color) 20%, #d8e0ec);
+      border-radius: 8px;
+      background: linear-gradient(135deg, color-mix(in srgb, var(--detail-color) 8%, white), #ffffff 48%, #ffffff);
+      box-shadow: 0 6px 16px rgba(15, 23, 42, .04);
+    }
+    .sales-detail-metric::before {
+      content: "";
+      position: absolute;
+      left: 0;
+      top: 0;
+      bottom: 0;
+      width: 4px;
+      background: var(--detail-color);
+    }
+    .sales-detail-metric span {
+      display: block;
+      overflow: hidden;
+      color: #64748b;
+      font-size: 12px;
+      font-weight: 900;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .sales-detail-metric strong {
+      display: block;
+      margin-top: 7px;
+      color: #0f172a;
+      font-size: 19px;
+      font-weight: 950;
+      line-height: 1.15;
+    }
+    .sales-detail-popup.compact .sales-detail-metric {
+      min-height: 44px;
+      padding: 6px 10px 6px 14px;
+    }
+    .sales-detail-popup.compact .sales-detail-metric strong {
+      margin-top: 2px;
+      font-size: 16px;
+    }
+    .sales-detail-popup.compact .sales-detail-note {
+      min-height: 28px;
+      padding: 6px 10px;
+      font-size: 11px;
+      line-height: 1.35;
+    }
+    .sales-detail-section {
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr);
+      min-height: 0;
+      overflow: hidden;
+      border: 1px solid #d8e0ec;
+      border-top: 3px solid var(--detail-color);
+      border-radius: 8px;
+      background: #ffffff;
+      box-shadow: 0 6px 16px rgba(15, 23, 42, .035);
+    }
+    .sales-detail-sections {
+      display: grid;
+      gap: 10px;
+      min-height: 0;
+      overflow: hidden;
+    }
+    .sales-detail-popup.expanded .sales-detail-sections {
+      height: 100%;
+    }
+    .sales-detail-popup.expanded .sales-detail-body.multi-section .sales-detail-sections {
+      grid-template-rows: repeat(auto-fit, minmax(0, 1fr));
+    }
+    .sales-detail-popup.compact .sales-detail-sections {
+      height: 100%;
+      overflow: hidden;
+    }
+    .sales-detail-section-title {
+      min-height: 40px;
+      display: flex;
+      align-items: center;
+      padding: 0 12px;
+      border-bottom: 1px solid #e2e8f0;
+      background: linear-gradient(90deg, color-mix(in srgb, var(--detail-color) 12%, #ffffff), #f8fafc 70%);
+      color: #0f172a;
+      font-size: 13px;
+      font-weight: 950;
+    }
+    .sales-detail-table-wrap {
+      height: clamp(360px, calc(100vh - 330px), 680px);
+      max-height: none;
+      min-height: 0;
+      overflow-x: auto;
+      overflow-y: scroll;
+      scrollbar-gutter: stable;
+      scrollbar-width: thin;
+      scrollbar-color: color-mix(in srgb, var(--detail-color) 55%, #94a3b8) #eef2f7;
+    }
+    .sales-detail-body.multi-section .sales-detail-table-wrap {
+      height: clamp(220px, calc((100vh - 380px) / 2), 340px);
+      max-height: 340px;
+    }
+    .sales-detail-popup.compact .sales-detail-table-wrap {
+      height: 100%;
+      min-height: 0;
+      max-height: none;
+    }
+    .sales-detail-popup.expanded .sales-detail-table-wrap {
+      height: 100% !important;
+      max-height: none !important;
+    }
+    .sales-detail-popup.expanded .sales-detail-body.multi-section .sales-detail-table-wrap {
+      height: 100% !important;
+      max-height: none !important;
+    }
+    .sales-detail-table-wrap::-webkit-scrollbar {
+      width: 12px;
+      height: 12px;
+    }
+    .sales-detail-table-wrap::-webkit-scrollbar-track {
+      background: #eef2f7;
+      border-left: 1px solid #e2e8f0;
+    }
+    .sales-detail-table-wrap::-webkit-scrollbar-thumb {
+      min-height: 42px;
+      border: 3px solid #eef2f7;
+      border-radius: 999px;
+      background: color-mix(in srgb, var(--detail-color) 55%, #94a3b8);
+    }
+    .sales-detail-table-wrap::-webkit-scrollbar-thumb:hover {
+      background: var(--detail-color);
+    }
+    .sales-detail-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+      font-variant-numeric: tabular-nums;
+    }
+    .sales-detail-table th,
+    .sales-detail-table td {
+      height: 32px;
+      padding: 5px 8px;
+      border-bottom: 1px solid #eef2f7;
+      text-align: right;
+      white-space: nowrap;
+    }
+    .sales-detail-table th {
+      position: sticky;
+      top: 0;
+      z-index: 1;
+      background: color-mix(in srgb, var(--detail-color) 7%, #f8fafc);
+      color: #1f2937;
+      font-weight: 950;
+    }
+    .sales-detail-table td {
+      font-weight: 750;
+      transition: background .14s ease, color .14s ease;
+    }
+    .sales-detail-table th:first-child,
+    .sales-detail-table td:first-child {
+      text-align: left;
+      color: #111827;
+      font-weight: 850;
+    }
+    .sales-detail-table td:nth-child(4),
+    .sales-detail-table th:nth-child(4),
+    .sales-detail-table td:last-child,
+    .sales-detail-table th:last-child {
+      box-shadow: inset 0 0 0 9999px color-mix(in srgb, var(--detail-color) 5%, transparent);
+    }
+    .sales-detail-table tbody tr:hover td {
+      background: color-mix(in srgb, var(--detail-color) 8%, white);
+    }
+    .sales-detail-note {
+      padding: 9px 12px;
+      border: 1px solid #d8e0ec;
+      border-radius: 8px;
+      background: #ffffff;
+      color: #64748b;
+      font-size: 12px;
+      font-weight: 800;
+      line-height: 1.45;
+      box-shadow: 0 4px 12px rgba(15, 23, 42, .03);
+    }
     .sales-dashboard.loading .sales-kpi,
     .sales-dashboard.loading .sales-panel {
       position: relative;
@@ -2432,9 +2864,23 @@ HTML = r"""<!doctype html>
       .sales-dashboard-grid { grid-template-columns: 1fr; }
     }
     @media (max-width: 900px) {
+      .sales-period-toolbar {
+        align-items: stretch;
+        flex-direction: column;
+      }
+      .sales-period-select-label {
+        align-items: flex-start;
+        flex-direction: column;
+      }
+      .sales-period-select {
+        width: 100%;
+      }
       .sales-table-tabs,
       .sales-dashboard-grid.sales-tab-panels {
         grid-template-columns: 1fr;
+      }
+      .sales-detail-summary {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
       }
     }
     .admin-section-title {
@@ -2679,9 +3125,12 @@ HTML = r"""<!doctype html>
     }
     .hermes-chat-layout {
       display: grid;
-      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      grid-template-columns: minmax(360px, 0.92fr) minmax(420px, 1.08fr);
       gap: 14px;
       align-items: stretch;
+    }
+    .hermes-chat-input-card {
+      align-content: start;
     }
     .hermes-input,
     .hermes-settings-grid input {
@@ -2705,6 +3154,76 @@ HTML = r"""<!doctype html>
       justify-content: flex-end;
       gap: 8px;
     }
+    .hermes-action-runner {
+      display: grid;
+      gap: 10px;
+      padding-top: 12px;
+      border-top: 1px solid #e2e8f0;
+    }
+    .hermes-action-grid {
+      display: grid;
+      grid-template-columns: minmax(180px, .9fr) minmax(220px, 1.1fr) minmax(160px, .8fr);
+      gap: 10px;
+      align-items: end;
+    }
+    .hermes-action-grid label,
+    .hermes-action-runner label {
+      display: grid;
+      gap: 6px;
+      color: #344054;
+      font-size: 12px;
+      font-weight: 900;
+    }
+    .hermes-action-grid select,
+    .hermes-action-grid input,
+    .hermes-action-runner textarea {
+      width: 100%;
+    }
+    .hermes-action-runner textarea {
+      min-height: 92px;
+    }
+    .hermes-action-result strong {
+      display: block;
+      color: #0f172a;
+      font-size: 12px;
+      font-weight: 950;
+      margin-bottom: 6px;
+    }
+    .hermes-action-result ul {
+      margin: 0;
+      padding-left: 18px;
+    }
+    .hermes-action-result li {
+      margin: 3px 0;
+    }
+    .hermes-mode-selector {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 6px;
+    }
+    .hermes-mode-button {
+      min-height: 36px;
+      border: 1px solid #d8e0ec;
+      border-radius: 8px;
+      background: #f8fafc;
+      color: #334155;
+      font-family: inherit;
+      font-size: 12px;
+      font-weight: 950;
+      cursor: pointer;
+    }
+    .hermes-mode-button.active {
+      border-color: #2563eb;
+      background: #eff6ff;
+      color: #1d4ed8;
+    }
+    .hermes-mode-hint {
+      min-height: 18px;
+      color: #64748b;
+      font-size: 12px;
+      font-weight: 800;
+      line-height: 1.45;
+    }
     .hermes-response {
       min-height: 48px;
       padding: 12px;
@@ -2717,15 +3236,131 @@ HTML = r"""<!doctype html>
       line-height: 1.55;
       white-space: pre-wrap;
     }
+    .hermes-latest-answer {
+      min-height: 240px;
+      max-height: 380px;
+      overflow: auto;
+      border-style: solid;
+      background: #f8fbff;
+      color: #111827;
+      font-size: 14px;
+    }
     .hermes-side-grid {
       display: grid;
       gap: 12px;
+      min-height: 0;
     }
     .hermes-side-card {
       border: 1px solid #e5e7eb;
       border-radius: 8px;
       background: #ffffff;
       padding: 12px;
+    }
+    .hermes-chat-log-card {
+      display: flex;
+      min-height: 0;
+      flex-direction: column;
+    }
+    .hermes-chat-transcript {
+      display: grid;
+      align-content: start;
+      gap: 10px;
+      min-height: 500px;
+      max-height: calc(100vh - 330px);
+      overflow: auto;
+      padding: 10px;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      background: #f8fafc;
+    }
+    .hermes-chat-message {
+      display: grid;
+      gap: 6px;
+      padding: 10px;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      background: #ffffff;
+      color: #111827;
+      line-height: 1.5;
+      overflow-wrap: anywhere;
+    }
+    .hermes-chat-message.user {
+      border-color: #bfdbfe;
+      background: #eff6ff;
+    }
+    .hermes-chat-message.assistant {
+      border-color: #bbf7d0;
+      background: #f0fdf4;
+    }
+    .hermes-chat-message.error {
+      border-color: #fecdd3;
+      background: #fff1f2;
+    }
+    .hermes-chat-message strong {
+      font-size: 12px;
+      font-weight: 950;
+      color: #0f172a;
+    }
+    .hermes-chat-message span {
+      font-size: 11px;
+      font-weight: 800;
+      color: #64748b;
+    }
+    .hermes-chat-message div {
+      white-space: pre-wrap;
+      font-size: 13px;
+      font-weight: 750;
+    }
+    .hermes-result-links {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 8px;
+    }
+    .hermes-result-link-row {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      max-width: 100%;
+    }
+    .hermes-result-link {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 32px;
+      padding: 0 10px;
+      border: 1px solid #93c5fd;
+      border-radius: 7px;
+      background: #eff6ff;
+      color: #1d4ed8;
+      font-size: 12px;
+      font-weight: 950;
+      text-decoration: none;
+    }
+    .hermes-result-save {
+      min-height: 32px;
+      padding: 0 10px;
+      border: 1px solid #16a34a;
+      border-radius: 7px;
+      background: #ecfdf5;
+      color: #047857;
+      font-size: 12px;
+      font-weight: 950;
+      cursor: pointer;
+    }
+    .hermes-result-save:disabled {
+      cursor: default;
+      opacity: .65;
+    }
+    .hermes-result-image {
+      display: block;
+      width: min(100%, 420px);
+      max-height: 280px;
+      object-fit: contain;
+      margin-top: 10px;
+      border: 1px solid #d8e0ec;
+      border-radius: 8px;
+      background: #fff;
     }
     .hermes-side-card strong {
       display: block;
@@ -2853,6 +3488,7 @@ HTML = r"""<!doctype html>
     }
     @media (max-width: 1100px) {
       .hermes-settings-grid { grid-template-columns: 1fr; }
+      .hermes-action-grid { grid-template-columns: 1fr; }
       .hermes-hero { grid-template-columns: auto minmax(0, 1fr); }
       .hermes-status-pill { grid-column: 1 / -1; justify-self: start; }
       .hermes-chat-layout { grid-template-columns: 1fr; }
@@ -2980,6 +3616,17 @@ HTML = r"""<!doctype html>
       vertical-align: top;
     }
     .leave-table tr:last-child td { border-bottom: 0; }
+    .leave-admin-balance-row {
+      cursor: pointer;
+    }
+    .leave-admin-balance-row:hover td,
+    .leave-admin-balance-row.selected td {
+      background: #eff6ff;
+    }
+    .leave-admin-balance-row.selected td:first-child {
+      color: var(--blue);
+      font-weight: 950;
+    }
     .leave-action-row { display: flex; gap: 6px; }
     .leave-action {
       height: 30px;
@@ -3824,6 +4471,40 @@ HTML = r"""<!doctype html>
     .ledger-table th.has-filter {
       padding-right: 21px;
     }
+    .ledger-table th.filter-active {
+      background: linear-gradient(180deg, #dbeafe 0%, #bfdbfe 100%);
+      box-shadow: inset 0 -2px 0 #2563eb;
+      color: #102a56;
+    }
+    .ledger-table th.filter-active::before {
+      content: "";
+      position: absolute;
+      top: 5px;
+      left: 5px;
+      width: 6px;
+      height: 6px;
+      border-radius: 999px;
+      background: #2563eb;
+      box-shadow: 0 0 0 2px rgba(37, 99, 235, .16);
+    }
+    .ledger-table th.color-filter-active {
+      background: linear-gradient(180deg, #fff7ed 0%, #fed7aa 100%);
+      box-shadow: inset 0 -2px 0 #f97316;
+      color: #7c2d12;
+    }
+    .ledger-table th.text-filter-active.color-filter-active {
+      background: linear-gradient(135deg, #dbeafe 0%, #dbeafe 52%, #fed7aa 52%, #fed7aa 100%);
+      box-shadow: inset 0 -2px 0 #2563eb, inset 0 -4px 0 #f97316;
+      color: #102a56;
+    }
+    .ledger-table th.color-filter-active::before {
+      background: #f97316;
+      box-shadow: 0 0 0 2px rgba(249, 115, 22, .18);
+    }
+    .ledger-table th.text-filter-active.color-filter-active::before {
+      background: #2563eb;
+      box-shadow: 0 0 0 2px rgba(249, 115, 22, .28);
+    }
     .ledger-th-title {
       display: block;
       line-height: 1.2;
@@ -3847,6 +4528,11 @@ HTML = r"""<!doctype html>
     .ledger-filter-trigger.active {
       background: #155bc8;
       border-color: #0f4aaa;
+      color: white;
+    }
+    .ledger-filter-trigger.color-active {
+      background: #f97316;
+      border-color: #c2410c;
       color: white;
     }
     .ledger-filter-popover {
@@ -3896,7 +4582,36 @@ HTML = r"""<!doctype html>
       font-size: 12px;
       cursor: pointer;
     }
+    .ledger-filter-option-count {
+      float: right;
+      color: #64748b;
+      font-weight: 800;
+    }
     .ledger-filter-option:hover { background: #eef6ff; }
+    .ledger-filter-color {
+      display: none;
+      margin: -2px 0 8px;
+    }
+    .ledger-filter-color.open { display: block; }
+    .ledger-filter-color button {
+      width: 100%;
+      height: 30px;
+      border: 1px solid #bfdbfe;
+      border-radius: 5px;
+      background: #eff6ff;
+      color: #155bc8;
+      font-family: inherit;
+      font-size: 12px;
+      font-weight: 850;
+      cursor: pointer;
+      text-align: left;
+      padding: 0 8px;
+    }
+    .ledger-filter-color button.active {
+      border-color: #155bc8;
+      background: #155bc8;
+      color: white;
+    }
     .ledger-filter-actions {
       display: flex;
       justify-content: flex-end;
@@ -3978,8 +4693,8 @@ HTML = r"""<!doctype html>
     .ledger-table tr.row-dirty td {
       box-shadow: inset 0 0 0 9999px rgba(37, 99, 235, .035);
     }
-    .ledger-table tr.management-duplicate td {
-      background: var(--duplicate-row-color, #eef6ff);
+    .ledger-table tbody tr.management-duplicate td {
+      background-color: var(--duplicate-row-color, #eef6ff);
     }
     .ledger-table td.left { text-align: left; }
     .ledger-table td[data-field="cs_content"],
@@ -4050,6 +4765,44 @@ HTML = r"""<!doctype html>
       outline: 2px solid #155bc8;
       outline-offset: -2px;
       background: #eef6ff;
+    }
+    .ledger-table td.sheet-range-cell {
+      outline: 1px solid #60a5fa;
+      outline-offset: -1px;
+      background: #dbeafe !important;
+    }
+    .ledger-table td.sheet-range-anchor {
+      outline: 2px solid #155bc8;
+      outline-offset: -2px;
+      background: #bfdbfe !important;
+    }
+    .sheet-selection-summary {
+      position: fixed;
+      right: 18px;
+      bottom: 18px;
+      z-index: 80;
+      display: none;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+      max-width: min(520px, calc(100vw - 36px));
+      padding: 9px 12px;
+      border: 1px solid #93c5fd;
+      border-radius: 8px;
+      background: rgba(15, 23, 42, .94);
+      color: #e5f0ff;
+      box-shadow: 0 14px 34px rgba(15, 23, 42, .24);
+      font-size: 12px;
+      font-weight: 850;
+      pointer-events: none;
+    }
+    .sheet-selection-summary.open { display: flex; }
+    .sheet-selection-summary strong {
+      color: #ffffff;
+      font-weight: 950;
+    }
+    .sheet-selection-summary span {
+      white-space: nowrap;
     }
     .ledger-status-cell {
       display: inline-flex;
@@ -4632,6 +5385,61 @@ HTML = r"""<!doctype html>
       font-weight: 750;
       line-height: 1.55;
     }
+    .automation-overview-card {
+      display: grid;
+      gap: 10px;
+    }
+    .automation-overview-status {
+      border-radius: 999px;
+      padding: 3px 8px;
+      border: 1px solid #bbf7d0;
+      background: #f0fdf4;
+      color: #166534;
+      font-size: 11px;
+      font-weight: 950;
+    }
+    .automation-overview-status.warning {
+      border-color: #fed7aa;
+      background: #fff7ed;
+      color: #9a3412;
+    }
+    .automation-overview-list {
+      display: grid;
+      gap: 7px;
+    }
+    .automation-overview-item {
+      display: grid;
+      grid-template-columns: 86px minmax(0, 1fr);
+      gap: 8px;
+      align-items: start;
+      padding: 8px;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      background: #f8fafc;
+    }
+    .automation-overview-item.warning,
+    .automation-overview-item.critical {
+      border-color: #fed7aa;
+      background: #fff7ed;
+    }
+    .automation-overview-label {
+      color: #64748b;
+      font-size: 11px;
+      font-weight: 950;
+    }
+    .automation-overview-text {
+      min-width: 0;
+      color: #0f172a;
+      font-size: 12px;
+      font-weight: 900;
+      line-height: 1.45;
+    }
+    .automation-overview-text span {
+      display: block;
+      margin-top: 2px;
+      color: #64748b;
+      font-weight: 800;
+    }
     .company-notice {
       margin: 0;
       min-height: 210px;
@@ -5155,6 +5963,17 @@ HTML = r"""<!doctype html>
       stroke-width: 2.2;
       stroke-linecap: round;
       stroke-linejoin: round;
+      vector-effect: non-scaling-stroke;
+    }
+    .dashboard-recent-bar {
+      fill: rgba(37, 99, 235, .24);
+      stroke: rgba(37, 99, 235, .24);
+      stroke-width: 0;
+    }
+    .dashboard-recent-bar.latest {
+      fill: rgba(5, 150, 105, .38);
+      stroke: rgba(5, 150, 105, .42);
+      stroke-width: .6;
       vector-effect: non-scaling-stroke;
     }
     .dashboard-recent-points {
@@ -7192,6 +8011,281 @@ HTML = r"""<!doctype html>
       grid-template-columns: minmax(0, 1.1fr) minmax(0, .9fr);
       gap: 12px;
     }
+    .crm-daily-toolbar {
+      display: grid;
+      grid-template-columns: 160px minmax(180px, 240px) auto auto;
+      gap: 8px;
+      align-items: center;
+      margin-bottom: 12px;
+    }
+    .crm-daily-layout {
+      display: grid;
+      grid-template-columns: minmax(280px, 380px) minmax(0, 1fr);
+      gap: 12px;
+      align-items: start;
+    }
+    .crm-daily-widget {
+      border-radius: 8px;
+      box-shadow: 0 10px 26px rgba(15, 23, 42, .07);
+    }
+    .crm-daily-form {
+      position: sticky;
+      top: 12px;
+      align-self: start;
+    }
+    .crm-daily-form .crm-card-body {
+      display: grid;
+      gap: 10px;
+    }
+    .crm-daily-form .crm-textarea {
+      min-height: 132px;
+    }
+    .crm-daily-field {
+      display: grid;
+      gap: 5px;
+      margin: 0;
+    }
+    .crm-daily-field > span {
+      color: #334155;
+      font-size: 12px;
+      font-weight: 950;
+    }
+    .crm-daily-name {
+      display: grid;
+      gap: 3px;
+      text-align: left;
+    }
+    .crm-daily-name strong {
+      font-size: 13px;
+      color: var(--text);
+    }
+    .crm-daily-name span {
+      font-size: 12px;
+      color: var(--muted);
+    }
+    .crm-daily-preview {
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+      min-width: 180px;
+      color: #334155;
+    }
+    .crm-daily-preview.empty {
+      color: #94a3b8;
+    }
+    .crm-daily-list-panel {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: white;
+      overflow: hidden;
+    }
+    .crm-daily-log-list {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(min(100%, 380px), 1fr));
+      align-items: start;
+      gap: 12px;
+      padding: 12px;
+      background: #f8fafc;
+    }
+    .crm-daily-log-empty {
+      padding: 24px 12px;
+      color: #94a3b8;
+      font-size: 13px;
+      font-weight: 850;
+      text-align: center;
+    }
+    .crm-daily-log-card {
+      display: grid;
+      gap: 10px;
+      min-width: 0;
+      padding: 14px;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      background: #fff;
+      box-shadow: 0 8px 20px rgba(15, 23, 42, .05);
+    }
+    .crm-daily-log-card.has-entry {
+      border-color: #bfdbfe;
+      box-shadow: 0 12px 28px rgba(37, 99, 235, .10);
+    }
+    @media (min-width: 1180px) {
+      .crm-daily-log-card.has-entry {
+        grid-column: span 2;
+      }
+    }
+    .crm-daily-log-card.is-missing {
+      background: #fcfdff;
+      box-shadow: 0 6px 14px rgba(15, 23, 42, .035);
+    }
+    .crm-daily-log-card-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      align-items: flex-start;
+    }
+    .crm-daily-log-card-actions {
+      display: flex;
+      flex-shrink: 0;
+      gap: 6px;
+      align-items: center;
+    }
+    .crm-daily-log-card-body {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 12px;
+    }
+    .crm-daily-log-section {
+      display: grid;
+      gap: 8px;
+      min-width: 0;
+      padding: 12px;
+      border: 1px solid #e5e7eb;
+      border-radius: 7px;
+      background: #fbfcff;
+    }
+    .crm-daily-log-card.has-entry .crm-daily-log-section.has-content {
+      border-color: #dbeafe;
+      background: #f8fbff;
+    }
+    .crm-daily-log-section-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+      align-items: center;
+      min-width: 0;
+    }
+    .crm-daily-log-section > span {
+      color: #475467;
+      font-size: 11px;
+      font-weight: 950;
+    }
+    .crm-daily-log-section-head > span {
+      color: #475467;
+      font-size: 11px;
+      font-weight: 950;
+    }
+    .crm-daily-log-section-tools {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      flex-shrink: 0;
+    }
+    .crm-daily-log-line-count {
+      display: inline-flex;
+      align-items: center;
+      min-height: 24px;
+      padding: 0 8px;
+      border-radius: 999px;
+      background: #e0f2fe;
+      color: #0369a1;
+      font-size: 11px;
+      font-weight: 950;
+    }
+    .crm-daily-log-text {
+      position: relative;
+      min-height: 44px;
+      max-width: 100%;
+      color: #27364a;
+      font-size: 13px;
+      font-weight: 800;
+      line-height: 1.7;
+      white-space: pre-line;
+      word-break: normal;
+      overflow-wrap: anywhere;
+      text-wrap: pretty;
+    }
+    .crm-daily-log-line-list {
+      display: grid;
+      gap: 7px;
+    }
+    .crm-daily-log-line {
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr);
+      gap: 8px;
+      align-items: start;
+      min-width: 0;
+      padding: 8px 9px;
+      border: 1px solid #e5edf8;
+      border-radius: 7px;
+      background: #fff;
+    }
+    .crm-daily-log-line-index {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 22px;
+      height: 22px;
+      border-radius: 999px;
+      background: #eff6ff;
+      color: #2563eb;
+      font-size: 11px;
+      font-weight: 950;
+    }
+    .crm-daily-log-line-text {
+      min-width: 0;
+      color: #1f2a3d;
+      line-height: 1.58;
+    }
+    .crm-daily-log-text.is-collapsed {
+      max-height: 10.2em;
+      overflow: hidden;
+      -webkit-mask-image: linear-gradient(180deg, #000 72%, transparent);
+      mask-image: linear-gradient(180deg, #000 72%, transparent);
+    }
+    .crm-daily-log-section.expanded .crm-daily-log-text {
+      max-height: none;
+      overflow: visible;
+      -webkit-mask-image: none;
+      mask-image: none;
+    }
+    .crm-daily-log-text.empty {
+      color: #94a3b8;
+      font-weight: 800;
+    }
+    .crm-daily-log-toggle {
+      flex: 0 0 auto;
+      min-height: 24px;
+      padding: 0 9px;
+      border: 1px solid #bfdbfe;
+      border-radius: 999px;
+      background: #eff6ff;
+      color: #1d4ed8;
+      font-size: 11px;
+      font-weight: 950;
+      cursor: pointer;
+    }
+    .crm-daily-log-toggle:hover {
+      background: #dbeafe;
+      border-color: #93c5fd;
+    }
+    .crm-daily-report {
+      display: grid;
+      gap: 5px;
+      text-align: left;
+      min-width: 240px;
+    }
+    .crm-daily-report-top {
+      display: flex;
+      gap: 6px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    .crm-daily-report-title {
+      color: #0f172a;
+      font-size: 13px;
+      font-weight: 950;
+    }
+    .crm-daily-report-title.empty {
+      color: #94a3b8;
+      font-weight: 800;
+    }
+    .crm-daily-report-sub {
+      color: #64748b;
+      font-size: 12px;
+      font-weight: 800;
+      line-height: 1.4;
+    }
     .crm-card {
       border: 1px solid var(--line);
       border-radius: 8px;
@@ -7755,6 +8849,8 @@ HTML = r"""<!doctype html>
       .company-staff-layout { grid-template-columns: 1fr; }
       .crm-task-toolbar { grid-template-columns: repeat(3, minmax(0, 1fr)); }
       .crm-advanced-filters { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+      .crm-daily-layout { grid-template-columns: 1fr; }
+      .crm-daily-toolbar { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       .crm-project-row { grid-template-columns: 1fr; }
       .crm-project-metrics { justify-content: flex-start; }
     }
@@ -7799,6 +8895,27 @@ HTML = r"""<!doctype html>
       .internal-chat-form { grid-template-columns: 1fr; }
       .crm-task-toolbar { grid-template-columns: 1fr; }
       .crm-advanced-filters { grid-template-columns: 1fr; }
+      .crm-daily-toolbar { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 760px) {
+      .crm-daily-log-list {
+        padding: 10px;
+      }
+      .crm-daily-log-card-head {
+        display: grid;
+      }
+      .crm-daily-log-card-actions {
+        justify-content: space-between;
+      }
+      .crm-daily-log-card-actions .crm-mini-button {
+        min-width: 86px;
+      }
+      .crm-daily-log-card-body {
+        grid-template-columns: 1fr;
+      }
+      .crm-daily-log-section {
+        padding: 9px;
+      }
     }
     .crm-help {
       margin: 0;
@@ -8315,7 +9432,9 @@ HTML = r"""<!doctype html>
         <div class="nav-submenu">
           <button class="nav-subitem" type="button" data-open="crm" data-crm-nav-tab="dashboard">업무 현황</button>
           <button class="nav-subitem" type="button" data-open="crm" data-crm-nav-tab="mine">내 업무</button>
+          <button class="nav-subitem" type="button" data-open="crm" data-crm-nav-tab="daily">일일 업무일지</button>
           <button class="nav-subitem" type="button" data-open="crm" data-crm-nav-tab="tasks">업무보드</button>
+          <button class="nav-subitem" type="button" data-open="fileLibrary">업무 파일</button>
           <button class="nav-subitem" type="button" data-open="crm" data-crm-nav-tab="accounts">직원 현황</button>
           <button class="nav-subitem" type="button" data-open="crm" data-crm-nav-tab="messages">메신저 연동</button>
         </div>
@@ -8423,7 +9542,7 @@ HTML = r"""<!doctype html>
                 <div class="dashboard-sales-insights" aria-label="매출 보조 지표">
                   <div class="dashboard-sales-insight sales-insight-revenue"><div class="dashboard-sales-insight-top"><span class="dashboard-sales-insight-icon"><i data-lucide="circle-dollar-sign"></i></span><span>매출처 합계</span></div><strong id="dashboardSellerTotal">-</strong></div>
                   <div class="dashboard-sales-insight sales-insight-purchase"><div class="dashboard-sales-insight-top"><span class="dashboard-sales-insight-icon"><i data-lucide="truck"></i></span><span>매입처 총액</span></div><strong id="dashboardSupplierPurchase">-</strong></div>
-                  <div class="dashboard-sales-insight sales-insight-margin"><div class="dashboard-sales-insight-top"><span class="dashboard-sales-insight-icon"><i data-lucide="bar-chart-3"></i></span><span>월 손익마진</span></div><strong id="dashboardSalesMargin">-</strong></div>
+                  <div class="dashboard-sales-insight sales-insight-margin"><div class="dashboard-sales-insight-top"><span class="dashboard-sales-insight-icon"><i data-lucide="bar-chart-3"></i></span><span>월 손익마진(택배비 제외)</span></div><strong id="dashboardSalesMargin">-</strong></div>
                 </div>
                 <div class="dashboard-sales-placeholder" id="dashboardSalesMessage">매출현황 및 관리 데이터 연결 대기 중</div>
               </div>
@@ -8435,6 +9554,17 @@ HTML = r"""<!doctype html>
               <div class="notice-board-title">등록된 공지 없음</div>
               <div class="notice-board-body">공지사항 입력 버튼을 눌러 내용을 입력해주세요.</div>
             </section>
+            <article class="company-card automation-overview-card" id="automationOverviewCard">
+              <div class="company-card-head"><span>업무 자동화 점검</span><span class="automation-overview-status" id="automationOverviewStatus">대기</span></div>
+              <div class="company-card-body">
+                <div class="automation-overview-list" id="automationOverviewBody">
+                  <div class="automation-overview-item">
+                    <div class="automation-overview-label">점검</div>
+                    <div class="automation-overview-text">업무 자동화 상태를 불러오는 중입니다.</div>
+                  </div>
+                </div>
+              </div>
+            </article>
           </div>
 
           <section class="import-progress-card dashboard-import-card open" id="dashboardImportScheduleCard">
@@ -8840,6 +9970,7 @@ HTML = r"""<!doctype html>
         <div class="crm-tabs" role="tablist" aria-label="CRM 메뉴">
           <button class="crm-tab active" type="button" role="tab" id="crmTabDashboard" aria-selected="true" aria-controls="crmPanelDashboard" tabindex="0" data-crm-tab="dashboard">업무 현황</button>
           <button class="crm-tab" type="button" role="tab" id="crmTabMine" aria-selected="false" aria-controls="crmPanelMine" tabindex="-1" data-crm-tab="mine">내 업무</button>
+          <button class="crm-tab" type="button" role="tab" id="crmTabDaily" aria-selected="false" aria-controls="crmPanelDaily" tabindex="-1" data-crm-tab="daily">일일 업무일지</button>
           <button class="crm-tab" type="button" role="tab" id="crmTabTasks" aria-selected="false" aria-controls="crmPanelTasks" tabindex="-1" data-crm-tab="tasks">업무보드</button>
           <button class="crm-tab" type="button" role="tab" id="crmTabAccounts" aria-selected="false" aria-controls="crmPanelAccounts" tabindex="-1" data-crm-tab="accounts">직원 현황</button>
           <button class="crm-tab" type="button" role="tab" id="crmMessagesTab" aria-selected="false" aria-controls="crmPanelMessages" tabindex="-1" data-crm-tab="messages">연동 로그</button>
@@ -8890,6 +10021,43 @@ HTML = r"""<!doctype html>
               <thead><tr><th>번호</th><th>업무 구분</th><th>업무</th><th>마감</th><th>상태</th><th>우선순위</th><th>처리</th></tr></thead>
               <tbody id="crmMineTaskBody"></tbody>
             </table>
+          </div>
+        </section>
+
+        <section class="crm-panel" role="tabpanel" id="crmPanelDaily" aria-labelledby="crmTabDaily" tabindex="0" data-crm-panel="daily">
+          <div class="crm-daily-toolbar">
+            <input class="crm-input" id="crmDailyLogDate" type="date" />
+            <select class="crm-select" id="crmDailyLogUserFilter"><option value="">직원 전체</option></select>
+            <button class="crm-mini-button primary" type="button" id="crmDailyLogRefresh">조회</button>
+            <button class="crm-mini-button" type="button" id="crmDailyLogReset">작성 초기화</button>
+          </div>
+          <div class="crm-daily-layout">
+            <form class="crm-card crm-daily-form crm-daily-widget" id="crmDailyLogForm">
+              <div class="crm-card-head">
+                <span>업무일지</span>
+                <span class="crm-mini-actions">
+                  <button class="crm-mini-button primary" type="submit">저장</button>
+                </span>
+              </div>
+              <div class="crm-card-body">
+                <select class="crm-select" id="crmDailyLogUser"></select>
+                <label class="crm-daily-field" for="crmDailyCompletedWork">
+                  <span>오늘 한 일</span>
+                  <textarea class="crm-textarea" id="crmDailyCompletedWork" placeholder="오늘 처리한 업무를 적어줘"></textarea>
+                </label>
+                <label class="crm-daily-field" for="crmDailyNextPlan">
+                  <span>내일 할 일</span>
+                  <textarea class="crm-textarea" id="crmDailyNextPlan" placeholder="내일 이어서 할 업무를 적어줘"></textarea>
+                </label>
+              </div>
+            </form>
+            <div>
+              <div class="crm-task-board-stats" id="crmDailyLogStats"></div>
+              <section class="crm-daily-list-panel crm-daily-widget">
+                <div class="crm-card-head"><span>직원별 일일 업무일지</span><span id="crmDailyLogDateLabel">오늘</span></div>
+                <div class="crm-daily-log-list" id="crmDailyLogBody"></div>
+              </section>
+            </div>
           </div>
         </section>
 
@@ -9128,6 +10296,18 @@ HTML = r"""<!doctype html>
     </section>
   </div>
 
+  <div class="notice-popup-backdrop" id="salesDetailPopup" aria-hidden="true">
+    <div class="notice-popup sales-detail-popup" role="dialog" aria-modal="true" aria-labelledby="salesDetailTitle">
+      <div class="notice-popup-head">
+        <span id="salesDetailTitle">매출 상세</span>
+        <button class="close popup-close-button" id="salesDetailClose" type="button" aria-label="닫기"><i data-lucide="x"></i></button>
+      </div>
+      <div class="sales-detail-body" id="salesDetailBody">
+        <div class="admin-message">상세 데이터를 불러오는 중입니다.</div>
+      </div>
+    </div>
+  </div>
+
   <div class="search-result-backdrop" id="searchResultDialog" aria-hidden="true">
     <section class="search-result-dialog" role="dialog" aria-modal="true" aria-labelledby="searchResultTitle">
       <div class="search-result-head">
@@ -9182,6 +10362,7 @@ HTML = r"""<!doctype html>
         <div class="notice-template-actions">
           <button class="workspace-button" type="button" id="cargoVehicleReceiptLink">인수증 출력 연결</button>
           <button class="workspace-button" type="button" id="cargoShipmentReset">초기화</button>
+          <button class="workspace-button danger" type="button" id="cargoShipmentDelete" hidden>삭제</button>
           <button class="workspace-button" type="button" id="cargoShipmentSave">저장</button>
         </div>
       </div>
@@ -9219,6 +10400,7 @@ HTML = r"""<!doctype html>
         </div>
         <div class="notice-template-actions">
           <button class="workspace-button" type="button" id="importShipmentReset">초기화</button>
+          <button class="workspace-button danger" type="button" id="importShipmentDelete" hidden>삭제</button>
           <button class="workspace-button" type="button" id="importShipmentSave">저장</button>
         </div>
       </div>
@@ -9560,6 +10742,10 @@ HTML = r"""<!doctype html>
             <label class="field-label" for="stockBodyInput">공지 내용</label>
             <textarea id="stockBodyInput"></textarea>
           </div>
+          <div class="cs-case-list">
+            <div class="cs-case-head">최근 입고/품절 발송 이력</div>
+            <div id="stockMailHistoryList"></div>
+          </div>
         </div>
         <div class="ledger-fields" id="ledgerFields">
           <div class="ledger-toolbar">
@@ -9574,8 +10760,8 @@ HTML = r"""<!doctype html>
             <button class="btn blue" id="ledgerRefresh" type="button">조회</button>
             <select id="ledgerPageSize">
               <option value="100">100개씩 보기</option>
-              <option value="500">500개씩 보기</option>
-              <option value="1000" selected>1,000개씩 보기</option>
+              <option value="500" selected>500개씩 보기</option>
+              <option value="1000">1,000개씩 보기</option>
               <option value="2000">2,000개씩 보기</option>
               <option value="5000">5,000개씩 보기</option>
             </select>
@@ -9621,6 +10807,7 @@ HTML = r"""<!doctype html>
                 <col class="address-col" />
                 <col class="courier-col" />
                 <col class="original-invoice-col" />
+                <col class="action-col" />
               </colgroup>
               <thead>
                 <tr>
@@ -9645,6 +10832,7 @@ HTML = r"""<!doctype html>
                   <th class="has-filter"><span class="ledger-th-title">상세주소</span><button class="ledger-filter-trigger" type="button" data-ledger-filter-button="receiver_address" data-label="상세주소">▼</button></th>
                   <th class="has-filter"><span class="ledger-th-title">택배사</span><button class="ledger-filter-trigger" type="button" data-ledger-filter-button="courier" data-label="택배사">▼</button></th>
                   <th class="has-filter"><span class="ledger-th-title">송장번호</span><button class="ledger-filter-trigger" type="button" data-ledger-filter-button="original_invoice" data-label="송장번호">▼</button></th>
+                  <th>수정</th>
                 </tr>
               </thead>
               <tbody id="ledgerBody"></tbody>
@@ -9658,13 +10846,13 @@ HTML = r"""<!doctype html>
               <option value="">년도 선택</option>
             </select>
             <select id="managementMonthFilter">
-              <option value="">전체 선택</option>
+              <option value="">월 데이터 없음</option>
             </select>
             <button class="btn blue" id="managementRefresh" type="button">조회</button>
             <select id="managementPageSize">
               <option value="100">100개씩 보기</option>
-              <option value="500">500개씩 보기</option>
-              <option value="1000" selected>1,000개씩 보기</option>
+              <option value="500" selected>500개씩 보기</option>
+              <option value="1000">1,000개씩 보기</option>
               <option value="2000">2,000개씩 보기</option>
               <option value="5000">5,000개씩 보기</option>
             </select>
@@ -9738,6 +10926,9 @@ HTML = r"""<!doctype html>
         <div class="ledger-filter-popover" id="ledgerFilterPopover">
           <div class="ledger-filter-title" id="ledgerFilterTitle">필터</div>
           <input class="ledger-filter-search" id="ledgerFilterSearch" type="text" placeholder="검색어 입력" />
+          <div class="ledger-filter-color" id="managementFilterColorControls">
+            <button type="button" id="managementFilterColoredOnly">색상 표시된 셀만</button>
+          </div>
           <div class="ledger-filter-option-list" id="ledgerFilterOptions"></div>
           <div class="ledger-filter-actions">
             <button type="button" id="ledgerFilterClear">현재 초기화</button>
@@ -10132,10 +11323,19 @@ HTML = r"""<!doctype html>
     const vendorContactsFileInput = document.querySelector("#vendorContactsFileInput");
     const vendorContactsDropMain = document.querySelector("#vendorContactsDropMain");
     const salesReportFileInput = document.querySelector("#salesReportFileInput");
+    const salesReportManualUpload = document.querySelector("#salesReportManualUpload");
     const salesReportUploadMessage = document.querySelector("#salesReportUploadMessage");
     const salesReportRecentList = document.querySelector("#salesReportRecentList");
     const salesReportDashboard = document.querySelector("#salesReportDashboard");
+    const salesReportPeriodLabel = document.querySelector("#salesReportPeriodLabel");
+    const salesReportPeriodSelect = document.querySelector("#salesReportPeriodSelect");
     const salesReportKpiGrid = document.querySelector("#salesReportKpiGrid");
+    const salesReportMarginDiagnosis = document.querySelector("#salesReportMarginDiagnosis");
+    const salesDetailPopup = document.querySelector("#salesDetailPopup");
+    const salesDetailPanel = document.querySelector("#salesDetailPopup .sales-detail-popup");
+    const salesDetailTitle = document.querySelector("#salesDetailTitle");
+    const salesDetailBody = document.querySelector("#salesDetailBody");
+    const salesDetailClose = document.querySelector("#salesDetailClose");
     const dashboardSalesStatus = document.querySelector("#dashboardSalesStatus");
     const dashboardTodaySalesLabel = document.querySelector("#dashboardTodaySalesLabel");
     const dashboardTodaySales = document.querySelector("#dashboardTodaySales");
@@ -10169,6 +11369,8 @@ HTML = r"""<!doctype html>
     const dashboardDecisionPurchaseChip = document.querySelector("#dashboardDecisionPurchaseChip");
     const dashboardDecisionMarginChip = document.querySelector("#dashboardDecisionMarginChip");
     const dashboardSalesMessage = document.querySelector("#dashboardSalesMessage");
+    const automationOverviewStatus = document.querySelector("#automationOverviewStatus");
+    const automationOverviewBody = document.querySelector("#automationOverviewBody");
     const salesReportDailyBody = document.querySelector("#salesReportDailyBody");
     const salesReportSellerBody = document.querySelector("#salesReportSellerBody");
     const salesReportProductBody = document.querySelector("#salesReportProductBody");
@@ -10234,6 +11436,7 @@ HTML = r"""<!doctype html>
     const stockSoldoutNoteInput = document.querySelector("#stockSoldoutNoteInput");
     const stockSubjectInput = document.querySelector("#stockSubjectInput");
     const stockBodyInput = document.querySelector("#stockBodyInput");
+    const stockMailHistoryList = document.querySelector("#stockMailHistoryList");
     const ledgerCsPopupClose = document.querySelector("#ledgerCsPopupClose");
     const managementManualClose = document.querySelector("#managementManualClose");
     const ledgerSearchInput = document.querySelector("#ledgerSearchInput");
@@ -10276,6 +11479,8 @@ HTML = r"""<!doctype html>
     const ledgerFilterTitle = document.querySelector("#ledgerFilterTitle");
     const ledgerFilterSearch = document.querySelector("#ledgerFilterSearch");
     const ledgerFilterOptions = document.querySelector("#ledgerFilterOptions");
+    const managementFilterColorControls = document.querySelector("#managementFilterColorControls");
+    const managementFilterColoredOnly = document.querySelector("#managementFilterColoredOnly");
     const ledgerFilterClear = document.querySelector("#ledgerFilterClear");
     const ledgerFilterResetAll = document.querySelector("#ledgerFilterResetAll");
     const ledgerFilterApply = document.querySelector("#ledgerFilterApply");
@@ -10396,6 +11601,7 @@ HTML = r"""<!doctype html>
     const cargoShipmentClose = document.querySelector("#cargoShipmentClose");
     const cargoShipmentSave = document.querySelector("#cargoShipmentSave");
     const cargoShipmentReset = document.querySelector("#cargoShipmentReset");
+    const cargoShipmentDelete = document.querySelector("#cargoShipmentDelete");
     const cargoVehicleReceiptLink = document.querySelector("#cargoVehicleReceiptLink");
     const cargoShipmentId = document.querySelector("#cargoShipmentId");
     let cargoShipmentMode = "outbound";
@@ -10426,6 +11632,7 @@ HTML = r"""<!doctype html>
     const importShipmentClose = document.querySelector("#importShipmentClose");
     const importShipmentSave = document.querySelector("#importShipmentSave");
     const importShipmentReset = document.querySelector("#importShipmentReset");
+    const importShipmentDelete = document.querySelector("#importShipmentDelete");
     const importShipmentId = document.querySelector("#importShipmentId");
     const importDepartureDate = document.querySelector("#importDepartureDate");
     const importArrivalDate = document.querySelector("#importArrivalDate");
@@ -10466,10 +11673,24 @@ HTML = r"""<!doctype html>
     const hermesChatInput = document.querySelector("#hermesChatInput");
     const hermesChatSend = document.querySelector("#hermesChatSend");
     const hermesChatResponse = document.querySelector("#hermesChatResponse");
+    const hermesChatTranscript = document.querySelector("#hermesChatTranscript");
+    const hermesChatClose = document.querySelector("#hermesChatClose");
+    const hermesChatModeButtons = Array.from(document.querySelectorAll("[data-hermes-chat-mode]"));
+    const hermesChatModeHint = document.querySelector("#hermesChatModeHint");
     const hermesAutomationTitle = document.querySelector("#hermesAutomationTitle");
     const hermesAutomationBody = document.querySelector("#hermesAutomationBody");
     const hermesAutomationSend = document.querySelector("#hermesAutomationSend");
     const hermesAutomationResponse = document.querySelector("#hermesAutomationResponse");
+    const hermesActionSelect = document.querySelector("#hermesActionSelect");
+    const hermesActionTaskTitle = document.querySelector("#hermesActionTaskTitle");
+    const hermesActionTaskAssignee = document.querySelector("#hermesActionTaskAssignee");
+    const hermesActionTaskDue = document.querySelector("#hermesActionTaskDue");
+    const hermesActionTaskPriority = document.querySelector("#hermesActionTaskPriority");
+    const hermesActionTaskStatus = document.querySelector("#hermesActionTaskStatus");
+    const hermesActionTaskDescription = document.querySelector("#hermesActionTaskDescription");
+    const hermesActionPreview = document.querySelector("#hermesActionPreview");
+    const hermesActionExecute = document.querySelector("#hermesActionExecute");
+    const hermesActionResult = document.querySelector("#hermesActionResult");
     const hermesHistoryFilter = document.querySelector("#hermesHistoryFilter");
     const hermesSummaryCreate = document.querySelector("#hermesSummaryCreate");
     const hermesSummaryList = document.querySelector("#hermesSummaryList");
@@ -10525,6 +11746,7 @@ HTML = r"""<!doctype html>
     const leaveMessage = document.querySelector("#leaveMessage");
     const leaveNotificationList = document.querySelector("#leaveNotificationList");
     const leaveBalanceBody = document.querySelector("#leaveBalanceBody");
+    const leaveMineUsageBody = document.querySelector("#leaveMineUsageBody");
     const leaveHistoryBody = document.querySelector("#leaveHistoryBody");
     const leaveApprovalBody = document.querySelector("#leaveApprovalBody");
     const leaveTypeSelect = document.querySelector("#leaveTypeSelect");
@@ -10549,6 +11771,8 @@ HTML = r"""<!doctype html>
     const leaveHolidaySubstituteInput = document.querySelector("#leaveHolidaySubstituteInput");
     const leaveHolidaySave = document.querySelector("#leaveHolidaySave");
     const leaveAdminBalanceBody = document.querySelector("#leaveAdminBalanceBody");
+    const leaveAdminUsageTitle = document.querySelector("#leaveAdminUsageTitle");
+    const leaveAdminUsageBody = document.querySelector("#leaveAdminUsageBody");
     const leaveTabs = Array.from(document.querySelectorAll("[data-leave-tab]"));
     const backupRefresh = document.querySelector("#backupRefresh");
     const backupCreate = document.querySelector("#backupCreate");
@@ -10643,6 +11867,20 @@ HTML = r"""<!doctype html>
     const crmTaskDetail = document.querySelector("#crmTaskDetail");
     const crmMineStats = document.querySelector("#crmMineStats");
     const crmMineTaskBody = document.querySelector("#crmMineTaskBody");
+    const crmDailyLogDate = document.querySelector("#crmDailyLogDate");
+    const crmDailyLogUserFilter = document.querySelector("#crmDailyLogUserFilter");
+    const crmDailyLogRefresh = document.querySelector("#crmDailyLogRefresh");
+    const crmDailyLogReset = document.querySelector("#crmDailyLogReset");
+    const crmDailyLogForm = document.querySelector("#crmDailyLogForm");
+    const crmDailyLogUser = document.querySelector("#crmDailyLogUser");
+    const crmDailyWorkSummary = document.querySelector("#crmDailyWorkSummary");
+    const crmDailyCompletedWork = document.querySelector("#crmDailyCompletedWork");
+    const crmDailyOngoingWork = document.querySelector("#crmDailyOngoingWork");
+    const crmDailyBlockers = document.querySelector("#crmDailyBlockers");
+    const crmDailyNextPlan = document.querySelector("#crmDailyNextPlan");
+    const crmDailyLogStats = document.querySelector("#crmDailyLogStats");
+    const crmDailyLogBody = document.querySelector("#crmDailyLogBody");
+    const crmDailyLogDateLabel = document.querySelector("#crmDailyLogDateLabel");
     const crmWebhookUrl = document.querySelector("#crmWebhookUrl");
     const crmWebhookUrlCopy = document.querySelector("#crmWebhookUrlCopy");
     const crmWebhookHeader = document.querySelector("#crmWebhookHeader");
@@ -10673,6 +11911,10 @@ HTML = r"""<!doctype html>
     let ledgerUploadInProgress = false;
     let managementUploadInProgress = false;
     let leaveAdminUsers = [];
+    let leaveAdminUsageRequests = {};
+    let selectedLeaveAdminUsageUserId = "";
+    let leaveNotificationPollTimer = null;
+    const leaveNotificationPopupShownIds = new Set();
     let managementPeriods = [];
     let importShipments = [];
     let userAccounts = [];
@@ -10680,6 +11922,8 @@ HTML = r"""<!doctype html>
     let crmAccounts = [];
     let crmTasks = [];
     let crmMineTasks = [];
+    let crmDailyLogs = [];
+    let crmDailyLogPayload = null;
     let crmProjectProgress = [];
     let crmUsers = [];
     let internalChatUsers = [];
@@ -10702,6 +11946,10 @@ HTML = r"""<!doctype html>
     let crmActiveTab = "dashboard";
     let hermesActiveTab = "chat";
     let hermesHistoryItems = [];
+    let hermesChatMessages = [];
+    let hermesChatPending = false;
+    let hermesChatSessionId = 0;
+    let hermesChatMode = "auto";
     let crmSelectedTaskId = "";
     const CRM_TASK_STATUSES = ["대기", "진행중", "보류", "완료"];
     const CRM_TASK_BUILTIN_VIEWS = [
@@ -10732,11 +11980,26 @@ HTML = r"""<!doctype html>
       ledger: null,
       management: null,
     };
+    const sheetRangeSelection = {
+      scope: "",
+      anchor: null,
+      current: null,
+      cells: [],
+      dragging: false,
+      moved: false,
+      suppressClick: false,
+      summary: null,
+    };
     const ledgerFilters = {};
     const managementFilters = {};
+    const managementColorFilters = {};
+    let managementColorFilterDuplicateCounts = new Map();
+    let managementFilterOptionRequestId = 0;
+    let pendingManagementHighlightId = "";
     let isBulkSaving = false;
     let isNavigationSaving = false;
     let activeVendorManageType = "purchase";
+    let portalNoticeRows = [];
 
     if (managementWorkspaceMount && managementFields) managementWorkspaceMount.appendChild(managementFields);
     if (ledgerWorkspaceMount && ledgerFields) ledgerWorkspaceMount.appendChild(ledgerFields);
@@ -10751,6 +12014,9 @@ HTML = r"""<!doctype html>
     renderManagementPeriodControls();
     applyStaticPermissions();
     loadNoticeTemplate();
+    loadPortalNotices().catch((error) => {
+      notice.textContent = error.message || "공지사항을 불러오지 못했습니다.";
+    });
     loadImportShipments();
     loadCargoShipments();
 
@@ -10820,16 +12086,32 @@ HTML = r"""<!doctype html>
         .sort();
     }
 
+    function defaultManagementPeriod() {
+      const period = managementPeriods[0] || {};
+      const year = String(period.year || "");
+      const month = String(period.month || "").padStart(2, "0");
+      return year && month ? { year, month } : { year: "", month: "" };
+    }
+
     function selectedManagementPeriod() {
       const selectedOption = managementMonthFilter?.selectedOptions?.[0];
       const optionYear = selectedOption?.dataset?.year || "";
       const optionMonth = selectedOption?.dataset?.month || "";
       if (optionYear && optionMonth) return { year: optionYear, month: optionMonth };
       const value = managementMonthFilter?.value || "";
-      if (!value) return { year: "", month: "" };
+      if (!value) return defaultManagementPeriod();
       const match = value.match(/^(\d{4})-(\d{2})$/);
       if (match) return { year: match[1], month: match[2] };
       return { year: managementYearFilter?.value || "", month: "" };
+    }
+
+    function appendManagementFilterParams(params, { excludeField = "" } = {}) {
+      Object.entries(managementFilters).forEach(([field, value]) => {
+        const normalized = String(value || "").trim();
+        if (!normalized || field === excludeField) return;
+        params.set(`filter_${field}`, normalized);
+      });
+      return params;
     }
 
     function setManagementPeriod(year, month) {
@@ -10854,9 +12136,10 @@ HTML = r"""<!doctype html>
         const month = String(period.month || "").padStart(2, "0");
         return `<option value="${escapeHtml(`${year}-${month}`)}" data-year="${escapeHtml(year)}" data-month="${escapeHtml(month)}">${escapeHtml(year)}년 ${Number(month)}월</option>`;
       }).join("");
-      managementMonthFilter.innerHTML = `<option value="">전체 선택</option>${periodOptions}`;
-      if (previousPeriod.year && previousPeriod.month) {
-        const value = `${previousPeriod.year}-${previousPeriod.month}`;
+      managementMonthFilter.innerHTML = periodOptions || `<option value="">월 데이터 없음</option>`;
+      const nextPeriod = previousPeriod.year && previousPeriod.month ? previousPeriod : defaultManagementPeriod();
+      if (nextPeriod.year && nextPeriod.month) {
+        const value = `${nextPeriod.year}-${nextPeriod.month}`;
         managementMonthFilter.value = Array.from(managementMonthFilter.options).some((option) => option.value === value) ? value : "";
       } else {
         managementMonthFilter.value = "";
@@ -11352,7 +12635,41 @@ HTML = r"""<!doctype html>
     function selectLeaveAdminUser(userId) {
       if (!leaveAdminUserSelect) return;
       leaveAdminUserSelect.value = String(userId || "");
+      selectedLeaveAdminUsageUserId = String(userId || "");
       renderLeaveAdminUserList(leaveAdminUserSearch?.value || "");
+      renderLeaveAdminUsage(selectedLeaveAdminUsageUserId);
+    }
+
+    function leaveDateRangeText(row) {
+      const start = row.start_date || "";
+      const end = row.end_date || "";
+      return start && end && start !== end ? `${start} ~ ${end}` : start || end || "";
+    }
+
+    function renderLeaveAdminUsage(userId = "") {
+      if (!leaveAdminUsageBody) return;
+      const selectedId = String(userId || selectedLeaveAdminUsageUserId || leaveAdminUserSelect?.value || "");
+      selectedLeaveAdminUsageUserId = selectedId;
+      const selectedUser = leaveAdminUsers.find((user) => String(user.id) === selectedId);
+      if (leaveAdminUsageTitle) {
+        leaveAdminUsageTitle.textContent = selectedUser
+          ? `${selectedUser.display_name || selectedUser.username} 사용일자`
+          : "선택 직원 사용일자";
+      }
+      document.querySelectorAll("[data-leave-admin-balance-user]").forEach((row) => {
+        row.classList.toggle("selected", row.dataset.leaveAdminBalanceUser === selectedId);
+      });
+      const rows = (leaveAdminUsageRequests[selectedId] || []).filter((row) => row.status === "APPROVED" && Number(row.requested_days || 0) > 0);
+      leaveAdminUsageBody.innerHTML = rows.length
+        ? rows.map((row) => `
+          <tr>
+            <td><strong>${escapeHtml(leaveDateRangeText(row))}</strong></td>
+            <td>${escapeHtml(row.unit_label)}</td>
+            <td>${dayText(row.requested_days)}</td>
+            <td>${escapeHtml(row.reason)}</td>
+          </tr>
+        `).join("")
+        : `<tr><td colspan="4">${selectedUser ? "반영된 사용일자가 없습니다." : "직원별 현황에서 직원을 선택해주세요."}</td></tr>`;
     }
 
     function setLeaveTab(tabName) {
@@ -11365,6 +12682,99 @@ HTML = r"""<!doctype html>
       });
     }
 
+    function canUseLeaveNotifications() {
+      return ["leave_view", "leave_approve", "leave_approve_team", "leave_approve_director", "leave_approve_ceo", "leave_director_override", "leave_manage"]
+        .some((permission) => can(permission));
+    }
+
+    function leaveNotificationText(item) {
+      return `${item.message || ""}${item.created_at ? ` ${item.created_at}` : ""}`.trim();
+    }
+
+    function leaveNotificationHtml(items = [], limit = 5) {
+      return (items || []).slice(0, limit).map((item) => `
+        <div>${escapeHtml(item.message)} <small>${escapeHtml(item.created_at || "")}</small></div>
+      `).join("");
+    }
+
+    async function fetchLeaveNotifications() {
+      if (!canUseLeaveNotifications()) return [];
+      const response = await fetch("/api/leave-notifications");
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "연차 알림을 불러오지 못했습니다.");
+      return data.notifications || [];
+    }
+
+    function unreadLeaveNotifications(items = []) {
+      return (items || []).filter((item) => Number(item.is_read || 0) === 0 && item.id);
+    }
+
+    function leaveNotificationIds(items = []) {
+      return (items || [])
+        .map((item) => Number(item.id || 0))
+        .filter((id) => id > 0);
+    }
+
+    async function markLeaveNotificationsRead(ids = []) {
+      const cleanIds = ids.map((id) => Number(id || 0)).filter((id) => id > 0);
+      if (!cleanIds.length || !canUseLeaveNotifications()) return 0;
+      const response = await fetch("/api/leave-notifications-read", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids: cleanIds }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "연차 알림 확인 처리에 실패했습니다.");
+      return Number(data.updated || 0);
+    }
+
+    function leaveNotificationWidgetBody(items = []) {
+      const ids = leaveNotificationIds(items);
+      const itemList = items.map((item) => `<li>${escapeHtml(leaveNotificationText(item))}</li>`).join("");
+      return `
+        <section class="focus-widget-section">
+          <h4>새 연차 알림</h4>
+          <ul>${itemList}</ul>
+        </section>
+        <div class="focus-widget-actions">
+          <button class="crm-mini-button" type="button" data-topbar-open="leave">연차 화면 열기</button>
+          <button class="crm-mini-button primary" type="button" data-leave-notification-read="${escapeHtml(ids.join(","))}">확인 완료</button>
+        </div>
+      `;
+    }
+
+    function showLeaveNotificationWidget(items = []) {
+      const freshItems = unreadLeaveNotifications(items).filter((item) => !leaveNotificationPopupShownIds.has(String(item.id)));
+      if (!freshItems.length) return false;
+      if (focusWidget?.classList.contains("open")) return false;
+      freshItems.forEach((item) => leaveNotificationPopupShownIds.add(String(item.id)));
+      openFocusWidget({
+        kicker: "연차 알림",
+        title: freshItems.length > 1 ? `새 연차 알림 ${freshItems.length}건` : "새 연차 알림",
+        subtitle: todayString(),
+        body: leaveNotificationWidgetBody(freshItems),
+      });
+      return true;
+    }
+
+    async function checkLeaveNotificationWidget() {
+      if (!canUseLeaveNotifications()) return;
+      const notifications = await fetchLeaveNotifications();
+      const unread = unreadLeaveNotifications(notifications);
+      if (!unread.length) return;
+      showLeaveNotificationWidget(unread);
+    }
+
+    function startLeaveNotificationWatcher() {
+      if (!canUseLeaveNotifications() || leaveNotificationPollTimer) return;
+      window.setTimeout(() => {
+        checkLeaveNotificationWidget().catch(() => {});
+      }, 1200);
+      leaveNotificationPollTimer = window.setInterval(() => {
+        checkLeaveNotificationWidget().catch(() => {});
+      }, 60 * 1000);
+    }
+
     function renderLeaveData(data) {
       if (!leaveWorkspace) return;
       leaveTotalDays.textContent = dayText(data.summary?.total_days);
@@ -11372,19 +12782,30 @@ HTML = r"""<!doctype html>
       if (leaveReservedDays) leaveReservedDays.textContent = dayText(data.summary?.reserved_days);
       leaveRemainingDays.textContent = dayText(data.summary?.remaining_days);
       if (leaveNotificationList) {
-        leaveNotificationList.innerHTML = (data.notifications || []).slice(0, 5).map((item) => `
-          <div>${escapeHtml(item.message)} <small>${escapeHtml(item.created_at || "")}</small></div>
-        `).join("");
+        leaveNotificationList.innerHTML = leaveNotificationHtml(data.notifications || [], 5);
       }
       leaveBalanceBody.innerHTML = (data.balances || []).length
         ? data.balances.map((row) => `
           <tr><td>${escapeHtml(row.name)}</td><td>${dayText(row.total_days)}</td><td>${dayText(row.used_days)} / 예약 ${dayText(row.reserved_days)}</td><td><strong>${dayText(row.remaining_days)}</strong></td></tr>
         `).join("")
         : `<tr><td colspan="4">연차 기준이 아직 설정되지 않았습니다.</td></tr>`;
+      const approvedUsageRows = (data.requests || []).filter((row) => row.status === "APPROVED" && Number(row.requested_days || 0) > 0);
+      if (leaveMineUsageBody) {
+        leaveMineUsageBody.innerHTML = approvedUsageRows.length
+          ? approvedUsageRows.map((row) => `
+            <tr>
+              <td><strong>${escapeHtml(leaveDateRangeText(row))}</strong></td>
+              <td>${escapeHtml(row.unit_label)}</td>
+              <td>${dayText(row.requested_days)}</td>
+              <td>${escapeHtml(row.reason)}</td>
+            </tr>
+          `).join("")
+          : `<tr><td colspan="4">아직 반영된 연차 사용일자가 없습니다.</td></tr>`;
+      }
       leaveHistoryBody.innerHTML = (data.requests || []).length
         ? data.requests.map((row) => `
           <tr>
-            <td>${escapeHtml(row.start_date)}${row.start_date === row.end_date ? "" : ` ~ ${escapeHtml(row.end_date)}`}</td>
+            <td>${escapeHtml(leaveDateRangeText(row))}</td>
             <td>${escapeHtml(row.unit_label)}</td>
             <td>${dayText(row.requested_days)}</td>
             <td>${escapeHtml(row.status_label)}${row.status === "PENDING" ? ` ? ${escapeHtml(row.approval_step_label)}` : ""}</td>
@@ -11398,6 +12819,7 @@ HTML = r"""<!doctype html>
         display_name: user.display_name || user.name || user.username || "",
         username: user.username || "",
       }));
+      leaveAdminUsageRequests = data.admin_usage_requests || {};
       const userOptions = leaveAdminUsers.map((user) => ({
         id: user.id,
         name: `${user.display_name || user.username} (${user.username})`,
@@ -11429,9 +12851,14 @@ HTML = r"""<!doctype html>
         : `<tr><td colspan="6">승인 대기 중인 연차 신청이 없습니다.</td></tr>`;
       leaveAdminBalanceBody.innerHTML = (data.admin_balances || []).length
         ? data.admin_balances.map((row) => `
-          <tr><td>${escapeHtml(row.display_name)}</td><td>${escapeHtml(row.username)}</td><td>${dayText(row.total_days)}</td><td>${dayText(row.used_days)}</td><td><strong>${dayText(row.remaining_days)}</strong></td></tr>
+          <tr class="leave-admin-balance-row" data-leave-admin-balance-user="${escapeHtml(row.user_id)}"><td>${escapeHtml(row.display_name)}</td><td>${escapeHtml(row.username)}</td><td>${dayText(row.total_days)}</td><td>${dayText(row.used_days)}</td><td><strong>${dayText(row.remaining_days)}</strong></td></tr>
         `).join("")
         : `<tr><td colspan="5">직원 연차 현황이 없습니다.</td></tr>`;
+      const availableAdminUserIds = new Set((data.admin_balances || []).map((row) => String(row.user_id)));
+      if (!selectedLeaveAdminUsageUserId || !availableAdminUserIds.has(selectedLeaveAdminUsageUserId)) {
+        selectedLeaveAdminUsageUserId = String((data.admin_balances || [])[0]?.user_id || leaveAdminUserSelect?.value || "");
+      }
+      renderLeaveAdminUsage(selectedLeaveAdminUsageUserId);
       document.querySelector('[data-leave-tab="approvals"]')?.classList.toggle("permission-hidden", !data.can_approve);
       document.querySelector('[data-leave-tab="admin"]')?.classList.toggle("permission-hidden", !data.can_manage);
       document.querySelector('[data-leave-tab="holidays"]')?.classList.toggle("permission-hidden", !data.can_manage);
@@ -11611,27 +13038,15 @@ HTML = r"""<!doctype html>
     }
 
     function noticeRecords() {
-      let rows = [];
-      try {
-        rows = JSON.parse(localStorage.getItem("workhub_notice_templates") || "[]");
-      } catch {
-        rows = [];
-      }
+      let rows = Array.isArray(portalNoticeRows) ? [...portalNoticeRows] : [];
       if (!Array.isArray(rows)) rows = [];
-      const legacy = legacyNoticeRecord();
-      if (legacy && !rows.some((row) => row.id === legacy.id || (row.title === legacy.title && row.body === legacy.body && row.date === legacy.date))) {
-        rows.unshift(legacy);
-        localStorage.setItem("workhub_notice_templates", JSON.stringify(rows));
-        localStorage.removeItem("workhub_notice_template");
-      }
       return rows
         .filter((row) => row && (row.title || row.body))
         .sort((a, b) => String(b.created_at || b.date || "").localeCompare(String(a.created_at || a.date || "")));
     }
 
     function saveNoticeRecords(rows) {
-      localStorage.setItem("workhub_notice_templates", JSON.stringify(rows));
-      localStorage.removeItem("workhub_notice_template");
+      portalNoticeRows = Array.isArray(rows) ? rows : [];
     }
 
     function latestNoticeRecord() {
@@ -11648,6 +13063,15 @@ HTML = r"""<!doctype html>
     function loadNoticeTemplate() {
       resetNoticeInputs();
       renderNoticePreview();
+    }
+
+    async function loadPortalNotices() {
+      const response = await fetch("/api/notices");
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || "공지사항을 불러오지 못했습니다.");
+      saveNoticeRecords(data.notices || []);
+      renderNoticePreview();
+      return portalNoticeRows;
     }
 
     function noticePayload() {
@@ -11758,6 +13182,7 @@ HTML = r"""<!doctype html>
       const draft = noticePayload();
       const latest = latestNoticeRecord();
       renderNoticeHistory();
+      if (companyStaffNoticeTitle) companyStaffNoticeTitle.textContent = latest?.title || "등록 전";
       if (!draft.title && !draft.body) {
         noticePreview.innerHTML = `<strong>공지 입력 대기</strong>새 공지사항을 입력한 뒤 저장해주세요. 입력창은 항상 새 공지를 위해 비워둡니다.`;
       } else {
@@ -11801,7 +13226,7 @@ HTML = r"""<!doctype html>
       noticePopup.classList.remove("open");
     }
 
-    function saveNoticeTemplate() {
+    async function saveNoticeTemplate() {
       if (!can("notice_manage")) {
         notice.textContent = "공지사항 관리 권한이 없습니다.";
         return;
@@ -11812,17 +13237,22 @@ HTML = r"""<!doctype html>
         noticeTitleInput?.focus();
         return;
       }
-      const rows = noticeRecords();
-      rows.unshift({
-        ...payload,
-        id: `notice-${Date.now()}`,
-        created_at: new Date().toISOString(),
-      });
-      saveNoticeRecords(rows);
-      resetNoticeInputs();
-      renderNoticePreview();
-      if (companyStaffNoticeTitle) companyStaffNoticeTitle.textContent = payload.title || "등록 전";
-      notice.textContent = "공지사항을 저장했습니다. 입력칸은 새 공지를 위해 비워두었습니다.";
+      try {
+        notice.textContent = "공지사항을 저장 중입니다.";
+        const response = await fetch("/api/notice-save", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.error || "공지사항 저장에 실패했습니다.");
+        saveNoticeRecords(data.notices || (data.notice ? [data.notice, ...noticeRecords()] : noticeRecords()));
+        resetNoticeInputs();
+        renderNoticePreview();
+        notice.textContent = data.message || "공지사항을 저장했습니다. 입력칸은 새 공지를 위해 비워두었습니다.";
+      } catch (error) {
+        notice.textContent = error.message || "공지사항 저장에 실패했습니다.";
+      }
     }
 
     function clearNoticeTemplate() {
@@ -11835,16 +13265,25 @@ HTML = r"""<!doctype html>
       notice.textContent = "공지사항 입력 내용을 초기화했습니다.";
     }
 
-    function deleteNoticeRecord(noticeId) {
+    async function deleteNoticeRecord(noticeId) {
       if (!can("notice_manage")) {
         notice.textContent = "공지사항 관리 권한이 없습니다.";
         return;
       }
-      const rows = noticeRecords().filter((row) => String(row.id) !== String(noticeId));
-      saveNoticeRecords(rows);
-      renderNoticePreview();
-      if (companyStaffNoticeTitle) companyStaffNoticeTitle.textContent = rows[0]?.title || "등록 전";
-      notice.textContent = "공지사항을 삭제했습니다.";
+      try {
+        const response = await fetch("/api/notice-delete", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: noticeId }),
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.error || "공지사항 삭제에 실패했습니다.");
+        saveNoticeRecords(data.notices || noticeRecords().filter((row) => String(row.id) !== String(noticeId)));
+        renderNoticePreview();
+        notice.textContent = data.message || "공지사항을 삭제했습니다.";
+      } catch (error) {
+        notice.textContent = error.message || "공지사항 삭제에 실패했습니다.";
+      }
     }
 
     function resetCargoShipmentForm(record = null) {
@@ -11861,6 +13300,7 @@ HTML = r"""<!doctype html>
       }
       if (cargoVehicleReceiptLink) cargoVehicleReceiptLink.classList.toggle("permission-hidden", isInbound);
       cargoShipmentId.value = record?.id || "";
+      if (cargoShipmentDelete) cargoShipmentDelete.hidden = !record?.id;
       cargoShipDate.value = record?.ship_date || todayStatusDate();
       cargoCustomer.value = record?.customer || "";
       cargoItem.value = record?.item || "";
@@ -11947,6 +13387,38 @@ HTML = r"""<!doctype html>
       if (companyActiveTab === "calendar") await loadCompanyCalendar().catch(() => {});
     }
 
+    async function deleteCargoShipment() {
+      if (!canManageCargoShipments()) {
+        notice.textContent = "화물 입출고건 입력 권한이 없습니다.";
+        return;
+      }
+      const shipmentId = String(cargoShipmentId?.value || "").trim();
+      if (!shipmentId) {
+        notice.textContent = "삭제할 화물 입출고건을 선택해주세요.";
+        return;
+      }
+      const label = cargoShipmentMode === "inbound" ? "화물 입고 예정건" : "화물 출고건";
+      const ok = await requestAppConfirm({
+        kicker: "일정 삭제",
+        title: `${label}을 삭제할까요?`,
+        message: [cargoShipDate?.value, cargoCustomer?.value, cargoItem?.value].filter(Boolean).join(" · "),
+        okText: "삭제",
+        cancelText: "취소",
+      });
+      if (!ok) return;
+      const response = await fetch("/api/cargo-shipment-delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: shipmentId }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || "화물 입출고건 삭제에 실패했습니다.");
+      notice.textContent = data.message || "화물 입출고건을 삭제했습니다.";
+      closeCargoShipmentPopup();
+      await loadCargoShipments();
+      if (companyActiveTab === "calendar") await loadCompanyCalendar().catch(() => {});
+    }
+
     function linkCargoToVehicleReceipt() {
       const payload = cargoShipmentPayload();
       closeCargoShipmentPopup();
@@ -11980,6 +13452,7 @@ HTML = r"""<!doctype html>
       importProgressStatus.value = record?.progress_status || "";
       importFreeTime.value = record?.free_time || "";
       importWarehouseDueDate.value = record?.warehouse_due_date || "";
+      if (importShipmentDelete) importShipmentDelete.hidden = !record?.id;
     }
 
     function importShipmentPayload() {
@@ -12124,6 +13597,37 @@ HTML = r"""<!doctype html>
       notice.textContent = data.message || "수입제품 입고 진행 상황을 저장했습니다.";
       closeImportShipmentPopup();
       await loadImportShipments();
+    }
+
+    async function deleteImportShipment() {
+      if (!can("import_shipment_manage")) {
+        notice.textContent = "수입제품 진행 관리 권한이 없습니다.";
+        return;
+      }
+      const shipmentId = String(importShipmentId?.value || "").trim();
+      if (!shipmentId) {
+        notice.textContent = "삭제할 수입제품 입고 일정을 선택해주세요.";
+        return;
+      }
+      const ok = await requestAppConfirm({
+        kicker: "일정 삭제",
+        title: "수입제품 입고 일정을 삭제할까요?",
+        message: [importWarehouseDueDate?.value, importItem?.value, importQuantity?.value].filter(Boolean).join(" · "),
+        okText: "삭제",
+        cancelText: "취소",
+      });
+      if (!ok) return;
+      const response = await fetch("/api/import-shipment-delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: shipmentId }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || "수입제품 입고 일정 삭제에 실패했습니다.");
+      notice.textContent = data.message || "수입제품 입고 일정을 삭제했습니다.";
+      closeImportShipmentPopup();
+      await loadImportShipments();
+      if (companyActiveTab === "calendar") await loadCompanyCalendar().catch(() => {});
     }
 
     async function completeImportShipment(id) {
@@ -12782,8 +14286,7 @@ HTML = r"""<!doctype html>
     function formatSalesMillion(value, signed = false) {
       const number = Number(value || 0);
       const sign = signed && number > 0 ? "+" : "";
-      const absolute = Math.abs(number) / 1000000;
-      return `${number < 0 ? "-" : sign}${absolute.toLocaleString("ko-KR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}백만`;
+      return `${number < 0 ? "-" : sign}${Math.abs(number).toLocaleString("ko-KR")}원`;
     }
 
     function formatSalesCompactMoney(value, signed = false) {
@@ -12876,6 +14379,7 @@ HTML = r"""<!doctype html>
     let activeSalesReportTab = "salesProduct";
     let activeMonthlyCompareDetail = "daily";
     let salesReportMonthlyCompareDetails = {};
+    let activeSalesReportPeriod = "";
 
     function setSalesReportTab(tabName) {
       activeSalesReportTab = tabName || "salesProduct";
@@ -12929,8 +14433,160 @@ HTML = r"""<!doctype html>
       return match ? `${match[1]}년 ${Number(match[2])}월` : String(period || "");
     }
 
+    function renderSalesReportPeriodOptions(periodOptions = [], selectedPeriod = "") {
+      const periods = [...new Set((periodOptions || []).map((period) => String(period || "").trim()).filter(Boolean))];
+      if (selectedPeriod && !periods.includes(selectedPeriod)) periods.unshift(selectedPeriod);
+      if (salesReportPeriodLabel) salesReportPeriodLabel.textContent = formatSalesPeriodLabel(selectedPeriod) || "조회 월 없음";
+      if (!salesReportPeriodSelect) return;
+      if (!periods.length) {
+        salesReportPeriodSelect.innerHTML = `<option value="">데이터 없음</option>`;
+        salesReportPeriodSelect.value = "";
+        salesReportPeriodSelect.disabled = true;
+        return;
+      }
+      salesReportPeriodSelect.disabled = false;
+      salesReportPeriodSelect.innerHTML = periods.map((period) => `
+        <option value="${escapeHtml(period)}">${escapeHtml(formatSalesPeriodLabel(period))}</option>
+      `).join("");
+      salesReportPeriodSelect.value = selectedPeriod && periods.includes(selectedPeriod) ? selectedPeriod : periods[0];
+    }
+
+    function closeSalesDetailPopup() {
+      salesDetailPopup?.classList.remove("open");
+      salesDetailPopup?.setAttribute("aria-hidden", "true");
+    }
+
+    function salesDetailDisplayValue(value) {
+      if (typeof value === "number") return formatSalesNumber(value);
+      return String(value ?? "");
+    }
+
+    function setSalesDetailPopupMode(kind) {
+      if (!salesDetailPanel) return;
+      const compact = kind === "daily";
+      salesDetailPanel.classList.toggle("compact", compact);
+      salesDetailPanel.classList.toggle("expanded", !compact);
+    }
+
+    function renderSalesDetailTable(section = {}) {
+      const headers = section.headers || [];
+      const rows = section.rows || [];
+      if (!rows.length) {
+        return `
+          <div class="sales-detail-section">
+            <div class="sales-detail-section-title">${escapeHtml(section.title || "상세")}</div>
+            <div class="admin-message">${escapeHtml(section.empty || "표시할 상세 데이터가 없습니다.")}</div>
+            ${section.note ? `<div class="sales-detail-note">${escapeHtml(section.note)}</div>` : ""}
+          </div>
+        `;
+      }
+      return `
+        <div class="sales-detail-section">
+          <div class="sales-detail-section-title">${escapeHtml(section.title || "상세")}</div>
+          ${section.note ? `<div class="sales-detail-note">${escapeHtml(section.note)}</div>` : ""}
+          <div class="sales-detail-table-wrap">
+            <table class="sales-detail-table">
+              <thead><tr>${headers.map((header) => `<th>${escapeHtml(header)}</th>`).join("")}</tr></thead>
+              <tbody>
+                ${rows.map((row) => `
+                  <tr>${(row || []).map((cell) => `<td>${escapeHtml(salesDetailDisplayValue(cell))}</td>`).join("")}</tr>
+                `).join("")}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      `;
+    }
+
+    function renderSalesDetailPopup(data = {}) {
+      const detailColors = {
+        daily: "#2563eb",
+        seller: "#2563eb",
+        product: "#7c3aed",
+        supplier: "#f97316",
+      };
+      salesDetailPanel?.style.setProperty("--detail-color", detailColors[data.kind] || "#2563eb");
+      setSalesDetailPopupMode(data.kind);
+      if (salesDetailTitle) salesDetailTitle.textContent = data.title || "매출 상세";
+      const metrics = data.metrics || [];
+      const sections = data.sections || [];
+      const metricHtml = metrics.length ? `
+        <div class="sales-detail-summary">
+          ${metrics.map((metric) => `
+            <div class="sales-detail-metric">
+              <span>${escapeHtml(metric.label || "")}</span>
+              <strong>${escapeHtml(salesDetailDisplayValue(metric.value))}</strong>
+            </div>
+          `).join("")}
+        </div>
+      ` : "";
+      const noteHtml = data.note ? `<div class="sales-detail-note">${escapeHtml(data.note)}</div>` : "";
+      if (salesDetailBody) {
+        salesDetailBody.classList.toggle("multi-section", sections.length > 1);
+        salesDetailBody.classList.toggle("has-note", Boolean(data.note));
+        const sectionsHtml = sections.map(renderSalesDetailTable).join("") || `<div class="admin-message">상세 데이터가 없습니다.</div>`;
+        salesDetailBody.innerHTML = `${metricHtml}${noteHtml}<div class="sales-detail-sections">${sectionsHtml}</div>`;
+      }
+      salesDetailPopup?.classList.add("open");
+      salesDetailPopup?.setAttribute("aria-hidden", "false");
+    }
+
+    async function openSalesReportDetail(kind, key) {
+      if (!kind || !key) return;
+      if (salesDetailTitle) salesDetailTitle.textContent = "매출 상세";
+      if (salesDetailBody) salesDetailBody.innerHTML = `<div class="admin-message">상세 데이터를 불러오는 중입니다.</div>`;
+      setSalesDetailPopupMode(kind);
+      salesDetailPopup?.classList.add("open");
+      salesDetailPopup?.setAttribute("aria-hidden", "false");
+      try {
+        const params = new URLSearchParams({ kind, key });
+        if (activeSalesReportPeriod) params.set("period", activeSalesReportPeriod);
+        const response = await fetch(`/api/sales-report-detail?${params.toString()}`);
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "상세 데이터를 불러오지 못했습니다.");
+        renderSalesDetailPopup(data);
+      } catch (error) {
+        if (salesDetailBody) salesDetailBody.innerHTML = `<div class="admin-message">${escapeHtml(error.message)}</div>`;
+      }
+    }
+
+    function renderSalesReportMarginDiagnosis(check = {}) {
+      if (!salesReportMarginDiagnosis) return;
+      const closingCheck = check.closing_check || null;
+      if (closingCheck) {
+        const status = closingCheck.status || "warning";
+        const issues = closingCheck.issues || [];
+        salesReportMarginDiagnosis.classList.toggle("ok", status === "ok");
+        salesReportMarginDiagnosis.classList.toggle("warn", status === "warning");
+        salesReportMarginDiagnosis.classList.toggle("bad", status === "critical");
+        salesReportMarginDiagnosis.innerHTML = `
+          <strong>${escapeHtml(closingCheck.title || "매출 마감 자동 점검")}</strong>
+          <span>${escapeHtml(closingCheck.message || "매출표 업로드 상태와 주요 합계를 점검합니다.")}</span>
+          ${issues.length ? `<ul>${issues.slice(0, 4).map((issue) => `<li>${escapeHtml(issue.title || "")}: ${escapeHtml(issue.message || "")}</li>`).join("")}</ul>` : ""}
+        `;
+        return;
+      }
+      const anomalyCount = Number(check.anomaly_count || 0);
+      salesReportMarginDiagnosis.classList.toggle("ok", anomalyCount <= 0);
+      salesReportMarginDiagnosis.classList.toggle("warn", anomalyCount > 0);
+      salesReportMarginDiagnosis.classList.remove("bad");
+      if (anomalyCount > 0) {
+        salesReportMarginDiagnosis.innerHTML = `
+          <strong>택배비 제외 후 마진 이상 데이터 ${formatSalesNumber(anomalyCount)}건 확인</strong>
+          <span>${escapeHtml(check.message || "손익 공급금액 또는 CS 보정값 때문에 원본 데이터 확인이 필요합니다.")}</span>
+        `;
+      } else {
+        salesReportMarginDiagnosis.innerHTML = `
+          <strong>마진 검증 정상</strong>
+          <span>${escapeHtml(check.message || "택배비 제외 기준으로 손익마진이 손익매출보다 큰 행은 확인되지 않았습니다.")}</span>
+        `;
+      }
+    }
+
     function renderSalesReportDashboard(data) {
       if (!salesReportKpiGrid) return;
+      activeSalesReportPeriod = data.period || "";
+      renderSalesReportPeriodOptions(data.period_options || [], activeSalesReportPeriod);
       const today = data.today || {};
       const yesterday = data.yesterday || {};
       const comparison = data.comparison || {};
@@ -12967,7 +14623,7 @@ HTML = r"""<!doctype html>
       const dailyRows = data.daily_rows || [];
       if (dailyRows.length) {
         salesReportDailyBody.innerHTML = dailyRows.map((row) => `
-          <tr>
+          <tr data-sales-detail="daily" data-sales-key="${escapeHtml(row.report_date || "")}">
             <td>${escapeHtml(row.label || row.report_date || "")}</td>
             <td>${formatSalesNumber(row.quantity)}</td>
             <td>${formatSalesNumber(row.profit_sales_amount)}</td>
@@ -12982,7 +14638,7 @@ HTML = r"""<!doctype html>
       const sellerRows = data.seller_top || [];
       if (sellerRows.length) {
         salesReportSellerBody.innerHTML = sellerRows.map((row) => `
-          <tr>
+          <tr data-sales-detail="seller" data-sales-key="${escapeHtml(row.name || "")}">
             <td>${escapeHtml(row.name || "")}</td>
             <td>${formatSalesNumber(row.quantity)}</td>
             <td>${formatSalesNumber(row.profit_sales_amount)}</td>
@@ -12996,7 +14652,7 @@ HTML = r"""<!doctype html>
       const productRows = data.product_top || [];
       if (productRows.length) {
         salesReportProductBody.innerHTML = productRows.map((row) => `
-          <tr>
+          <tr data-sales-detail="product" data-sales-key="${escapeHtml(row.name || "")}">
             <td>${escapeHtml(row.name || "")}</td>
             <td>${formatSalesNumber(row.quantity)}</td>
             <td>${formatSalesNumber(row.profit_sales_amount)}</td>
@@ -13010,7 +14666,7 @@ HTML = r"""<!doctype html>
       const purchaseRows = data.supplier_purchase_totals || [];
       if (purchaseRows.length) {
         salesReportReviewBody.innerHTML = purchaseRows.map((row) => `
-          <tr>
+          <tr data-sales-detail="supplier" data-sales-key="${escapeHtml(row.name || "")}">
             <td>${escapeHtml(row.name || "")}</td>
             <td>${formatSalesNumber(row.purchase_total)}</td>
             <td>${formatSalesNumber(row.quantity)}</td>
@@ -13036,6 +14692,7 @@ HTML = r"""<!doctype html>
       }
       salesReportMonthlyCompareDetails = data.monthly_comparison_details || {};
       renderMonthlyCompareDetail(activeMonthlyCompareDetail);
+      renderSalesReportMarginDiagnosis(data);
       setSalesReportTabCount("salesProduct", dailyRows.length + productRows.length);
       setSalesReportTabCount("partner", sellerRows.length + purchaseRows.length);
       setSalesReportTabCount("monthlyCompare", monthlyCompareRows.length);
@@ -13046,7 +14703,10 @@ HTML = r"""<!doctype html>
       if (!salesReportKpiGrid) return;
       setSalesReportLoading(true);
       try {
-        const response = await fetch("/api/sales-report-dashboard");
+        const params = new URLSearchParams();
+        if (activeSalesReportPeriod) params.set("period", activeSalesReportPeriod);
+        const endpoint = params.toString() ? `/api/sales-report-dashboard?${params.toString()}` : "/api/sales-report-dashboard";
+        const response = await fetch(endpoint);
         const data = await response.json();
         if (!response.ok) throw new Error(data.error || "매출현황을 불러오지 못했습니다.");
         renderSalesReportDashboard(data);
@@ -13168,11 +14828,22 @@ HTML = r"""<!doctype html>
       }];
     }
 
-    function collectStockNoticePayload(vendor = null) {
+    function collectStockNoticePayload(vendor = null, recipients = null) {
+      const targetRecipients = recipients || (vendor ? [vendor] : collectStockNoticeRecipients());
+      const bccEmails = [...new Set(targetRecipients.map((item) => item.email).filter(Boolean))];
+      const contact = defaultStockContactInfo();
+      const selectedType = targetRecipients[0]?.vendor_type || stockVendorTypeSelect?.value || "purchase";
+      const selectedLabel = selectedType === "sales" ? "매출처" : "매입처";
       return {
-        vendor_type: vendor?.vendor_type || stockVendorTypeSelect?.value || "purchase",
-        recipient_email: vendor?.email || stockRecipientEmailInput?.value.trim() || "",
-        vendor_name: vendor?.vendor_name || stockVendorNameInput?.value.trim() || "",
+        vendor_type: selectedType,
+        recipient_email: contact.senderEmail || "",
+        bcc_emails: bccEmails,
+        bcc_vendors: targetRecipients.map((item) => ({
+          vendor_type: item.vendor_type || selectedType,
+          vendor_name: item.vendor_name || "",
+          email: item.email || "",
+        })),
+        vendor_name: targetRecipients.length === 1 ? (targetRecipients[0]?.vendor_name || "") : `${selectedLabel} ${targetRecipients.length}곳`,
         subject: stockSubjectInput?.value.trim() || "",
         body: stockBodyInput?.value.trim() || "",
         save_credentials: true,
@@ -13182,29 +14853,64 @@ HTML = r"""<!doctype html>
     async function sendCurrentStockNoticeMail() {
       refreshStockNoticeBody();
       const recipients = collectStockNoticeRecipients();
-      const basePayload = collectStockNoticePayload(recipients[0] || null);
+      const basePayload = collectStockNoticePayload(null, recipients);
       if (!recipients.length || !basePayload.subject || !basePayload.body) {
         throw new Error("받는 업체를 선택하고 제목, 공지 내용을 입력해주세요.");
       }
-      const failedVendors = [];
-      for (const recipient of recipients) {
-        const payload = collectStockNoticePayload(recipient);
-        const response = await fetch("/api/mail-send", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-        });
-        const data = await response.json();
-        if (!response.ok) {
-          failedVendors.push(`${recipient.vendor_name || recipient.email}: ${data.error || "발송 실패"}`);
-        }
+      const response = await fetch("/api/mail-send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(basePayload),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "공지 메일 발송에 실패했습니다.");
+      if (Array.isArray(data.logs)) renderStockMailHistory(data.logs);
+      notice.textContent = data.message || (recipients.length === 1
+        ? "공지 메일을 숨은참조 방식으로 발송했습니다."
+        : `공지 메일을 ${recipients.length}곳에 숨은참조 방식으로 1회 발송했습니다.`);
+    }
+
+    function renderStockMailHistory(logs) {
+      if (!stockMailHistoryList) return;
+      stockMailHistoryList.innerHTML = "";
+      if (!logs || logs.length === 0) {
+        const empty = document.createElement("div");
+        empty.className = "cs-case-item";
+        empty.textContent = "아직 발송 이력이 없습니다.";
+        stockMailHistoryList.appendChild(empty);
+        return;
       }
-      if (failedVendors.length) {
-        throw new Error(`공지 메일 ${recipients.length - failedVendors.length}/${recipients.length}건 발송, 실패: ${failedVendors.join(", ")}`);
-      }
-      notice.textContent = recipients.length === 1
-        ? "공지 메일 발송이 완료되었습니다."
-        : `공지 메일 ${recipients.length}건 발송이 완료되었습니다.`;
+      logs.forEach((log) => {
+        const item = document.createElement("div");
+        item.className = "cs-case-item";
+        const status = log.status === "sent" ? "발송완료" : "실패";
+        const count = Number(log.recipient_count || 0);
+        const batches = Number(log.batch_count || 1);
+        const vendorName = log.vendor_name || "업체 미입력";
+        const title = [
+          status,
+          log.created_at || "",
+          vendorName,
+          count ? `${count}곳` : "",
+          batches ? `${batches}회차` : "",
+        ].filter(Boolean).join(" · ");
+        const subject = log.subject ? `제목: ${log.subject}` : "";
+        const error = log.error ? `오류: ${log.error}` : "";
+        const titleElement = document.createElement("strong");
+        titleElement.textContent = title;
+        const detailElement = document.createElement("span");
+        detailElement.textContent = [subject, error].filter(Boolean).join(" / ");
+        item.append(titleElement, detailElement);
+        stockMailHistoryList.appendChild(item);
+      });
+    }
+
+    async function loadStockMailHistory() {
+      if (!stockMailHistoryList) return;
+      const response = await fetch("/api/vendor-mail-send-logs?mail_type=stock_notice&limit=20");
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "발송 이력을 불러오지 못했습니다.");
+      renderStockMailHistory(data.logs || []);
     }
 
     function renderCsCases(cases) {
@@ -13304,6 +15010,133 @@ HTML = r"""<!doctype html>
       return JSON.stringify(payload, null, 2);
     }
 
+    const HERMES_CHAT_MODE_LABELS = {
+      auto: "자동선택",
+      automation: "업무자동화",
+      general: "일반 AI",
+      search: "자료검색",
+      image: "이미지생성",
+    };
+
+    const HERMES_CHAT_MODE_HINTS = {
+      auto: "자동선택: 요청에 맞는 Workhub 업무, 일반 AI, 검색, 이미지 기능을 자동으로 고릅니다.",
+      automation: "업무자동화: Workhub 데이터와 업무 흐름을 우선으로 판단합니다.",
+      general: "일반 AI: Workhub 내부 기능에 억지로 묶지 않고 일반 Codex/GPT처럼 답합니다.",
+      search: "자료검색: 최신 정보와 웹 조사 요청을 검색 중심으로 처리합니다.",
+      image: "이미지생성: 이미지 제작 결과를 미리보기와 다운로드 링크로 제공합니다.",
+    };
+
+    function hermesPayloadFromResult(data) {
+      return data?.result?.data || data?.data || data?.result || data || {};
+    }
+
+    function hermesFilesFromResult(data) {
+      const payload = hermesPayloadFromResult(data);
+      const files = [];
+      const seen = new Set();
+      const pushFile = (file) => {
+        if (!file || !file.download_url) return;
+        if (seen.has(file.download_url)) return;
+        seen.add(file.download_url);
+        files.push({
+          id: file.id || "",
+          name: file.original_name || file.filename || file.name || "결과물 다운로드",
+          download_url: file.download_url,
+          mime: file.mime || file.image_mime || "",
+          saveable: file.saveable === true,
+          saved: file.saved === true,
+        });
+      };
+      pushFile(payload.generated_file);
+      pushFile(payload.generated_text_file);
+      if (Array.isArray(payload.generated_files)) payload.generated_files.forEach(pushFile);
+      if (Array.isArray(payload.files)) payload.files.forEach(pushFile);
+      if (Array.isArray(data?.files)) data.files.forEach(pushFile);
+      return files;
+    }
+
+    function hermesImageUrlFromResult(data) {
+      const payload = hermesPayloadFromResult(data);
+      const file = payload.generated_file || {};
+      if (file.download_url && String(file.original_name || file.filename || "").match(/\.(png|jpg|jpeg|webp)$/i)) {
+        return file.download_url;
+      }
+      return payload.image_url || data?.image_url || "";
+    }
+
+    function hermesAnswerHtml(text, files = [], imageUrl = "") {
+      const body = `<div>${escapeHtml(text || "")}</div>`;
+      const image = imageUrl
+        ? `<img class="hermes-result-image" src="${escapeHtml(imageUrl)}" alt="Hermes 생성 이미지" />`
+        : "";
+      const links = files.length ? `
+        <div class="hermes-result-links">
+          ${files.map((file) => `
+            <span class="hermes-result-link-row">
+              <a class="hermes-result-link" href="${escapeHtml(file.download_url)}" download>${escapeHtml(file.name || "결과물 다운로드")}</a>
+              ${file.saveable && file.id && !file.saved ? `<button class="hermes-result-save" type="button" data-hermes-result-save="${escapeHtml(file.id)}" data-hermes-result-name="${escapeHtml(file.name || "결과물")}">업무파일에 저장</button>` : ""}
+            </span>
+          `).join("")}
+        </div>
+      ` : "";
+      return `${body}${image}${links}`;
+    }
+
+    function setHermesLatestAnswer(text, files = [], imageUrl = "") {
+      if (!hermesChatResponse) return;
+      hermesChatResponse.innerHTML = hermesAnswerHtml(text, files, imageUrl);
+    }
+
+    async function saveHermesResultToShared(button) {
+      const resultId = button?.dataset?.hermesResultSave || "";
+      if (!resultId || button.disabled) return;
+      const resultName = button.dataset.hermesResultName || "결과물";
+      const approved = await requestAppConfirm({
+        kicker: "업무파일 저장",
+        title: "이 결과물을 업무파일에 저장할까요?",
+        message: "승인하면 업무파일 목록에 저장되어 다른 업무파일과 같이 관리됩니다.",
+        highlight: resultName,
+        okText: "저장",
+        cancelText: "취소",
+      });
+      if (!approved) return;
+      const previousText = button.textContent;
+      button.disabled = true;
+      button.textContent = "저장 중";
+      try {
+        await hermesFetchJson("/api/hermes-result-save", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: resultId }),
+        });
+        button.textContent = "저장됨";
+        document.querySelectorAll("[data-hermes-result-save]").forEach((target) => {
+          if (target.dataset.hermesResultSave !== resultId) return;
+          target.disabled = true;
+          target.textContent = "저장됨";
+        });
+        hermesChatMessages.forEach((message) => {
+          (message.files || []).forEach((file) => {
+            if (file.id === resultId) file.saved = true;
+          });
+        });
+        renderHermesChatTranscript();
+        if (typeof loadSharedFiles === "function") await loadSharedFiles();
+      } catch (error) {
+        button.disabled = false;
+        button.textContent = previousText || "업무파일에 저장";
+        setHermesLatestAnswer(error.message || "업무파일 저장에 실패했습니다.");
+      }
+    }
+
+    function setHermesChatMode(mode) {
+      hermesChatMode = HERMES_CHAT_MODE_LABELS[mode] ? mode : "auto";
+      hermesChatModeButtons.forEach((button) => {
+        button.classList.toggle("active", button.dataset.hermesChatMode === hermesChatMode);
+      });
+      if (hermesChatModeHint) hermesChatModeHint.textContent = HERMES_CHAT_MODE_HINTS[hermesChatMode] || "";
+    }
+
     function setHermesStatus(ok, message) {
       if (!hermesStatusPill) return;
       hermesStatusPill.textContent = ok ? "연결됨" : (message ? "확인 필요" : "연결 대기");
@@ -13314,11 +15147,11 @@ HTML = r"""<!doctype html>
 
     const HERMES_PRESETS = {
       vps: {
-        base_url: "http://hermes-agent:4860",
+        base_url: "http://hermes-agent:4871",
         health_path: "/health",
         chat_path: "/api/chat",
         automation_path: "/api/automation",
-        help: "VPS 배포 후 같은 Docker 네트워크 안에서 사용하는 운영 권장 주소입니다.",
+        help: "VPS 배포 후 Workhub-Hermes 브릿지를 통해 연결하는 운영 권장 주소입니다.",
       },
       local: {
         base_url: "http://127.0.0.1:4860",
@@ -13508,24 +15341,99 @@ HTML = r"""<!doctype html>
       if (hermesSettingsMessage) hermesSettingsMessage.textContent = data.message || "연결 테스트를 완료했습니다.";
     }
 
+    function renderHermesChatTranscript() {
+      if (!hermesChatTranscript) return;
+      if (!hermesChatMessages.length) {
+        hermesChatTranscript.innerHTML = `<div class="admin-message">아직 채팅내용이 없습니다.</div>`;
+        return;
+      }
+      hermesChatTranscript.innerHTML = hermesChatMessages.map((item) => {
+        const roleLabel = item.role === "user" ? "질문" : (item.role === "error" ? "오류" : "답변");
+        const statusLabel = item.status === "pending" ? "준비 중" : (item.status === "error" ? "실패" : "완료");
+        const modeLabel = item.mode ? ` · ${HERMES_CHAT_MODE_LABELS[item.mode] || item.mode}` : "";
+        return `
+          <div class="hermes-chat-message ${escapeHtml(item.role)}">
+            <strong>${roleLabel}</strong>
+            ${hermesAnswerHtml(item.text || "", item.files || [], item.image_url || "")}
+            <span>${escapeHtml(item.created_at || "")} · ${statusLabel}${escapeHtml(modeLabel)}</span>
+          </div>
+        `;
+      }).join("");
+      hermesChatTranscript.scrollTop = hermesChatTranscript.scrollHeight;
+    }
+
+    function appendHermesChatMessage(role, text, status = "done", extra = {}) {
+      const id = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+      hermesChatMessages.push({
+        id,
+        role,
+        text,
+        status,
+        created_at: new Date().toLocaleString("ko-KR"),
+        ...extra,
+      });
+      renderHermesChatTranscript();
+      return id;
+    }
+
+    function updateHermesChatMessage(id, changes = {}) {
+      const item = hermesChatMessages.find((message) => message.id === id);
+      if (!item) return;
+      Object.assign(item, changes);
+      renderHermesChatTranscript();
+    }
+
+    function clearHermesChatWindow() {
+      hermesChatSessionId += 1;
+      hermesChatMessages = [];
+      hermesChatPending = false;
+      if (hermesChatInput) hermesChatInput.value = "";
+      setHermesLatestAnswer("헤르메스 연결 후 답변이 여기에 표시됩니다.");
+      if (hermesChatSend) hermesChatSend.disabled = false;
+      renderHermesChatTranscript();
+      showWorkspace("dashboard");
+    }
+
     async function sendHermesChat() {
+      if (hermesChatPending) return;
       const message = (hermesChatInput?.value || "").trim();
       if (!message) {
-        if (hermesChatResponse) hermesChatResponse.textContent = "보낼 내용을 입력해주세요.";
+        setHermesLatestAnswer("보낼 내용을 입력해주세요.");
         hermesChatInput?.focus();
         return;
       }
-      if (hermesChatResponse) hermesChatResponse.textContent = "헤르메스가 답변을 준비하는 중입니다.";
+      const requestedMode = hermesChatMode;
+      appendHermesChatMessage("user", message, "done", { mode: requestedMode });
+      if (hermesChatInput) hermesChatInput.value = "";
+      const answerId = appendHermesChatMessage("assistant", "헤르메스가 답변을 준비하는 중입니다.", "pending", { mode: requestedMode });
+      const sessionId = hermesChatSessionId;
+      hermesChatPending = true;
+      if (hermesChatSend) hermesChatSend.disabled = true;
+      setHermesLatestAnswer("헤르메스가 답변을 준비하는 중입니다.");
       try {
         const data = await hermesFetchJson("/api/hermes-chat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ message }),
+          body: JSON.stringify({ message, mode: requestedMode }),
         });
-        if (hermesChatResponse) hermesChatResponse.textContent = hermesTextFromResult(data) || "응답을 받았습니다.";
+        const answer = hermesTextFromResult(data) || "응답을 받았습니다.";
+        const files = hermesFilesFromResult(data);
+        const imageUrl = hermesImageUrlFromResult(data);
+        const resolvedMode = data.mode || requestedMode;
+        if (sessionId !== hermesChatSessionId) return;
+        setHermesLatestAnswer(answer, files, imageUrl);
+        updateHermesChatMessage(answerId, { text: answer, status: "done", files, image_url: imageUrl, mode: resolvedMode });
         await loadHermesHistory();
       } catch (error) {
-        if (hermesChatResponse) hermesChatResponse.textContent = error.message;
+        if (sessionId !== hermesChatSessionId) return;
+        setHermesLatestAnswer(error.message);
+        updateHermesChatMessage(answerId, { role: "error", text: error.message, status: "error" });
+      } finally {
+        if (sessionId === hermesChatSessionId) {
+          hermesChatPending = false;
+          if (hermesChatSend) hermesChatSend.disabled = false;
+          hermesChatInput?.focus();
+        }
       }
     }
 
@@ -13568,6 +15476,72 @@ HTML = r"""<!doctype html>
       } catch (error) {
         if (hermesAutomationResponse) hermesAutomationResponse.textContent = error.message;
       }
+    }
+
+    function hermesActionPayloadFromForm() {
+      return {
+        action: hermesActionSelect?.value || "crm.create_task",
+        params: {
+          title: hermesActionTaskTitle?.value.trim() || "",
+          assignee_name: hermesActionTaskAssignee?.value.trim() || "",
+          due_at: hermesActionTaskDue?.value || "",
+          priority: hermesActionTaskPriority?.value || "보통",
+          status: hermesActionTaskStatus?.value || "대기",
+          description: hermesActionTaskDescription?.value.trim() || "",
+        },
+      };
+    }
+
+    function renderHermesActionResult(data = {}) {
+      if (!hermesActionResult) return;
+      const preview = data.preview || data.result?.preview || {};
+      const result = data.result || {};
+      const items = preview.items || [];
+      const lines = items.length
+        ? `<ul>${items.map((item) => `<li>${escapeHtml(item.label || "")}: ${escapeHtml(item.value || "")}</li>`).join("")}</ul>`
+        : "";
+      const title = result.public_id
+        ? `${escapeHtml(result.public_id)} 업무가 등록됐습니다.`
+        : escapeHtml(preview.title || data.message || "미리보기 결과");
+      const message = escapeHtml(result.message || preview.message || data.message || "");
+      hermesActionResult.innerHTML = `<strong>${title}</strong>${message ? `<div>${message}</div>` : ""}${lines}`;
+    }
+
+    async function previewHermesAction() {
+      if (!hermesActionResult) return;
+      hermesActionResult.textContent = "실행 전 미리보기를 만드는 중입니다.";
+      const data = await hermesFetchJson("/api/hermes-action-preview", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(hermesActionPayloadFromForm()),
+      });
+      renderHermesActionResult(data);
+      return data;
+    }
+
+    async function executeHermesAction() {
+      const payload = hermesActionPayloadFromForm();
+      const previewData = await previewHermesAction();
+      const preview = previewData?.preview || {};
+      const approved = await requestAppConfirm({
+        kicker: "Workhub 실행 승인",
+        title: "이 작업을 실제로 실행할까요?",
+        message: preview.message || "승인하면 Workhub 데이터가 변경됩니다.",
+        highlight: preview.title || payload.params.title || "Workhub 실행 API",
+        okText: "실행",
+        cancelText: "취소",
+      });
+      if (!approved) return;
+      if (hermesActionResult) hermesActionResult.textContent = "승인된 작업을 실행하는 중입니다.";
+      const data = await hermesFetchJson("/api/hermes-action-execute", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      renderHermesActionResult(data);
+      await loadHermesHistory().catch(() => {});
+      if (typeof loadCrmTasks === "function") await loadCrmTasks().catch(() => {});
+      if (typeof loadCrmMineTasks === "function") await loadCrmMineTasks().catch(() => {});
     }
 
     function syncCompanyNavState() {
@@ -13832,12 +15806,12 @@ HTML = r"""<!doctype html>
         .at(-1);
       const baseDate = parseLocalDate(baseDateText || fallbackDate || todayString());
       if (!baseDate) return [];
-      const startDate = new Date(baseDate);
-      startDate.setDate(baseDate.getDate() - 6);
-      return Array.from({ length: 7 }, (_, index) => {
-        const day = new Date(startDate);
-        day.setDate(startDate.getDate() + index);
-        const key = localDateString(day);
+      const recentKeys = Array.from(rowsByDate.keys())
+        .filter((key) => key <= localDateString(baseDate))
+        .sort((left, right) => left.localeCompare(right, "ko"))
+        .slice(-7);
+      return recentKeys.map((key) => {
+        const day = parseLocalDate(key);
         const row = rowsByDate.get(key);
         return {
           key,
@@ -13852,7 +15826,7 @@ HTML = r"""<!doctype html>
 
     function renderDashboardRecentSalesChart(data, { comparisonDelta = 0, hasComparison = false } = {}) {
       if (!dashboardSalesMessage) return;
-      const recentRows = dashboardRecentSalesRows(data.daily_rows || [], data.selected_date || data.today?.report_date || "");
+      const recentRows = dashboardRecentSalesRows(data.recent_daily_rows || data.daily_rows || [], data.selected_date || data.today?.report_date || "");
       const dataRows = recentRows.filter((row) => row.hasData);
       if (!recentRows.length || !dataRows.length) {
         dashboardSalesMessage.classList.remove("has-chart");
@@ -13866,7 +15840,8 @@ HTML = r"""<!doctype html>
       const chartTop = 8;
       const chartBottom = 64;
       const pointForRow = (row, index) => {
-        const x = 4 + (index * (92 / 6));
+        const denominator = Math.max(recentRows.length - 1, 1);
+        const x = recentRows.length === 1 ? 50 : 4 + (index * (92 / denominator));
         const y = row.hasData
           ? chartBottom - (((row.amount - minAmount) / range) * (chartBottom - chartTop))
           : chartBottom;
@@ -13927,6 +15902,14 @@ HTML = r"""<!doctype html>
                     <stop offset="100%" stop-color="#16a34a" stop-opacity=".02"></stop>
                   </linearGradient>
                 </defs>
+                ${recentRows.map((row, index) => {
+                  if (!row.hasData) return "";
+                  const point = points[index];
+                  const isLatest = row.key === latestRow.key;
+                  const barHeight = Math.max(3, chartBottom - point.y);
+                  const barX = Math.max(1, point.x - 3.4);
+                  return `<rect class="dashboard-recent-bar${isLatest ? " latest" : ""}" x="${barX.toFixed(2)}" y="${(chartBottom - barHeight).toFixed(2)}" width="6.8" height="${barHeight.toFixed(2)}" rx="1.8"></rect>`;
+                }).join("")}
                 ${areaPath ? `<path class="dashboard-recent-area" d="${escapeHtml(areaPath)}"></path>` : ""}
                 ${linePoints ? `<polyline class="dashboard-recent-line" points="${escapeHtml(linePoints)}"></polyline>` : ""}
               </svg>
@@ -13941,7 +15924,7 @@ HTML = r"""<!doctype html>
               }).join("")}
               </div>
             </div>
-            <div class="dashboard-recent-axis">
+            <div class="dashboard-recent-axis" style="grid-template-columns: repeat(${recentRows.length}, minmax(0, 1fr));">
               ${recentRows.map((row) => `<span>${escapeHtml(row.axisLabel)}</span>`).join("")}
             </div>
           </div>
@@ -13974,16 +15957,30 @@ HTML = r"""<!doctype html>
       const marginAmount = Number(month.profit_margin || 0);
       const marginRate = monthSalesAmount ? (marginAmount / monthSalesAmount) * 100 : 0;
       const hasComparison = hasTodaySalesData && Boolean(yesterday.report_date);
-      setDashboardSalesStatus(hasTodaySalesData ? "연동 완료" : "금일 미업로드", hasTodaySalesData ? "connected" : "warning");
+      const closingCheck = data.closing_check || {};
+      const closingStatus = closingCheck.status || "";
+      const closingIssues = closingCheck.issues || [];
+      let dashboardStatusText = hasTodaySalesData ? "마감 점검 완료" : "금일 데이터 대기";
+      let dashboardStatusState = hasTodaySalesData ? "connected" : "warning";
+      if (closingStatus === "critical") {
+        dashboardStatusText = "필수 업로드 필요";
+        dashboardStatusState = "warning";
+      } else if (closingStatus === "warning") {
+        dashboardStatusText = "마감 확인 필요";
+        dashboardStatusState = "warning";
+      }
+      setDashboardSalesStatus(dashboardStatusText, dashboardStatusState);
       if (dashboardSalesDecisionTitle) {
         dashboardSalesDecisionTitle.textContent = hasTodaySalesData
           ? `${selectedDateLabel || "선택일"} 손익 ${formatSalesCompactMoney(todaySalesAmount)} · 전영업일 대비 ${hasComparison ? formatSalesCompactMoney(comparisonDelta, true) : "비교 대기"}`
-          : "금일 매출 업로드가 아직 필요합니다";
+          : "금일 매출 데이터가 아직 연결되지 않았습니다";
       }
       if (dashboardSalesDecisionNote) {
-        dashboardSalesDecisionNote.textContent = hasTodaySalesData
-          ? `월 마진 ${formatSalesCompactMoney(marginAmount)}(${formatSalesPercent(marginRate)}) 기준으로 매출·매입 흐름을 확인하세요.`
-          : "매출표 업로드 후 손익, 매입, 마진 기준을 바로 확인할 수 있습니다.";
+        dashboardSalesDecisionNote.textContent = closingIssues.length
+          ? `${closingCheck.title || "매출 마감 확인 필요"} · ${closingIssues[0].title || ""}`
+          : hasTodaySalesData
+          ? `월 마진 ${formatSalesCompactMoney(marginAmount)}(${formatSalesPercent(marginRate)})는 택배비 제외 기준입니다.`
+          : "매출 데이터 연결 후 손익, 매입, 마진 기준을 바로 확인할 수 있습니다.";
       }
       setDashboardDecisionChip(
         dashboardDecisionTodayChip,
@@ -14069,6 +16066,10 @@ HTML = r"""<!doctype html>
         hasComparison ? formatSignedSalesPercent(comparison.quantity_delta_rate) : "-",
         hasComparison ? salesAmountClass(quantityDelta) : "notice",
       );
+      if (periodLabel) {
+        if (dashboardMonthSalesLabel) dashboardMonthSalesLabel.textContent = `${periodLabel} 누적매출`;
+        if (dashboardSalesQuantityLabel) dashboardSalesQuantityLabel.textContent = `${periodLabel} 판매수량`;
+      }
       setDashboardCompareWaiting(!hasComparison, !hasComparison);
       setDashboardSalesMetric(null, dashboardSalesMargin, "", formatSalesCompactMoney(marginAmount), salesAmountClass(marginAmount), formatSalesNumber(marginAmount));
       setDashboardSalesMetric(null, dashboardSellerTotal, "", formatSalesCompactMoney(sellerSalesAmount), "", formatSalesNumber(sellerSalesAmount));
@@ -14097,8 +16098,66 @@ HTML = r"""<!doctype html>
       }
     }
 
+    function renderAutomationOverview(data = {}) {
+      if (!automationOverviewStatus || !automationOverviewBody) return;
+      const status = data.status || "ok";
+      automationOverviewStatus.textContent = status === "warning" ? `확인 ${formatSalesNumber(data.issue_count || 0)}건` : "정상";
+      automationOverviewStatus.className = `automation-overview-status${status === "warning" ? " warning" : ""}`;
+      const sections = data.sections || {};
+      const rows = [
+        ["sales", "매출", sections.sales],
+        ["cs", "CS", sections.cs],
+        ["management", "대장", sections.management],
+        ["inbound", "입고", sections.inbound],
+        ["mail", "메일", sections.mail],
+      ].filter(([, , section]) => section);
+      if (!rows.length) {
+        automationOverviewBody.innerHTML = `
+          <div class="automation-overview-item">
+            <div class="automation-overview-label">점검</div>
+            <div class="automation-overview-text">표시할 자동화 점검 결과가 없습니다.</div>
+          </div>
+        `;
+        return;
+      }
+      automationOverviewBody.innerHTML = rows.map(([, label, section]) => {
+        const issues = section.issues || [];
+        const firstIssue = issues[0] || {};
+        const itemStatus = section.status || "ok";
+        const summary = firstIssue.title ? `${firstIssue.title} · ${firstIssue.message || ""}` : (section.summary || "정상");
+        return `
+          <div class="automation-overview-item ${escapeHtml(itemStatus)}">
+            <div class="automation-overview-label">${escapeHtml(label)}</div>
+            <div class="automation-overview-text">
+              ${escapeHtml(section.title || label)}
+              <span>${escapeHtml(summary)}</span>
+            </div>
+          </div>
+        `;
+      }).join("");
+    }
+
+    async function loadAutomationOverview() {
+      if (!automationOverviewBody) return;
+      try {
+        const data = await crmFetchJson("/api/automation-overview");
+        renderAutomationOverview(data);
+      } catch (error) {
+        if (automationOverviewStatus) {
+          automationOverviewStatus.textContent = "오류";
+          automationOverviewStatus.className = "automation-overview-status warning";
+        }
+        automationOverviewBody.innerHTML = `
+          <div class="automation-overview-item warning">
+            <div class="automation-overview-label">오류</div>
+            <div class="automation-overview-text">자동화 점검을 불러오지 못했습니다.<span>${escapeHtml(error.message || "")}</span></div>
+          </div>
+        `;
+      }
+    }
+
     async function loadDashboardEntryData() {
-      const tasks = [loadImportShipments(), loadCargoShipments(), loadDashboardSalesSummary()];
+      const tasks = [loadPortalNotices(), loadImportShipments(), loadCargoShipments(), loadDashboardSalesSummary(), loadAutomationOverview()];
       tasks.push(loadCompanyCalendar().catch(() => {
         if (companyCalendarGrid) companyCalendarGrid.innerHTML = `<div class="calendar-empty">캘린더를 불러오지 못했습니다.</div>`;
       }));
@@ -14686,6 +16745,8 @@ HTML = r"""<!doctype html>
         loadCrmStaffDashboard().catch((error) => setCrmMessage(error.message, true));
       } else if (tabName === "mine") {
         loadCrmMineTasks().catch((error) => setCrmMessage(error.message, true));
+      } else if (tabName === "daily") {
+        loadCrmDailyLogs().catch((error) => setCrmMessage(error.message, true));
       } else if (tabName === "tasks") {
         loadCrmTasks().catch((error) => setCrmMessage(error.message, true));
       } else if (tabName === "messages") {
@@ -14859,6 +16920,247 @@ HTML = r"""<!doctype html>
         ).join("");
         crmTaskAssigneeFilter.value = Array.from(crmTaskAssigneeFilter.options).some((option) => option.value === current) ? current : "";
       }
+      renderCrmDailyUserOptions();
+    }
+
+    function renderCrmDailyUserOptions(staff = crmUsers) {
+      const rows = staff?.length ? staff : crmUsers;
+      const filterValue = crmDailyLogUserFilter?.value || "";
+      if (crmDailyLogUserFilter) {
+        crmDailyLogUserFilter.innerHTML = [`<option value="">직원 전체</option>`].concat(
+          rows.map((user) => `<option value="${escapeHtml(user.id)}">${escapeHtml(user.display_name || user.username)}</option>`)
+        ).join("");
+        crmDailyLogUserFilter.value = Array.from(crmDailyLogUserFilter.options).some((option) => option.value === filterValue) ? filterValue : "";
+      }
+      if (!crmDailyLogUser) return;
+      const currentFormValue = crmDailyLogUser.value;
+      let editableRows = can("crm_manage")
+        ? [...rows]
+        : rows.filter((user) => String(user.id) === String(currentUser.id || ""));
+      if (!editableRows.length && currentUser.id) {
+        editableRows = [{
+          id: currentUser.id,
+          username: currentUser.username || "",
+          display_name: currentUser.display_name || currentUser.username || "나",
+        }];
+      }
+      crmDailyLogUser.innerHTML = editableRows.map((user) => (
+        `<option value="${escapeHtml(user.id)}">${escapeHtml(user.display_name || user.username)}</option>`
+      )).join("");
+      const preferred = currentFormValue || String(currentUser.id || "");
+      crmDailyLogUser.value = Array.from(crmDailyLogUser.options).some((option) => option.value === preferred)
+        ? preferred
+        : (crmDailyLogUser.options[0]?.value || "");
+    }
+
+    function selectedCrmDailyDate() {
+      if (crmDailyLogDate && !crmDailyLogDate.value) crmDailyLogDate.value = todayString();
+      return crmDailyLogDate?.value || todayString();
+    }
+
+    function crmDailyCompactText(...values) {
+      const text = values.find((value) => String(value || "").trim());
+      return String(text || "").replace(/\s+/g, " ").trim();
+    }
+
+    function crmDailyReadableText(...values) {
+      const text = values.find((value) => String(value || "").trim());
+      return String(text || "")
+        .replace(/\r\n?/g, "\n")
+        .split("\n")
+        .map((line) => line.replace(/[ \t]+/g, " ").trim())
+        .join("\n")
+        .replace(/\n{3,}/g, "\n\n")
+        .trim();
+    }
+
+    function crmDailyNeedsToggle(text) {
+      const value = String(text || "");
+      const lines = value.split("\n").filter((line) => line.trim());
+      return value.length > 140 || lines.length > 5;
+    }
+
+    function crmDailyDisplayLines(text) {
+      return String(text || "")
+        .split("\n")
+        .map((line) => line.trim())
+        .filter(Boolean);
+    }
+
+    function crmDailyLineListHtml(text, empty) {
+      const lines = crmDailyDisplayLines(text);
+      if (empty || !lines.length) return escapeHtml(text);
+      return `
+        <div class="crm-daily-log-line-list">
+          ${lines.map((line, index) => `
+            <div class="crm-daily-log-line">
+              <span class="crm-daily-log-line-index">${escapeHtml(index + 1)}</span>
+              <span class="crm-daily-log-line-text">${escapeHtml(line)}</span>
+            </div>
+          `).join("")}
+        </div>
+      `;
+    }
+
+    function crmDailyDomToken(value) {
+      return String(value || "unknown")
+        .trim()
+        .replace(/[^A-Za-z0-9_-]+/g, "-")
+        .replace(/^-+|-+$/g, "") || "unknown";
+    }
+
+    function crmDailyLogSectionHtml(label, text, empty, key, sectionId) {
+      const needsToggle = !empty && crmDailyNeedsToggle(text);
+      const lineCount = crmDailyDisplayLines(text).length;
+      const textId = sectionId || `crm-daily-log-${crmDailyDomToken(key)}`;
+      const safeTextId = escapeHtml(textId);
+      return `
+        <div class="crm-daily-log-section ${empty ? "" : "has-content"}" data-crm-daily-section="${escapeHtml(key)}">
+          <div class="crm-daily-log-section-head">
+            <span>${escapeHtml(label)}</span>
+            <div class="crm-daily-log-section-tools">
+              ${!empty && lineCount > 1 ? `<span class="crm-daily-log-line-count">${escapeHtml(lineCount)}줄</span>` : ""}
+              ${needsToggle ? `<button class="crm-daily-log-toggle" type="button" data-crm-daily-toggle="${safeTextId}" aria-controls="${safeTextId}" aria-expanded="false">전체보기</button>` : ""}
+            </div>
+          </div>
+          <div id="${safeTextId}" class="crm-daily-log-text ${empty ? "empty" : ""} ${needsToggle ? "is-collapsed" : ""}">${crmDailyLineListHtml(text, empty)}</div>
+        </div>
+      `;
+    }
+
+    function clearCrmDailyLogFields() {
+      if (crmDailyWorkSummary) crmDailyWorkSummary.value = "";
+      if (crmDailyCompletedWork) crmDailyCompletedWork.value = "";
+      if (crmDailyOngoingWork) crmDailyOngoingWork.value = "";
+      if (crmDailyBlockers) crmDailyBlockers.value = "";
+      if (crmDailyNextPlan) crmDailyNextPlan.value = "";
+    }
+
+    function resetCrmDailyLogForm() {
+      if (crmDailyLogDate) crmDailyLogDate.value = selectedCrmDailyDate();
+      renderCrmDailyUserOptions();
+      clearCrmDailyLogFields();
+      crmDailyCompletedWork?.focus();
+    }
+
+    function fillCrmDailyLogForm(log) {
+      if (!log) return;
+      if (crmDailyLogDate) crmDailyLogDate.value = log.log_date || selectedCrmDailyDate();
+      renderCrmDailyUserOptions();
+      if (crmDailyLogUser) crmDailyLogUser.value = String(log.user_id || currentUser.id || "");
+      if (crmDailyWorkSummary) crmDailyWorkSummary.value = log.work_summary || "";
+      if (crmDailyCompletedWork) crmDailyCompletedWork.value = log.completed_work || log.ongoing_work || log.work_summary || "";
+      if (crmDailyOngoingWork) crmDailyOngoingWork.value = log.ongoing_work || "";
+      if (crmDailyBlockers) crmDailyBlockers.value = log.blockers || "";
+      if (crmDailyNextPlan) crmDailyNextPlan.value = log.next_plan || "";
+      crmDailyCompletedWork?.focus();
+    }
+
+    function crmDailyPreviewText(log) {
+      return crmDailyCompactText(log.completed_work, log.ongoing_work, log.work_summary);
+    }
+
+    function renderCrmDailyLogs(payload = crmDailyLogPayload) {
+      if (!crmDailyLogBody) return;
+      const data = payload || {};
+      const summary = data.summary || {};
+      const logs = data.logs || [];
+      if (crmDailyLogDateLabel) crmDailyLogDateLabel.textContent = data.date || selectedCrmDailyDate();
+      if (crmDailyLogStats) {
+        crmDailyLogStats.innerHTML = [
+          ["작성", summary.submitted || 0, "DONE"],
+          ["미작성", summary.missing || 0, "MISS"],
+        ].map(([label, value, icon]) => `
+          <article class="crm-board-stat">
+            <div><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></div>
+            <i>${escapeHtml(icon)}</i>
+          </article>
+        `).join("");
+      }
+      if (!logs.length) {
+        crmDailyLogBody.innerHTML = `<div class="crm-daily-log-empty">표시할 직원 일지가 없습니다.</div>`;
+        return;
+      }
+      const sortedLogs = [...logs].sort((left, right) => {
+        const leftHasEntry = Boolean(crmDailyReadableText(left.completed_work, left.ongoing_work, left.work_summary, left.next_plan));
+        const rightHasEntry = Boolean(crmDailyReadableText(right.completed_work, right.ongoing_work, right.work_summary, right.next_plan));
+        if (leftHasEntry !== rightHasEntry) return rightHasEntry ? 1 : -1;
+        return String(left.display_name || left.employee_name || left.username || "").localeCompare(
+          String(right.display_name || right.employee_name || right.username || ""),
+          "ko"
+        );
+      });
+      crmDailyLogBody.innerHTML = sortedLogs.map((log, index) => {
+        const canWrite = can("crm_manage") || String(log.user_id || "") === String(currentUser.id || "");
+        const todayEntry = crmDailyReadableText(log.completed_work, log.ongoing_work, log.work_summary);
+        const tomorrowEntry = crmDailyReadableText(log.next_plan);
+        const hasEntry = Boolean(todayEntry || tomorrowEntry);
+        const todayText = todayEntry || "아직 작성된 내용이 없습니다.";
+        const tomorrowText = tomorrowEntry || "아직 작성된 내용이 없습니다.";
+        const logToken = crmDailyDomToken(log.user_id || log.username || log.display_name || index);
+        const todaySectionId = `crm-daily-log-${index}-${logToken}-today`;
+        const tomorrowSectionId = `crm-daily-log-${index}-${logToken}-tomorrow`;
+        const status = log.submitted ? `<span class="crm-status done">작성</span>` : `<span class="crm-status wait">미작성</span>`;
+        const action = canWrite
+          ? `<button class="crm-mini-button" type="button" data-crm-daily-load="${escapeHtml(log.user_id)}">${log.submitted ? "수정" : "작성"}</button>`
+          : "";
+        return `
+          <article class="crm-daily-log-card ${hasEntry ? "has-entry" : "is-missing"}">
+            <div class="crm-daily-log-card-head">
+              <div class="crm-daily-name">
+                <strong>${escapeHtml(log.display_name || log.employee_name || "직원")}</strong>
+                <span>${escapeHtml(roleText(log.role))} · ${escapeHtml(log.username || "")}</span>
+              </div>
+              <div class="crm-daily-log-card-actions">
+                ${status}
+                ${action}
+              </div>
+            </div>
+            <div class="crm-daily-log-card-body">
+              ${crmDailyLogSectionHtml("오늘 한 일", todayText, !todayEntry, "today", todaySectionId)}
+              ${crmDailyLogSectionHtml("내일 할 일", tomorrowText, !tomorrowEntry, "tomorrow", tomorrowSectionId)}
+            </div>
+          </article>
+        `;
+      }).join("");
+    }
+
+    async function loadCrmDailyLogs() {
+      if (!can("crm_view")) return;
+      const params = new URLSearchParams({ date: selectedCrmDailyDate() });
+      if (crmDailyLogUserFilter?.value) params.set("user_id", crmDailyLogUserFilter.value);
+      const data = await crmFetchJson(`/api/crm-daily-logs?${params.toString()}`);
+      crmDailyLogPayload = data;
+      crmDailyLogs = data.logs || [];
+      if (!crmDailyLogUserFilter?.value && data.staff?.length) crmUsers = data.staff;
+      renderCrmDailyUserOptions();
+      renderCrmDailyLogs(data);
+    }
+
+    async function saveCrmDailyLogForm(event) {
+      event.preventDefault();
+      if (!can("crm_view")) return;
+      const userId = crmDailyLogUser?.value || currentUser.id || "";
+      const todayWork = crmDailyCompletedWork?.value.trim() || "";
+      const tomorrowWork = crmDailyNextPlan?.value.trim() || "";
+      const summaryLine = todayWork.split(/\n+/).map((line) => line.trim()).find(Boolean) || todayWork;
+      const data = await crmFetchJson("/api/crm-daily-log-save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          log_date: selectedCrmDailyDate(),
+          user_id: userId,
+          work_summary: summaryLine,
+          completed_work: todayWork,
+          ongoing_work: "",
+          blockers: "",
+          next_plan: tomorrowWork,
+        }),
+      });
+      setCrmMessage(data.message || "일일 업무일지를 저장했습니다.");
+      await loadCrmDailyLogs();
+      const saved = crmDailyLogs.find((log) => String(log.user_id) === String(userId));
+      if (saved) fillCrmDailyLogForm(saved);
     }
 
     function renderCrmAccountOptions() {
@@ -15950,6 +18252,7 @@ HTML = r"""<!doctype html>
         loadCrmUsersForForms().catch(() => {}),
       ]);
       if (crmActiveTab === "mine") await loadCrmMineTasks();
+      if (crmActiveTab === "daily") await loadCrmDailyLogs();
       if (crmActiveTab === "messages" && can("crm_message_manage")) await loadCrmMessenger();
     }
 
@@ -16221,9 +18524,13 @@ HTML = r"""<!doctype html>
 
     function ledgerFieldValue(csCase, field) {
       if (field === "purchase_vendor") return csCase.purchase_vendor || csCase.vendor_name || "";
-      if (field === "occurred_at") return csCase.occurred_at || csCase.created_at || "";
+      if (field === "occurred_at") return ledgerDisplayDate(csCase);
       if (field === "original_invoice") return csCase.original_invoice || csCase.original_info || "";
       return csCase[field] || "";
+    }
+
+    function ledgerDisplayDate(csCase) {
+      return csCase.occurred_at || csCase.order_date || csCase.ship_date || "";
     }
 
     function matchesLedgerFilters(csCase) {
@@ -16241,12 +18548,34 @@ HTML = r"""<!doctype html>
       });
     }
 
+    function syncColumnFilterIndicator(button, { textActive = false, colorActive = false, value = "" } = {}) {
+      const header = button.closest("th");
+      const active = Boolean(textActive || colorActive);
+      const label = button.dataset.label || "필터";
+      const appliedParts = [];
+      if (textActive) appliedParts.push(`값: ${value}`);
+      if (colorActive) appliedParts.push("색상 표시된 셀만");
+      const title = active ? `${label} 필터 적용됨 (${appliedParts.join(", ")})` : `${label} 필터`;
+
+      button.classList.toggle("active", active);
+      button.classList.toggle("text-active", Boolean(textActive));
+      button.classList.toggle("color-active", Boolean(colorActive));
+      button.title = title;
+      if (!header) return;
+      header.classList.toggle("filter-active", active);
+      header.classList.toggle("text-filter-active", Boolean(textActive));
+      header.classList.toggle("color-filter-active", Boolean(colorActive));
+      if (active) header.title = title;
+      else header.removeAttribute("title");
+    }
+
     function applyLedgerFilters() {
       const filtered = ledgerCases.filter(matchesLedgerFilters);
       renderLedger(filtered);
       ledgerFilterButtons.forEach((button) => {
         const field = button.dataset.ledgerFilterButton;
-        button.classList.toggle("active", Boolean(ledgerFilters[field]));
+        const value = String(ledgerFilters[field] || "").trim();
+        syncColumnFilterIndicator(button, { textActive: Boolean(value), value });
       });
       if (currentMode === "ledger") notice.textContent = `${filtered.length}건 조회되었습니다.`;
     }
@@ -16255,16 +18584,58 @@ HTML = r"""<!doctype html>
       return record[field] || "";
     }
 
+    function managementDuplicateKey(record) {
+      const dateKey = String(record.order_date || record.ship_date || "").trim();
+      const invoiceKey = String(record.invoice_number || "").trim();
+      return dateKey && invoiceKey ? `${dateKey}||${invoiceKey}` : "";
+    }
+
+    function managementDuplicateCounts(records) {
+      const counts = new Map();
+      (records || []).forEach((record) => {
+        const key = managementDuplicateKey(record);
+        if (!key) return;
+        counts.set(key, (counts.get(key) || 0) + 1);
+      });
+      return counts;
+    }
+
+    function isManagementDuplicateRecord(record, duplicateCounts = managementColorFilterDuplicateCounts) {
+      const key = managementDuplicateKey(record);
+      return Boolean(key && duplicateCounts && duplicateCounts.get(key) > 1);
+    }
+
+    function managementCellHasColor(record, field, duplicateCounts = managementColorFilterDuplicateCounts) {
+      if (record.cs_received_at) return true;
+      if (isManagementDuplicateRecord(record, duplicateCounts)) return true;
+      return field === "quantity" && Boolean(quantityLevelClass(record.quantity));
+    }
+
+    function managementHasActiveColorFilters() {
+      return Object.values(managementColorFilters).some(Boolean);
+    }
+
     function matchesManagementFilters(record) {
-      return matchesManagementFiltersExcept(record, "");
+      return matchesManagementTextFiltersExcept(record, "") && matchesManagementColorFilters(record);
     }
 
     function matchesManagementFiltersExcept(record, excludedField = "") {
+      return matchesManagementTextFiltersExcept(record, excludedField);
+    }
+
+    function matchesManagementTextFiltersExcept(record, excludedField = "") {
       return Object.entries(managementFilters).every(([field, filterValue]) => {
         if (field === excludedField) return true;
         const value = String(filterValue || "").trim().toLowerCase();
         if (!value) return true;
         return String(managementFieldValue(record, field)).toLowerCase().includes(value);
+      });
+    }
+
+    function matchesManagementColorFilters(record) {
+      return Object.entries(managementColorFilters).every(([field, mode]) => {
+        if (mode !== "colored") return true;
+        return managementCellHasColor(record, field);
       });
     }
 
@@ -16291,7 +18662,7 @@ HTML = r"""<!doctype html>
         ].filter(Boolean).join(" · ");
       }
       return [
-        shortKoreanDate(row.occurred_at || row.order_date || row.created_at),
+        shortKoreanDate(row.occurred_at || row.order_date || row.ship_date),
         row.receiver_name || row.orderer_name || row.sales_vendor || "이름 없음",
         row.product_name || "상품명 없음",
       ].filter(Boolean).join(" · ");
@@ -16392,11 +18763,18 @@ HTML = r"""<!doctype html>
     }
 
     function applyManagementFilters() {
-      const filtered = managementRecords.filter(matchesManagementFilters);
+      const textFiltered = managementRecords.filter((record) => matchesManagementTextFiltersExcept(record, ""));
+      managementColorFilterDuplicateCounts = managementDuplicateCounts(textFiltered);
+      const filtered = textFiltered.filter(matchesManagementColorFilters);
       renderManagement(filtered);
       managementFilterButtons.forEach((button) => {
         const field = button.dataset.managementFilterButton;
-        button.classList.toggle("active", Boolean(managementFilters[field]));
+        const value = String(managementFilters[field] || "").trim();
+        syncColumnFilterIndicator(button, {
+          textActive: Boolean(value),
+          colorActive: Boolean(managementColorFilters[field]),
+          value,
+        });
       });
       if (currentMode === "management") notice.textContent = `${filtered.length}건 조회되었습니다.`;
     }
@@ -16419,27 +18797,55 @@ HTML = r"""<!doctype html>
         : `<button class="ledger-filter-option" type="button" disabled>표시할 값이 없습니다.</button>`;
     }
 
-    function renderManagementFilterOptions(field, searchText = "") {
-      const normalizedSearch = searchText.trim().toLowerCase();
-      const values = Array.from(new Set(
-        managementRecords
-          .filter((record) => matchesManagementFiltersExcept(record, field))
-          .map((record) => String(managementFieldValue(record, field) || "").trim())
-          .filter(Boolean)
-      )).sort((left, right) => left.localeCompare(right, "ko"));
-      const filteredValues = values
-        .filter((value) => !normalizedSearch || value.toLowerCase().includes(normalizedSearch))
-        .slice(0, 220);
-      ledgerFilterOptions.innerHTML = filteredValues.length
-        ? filteredValues.map((value) => (
-          `<button class="ledger-filter-option" type="button" data-filter-value="${escapeHtml(value)}">${escapeHtml(value)}</button>`
-        )).join("")
-        : `<button class="ledger-filter-option" type="button" disabled>표시할 값이 없습니다.</button>`;
+    async function renderManagementFilterOptions(field, searchText = "") {
+      const requestId = ++managementFilterOptionRequestId;
+      syncManagementColorFilterControl();
+      ledgerFilterOptions.innerHTML = `<button class="ledger-filter-option" type="button" disabled>월 전체 데이터를 확인하는 중입니다.</button>`;
+      const params = new URLSearchParams({ field, search: searchText.trim() });
+      const query = managementSearchInput.value.trim();
+      const period = selectedManagementPeriod();
+      if (!period.year || !period.month) {
+        ledgerFilterOptions.innerHTML = `<button class="ledger-filter-option" type="button" disabled>먼저 조회할 월을 선택해주세요.</button>`;
+        return;
+      }
+      if (query) params.set("q", query);
+      if (period.year) params.set("year", period.year);
+      if (period.month) params.set("month", period.month);
+      appendManagementFilterParams(params, { excludeField: field });
+      try {
+        const response = await fetch(`/api/management-filter-options?${params.toString()}`);
+        const data = await response.json().catch(() => ({}));
+        if (requestId !== managementFilterOptionRequestId) return;
+        if (!response.ok) throw new Error(data.error || "필터 후보를 불러오지 못했습니다.");
+        const options = data.options || [];
+        ledgerFilterOptions.innerHTML = options.length
+          ? options.map((option) => {
+            const value = option.value || "";
+            const count = Number(option.count || 0);
+            const suffix = count > 1 ? ` <span class="ledger-filter-option-count">${count.toLocaleString("ko-KR")}건</span>` : "";
+            return `<button class="ledger-filter-option" type="button" data-filter-value="${escapeHtml(value)}" data-filter-record-id="${escapeHtml(option.record_id || "")}">${escapeHtml(value)}${suffix}</button>`;
+          }).join("")
+          : `<button class="ledger-filter-option" type="button" disabled>해당 월 전체 데이터에 표시할 값이 없습니다.</button>`;
+      } catch (error) {
+        if (requestId !== managementFilterOptionRequestId) return;
+        ledgerFilterOptions.innerHTML = `<button class="ledger-filter-option" type="button" disabled>${escapeHtml(error.message || "필터 후보를 불러오지 못했습니다.")}</button>`;
+      }
+    }
+
+    function syncManagementColorFilterControl() {
+      if (!managementFilterColorControls || !managementFilterColoredOnly) return;
+      const visible = Boolean(activeManagementFilterField);
+      managementFilterColorControls.classList.toggle("open", visible);
+      managementFilterColoredOnly.classList.toggle(
+        "active",
+        Boolean(activeManagementFilterField && managementColorFilters[activeManagementFilterField])
+      );
     }
 
     function openLedgerFilter(button) {
       activeManagementFilterField = "";
       activeLedgerFilterField = button.dataset.ledgerFilterButton || "";
+      syncManagementColorFilterControl();
       ledgerFilterTitle.textContent = `${button.dataset.label || "필터"} 필터`;
       ledgerFilterSearch.value = ledgerFilters[activeLedgerFilterField] || "";
       renderLedgerFilterOptions(activeLedgerFilterField, ledgerFilterSearch.value);
@@ -16454,6 +18860,7 @@ HTML = r"""<!doctype html>
     function openManagementFilter(button) {
       activeLedgerFilterField = "";
       activeManagementFilterField = button.dataset.managementFilterButton || "";
+      syncManagementColorFilterControl();
       ledgerFilterTitle.textContent = `${button.dataset.label || "필터"} 필터`;
       ledgerFilterSearch.value = managementFilters[activeManagementFilterField] || "";
       renderManagementFilterOptions(activeManagementFilterField, ledgerFilterSearch.value);
@@ -16469,6 +18876,7 @@ HTML = r"""<!doctype html>
       ledgerFilterPopover.classList.remove("open");
       activeLedgerFilterField = "";
       activeManagementFilterField = "";
+      syncManagementColorFilterControl();
     }
 
     function markRowDirty(row, dirty = true) {
@@ -16494,6 +18902,9 @@ HTML = r"""<!doctype html>
       }
       row.querySelectorAll(".management-cs-button").forEach((button) => {
         setHidden(button, !can("cs_receive"));
+      });
+      row.querySelectorAll("[data-ledger-edit-row]").forEach((button) => {
+        setHidden(button, !can("ledger_edit"));
       });
     }
 
@@ -16543,6 +18954,7 @@ HTML = r"""<!doctype html>
 
     function selectEditableCell(scope, cell) {
       if (!cell || cell.dataset.readonly === "1") return;
+      clearSheetRangeSelection();
       const previous = activeCellEditors[scope];
       if (previous?.cell && previous.cell !== cell) previous.cell.classList.remove("selected-cell");
       const parts = selectedEditorParts(scope);
@@ -16573,6 +18985,192 @@ HTML = r"""<!doctype html>
 
     function editableCellsInRow(scope, row) {
       return Array.from(row?.querySelectorAll(editableSelectorForScope(scope)) || []);
+    }
+
+    function sheetCellSelectorForScope(scope) {
+      return scope === "management"
+        ? "tr[data-record-id] td:not(:first-child):not(:last-child)"
+        : "tr[data-case-id] td:not(:first-child):not(:last-child)";
+    }
+
+    function sheetRowsForScope(scope) {
+      const body = scope === "management" ? managementBody : ledgerBody;
+      const rowSelector = scope === "management" ? "tr[data-record-id]" : "tr[data-case-id]";
+      return Array.from(body?.querySelectorAll(rowSelector) || []);
+    }
+
+    function sheetCellsInRow(scope, row) {
+      return Array.from(row?.querySelectorAll(sheetCellSelectorForScope(scope)) || [])
+        .filter((cell) => !cell.querySelector(".management-cs-button"));
+    }
+
+    function sheetCellScope(cell) {
+      if (!cell) return "";
+      if (cell.closest("#managementBody")) return "management";
+      if (cell.closest("#ledgerBody")) return "ledger";
+      return "";
+    }
+
+    function sheetCellPosition(scope, cell) {
+      const row = cell?.closest("tr");
+      const rows = sheetRowsForScope(scope);
+      const rowIndex = rows.indexOf(row);
+      const cells = sheetCellsInRow(scope, row);
+      const columnIndex = cells.indexOf(cell);
+      if (rowIndex < 0 || columnIndex < 0) return null;
+      return { rowIndex, columnIndex };
+    }
+
+    function clearSheetRangeSelection({ hideSummary = true } = {}) {
+      sheetRangeSelection.cells.forEach((cell) => {
+        cell.classList.remove("sheet-range-cell", "sheet-range-anchor");
+      });
+      sheetRangeSelection.scope = "";
+      sheetRangeSelection.anchor = null;
+      sheetRangeSelection.current = null;
+      sheetRangeSelection.cells = [];
+      sheetRangeSelection.dragging = false;
+      sheetRangeSelection.moved = false;
+      if (hideSummary && sheetRangeSelection.summary) {
+        sheetRangeSelection.summary.classList.remove("open");
+        sheetRangeSelection.summary.innerHTML = "";
+      }
+    }
+
+    function ensureSheetSelectionSummary() {
+      if (!sheetRangeSelection.summary) {
+        const summary = document.createElement("div");
+        summary.className = "sheet-selection-summary";
+        summary.setAttribute("aria-live", "polite");
+        document.body.appendChild(summary);
+        sheetRangeSelection.summary = summary;
+      }
+      return sheetRangeSelection.summary;
+    }
+
+    function formatSheetNumber(value) {
+      return new Intl.NumberFormat("ko-KR", { maximumFractionDigits: 2 }).format(value);
+    }
+
+    function numericValueFromSheetCell(cell) {
+      const raw = String(fieldValue(cell) || cell?.textContent || "").trim();
+      if (!raw) return null;
+      const normalized = raw.replace(/,/g, "");
+      if (!/^[+-]?(?:\d+\.?\d*|\.\d+)$/.test(normalized)) return null;
+      const value = Number(normalized);
+      return Number.isFinite(value) ? value : null;
+    }
+
+    function updateSheetSelectionSummary(cells) {
+      const summary = ensureSheetSelectionSummary();
+      if (!cells.length) {
+        summary.classList.remove("open");
+        summary.innerHTML = "";
+        return;
+      }
+      const numbers = cells
+        .map(numericValueFromSheetCell)
+        .filter((value) => value !== null);
+      if (cells.length === 1 && numbers.length === 0) {
+        summary.classList.remove("open");
+        summary.innerHTML = "";
+        return;
+      }
+      const sum = numbers.reduce((total, value) => total + value, 0);
+      const average = numbers.length ? sum / numbers.length : 0;
+      summary.innerHTML = numbers.length
+        ? `<span>선택 ${formatSheetNumber(cells.length)}칸</span><span>숫자 ${formatSheetNumber(numbers.length)}개</span><strong>합계 ${formatSheetNumber(sum)}</strong><span>평균 ${formatSheetNumber(average)}</span>`
+        : `<span>선택 ${formatSheetNumber(cells.length)}칸</span><span>숫자 없음</span>`;
+      summary.classList.add("open");
+    }
+
+    function applySheetRangeSelection(scope, anchor, current) {
+      const start = sheetCellPosition(scope, anchor);
+      const end = sheetCellPosition(scope, current);
+      if (!start || !end) return;
+      sheetRangeSelection.cells.forEach((cell) => {
+        cell.classList.remove("sheet-range-cell", "sheet-range-anchor");
+      });
+      const rowStart = Math.min(start.rowIndex, end.rowIndex);
+      const rowEnd = Math.max(start.rowIndex, end.rowIndex);
+      const colStart = Math.min(start.columnIndex, end.columnIndex);
+      const colEnd = Math.max(start.columnIndex, end.columnIndex);
+      const rows = sheetRowsForScope(scope);
+      const nextCells = [];
+      for (let rowIndex = rowStart; rowIndex <= rowEnd; rowIndex += 1) {
+        const rowCells = sheetCellsInRow(scope, rows[rowIndex]);
+        for (let columnIndex = colStart; columnIndex <= colEnd; columnIndex += 1) {
+          const cell = rowCells[columnIndex];
+          if (cell) nextCells.push(cell);
+        }
+      }
+      nextCells.forEach((cell) => cell.classList.add("sheet-range-cell"));
+      anchor.classList.add("sheet-range-anchor");
+      sheetRangeSelection.scope = scope;
+      sheetRangeSelection.anchor = anchor;
+      sheetRangeSelection.current = current;
+      sheetRangeSelection.cells = nextCells;
+      updateSheetSelectionSummary(nextCells);
+    }
+
+    function isSheetSelectionIgnoredTarget(target) {
+      return Boolean(target?.closest("[data-row-check], button, a, input, textarea, select, label, [contenteditable='true']"));
+    }
+
+    function beginSheetRangeSelection(scope, cell, event) {
+      if (!cell || isSheetSelectionIgnoredTarget(event.target)) return;
+      if (event.button !== undefined && event.button !== 0) return;
+      if (event.shiftKey && sheetRangeSelection.anchor && sheetRangeSelection.scope === scope) {
+        event.preventDefault();
+        sheetRangeSelection.suppressClick = true;
+        applySheetRangeSelection(scope, sheetRangeSelection.anchor, cell);
+        return;
+      }
+      clearSheetRangeSelection();
+      sheetRangeSelection.scope = scope;
+      sheetRangeSelection.anchor = cell;
+      sheetRangeSelection.current = cell;
+      sheetRangeSelection.dragging = true;
+      sheetRangeSelection.moved = false;
+      applySheetRangeSelection(scope, cell, cell);
+      event.preventDefault();
+    }
+
+    function updateSheetRangeDrag(cell) {
+      const scope = sheetRangeSelection.scope;
+      if (!sheetRangeSelection.dragging || !scope || sheetCellScope(cell) !== scope) return;
+      if (cell === sheetRangeSelection.current) return;
+      sheetRangeSelection.moved = true;
+      applySheetRangeSelection(scope, sheetRangeSelection.anchor, cell);
+    }
+
+    function finishSheetRangeSelection() {
+      if (!sheetRangeSelection.dragging) return;
+      sheetRangeSelection.dragging = false;
+      if (sheetRangeSelection.moved && sheetRangeSelection.cells.length > 1) {
+        sheetRangeSelection.suppressClick = true;
+        setTimeout(() => {
+          sheetRangeSelection.suppressClick = false;
+        }, 0);
+      }
+    }
+
+    function shouldSuppressSheetSelectionClick(event) {
+      if (!sheetRangeSelection.suppressClick || isSheetSelectionIgnoredTarget(event.target)) return false;
+      sheetRangeSelection.suppressClick = false;
+      event.preventDefault();
+      event.stopPropagation();
+      return true;
+    }
+
+    function handleSheetBodyMouseDown(scope, event) {
+      const cell = event.target.closest(sheetCellSelectorForScope(scope));
+      if (cell) beginSheetRangeSelection(scope, cell, event);
+    }
+
+    function handleSheetBodyMouseOver(scope, event) {
+      const cell = event.target.closest(sheetCellSelectorForScope(scope));
+      if (cell) updateSheetRangeDrag(cell);
     }
 
     function moveEditableCell(scope, cell, rowDelta, colDelta) {
@@ -16705,6 +19303,7 @@ HTML = r"""<!doctype html>
 
     function openCellEditor(scope, cell) {
       if (!cell || cell.dataset.readonly === "1" || !can("ledger_edit")) return;
+      clearSheetRangeSelection();
       closeCellEditor(scope);
       closeLedgerFilter();
       const row = cell.closest("tr");
@@ -16877,9 +19476,10 @@ HTML = r"""<!doctype html>
     function clearActiveLedgerFilter() {
       if (activeManagementFilterField) {
         delete managementFilters[activeManagementFilterField];
+        delete managementColorFilters[activeManagementFilterField];
         ledgerFilterSearch.value = "";
         renderManagementFilterOptions(activeManagementFilterField, "");
-        applyManagementFilters();
+        loadManagementRecords();
         closeLedgerFilter();
         return;
       }
@@ -16901,8 +19501,9 @@ HTML = r"""<!doctype html>
 
     function clearAllManagementFilters() {
       Object.keys(managementFilters).forEach((field) => delete managementFilters[field]);
+      Object.keys(managementColorFilters).forEach((field) => delete managementColorFilters[field]);
       ledgerFilterSearch.value = "";
-      applyManagementFilters();
+      loadManagementRecords();
     }
 
     function clearAllActivePopoverFilters() {
@@ -16923,17 +19524,29 @@ HTML = r"""<!doctype html>
       closeLedgerFilter();
     }
 
-    function setManagementFilter(value) {
+    function setManagementFilter(value, targetRecordId = "") {
       if (!activeManagementFilterField) return;
       const normalized = String(value || "").trim();
       if (normalized) managementFilters[activeManagementFilterField] = normalized;
       else delete managementFilters[activeManagementFilterField];
-      applyManagementFilters();
+      pendingManagementHighlightId = targetRecordId ? String(targetRecordId) : "";
+      loadManagementRecords();
       closeLedgerFilter();
     }
 
-    function setActivePopoverFilter(value) {
-      if (activeManagementFilterField) setManagementFilter(value);
+    function toggleManagementColorFilter() {
+      if (!activeManagementFilterField) return;
+      if (managementColorFilters[activeManagementFilterField]) {
+        delete managementColorFilters[activeManagementFilterField];
+      } else {
+        managementColorFilters[activeManagementFilterField] = "colored";
+      }
+      loadManagementRecords();
+      closeLedgerFilter();
+    }
+
+    function setActivePopoverFilter(value, targetRecordId = "") {
+      if (activeManagementFilterField) setManagementFilter(value, targetRecordId);
       else setLedgerFilter(value);
     }
 
@@ -17071,6 +19684,7 @@ HTML = r"""<!doctype html>
 
     function renderLedger(cases) {
       closeCellEditor("ledger");
+      clearSheetRangeSelection();
       ledgerBody.innerHTML = "";
       if (ledgerSelectAll) {
         ledgerSelectAll.checked = false;
@@ -17078,7 +19692,7 @@ HTML = r"""<!doctype html>
       }
       if (!cases || cases.length === 0) {
         const row = document.createElement("tr");
-        row.innerHTML = `<td colspan="21">조회된 CS건이 없습니다.</td>`;
+        row.innerHTML = `<td colspan="22">조회된 CS건이 없습니다.</td>`;
         ledgerBody.appendChild(row);
         return;
       }
@@ -17092,33 +19706,35 @@ HTML = r"""<!doctype html>
           : `<button class="ledger-row-return-check" type="button" data-return-check-row>회수확인</button>`;
         const csTypeSelectOptions = ["", ...csTypeOptions];
         if (isLedgerCompletedCase(csCase)) row.classList.add("completed-cs");
+        const displayDate = ledgerDisplayDate(csCase);
         row.innerHTML = `
           <td><input class="ledger-check" type="checkbox" data-row-check /></td>
-          <td data-full-date="${escapeHtml(csCase.occurred_at || csCase.created_at)}">${escapeHtml(shortKoreanDate(csCase.occurred_at || csCase.created_at))}</td>
-          <td title="${escapeHtml(csCase.sales_vendor)}">${escapeHtml(csCase.sales_vendor)}</td>
-          <td title="${escapeHtml(csCase.purchase_vendor || csCase.vendor_name)}">${escapeHtml(csCase.purchase_vendor || csCase.vendor_name)}</td>
+          <td data-full-date="${escapeHtml(displayDate)}">${escapeHtml(shortKoreanDate(displayDate))}</td>
+          ${editableCell({ scope: "ledger", field: "sales_vendor", label: "매출거래처", value: csCase.sales_vendor })}
+          ${editableCell({ scope: "ledger", field: "purchase_vendor", label: "매입거래처", value: csCase.purchase_vendor || csCase.vendor_name })}
           <td class="editable-cell" data-field="status" data-label="처리진행상태" data-value="${escapeHtml(statusValue)}" data-input="select" data-options="${escapeHtml(JSON.stringify(statusSelectOptions))}">
             <span class="ledger-status-cell">
               <span class="ledger-cell-value">${escapeHtml(cellDisplayValue(statusValue))}</span>
               ${returnCheckButtonHtml}
             </span>
           </td>
-          <td data-field="completed_at" data-value="${escapeHtml(csCase.completed_at)}" data-full-date="${escapeHtml(csCase.completed_at)}">${escapeHtml(shortKoreanDate(csCase.completed_at))}</td>
+          ${editableCell({ scope: "ledger", field: "completed_at", label: "완료일", value: csCase.completed_at, date: true, input: "date" })}
           ${editableCell({ scope: "ledger", field: "cs_type", label: "처리내용", value: csCase.cs_type, input: "select", options: csTypeSelectOptions })}
           ${editableCell({ scope: "ledger", field: "cs_content", label: "C/S 내용", value: csCase.cs_content, align: "left", input: "textarea" })}
           ${editableCell({ scope: "ledger", field: "reship_invoice", label: "재발송운송장번호", value: csCase.reship_invoice, align: "invoice-cell reship-cell" })}
           ${editableCell({ scope: "ledger", field: "return_invoice", label: "회수운송장번호", value: csCase.return_invoice, align: "invoice-cell return-cell" })}
-          <td data-full-date="${escapeHtml(csCase.order_date)}">${escapeHtml(shortKoreanDate(csCase.order_date))}</td>
-          <td data-full-date="${escapeHtml(csCase.ship_date)}">${escapeHtml(shortKoreanDate(csCase.ship_date))}</td>
-          <td title="${escapeHtml(csCase.orderer_name)}">${escapeHtml(csCase.orderer_name)}</td>
-          <td title="${escapeHtml(csCase.orderer_phone)}">${escapeHtml(csCase.orderer_phone)}</td>
-          <td title="${escapeHtml(csCase.receiver_name)}">${escapeHtml(csCase.receiver_name)}</td>
-          <td title="${escapeHtml(csCase.receiver_phone)}">${escapeHtml(csCase.receiver_phone)}</td>
-          <td class="left" title="${escapeHtml(csCase.product_name)}">${escapeHtml(csCase.product_name)}</td>
-          <td class="${escapeHtml(quantityLevelClass(csCase.quantity))}">${escapeHtml(csCase.quantity)}</td>
-          <td class="left" title="${escapeHtml(csCase.receiver_address)}">${escapeHtml(csCase.receiver_address)}</td>
-          <td title="${escapeHtml(csCase.courier)}">${escapeHtml(csCase.courier)}</td>
-          <td title="${escapeHtml(csCase.original_invoice || csCase.original_info)}">${escapeHtml(csCase.original_invoice || csCase.original_info)}</td>
+          ${editableCell({ scope: "ledger", field: "order_date", label: "주문일자", value: csCase.order_date, date: true, input: "date" })}
+          ${editableCell({ scope: "ledger", field: "ship_date", label: "출고일", value: csCase.ship_date, date: true, input: "date" })}
+          ${editableCell({ scope: "ledger", field: "orderer_name", label: "주문자", value: csCase.orderer_name })}
+          ${editableCell({ scope: "ledger", field: "orderer_phone", label: "주문자 연락처", value: csCase.orderer_phone })}
+          ${editableCell({ scope: "ledger", field: "receiver_name", label: "수령자", value: csCase.receiver_name })}
+          ${editableCell({ scope: "ledger", field: "receiver_phone", label: "수령자 연락처", value: csCase.receiver_phone })}
+          ${editableCell({ scope: "ledger", field: "product_name", label: "제품명", value: csCase.product_name, align: "left", input: "textarea" })}
+          ${editableCell({ scope: "ledger", field: "quantity", label: "수량", value: csCase.quantity, align: quantityLevelClass(csCase.quantity) })}
+          ${editableCell({ scope: "ledger", field: "receiver_address", label: "상세주소", value: csCase.receiver_address, align: "left", input: "textarea" })}
+          ${editableCell({ scope: "ledger", field: "courier", label: "택배사", value: csCase.courier })}
+          ${editableCell({ scope: "ledger", field: "original_invoice", label: "송장번호", value: csCase.original_invoice || csCase.original_info })}
+          <td><button class="ledger-save" type="button" data-ledger-edit-row>수정</button></td>
         `;
         applyRowPermissions(row);
         ledgerBody.appendChild(row);
@@ -17138,7 +19754,7 @@ HTML = r"""<!doctype html>
 
     async function loadLedgerCases({ showPicker = false } = {}) {
       const query = ledgerSearchInput.value.trim();
-      const params = new URLSearchParams({ limit: ledgerPageSize.value || "1000" });
+      const params = new URLSearchParams({ limit: ledgerPageSize.value || "500" });
       if (query) params.set("q", query);
       if (ledgerYearFilter?.value) params.set("year", ledgerYearFilter.value);
       if (ledgerMonthFilter?.value) params.set("month", ledgerMonthFilter.value);
@@ -17652,6 +20268,7 @@ HTML = r"""<!doctype html>
 
     function renderManagement(records) {
       closeCellEditor("management");
+      clearSheetRangeSelection();
       managementBody.innerHTML = "";
       if (managementSelectAll) managementSelectAll.checked = false;
       updateManagementColumnWidths(records || []);
@@ -17671,23 +20288,14 @@ HTML = r"""<!doctype html>
         "#fff0df",
         "#eef2ff",
       ];
-      const duplicateCounts = new Map();
+      const duplicateCounts = managementDuplicateCounts(records);
       const duplicateColorByKey = new Map();
-      records.forEach((record) => {
-        const dateKey = String(record.order_date || record.ship_date || "").trim();
-        const invoiceKey = String(record.invoice_number || "").trim();
-        if (!dateKey || !invoiceKey) return;
-        const key = `${dateKey}||${invoiceKey}`;
-        duplicateCounts.set(key, (duplicateCounts.get(key) || 0) + 1);
-      });
       let duplicateGroupIndex = 0;
       records.forEach((record) => {
         const row = document.createElement("tr");
         row.dataset.recordId = record.id;
-        const dateKey = String(record.order_date || record.ship_date || "").trim();
-        const invoiceKey = String(record.invoice_number || "").trim();
-        const duplicateKey = dateKey && invoiceKey ? `${dateKey}||${invoiceKey}` : "";
-        if (duplicateKey && duplicateCounts.get(duplicateKey) > 1) {
+        const duplicateKey = managementDuplicateKey(record);
+        if (isManagementDuplicateRecord(record, duplicateCounts)) {
           if (!duplicateColorByKey.has(duplicateKey)) {
             duplicateColorByKey.set(
               duplicateKey,
@@ -17727,11 +20335,14 @@ HTML = r"""<!doctype html>
 
     async function loadManagementRecords({ showPicker = false } = {}) {
       const query = managementSearchInput.value.trim();
-      const params = new URLSearchParams({ limit: managementPageSize.value || "1000" });
+      const hasColumnFilters = Object.values(managementFilters).some((value) => String(value || "").trim());
+      const hasColorFilters = managementHasActiveColorFilters();
+      const params = new URLSearchParams({ limit: (hasColumnFilters || hasColorFilters) ? "50000" : (managementPageSize.value || "500") });
       const period = selectedManagementPeriod();
       if (query) params.set("q", query);
       if (period.year) params.set("year", period.year);
       if (period.month) params.set("month", period.month);
+      appendManagementFilterParams(params);
       renderManagementMonthTabs();
       try {
         const response = await fetch(`/api/management-records?${params.toString()}`);
@@ -17739,6 +20350,13 @@ HTML = r"""<!doctype html>
         const data = await response.json();
         managementRecords = data.records || [];
         applyManagementFilters();
+        if (pendingManagementHighlightId) {
+          const targetId = pendingManagementHighlightId;
+          pendingManagementHighlightId = "";
+          requestAnimationFrame(() => {
+            highlightTableRow(document.querySelector(`tr[data-record-id="${CSS.escape(String(targetId))}"]`));
+          });
+        }
         if (showPicker && query) {
           const searchableRows = managementRecords
             .filter(matchesManagementFilters)
@@ -17985,11 +20603,25 @@ HTML = r"""<!doctype html>
     function collectLedgerRow(row) {
       return {
         id: row.dataset.caseId,
+        sales_vendor: fieldValue(row.querySelector('[data-field="sales_vendor"]')),
+        purchase_vendor: fieldValue(row.querySelector('[data-field="purchase_vendor"]')),
         status: fieldValue(row.querySelector('[data-field="status"]')),
+        completed_at: fieldValue(row.querySelector('[data-field="completed_at"]')),
         cs_type: fieldValue(row.querySelector('[data-field="cs_type"]')),
         cs_content: fieldValue(row.querySelector('[data-field="cs_content"]')),
         return_invoice: fieldValue(row.querySelector('[data-field="return_invoice"]')),
         reship_invoice: fieldValue(row.querySelector('[data-field="reship_invoice"]')),
+        order_date: fieldValue(row.querySelector('[data-field="order_date"]')),
+        ship_date: fieldValue(row.querySelector('[data-field="ship_date"]')),
+        orderer_name: fieldValue(row.querySelector('[data-field="orderer_name"]')),
+        orderer_phone: fieldValue(row.querySelector('[data-field="orderer_phone"]')),
+        receiver_name: fieldValue(row.querySelector('[data-field="receiver_name"]')),
+        receiver_phone: fieldValue(row.querySelector('[data-field="receiver_phone"]')),
+        product_name: fieldValue(row.querySelector('[data-field="product_name"]')),
+        quantity: fieldValue(row.querySelector('[data-field="quantity"]')),
+        receiver_address: fieldValue(row.querySelector('[data-field="receiver_address"]')),
+        courier: fieldValue(row.querySelector('[data-field="courier"]')),
+        original_invoice: fieldValue(row.querySelector('[data-field="original_invoice"]')),
       };
     }
 
@@ -18007,11 +20639,9 @@ HTML = r"""<!doctype html>
     function updateLedgerCaseCache(payload) {
       const savedCase = ledgerCases.find((item) => String(item.id) === String(payload.id));
       if (!savedCase) return;
-      savedCase.status = payload.status;
-      savedCase.cs_type = payload.cs_type;
-      savedCase.cs_content = payload.cs_content;
-      savedCase.return_invoice = payload.return_invoice;
-      savedCase.reship_invoice = payload.reship_invoice;
+      Object.keys(payload).forEach((field) => {
+        if (field !== "id") savedCase[field] = payload[field];
+      });
     }
 
     function activeLedgerRow() {
@@ -18877,6 +21507,10 @@ HTML = r"""<!doctype html>
         loadMailSettings().then(refreshStockNoticeBody);
         refreshStockNoticeBody();
         loadVendorContacts();
+        loadStockMailHistory().catch((error) => {
+          console.warn(error);
+          renderStockMailHistory([]);
+        });
       } else if (mode.startsWith("mail-")) {
         submitButton.textContent = "닫기";
         submitButton.className = "btn";
@@ -18904,6 +21538,7 @@ HTML = r"""<!doctype html>
         templateInput.required = false;
         ledgerSearchInput.value = "";
         ledgerStatusFilter.value = "";
+        ledgerPageSize.value = "500";
         if (ledgerYearFilter) ledgerYearFilter.value = "";
         if (ledgerMonthFilter) ledgerMonthFilter.value = "";
         ledgerImportInput.value = "";
@@ -18926,7 +21561,7 @@ HTML = r"""<!doctype html>
         managementSearchInput.value = "";
         managementYearFilter.value = "";
         managementMonthFilter.value = "";
-        managementPageSize.value = "1000";
+        managementPageSize.value = "500";
         managementImportInput.value = "";
         Object.keys(managementFilters).forEach((key) => delete managementFilters[key]);
         closeLedgerFilter();
@@ -19020,7 +21655,7 @@ HTML = r"""<!doctype html>
     function showWorkspace(mode) {
       if (!confirmSaveBeforeLeaving(mode, () => showWorkspace(mode))) return false;
       closeModal();
-      if (mode === "userAdmin" && !userAdminWorkspace) mode = "dashboard";
+      if (mode === "userAdmin" && (!userAdminWorkspace || currentUser.role !== "admin")) mode = "dashboard";
       if (mode === "salesReport" && (!userAdminWorkspace || !can("sales_report_manage"))) mode = "dashboard";
       if (mode === "leave" && !leaveWorkspace) mode = "dashboard";
       if (mode === "backup" && !backupWorkspace) mode = "dashboard";
@@ -19064,9 +21699,7 @@ HTML = r"""<!doctype html>
       if (showManagement) {
         setPageTitle("통합관리대장 관리");
         managementSearchInput.value = "";
-        managementYearFilter.value = "";
-        managementMonthFilter.value = "";
-        managementPageSize.value = "1000";
+        managementPageSize.value = "500";
         managementImportInput.value = "";
         closeLedgerFilter();
         loadManagementWorkspaceData();
@@ -19074,6 +21707,7 @@ HTML = r"""<!doctype html>
         setPageTitle("CS 처리대장");
         ledgerSearchInput.value = "";
         ledgerStatusFilter.value = "";
+        ledgerPageSize.value = "500";
         ledgerImportInput.value = "";
         Object.keys(ledgerFilters).forEach((key) => delete ledgerFilters[key]);
         closeLedgerFilter();
@@ -19213,9 +21847,16 @@ HTML = r"""<!doctype html>
 
     async function openTopbarAlertPanel() {
       const sections = [];
-      const leaveItems = leaveNotificationList
-        ? Array.from(leaveNotificationList.children).map((item) => item.textContent.trim()).filter(Boolean)
-        : [];
+      let leaveItems = [];
+      if (canUseLeaveNotifications()) {
+        try {
+          leaveItems = (await fetchLeaveNotifications()).map(leaveNotificationText).filter(Boolean);
+        } catch {
+          leaveItems = leaveNotificationList
+            ? Array.from(leaveNotificationList.children).map((item) => item.textContent.trim()).filter(Boolean)
+            : [];
+        }
+      }
       if (leaveItems.length) {
         sections.push(`
           <div class="focus-widget-section">
@@ -19473,6 +22114,12 @@ HTML = r"""<!doctype html>
       event.preventDefault();
       openOrderModal(button.dataset.orderExecute);
     });
+    document.addEventListener("click", (event) => {
+      const button = event.target.closest("[data-hermes-result-save]");
+      if (!button) return;
+      event.preventDefault();
+      saveHermesResultToShared(button);
+    });
     orderDownloadRefresh?.addEventListener("click", loadOrderDownloads);
     orderDownloadList?.addEventListener("click", async (event) => {
       const button = event.target.closest("[data-order-download-id]");
@@ -19494,12 +22141,25 @@ HTML = r"""<!doctype html>
       button.addEventListener("click", () => setHermesTab(button.dataset.hermesTabButton || "chat"));
     });
     hermesChatSend?.addEventListener("click", sendHermesChat);
+    hermesChatModeButtons.forEach((button) => {
+      button.addEventListener("click", () => setHermesChatMode(button.dataset.hermesChatMode || "auto"));
+    });
+    setHermesChatMode("auto");
+    hermesChatInput?.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {
+        event.preventDefault();
+        sendHermesChat().catch((error) => {
+          setHermesLatestAnswer(error.message);
+        });
+      }
+    });
+    hermesChatClose?.addEventListener("click", clearHermesChatWindow);
     document.querySelectorAll("[data-hermes-quick]").forEach((button) => {
       button.addEventListener("click", () => {
         const action = button.dataset.hermesQuick || "";
         if (action === "summary") {
           createHermesSummary().catch((error) => {
-            if (hermesChatResponse) hermesChatResponse.textContent = error.message;
+            setHermesLatestAnswer(error.message);
           });
         } else if (action === "history") {
           setHermesTab("history");
@@ -19513,6 +22173,16 @@ HTML = r"""<!doctype html>
     hermesHistoryFilter?.addEventListener("change", () => renderHermesHistory(hermesHistoryItems));
     hermesSummaryCreate?.addEventListener("click", createHermesSummary);
     hermesAutomationSend?.addEventListener("click", sendHermesAutomation);
+    hermesActionPreview?.addEventListener("click", () => {
+      previewHermesAction().catch((error) => {
+        if (hermesActionResult) hermesActionResult.textContent = error.message;
+      });
+    });
+    hermesActionExecute?.addEventListener("click", () => {
+      executeHermesAction().catch((error) => {
+        if (hermesActionResult) hermesActionResult.textContent = error.message;
+      });
+    });
     hermesPresetButtons.forEach((button) => {
       button.addEventListener("click", () => applyHermesPreset(button.dataset.hermesPreset || "vps"));
     });
@@ -19874,6 +22544,45 @@ HTML = r"""<!doctype html>
       event.preventDefault();
       openEmployeeWidget(card.dataset.crmStaffCard).catch((error) => setCrmMessage(error.message, true));
     });
+    crmDailyLogRefresh?.addEventListener("click", () => {
+      loadCrmDailyLogs().catch((error) => setCrmMessage(error.message, true));
+    });
+    crmDailyLogReset?.addEventListener("click", resetCrmDailyLogForm);
+    crmDailyLogDate?.addEventListener("change", () => {
+      loadCrmDailyLogs().catch((error) => setCrmMessage(error.message, true));
+    });
+    crmDailyLogUserFilter?.addEventListener("change", () => {
+      loadCrmDailyLogs().catch((error) => setCrmMessage(error.message, true));
+    });
+    crmDailyLogUser?.addEventListener("change", () => {
+      const log = crmDailyLogs.find((item) => String(item.user_id || "") === String(crmDailyLogUser.value || ""));
+      if (log?.submitted) {
+        fillCrmDailyLogForm(log);
+      } else {
+        clearCrmDailyLogFields();
+      }
+    });
+    crmDailyLogForm?.addEventListener("submit", (event) => {
+      saveCrmDailyLogForm(event).catch((error) => setCrmMessage(error.message, true));
+    });
+    crmDailyLogBody?.addEventListener("click", (event) => {
+      const toggle = event.target.closest("[data-crm-daily-toggle]");
+      if (toggle) {
+        const section = toggle.closest(".crm-daily-log-section");
+        const targetId = toggle.dataset.crmDailyToggle || toggle.getAttribute("aria-controls");
+        const text = targetId ? document.getElementById(targetId) : section?.querySelector(".crm-daily-log-text");
+        const expanded = !section?.classList.contains("expanded");
+        section?.classList.toggle("expanded", expanded);
+        text?.classList.toggle("is-collapsed", !expanded);
+        toggle.textContent = expanded ? "접기" : "전체보기";
+        toggle.setAttribute("aria-expanded", expanded ? "true" : "false");
+        return;
+      }
+      const button = event.target.closest("[data-crm-daily-load]");
+      if (!button) return;
+      const log = crmDailyLogs.find((item) => String(item.user_id) === String(button.dataset.crmDailyLoad));
+      fillCrmDailyLogForm(log);
+    });
     crmTaskQuick.addEventListener("click", () => {
       resetCrmTaskForm();
       setCrmTaskFormOpen(true);
@@ -20023,6 +22732,26 @@ HTML = r"""<!doctype html>
       if (event.target === focusWidget) closeFocusWidget();
     });
     focusWidgetBody?.addEventListener("click", (event) => {
+      const leaveReadButton = event.target.closest("[data-leave-notification-read]");
+      if (leaveReadButton) {
+        const ids = String(leaveReadButton.dataset.leaveNotificationRead || "")
+          .split(",")
+          .map((value) => Number(value || 0))
+          .filter((id) => id > 0);
+        leaveReadButton.disabled = true;
+        leaveReadButton.textContent = "확인 중";
+        markLeaveNotificationsRead(ids)
+          .then(() => {
+            closeFocusWidget();
+            if (currentMode === "leave") loadLeaveData().catch(() => {});
+          })
+          .catch((error) => {
+            leaveReadButton.disabled = false;
+            leaveReadButton.textContent = "확인 완료";
+            notice.textContent = error.message || "연차 알림 확인 처리에 실패했습니다.";
+          });
+        return;
+      }
       const topbarOpenButton = event.target.closest("[data-topbar-open]");
       if (topbarOpenButton) {
         closeFocusWidget();
@@ -20123,6 +22852,21 @@ HTML = r"""<!doctype html>
       button.setAttribute("role", "tab");
       button.addEventListener("click", () => renderMonthlyCompareDetail(button.dataset.salesCompareDetail || "daily"));
     });
+    salesReportPeriodSelect?.addEventListener("change", () => {
+      activeSalesReportPeriod = salesReportPeriodSelect.value || "";
+      loadSalesReportDashboard();
+    });
+    [salesReportDailyBody, salesReportSellerBody, salesReportProductBody, salesReportReviewBody].forEach((tbody) => {
+      tbody?.addEventListener("dblclick", (event) => {
+        const row = event.target.closest("[data-sales-detail]");
+        if (!row) return;
+        openSalesReportDetail(row.dataset.salesDetail || "", row.dataset.salesKey || "");
+      });
+    });
+    salesDetailClose?.addEventListener("click", closeSalesDetailPopup);
+    salesDetailPopup?.addEventListener("click", (event) => {
+      if (event.target === salesDetailPopup) closeSalesDetailPopup();
+    });
     document.querySelector("#noticeInputOpen")?.addEventListener("click", () => {
       if (showWorkspace("dashboard") === false) return;
       setCompanyTab("notice");
@@ -20160,6 +22904,11 @@ HTML = r"""<!doctype html>
     cargoShipmentInputOpen?.addEventListener("click", () => openCargoShipmentPopup(null, "outbound"));
     cargoShipmentClose?.addEventListener("click", closeCargoShipmentPopup);
     cargoShipmentReset?.addEventListener("click", () => resetCargoShipmentForm());
+    cargoShipmentDelete?.addEventListener("click", () => {
+      deleteCargoShipment().catch((error) => {
+        notice.textContent = error.message;
+      });
+    });
     cargoVehicleReceiptLink?.addEventListener("click", linkCargoToVehicleReceipt);
     cargoShipmentSave?.addEventListener("click", () => {
       saveCargoShipment().catch((error) => {
@@ -20185,6 +22934,11 @@ HTML = r"""<!doctype html>
     });
     importShipmentClose.addEventListener("click", closeImportShipmentPopup);
     importShipmentReset.addEventListener("click", () => resetImportShipmentForm());
+    importShipmentDelete?.addEventListener("click", () => {
+      deleteImportShipment().catch((error) => {
+        notice.textContent = error.message;
+      });
+    });
     importShipmentSave.addEventListener("click", () => {
       saveImportShipment().catch((error) => {
         notice.textContent = error.message;
@@ -20310,6 +23064,7 @@ HTML = r"""<!doctype html>
       });
     }
     if (salesReportFileInput) salesReportFileInput.addEventListener("change", uploadSalesReportWorkbook);
+    salesReportManualUpload?.addEventListener("click", openSalesReportUploadPicker);
     saveCsCaseButton.addEventListener("click", saveCurrentCsCase);
     sendCsMailButton?.addEventListener("click", async () => {
       if (!can("mail_send")) return;
@@ -20347,9 +23102,10 @@ HTML = r"""<!doctype html>
     ledgerFilterApply.addEventListener("click", () => setActivePopoverFilter(ledgerFilterSearch.value));
     ledgerFilterClear.addEventListener("click", clearActiveLedgerFilter);
     ledgerFilterResetAll.addEventListener("click", clearAllActivePopoverFilters);
+    if (managementFilterColoredOnly) managementFilterColoredOnly.addEventListener("click", toggleManagementColorFilter);
     ledgerFilterOptions.addEventListener("click", (event) => {
       const option = event.target.closest("[data-filter-value]");
-      if (option) setActivePopoverFilter(option.dataset.filterValue || "");
+      if (option) setActivePopoverFilter(option.dataset.filterValue || "", option.dataset.filterRecordId || "");
     });
     document.addEventListener("click", (event) => {
       if (
@@ -20426,11 +23182,17 @@ HTML = r"""<!doctype html>
     if (leaveUnitSelect) leaveUnitSelect.addEventListener("change", syncHalfDayDates);
     if (leaveStartDate) leaveStartDate.addEventListener("change", syncHalfDayDates);
     if (leaveAdminUserSearch) leaveAdminUserSearch.addEventListener("input", () => renderLeaveAdminUserList(leaveAdminUserSearch.value));
-    if (leaveAdminUserSelect) leaveAdminUserSelect.addEventListener("change", () => renderLeaveAdminUserList(leaveAdminUserSearch?.value || ""));
+    if (leaveAdminUserSelect) leaveAdminUserSelect.addEventListener("change", () => selectLeaveAdminUser(leaveAdminUserSelect.value));
     if (leaveAdminUserList) {
       leaveAdminUserList.addEventListener("click", (event) => {
         const button = event.target.closest("[data-leave-admin-user]");
         if (button) selectLeaveAdminUser(button.dataset.leaveAdminUser);
+      });
+    }
+    if (leaveAdminBalanceBody) {
+      leaveAdminBalanceBody.addEventListener("click", (event) => {
+        const row = event.target.closest("[data-leave-admin-balance-user]");
+        if (row) selectLeaveAdminUser(row.dataset.leaveAdminBalanceUser);
       });
     }
     if (leaveBalanceSave) leaveBalanceSave.addEventListener("click", saveLeaveBalance);
@@ -20463,6 +23225,7 @@ HTML = r"""<!doctype html>
       const period = selectedManagementPeriod();
       managementYearFilter.value = period.year || "";
       renderManagementMonthTabs();
+      loadManagementRecords();
     });
     if (managementMonthTabs) {
       managementMonthTabs.addEventListener("click", (event) => {
@@ -20517,7 +23280,12 @@ HTML = r"""<!doctype html>
     document.addEventListener("click", (event) => {
       if (!event.target.closest(".download-menu-wrap")) closeDownloadMenus();
     });
+    document.addEventListener("mouseup", finishSheetRangeSelection);
+    managementBody.addEventListener("mousedown", (event) => handleSheetBodyMouseDown("management", event));
+    managementBody.addEventListener("mouseover", (event) => handleSheetBodyMouseOver("management", event));
+    managementBody.addEventListener("mousemove", (event) => handleSheetBodyMouseOver("management", event));
     managementBody.addEventListener("click", (event) => {
+      if (shouldSuppressSheetSelectionClick(event)) return;
       const editableCell = event.target.closest(".editable-cell[data-management-field]");
       if (editableCell) {
         selectEditableCell("management", editableCell);
@@ -20538,7 +23306,11 @@ HTML = r"""<!doctype html>
     managementBody.addEventListener("keydown", (event) => {
       handleEditableCellNavigation("management", event);
     });
+    ledgerBody.addEventListener("mousedown", (event) => handleSheetBodyMouseDown("ledger", event));
+    ledgerBody.addEventListener("mouseover", (event) => handleSheetBodyMouseOver("ledger", event));
+    ledgerBody.addEventListener("mousemove", (event) => handleSheetBodyMouseOver("ledger", event));
     ledgerBody.addEventListener("click", (event) => {
+      if (shouldSuppressSheetSelectionClick(event)) return;
       if (event.target.closest("[data-row-check]")) {
         syncLedgerSelectAll();
         return;
@@ -20548,6 +23320,16 @@ HTML = r"""<!doctype html>
         event.preventDefault();
         event.stopPropagation();
         openReturnCheckPopup(returnCheckButton.closest("tr[data-case-id]"));
+        return;
+      }
+      const editButton = event.target.closest("[data-ledger-edit-row]");
+      if (editButton) {
+        event.preventDefault();
+        event.stopPropagation();
+        const row = editButton.closest("tr[data-case-id]");
+        const editableCell = row?.querySelector('.editable-cell[data-field="status"]')
+          || row?.querySelector(".editable-cell[data-field]");
+        if (editableCell) openCellEditor("ledger", editableCell);
         return;
       }
       const editableCell = event.target.closest(".editable-cell[data-field]");
@@ -20649,6 +23431,8 @@ HTML = r"""<!doctype html>
       stockSoldoutNoteInput,
     ].forEach((input) => input?.addEventListener("input", refreshStockNoticeBody));
     stockNoticeDateInput?.addEventListener("change", refreshStockNoticeBody);
+
+    startLeaveNotificationWatcher();
 
     setInterval(() => {
       saveCurrentWorkspaceRows({ silent: true });
@@ -20983,7 +23767,7 @@ SALES_REPORT_NAV_HTML = r"""
           <i class="nav-chevron" data-lucide="chevron-right"></i>
         </button>
         <div class="nav-submenu">
-          <button class="nav-subitem" type="button" data-open="salesReport">매출표 업로드</button>
+          <button class="nav-subitem" type="button" data-open="salesReport">매출현황</button>
         </div>
       </div>
 """
@@ -21013,6 +23797,7 @@ HERMES_WORKSPACE_HTML = r"""
           <div class="workspace-title">헤르메스</div>
           <div class="workspace-actions">
             <button class="workspace-button" type="button" id="hermesRefresh">새로고침</button>
+            <button class="workspace-button ghost" type="button" id="hermesChatClose">창닫기</button>
           </div>
         </div>
         <div class="hermes-panel">
@@ -21033,17 +23818,31 @@ HERMES_WORKSPACE_HTML = r"""
           </div>
           <section class="hermes-tab-panel active" data-hermes-panel="chat">
             <div class="hermes-chat-layout">
-              <div class="hermes-card">
+              <div class="hermes-card hermes-chat-input-card">
                 <div class="admin-section-title">AI 업무채팅</div>
+                <div class="hermes-mode-selector" id="hermesChatModeSelector" role="group" aria-label="Hermes 기능 모드">
+                  <button class="hermes-mode-button active" type="button" data-hermes-chat-mode="auto">자동선택</button>
+                  <button class="hermes-mode-button" type="button" data-hermes-chat-mode="automation">업무자동화</button>
+                  <button class="hermes-mode-button" type="button" data-hermes-chat-mode="general">일반 AI</button>
+                  <button class="hermes-mode-button" type="button" data-hermes-chat-mode="search">자료검색</button>
+                  <button class="hermes-mode-button" type="button" data-hermes-chat-mode="image">이미지생성</button>
+                </div>
+                <div class="hermes-mode-hint" id="hermesChatModeHint">자동선택: 요청에 맞는 Workhub 업무, 일반 AI, 검색, 이미지 기능을 자동으로 고릅니다.</div>
                 <textarea class="hermes-textarea" id="hermesChatInput" placeholder="예) 오늘 미처리 CS를 요약하고 우선순위를 추천해줘."></textarea>
                 <div class="hermes-actions">
                   <button class="workspace-button" type="button" id="hermesChatSend">헤르메스에 보내기</button>
                 </div>
+                <div>
+                  <div class="admin-section-title">답변 내용</div>
+                  <div class="hermes-response hermes-latest-answer" id="hermesChatResponse">헤르메스 연결 후 답변이 여기에 표시됩니다.</div>
+                </div>
               </div>
               <div class="hermes-side-grid">
-                <div class="hermes-side-card">
-                  <strong>답변 내용</strong>
-                  <div class="hermes-response" id="hermesChatResponse">헤르메스 연결 후 답변이 여기에 표시됩니다.</div>
+                <div class="hermes-side-card hermes-chat-log-card">
+                  <strong>전체 채팅내용</strong>
+                  <div class="hermes-chat-transcript" id="hermesChatTranscript">
+                    <div class="admin-message">아직 채팅내용이 없습니다.</div>
+                  </div>
                 </div>
                 <div class="hermes-side-card">
                   <strong>필요한 기능</strong>
@@ -21066,6 +23865,48 @@ HERMES_WORKSPACE_HTML = r"""
                 <button class="workspace-button" type="button" id="hermesAutomationSend">자동화 요청 보내기</button>
               </div>
               <div class="hermes-response" id="hermesAutomationResponse">요청 결과가 여기에 표시됩니다.</div>
+              <div class="hermes-action-runner">
+                <div class="admin-section-title">승인형 Workhub 실행 API</div>
+                <div class="hermes-mode-hint">허용된 액션만 미리보기 후 승인해서 실행합니다. 현재는 업무관리 새 업무 등록부터 테스트할 수 있습니다.</div>
+                <div class="hermes-action-grid">
+                  <label>실행 액션
+                    <select class="hermes-input" id="hermesActionSelect">
+                      <option value="crm.create_task">업무관리 새 업무 등록</option>
+                    </select>
+                  </label>
+                  <label>업무 제목
+                    <input class="hermes-input" id="hermesActionTaskTitle" type="text" placeholder="예) 회수 지연 건 확인" />
+                  </label>
+                  <label>담당자
+                    <input class="hermes-input" id="hermesActionTaskAssignee" type="text" placeholder="이름 또는 사용자 ID" />
+                  </label>
+                  <label>마감일
+                    <input class="hermes-input" id="hermesActionTaskDue" type="date" />
+                  </label>
+                  <label>우선순위
+                    <select class="hermes-input" id="hermesActionTaskPriority">
+                      <option value="보통">보통</option>
+                      <option value="높음">높음</option>
+                      <option value="낮음">낮음</option>
+                    </select>
+                  </label>
+                  <label>상태
+                    <select class="hermes-input" id="hermesActionTaskStatus">
+                      <option value="대기">대기</option>
+                      <option value="진행중">진행중</option>
+                      <option value="보류">보류</option>
+                    </select>
+                  </label>
+                </div>
+                <label>업무 설명
+                  <textarea class="hermes-textarea" id="hermesActionTaskDescription" placeholder="헤르메스가 만든 처리 계획이나 사용자가 승인한 업무 내용을 적어주세요."></textarea>
+                </label>
+                <div class="hermes-actions">
+                  <button class="workspace-button ghost" type="button" id="hermesActionPreview">미리보기</button>
+                  <button class="workspace-button" type="button" id="hermesActionExecute">승인 후 실행</button>
+                </div>
+                <div class="hermes-response hermes-action-result" id="hermesActionResult">미리보기 결과가 여기에 표시됩니다.</div>
+              </div>
             </div>
           </section>
           <section class="hermes-tab-panel" data-hermes-panel="history">
@@ -21098,12 +23939,12 @@ HERMES_WORKSPACE_HTML = r"""
               <div class="admin-message hermes-help" id="hermesPresetHelp">운영 배포 후에는 VPS 내부 Docker 주소를 사용하고, 로컬 개발 중에는 테스트 주소로 바꿔 확인할 수 있습니다.</div>
               <div class="hermes-settings-grid">
                 <label class="admin-check"><input id="hermesEnabled" type="checkbox" /> Hermes Agent 사용</label>
-                <label>Agent 기본 주소<input id="hermesBaseUrl" type="url" placeholder="http://hermes-agent:4860" /></label>
+                <label>Agent 기본 주소<input id="hermesBaseUrl" type="url" placeholder="http://hermes-agent:4871" /></label>
                 <label>Health 경로<input id="hermesHealthPath" type="text" placeholder="/health" /></label>
                 <label>채팅 경로<input id="hermesChatPath" type="text" placeholder="/api/chat" /></label>
                 <label>자동화 경로<input id="hermesAutomationPath" type="text" placeholder="/api/automation" /></label>
                 <label>API 키<input id="hermesApiKey" type="password" placeholder="저장된 키를 유지하려면 비워두세요" autocomplete="new-password" /></label>
-                <label>요청 제한 시간(초)<input id="hermesTimeoutSeconds" type="number" min="3" max="120" value="20" /></label>
+                <label>요청 제한 시간(초)<input id="hermesTimeoutSeconds" type="number" min="3" max="240" value="20" /></label>
               </div>
               <div class="hermes-actions">
                 <button class="workspace-button" type="button" id="hermesSettingsSave">설정 저장</button>
@@ -21159,12 +24000,19 @@ LEAVE_WORKSPACE_HTML = r"""
             <div class="leave-message" id="leaveMessage"></div>
             <div class="leave-notification-list" id="leaveNotificationList"></div>
             <section class="leave-tab-panel active" id="leaveTabMine">
-              <div class="leave-grid two">
+              <div class="leave-grid">
                 <div class="leave-card">
                   <div class="leave-card-title">연차 잔여 현황</div>
                   <table class="leave-table">
                     <thead><tr><th>유형</th><th>부여</th><th>사용</th><th>잔여</th></tr></thead>
                     <tbody id="leaveBalanceBody"></tbody>
+                  </table>
+                </div>
+                <div class="leave-card">
+                  <div class="leave-card-title">내 사용일자</div>
+                  <table class="leave-table">
+                    <thead><tr><th>사용일</th><th>구분</th><th>수량</th><th>내용</th></tr></thead>
+                    <tbody id="leaveMineUsageBody"></tbody>
                   </table>
                 </div>
               </div>
@@ -21223,6 +24071,13 @@ LEAVE_WORKSPACE_HTML = r"""
                 <table class="leave-table">
                   <thead><tr><th>직원</th><th>아이디</th><th>시작</th><th>사용</th><th>잔여</th></tr></thead>
                   <tbody id="leaveAdminBalanceBody"></tbody>
+                </table>
+              </div>
+              <div class="leave-card">
+                <div class="leave-card-title" id="leaveAdminUsageTitle">선택 직원 사용일자</div>
+                <table class="leave-table">
+                  <thead><tr><th>사용일</th><th>구분</th><th>수량</th><th>내용</th></tr></thead>
+                  <tbody id="leaveAdminUsageBody"></tbody>
                 </table>
               </div>
             </section>
@@ -21318,9 +24173,36 @@ ADMIN_WORKSPACE_HTML = r"""
             </div>
             <div class="admin-card" id="salesReportUploadCard">
               <div class="admin-section-title">매출현황</div>
-              <input id="salesReportFileInput" name="sales_report" type="file" accept=".xlsx,.xlsm,.xls,.csv" hidden />
+              <div class="sales-upload-panel">
+                <div>
+                  <strong>매출표 업로드</strong>
+                  <span>일자별, 매출처별, 매입처별, 상품별 매출표 파일을 업로드합니다.</span>
+                </div>
+                <input id="salesReportFileInput" name="sales_report" type="file" accept=".xlsx,.xlsm,.xls,.csv,.zip" hidden />
+                <button class="sales-upload-button" id="salesReportManualUpload" type="button">매출표 업로드</button>
+              </div>
+              <div class="sales-upload-status" hidden>
+                <div id="salesReportUploadMessage">매출표 파일을 직접 업로드해서 현황을 갱신합니다.</div>
+                <div id="salesReportRecentList">업로드된 매출표가 없습니다.</div>
+              </div>
               <div class="sales-dashboard" id="salesReportDashboard">
+                <div class="sales-period-toolbar" id="salesReportPeriodToolbar">
+                  <div class="sales-period-current">
+                    <span>조회 월</span>
+                    <strong id="salesReportPeriodLabel">월 선택</strong>
+                  </div>
+                  <div class="sales-period-actions">
+                    <label class="sales-period-select-label" for="salesReportPeriodSelect">
+                      <span>월별 보기</span>
+                      <select class="sales-period-select" id="salesReportPeriodSelect" aria-label="매출현황 조회 월"></select>
+                    </label>
+                  </div>
+                </div>
                 <div class="sales-kpi-grid" id="salesReportKpiGrid"></div>
+                <div class="sales-margin-diagnosis" id="salesReportMarginDiagnosis">
+                  <strong>매출 마감 자동 점검 대기</strong>
+                  <span>매출 데이터 연결 후 필수 파일, 합계 차이, 마진 이상 여부를 확인합니다.</span>
+                </div>
                 <div class="sales-table-tabs" id="salesReportTabs" role="tablist">
                   <button class="sales-table-tab active" type="button" data-sales-tab="salesProduct">
                     <span>매출 흐름 · 상품 분석</span><span class="sales-table-tab-count" id="salesReportSalesProductCount">0</span>
@@ -21340,7 +24222,7 @@ ADMIN_WORKSPACE_HTML = r"""
                     </div>
                     <div class="sales-table-scroll">
                       <table class="sales-table">
-                        <thead><tr><th>일자</th><th>수량</th><th>손익매출</th><th>판매합계</th><th>손익마진</th></tr></thead>
+                        <thead><tr><th>일자</th><th>수량</th><th>손익매출</th><th>판매합계</th><th>손익마진(택배비 제외)</th></tr></thead>
                         <tbody id="salesReportDailyBody"></tbody>
                       </table>
                     </div>
@@ -21352,7 +24234,7 @@ ADMIN_WORKSPACE_HTML = r"""
                     </div>
                     <div class="sales-table-scroll">
                       <table class="sales-table">
-                        <thead><tr><th>판매사</th><th>수량</th><th>손익매출</th><th>마진</th></tr></thead>
+                        <thead><tr><th>판매사</th><th>수량</th><th>손익매출</th><th>마진(택배비 제외)</th></tr></thead>
                         <tbody id="salesReportSellerBody"></tbody>
                       </table>
                     </div>
@@ -21750,7 +24632,7 @@ def save_uploaded_sales_report_file(fields: dict[str, tuple[str, bytes] | str], 
 
     filename, data = uploaded
     filename = safe_filename(filename)
-    if not filename.lower().endswith((".xlsx", ".xlsm", ".xls", ".csv")):
+    if Path(filename).suffix.lower() not in SALES_REPORT_ALLOWED_SUFFIXES:
         raise ValueError("매출표는 xlsx, xlsm, xls, csv 파일만 업로드할 수 있습니다.")
     if not data:
         raise ValueError("매출표 파일을 다시 선택해주세요.")
@@ -22042,6 +24924,234 @@ def list_sales_report_uploads(limit: int = 5) -> list[dict[str, str | int]]:
         connection.close()
 
 
+DEFAULT_SALES_AUTOMATION_SETTINGS = {
+    "nas_enabled": False,
+    "nas_import_dir": "",
+    "nas_processed_dir": "processed",
+    "nas_error_dir": "error",
+    "nas_scan_interval_minutes": 15,
+    "last_scan_at": "",
+    "last_scan_message": "",
+}
+SALES_REPORT_NAS_UPLOADER = "auto-nas"
+SALES_REPORT_WORKBOOK_SUFFIXES = {".xlsx", ".xlsm", ".xls", ".csv"}
+SALES_REPORT_ALLOWED_SUFFIXES = {*SALES_REPORT_WORKBOOK_SUFFIXES, ".zip"}
+_SALES_REPORT_NAS_SCHEDULER_STARTED = False
+_SALES_REPORT_NAS_SCAN_LOCK = threading.Lock()
+
+
+def clean_sales_automation_path(value: object) -> str:
+    return str(value or "").strip().strip('"')
+
+
+def normalize_sales_automation_settings(payload: dict | None = None) -> dict[str, object]:
+    source = {**DEFAULT_SALES_AUTOMATION_SETTINGS, **(payload or {})}
+    try:
+        interval = int(source.get("nas_scan_interval_minutes") or DEFAULT_SALES_AUTOMATION_SETTINGS["nas_scan_interval_minutes"])
+    except (TypeError, ValueError):
+        interval = int(DEFAULT_SALES_AUTOMATION_SETTINGS["nas_scan_interval_minutes"])
+    interval = min(max(interval, 1), 1440)
+    return {
+        "nas_enabled": bool(source.get("nas_enabled")),
+        "nas_import_dir": clean_sales_automation_path(source.get("nas_import_dir")),
+        "nas_processed_dir": clean_sales_automation_path(source.get("nas_processed_dir")) or "processed",
+        "nas_error_dir": clean_sales_automation_path(source.get("nas_error_dir")) or "error",
+        "nas_scan_interval_minutes": interval,
+        "last_scan_at": str(source.get("last_scan_at") or ""),
+        "last_scan_message": str(source.get("last_scan_message") or ""),
+    }
+
+
+def sales_report_automation_child_dir(import_root: Path, configured: object) -> Path:
+    child = Path(clean_sales_automation_path(configured) or "processed").expanduser()
+    if child.is_absolute():
+        return child
+    return import_root / child
+
+
+def ensure_sales_automation_folders(settings: dict[str, object]) -> None:
+    import_dir = clean_sales_automation_path(settings.get("nas_import_dir"))
+    if not import_dir:
+        return
+    import_root = Path(import_dir).expanduser()
+    if not import_root.exists() or not import_root.is_dir():
+        return
+    sales_report_automation_child_dir(import_root, settings.get("nas_processed_dir")).mkdir(parents=True, exist_ok=True)
+    sales_report_automation_child_dir(import_root, settings.get("nas_error_dir")).mkdir(parents=True, exist_ok=True)
+
+
+def load_sales_automation_settings() -> dict[str, object]:
+    raw: dict[str, object] = {}
+    if SALES_AUTOMATION_SETTINGS_PATH.exists():
+        try:
+            raw = json.loads(SALES_AUTOMATION_SETTINGS_PATH.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            raw = {}
+    return normalize_sales_automation_settings(raw)
+
+
+def save_sales_automation_settings(payload: dict | None = None) -> dict[str, object]:
+    current = load_sales_automation_settings()
+    merged = {**current, **(payload or {})}
+    settings = normalize_sales_automation_settings(merged)
+    ensure_sales_automation_folders(settings)
+    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+    SALES_AUTOMATION_SETTINGS_PATH.write_text(json.dumps(settings, ensure_ascii=False, indent=2), encoding="utf-8")
+    return settings
+
+
+def sales_report_file_fingerprint(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def sales_report_fingerprint_imported(fingerprint: str) -> bool:
+    if not fingerprint:
+        return False
+    init_db()
+    connection = connect_db()
+    try:
+        row = connection.execute(
+            "SELECT 1 FROM sales_report_uploads WHERE source_fingerprint = ? LIMIT 1",
+            (fingerprint,),
+        ).fetchone()
+        return row is not None
+    finally:
+        connection.close()
+
+
+def unique_archive_path(folder: Path, filename: str) -> Path:
+    target = folder / filename
+    if not target.exists():
+        return target
+    stem = target.stem
+    suffix = target.suffix
+    for index in range(1, 10000):
+        candidate = folder / f"{stem}_{index}{suffix}"
+        if not candidate.exists():
+            return candidate
+    return folder / f"{stem}_{secrets.token_hex(4)}{suffix}"
+
+
+def move_sales_report_nas_file(source: Path, destination_dir: Path) -> Path:
+    destination_dir.mkdir(parents=True, exist_ok=True)
+    destination = unique_archive_path(destination_dir, source.name)
+    shutil.move(str(source), str(destination))
+    return destination
+
+
+def iter_sales_report_nas_files(import_root: Path) -> list[Path]:
+    if not import_root.exists() or not import_root.is_dir():
+        return []
+    files: list[Path] = []
+    for path in sorted(import_root.iterdir(), key=lambda item: item.name.lower()):
+        if not path.is_file():
+            continue
+        if path.name.startswith("~$"):
+            continue
+        if path.suffix.lower() not in SALES_REPORT_ALLOWED_SUFFIXES:
+            continue
+        files.append(path)
+    return files
+
+
+def scan_sales_report_nas_folder(
+    settings: dict[str, object] | None = None,
+    uploaded_by: str = SALES_REPORT_NAS_UPLOADER,
+) -> dict[str, object]:
+    settings = normalize_sales_automation_settings(settings or load_sales_automation_settings())
+    result: dict[str, object] = {
+        "enabled": bool(settings.get("nas_enabled")),
+        "scanned_count": 0,
+        "imported_count": 0,
+        "duplicate_count": 0,
+        "error_count": 0,
+        "skipped_count": 0,
+        "files": [],
+        "message": "",
+    }
+    if not settings.get("nas_enabled"):
+        result["message"] = "NAS 자동 업로드가 꺼져 있습니다."
+        return result
+
+    import_dir = clean_sales_automation_path(settings.get("nas_import_dir"))
+    if not import_dir:
+        result["message"] = "NAS 공유폴더 경로를 먼저 지정해주세요."
+        return result
+    import_root = Path(import_dir).expanduser()
+    if not import_root.exists() or not import_root.is_dir():
+        result["message"] = f"NAS 공유폴더를 찾지 못했습니다: {import_root}"
+        return result
+
+    processed_dir = sales_report_automation_child_dir(import_root, settings.get("nas_processed_dir"))
+    error_dir = sales_report_automation_child_dir(import_root, settings.get("nas_error_dir"))
+    scanned_files = iter_sales_report_nas_files(import_root)
+    result["scanned_count"] = len(scanned_files)
+    file_results: list[dict[str, object]] = []
+    with _SALES_REPORT_NAS_SCAN_LOCK:
+        for path in scanned_files:
+            item: dict[str, object] = {"name": path.name, "status": "pending"}
+            try:
+                fingerprint = sales_report_file_fingerprint(path)
+                if sales_report_fingerprint_imported(fingerprint):
+                    archived = move_sales_report_nas_file(path, processed_dir)
+                    result["duplicate_count"] = int(result["duplicate_count"]) + 1
+                    item.update({"status": "duplicate", "archived_to": str(archived)})
+                else:
+                    saved = save_sales_report_file(
+                        path,
+                        path.name,
+                        uploaded_by,
+                        source_kind="nas",
+                        source_fingerprint=fingerprint,
+                    )
+                    archived = move_sales_report_nas_file(path, processed_dir)
+                    result["imported_count"] = int(result["imported_count"]) + 1
+                    item.update({"status": "imported", "file_id": saved["id"], "archived_to": str(archived)})
+            except Exception as exc:  # noqa: BLE001
+                result["error_count"] = int(result["error_count"]) + 1
+                item.update({"status": "error", "error": str(exc)})
+                try:
+                    archived = move_sales_report_nas_file(path, error_dir)
+                    item["archived_to"] = str(archived)
+                except Exception as archive_exc:  # noqa: BLE001
+                    item["archive_error"] = str(archive_exc)
+            file_results.append(item)
+    result["files"] = file_results
+    result["message"] = (
+        f"스캔 {result['scanned_count']}건 / 반영 {result['imported_count']}건 / "
+        f"중복 {result['duplicate_count']}건 / 오류 {result['error_count']}건"
+    )
+    updated = {**settings, "last_scan_at": now_text(), "last_scan_message": result["message"]}
+    save_sales_automation_settings(updated)
+    return result
+
+
+def sales_report_nas_scheduler_loop() -> None:
+    while True:
+        try:
+            settings = load_sales_automation_settings()
+            if settings.get("nas_enabled"):
+                scan_sales_report_nas_folder(settings)
+            interval = int(settings.get("nas_scan_interval_minutes") or 15)
+        except Exception as exc:  # noqa: BLE001
+            print(f"매출표 NAS 자동 스캔 실패: {exc}")
+            interval = 15
+        time.sleep(max(60, interval * 60))
+
+
+def start_sales_report_nas_scheduler() -> None:
+    global _SALES_REPORT_NAS_SCHEDULER_STARTED
+    if _SALES_REPORT_NAS_SCHEDULER_STARTED:
+        return
+    _SALES_REPORT_NAS_SCHEDULER_STARTED = True
+    thread = threading.Thread(target=sales_report_nas_scheduler_loop, daemon=True)
+    thread.start()
+
+
 class _SalesReportTableParser(HTMLParser):
     def __init__(self) -> None:
         super().__init__()
@@ -22101,20 +25211,33 @@ def _sales_report_date(value: object) -> str:
         return value.date().isoformat()
     if isinstance(value, date):
         return value.isoformat()
-    match = re.search(r"(20\d{2})[-./](\d{1,2})[-./](\d{1,2})", _sales_report_text(value))
+    text = _sales_report_text(value)
+    match = re.search(r"(20\d{2})[-./](\d{1,2})[-./](\d{1,2})", text)
+    if not match:
+        match = re.search(r"(?<!\d)(20\d{2})(\d{2})(\d{2})(?!\d)", text)
     if not match:
         return ""
     year, month, day = match.groups()
-    return f"{int(year):04d}-{int(month):02d}-{int(day):02d}"
+    try:
+        return date(int(year), int(month), int(day)).isoformat()
+    except ValueError:
+        return ""
 
 
 def _sales_report_period(value: object) -> str:
     parsed = _sales_report_date(value)
     if parsed:
         return parsed[:7]
-    match = re.search(r"(20\d{2})[-./](\d{1,2})", _sales_report_text(value))
+    text = _sales_report_text(value)
+    match = re.search(r"(20\d{2})[-./](\d{1,2})", text)
+    if not match:
+        match = re.search(r"(?<!\d)(20\d{2})(\d{2})(?!\d)", text)
     if match:
         year, month = match.groups()
+        try:
+            date(int(year), int(month), 1)
+        except ValueError:
+            return ""
         return f"{int(year):04d}-{int(month):02d}"
     return ""
 
@@ -22171,6 +25294,11 @@ def _sales_report_table(path: str | Path) -> tuple[list[str], list[list[object]]
 
 
 def detect_sales_report_type(path: str | Path, original_name: str = "") -> str:
+    lowered_name = str(original_name or Path(path).name).lower()
+    if "statistics_good" in lowered_name or "상품별" in lowered_name:
+        return "product"
+    if "suppler" in lowered_name or "supplier" in lowered_name or "공급사" in lowered_name:
+        return "supplier"
     try:
         headers, _ = _sales_report_table(path)
     except Exception:
@@ -22183,9 +25311,6 @@ def detect_sales_report_type(path: str | Path, original_name: str = "") -> str:
     if "공급사" in header_set:
         return "supplier"
     if "상품코드" in header_set and "상품명" in header_set:
-        return "product"
-    lowered_name = str(original_name or Path(path).name).lower()
-    if "statistics_good" in lowered_name:
         return "product"
     return ""
 
@@ -22349,6 +25474,103 @@ def parse_sales_report_file(path: str | Path, original_name: str = "") -> dict[s
     raise ValueError("지원하는 매출표 형식이 아닙니다.")
 
 
+def _sales_partner_name_from_daily_filename(filename: str) -> str:
+    stem = Path(str(filename or "")).stem.strip()
+    for suffix in (" 매출 현황", " 매출현황", "_매출 현황", "_매출현황"):
+        if stem.endswith(suffix):
+            stem = stem[: -len(suffix)]
+            break
+    return stem.strip() or Path(str(filename or "")).stem.strip()
+
+
+def _sales_daily_row_as_seller(row: dict[str, object], seller_name: str) -> dict[str, object]:
+    report_date = str(row.get("report_date") or "")
+    return {
+        "name": seller_name,
+        "report_date": report_date,
+        "period": str(row.get("period") or report_date[:7] or ""),
+        "quantity": row.get("quantity", 0),
+        "sales_amount": row.get("sales_amount", 0),
+        "supply_amount": row.get("supply_amount", 0),
+        "sales_total": row.get("sales_total", 0),
+        "supply_total": row.get("supply_total", 0),
+        "sales_margin": row.get("sales_margin", 0),
+        "cs_amount": 0,
+        "cs_supply_amount": 0,
+        "cs_margin": row.get("cs_margin", 0),
+        "profit_quantity_sales": row.get("profit_quantity_sales", 0),
+        "profit_quantity_supply": row.get("profit_quantity_supply", 0),
+        "profit_sales_amount": row.get("profit_sales_amount", 0),
+        "profit_supply_amount": row.get("profit_supply_amount", 0),
+        "profit_sales_margin": row.get("profit_sales_margin", 0),
+        "profit_shipping": row.get("profit_shipping", 0),
+        "profit_margin": row.get("profit_margin", 0),
+        "margin_rate": row.get("margin_rate", 0),
+    }
+
+
+def parse_partner_daily_sales_zip(path: str | Path, original_name: str = "") -> dict[str, object]:
+    source = Path(path)
+    cutoff_date = date.today().isoformat()
+    seller_rows: list[dict[str, object]] = []
+    imported_files = 0
+    skipped_current_or_future_rows = 0
+    skipped_files = 0
+    error_files = 0
+
+    with zipfile.ZipFile(source) as archive, tempfile.TemporaryDirectory() as temp_dir:
+        temp_root = Path(temp_dir)
+        for index, member in enumerate(archive.infolist(), start=1):
+            if member.is_dir():
+                continue
+            member_name = Path(member.filename.replace("\\", "/")).name
+            if not member_name or member_name.startswith("~$"):
+                continue
+            suffix = Path(member_name).suffix.lower()
+            if suffix not in SALES_REPORT_WORKBOOK_SUFFIXES:
+                skipped_files += 1
+                continue
+            target = temp_root / f"{index:04d}_{_safe_shared_filename(member_name)}"
+            target.write_bytes(archive.read(member))
+            try:
+                parsed = parse_sales_report_file(target, member_name)
+            except Exception:
+                error_files += 1
+                continue
+            if str(parsed.get("report_type") or "") != "daily":
+                skipped_files += 1
+                continue
+            seller_name = _sales_partner_name_from_daily_filename(member_name)
+            imported_files += 1
+            for row in parsed.get("rows", []):
+                if not isinstance(row, dict):
+                    continue
+                report_date = str(row.get("report_date") or "")
+                if not report_date:
+                    continue
+                if report_date >= cutoff_date:
+                    skipped_current_or_future_rows += 1
+                    continue
+                seller_rows.append(_sales_daily_row_as_seller(row, seller_name))
+
+    if not seller_rows:
+        raise ValueError("거래처별 일자별 매출 ZIP에서 반영할 데이터를 찾지 못했습니다.")
+
+    periods = sorted({str(row.get("period") or "") for row in seller_rows if row.get("period")})
+    dates = sorted({str(row.get("report_date") or "") for row in seller_rows if row.get("report_date")})
+    period = periods[0] if len(periods) == 1 else (dates[-1][:7] if dates else "")
+    return {
+        "report_type": "seller_daily_zip",
+        "report_date": dates[-1] if dates else "",
+        "period": period,
+        "rows": seller_rows,
+        "source_file_count": imported_files,
+        "skipped_file_count": skipped_files,
+        "error_file_count": error_files,
+        "skipped_current_or_future_rows": skipped_current_or_future_rows,
+    }
+
+
 def _sales_row_sum(rows: list[dict[str, object]], key: str) -> int:
     return int(sum(_sales_report_int(row.get(key, 0)) for row in rows))
 
@@ -22418,8 +25640,52 @@ def save_sales_report_snapshot(file_id: int, parsed: dict[str, object]) -> None:
                         row.get("margin_rate", 0),
                     ),
                 )
+        elif report_type == "seller_daily_zip":
+            report_dates = sorted({str(row.get("report_date") or "") for row in rows if row.get("report_date")})
+            for target_date in report_dates:
+                connection.execute("DELETE FROM sales_report_seller_rows WHERE report_date = ?", (target_date,))
+            for row in rows:
+                row_report_date = str(row.get("report_date") or report_date or "")
+                row_period = str(row.get("period") or row_report_date[:7] or period)
+                connection.execute(
+                    """
+                    INSERT INTO sales_report_seller_rows (
+                        period, report_date, file_id, seller_name, quantity, sales_amount, supply_amount,
+                        sales_total, supply_total, sales_margin, cs_amount, cs_supply_amount, cs_margin,
+                        profit_quantity_sales, profit_quantity_supply, profit_sales_amount, profit_supply_amount,
+                        profit_sales_margin, profit_shipping, profit_margin, margin_rate
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        row_period,
+                        row_report_date,
+                        file_id,
+                        row.get("name", ""),
+                        row.get("quantity", 0),
+                        row.get("sales_amount", 0),
+                        row.get("supply_amount", 0),
+                        row.get("sales_total", 0),
+                        row.get("supply_total", 0),
+                        row.get("sales_margin", 0),
+                        row.get("cs_amount", 0),
+                        row.get("cs_supply_amount", 0),
+                        row.get("cs_margin", 0),
+                        row.get("profit_quantity_sales", 0),
+                        row.get("profit_quantity_supply", 0),
+                        row.get("profit_sales_amount", 0),
+                        row.get("profit_supply_amount", 0),
+                        row.get("profit_sales_margin", 0),
+                        row.get("profit_shipping", 0),
+                        row.get("profit_margin", 0),
+                        row.get("margin_rate", 0),
+                    ),
+                )
         elif report_type == "seller":
-            connection.execute("DELETE FROM sales_report_seller_rows WHERE period = ?", (period,))
+            if report_date:
+                connection.execute("DELETE FROM sales_report_seller_rows WHERE report_date = ?", (report_date,))
+            else:
+                connection.execute("DELETE FROM sales_report_seller_rows WHERE period = ?", (period,))
             for row in rows:
                 connection.execute(
                     """
@@ -22456,7 +25722,10 @@ def save_sales_report_snapshot(file_id: int, parsed: dict[str, object]) -> None:
                     ),
                 )
         elif report_type == "supplier":
-            connection.execute("DELETE FROM sales_report_supplier_rows WHERE period = ?", (period,))
+            if report_date:
+                connection.execute("DELETE FROM sales_report_supplier_rows WHERE report_date = ?", (report_date,))
+            else:
+                connection.execute("DELETE FROM sales_report_supplier_rows WHERE period = ?", (period,))
             for row in rows:
                 connection.execute(
                     """
@@ -22538,6 +25807,8 @@ def save_sales_report_snapshot(file_id: int, parsed: dict[str, object]) -> None:
 def _sales_report_daily_public(row: sqlite3.Row | None) -> dict[str, object]:
     if row is None:
         return {}
+    profit_shipping = int(row["profit_shipping"] or 0) if "profit_shipping" in row.keys() else 0
+    raw_profit_margin = int(row["profit_margin"] or 0)
     return {
         "report_date": str(row["report_date"] or ""),
         "label": str(row["label"] or ""),
@@ -22546,19 +25817,25 @@ def _sales_report_daily_public(row: sqlite3.Row | None) -> dict[str, object]:
         "sales_total": int(row["sales_total"] or 0),
         "profit_sales_amount": int(row["profit_sales_amount"] or 0),
         "profit_supply_amount": int(row["profit_supply_amount"] or 0),
-        "profit_margin": int(row["profit_margin"] or 0),
+        "profit_shipping": profit_shipping,
+        "raw_profit_margin": raw_profit_margin,
+        "profit_margin": raw_profit_margin - profit_shipping,
         "margin_rate": float(row["margin_rate"] or 0),
     }
 
 
 def _sales_report_named_public(row: sqlite3.Row) -> dict[str, object]:
     name = row["name"] if "name" in row.keys() else row[0]
+    profit_shipping = int(row["profit_shipping"] or 0) if "profit_shipping" in row.keys() else 0
+    raw_profit_margin = int(row["profit_margin"] or 0)
     return {
         "name": str(name or ""),
         "quantity": int(row["quantity"] or 0),
         "sales_amount": int(row["sales_amount"] or 0),
         "profit_sales_amount": int(row["profit_sales_amount"] or 0),
-        "profit_margin": int(row["profit_margin"] or 0),
+        "profit_shipping": profit_shipping,
+        "raw_profit_margin": raw_profit_margin,
+        "profit_margin": raw_profit_margin - profit_shipping,
         "margin_rate": float(row["margin_rate"] or 0),
         "cs_amount": int(row["cs_amount"] or 0) if "cs_amount" in row.keys() else 0,
         "cs_margin": int(row["cs_margin"] or 0) if "cs_margin" in row.keys() else 0,
@@ -22589,24 +25866,44 @@ def previous_sales_data_date(connection: sqlite3.Connection, base_date: date) ->
                 SELECT report_date
                   FROM sales_report_daily_rows
                  WHERE report_date != '' AND report_date < ?
+                 GROUP BY report_date
+                HAVING SUM(ABS(COALESCE(quantity, 0))) > 0
+                    OR SUM(ABS(COALESCE(sales_amount, 0))) > 0
+                    OR SUM(ABS(COALESCE(sales_total, 0))) > 0
+                    OR SUM(ABS(COALESCE(profit_sales_amount, 0))) > 0
                 UNION ALL
                 SELECT report_date
                   FROM sales_report_seller_rows
                  WHERE report_date != '' AND report_date < ?
+                 GROUP BY report_date
+                HAVING SUM(ABS(COALESCE(quantity, 0))) > 0
+                    OR SUM(ABS(COALESCE(sales_amount, 0))) > 0
+                    OR SUM(ABS(COALESCE(sales_total, 0))) > 0
+                    OR SUM(ABS(COALESCE(profit_sales_amount, 0))) > 0
                 UNION ALL
                 SELECT report_date
                   FROM sales_report_supplier_rows
                  WHERE report_date != '' AND report_date < ?
+                 GROUP BY report_date
+                HAVING SUM(ABS(COALESCE(quantity, 0))) > 0
+                    OR SUM(ABS(COALESCE(sales_amount, 0))) > 0
+                    OR SUM(ABS(COALESCE(sales_total, 0))) > 0
+                    OR SUM(ABS(COALESCE(profit_sales_amount, 0))) > 0
                 UNION ALL
                 SELECT report_date
                   FROM sales_report_product_rows
                  WHERE report_date != '' AND report_date < ?
+                 GROUP BY report_date
+                HAVING SUM(ABS(COALESCE(quantity, 0))) > 0
+                    OR SUM(ABS(COALESCE(sales_amount, 0))) > 0
+                    OR SUM(ABS(COALESCE(sales_total, 0))) > 0
+                    OR SUM(ABS(COALESCE(profit_sales_amount, 0))) > 0
                )
         """,
         (base_text, base_text, base_text, base_text),
     ).fetchone()
     report_date = str(row["report_date"] or "") if row else ""
-    return report_date or previous_business_day(base_date).isoformat()
+    return report_date
 
 
 def sales_report_day_summary_from_sources(connection: sqlite3.Connection, target_date: str) -> dict[str, object]:
@@ -22618,7 +25915,11 @@ def sales_report_day_summary_from_sources(connection: sqlite3.Connection, target
     ).fetchone()
     if daily:
         return _sales_report_daily_public(daily)
-    for table_name in ("sales_report_seller_rows", "sales_report_product_rows", "sales_report_supplier_rows"):
+    for table_name, margin_expression in (
+        ("sales_report_seller_rows", "profit_margin - profit_shipping"),
+        ("sales_report_product_rows", "profit_margin"),
+        ("sales_report_supplier_rows", "profit_margin - profit_shipping"),
+    ):
         row = connection.execute(
             f"""
             SELECT ? AS report_date,
@@ -22628,7 +25929,7 @@ def sales_report_day_summary_from_sources(connection: sqlite3.Connection, target
                    COALESCE(SUM(sales_total), 0) AS sales_total,
                    COALESCE(SUM(profit_sales_amount), 0) AS profit_sales_amount,
                    COALESCE(SUM(profit_supply_amount), 0) AS profit_supply_amount,
-                   COALESCE(SUM(profit_margin), 0) AS profit_margin
+                   COALESCE(SUM({margin_expression}), 0) AS profit_margin
               FROM {table_name}
              WHERE report_date = ?
             """,
@@ -22650,6 +25951,130 @@ def sales_report_day_summary_from_sources(connection: sqlite3.Connection, target
                 "margin_rate": margin_rate,
             }
     return {}
+
+
+def sales_report_seller_daily_summary_row(connection: sqlite3.Connection, target_date: str) -> sqlite3.Row | None:
+    if not target_date:
+        return None
+    return connection.execute(
+        """
+        SELECT report_date,
+               report_date AS label,
+               COALESCE(SUM(quantity), 0) AS quantity,
+               COALESCE(SUM(sales_amount), 0) AS sales_amount,
+               COALESCE(SUM(sales_total), 0) AS sales_total,
+               COALESCE(SUM(profit_sales_amount), 0) AS profit_sales_amount,
+               COALESCE(SUM(profit_supply_amount), 0) AS profit_supply_amount,
+               COALESCE(SUM(profit_shipping), 0) AS profit_shipping,
+               COALESCE(SUM(profit_margin), 0) AS profit_margin,
+               CASE
+                   WHEN COALESCE(SUM(profit_sales_amount), 0) = 0 THEN 0
+                   ELSE ROUND(((COALESCE(SUM(profit_margin), 0) - COALESCE(SUM(profit_shipping), 0)) * 100.0) / COALESCE(SUM(profit_sales_amount), 0), 1)
+               END AS margin_rate
+          FROM sales_report_seller_rows
+         WHERE report_date = ?
+         GROUP BY report_date
+        """,
+        (target_date,),
+    ).fetchone()
+
+
+def sales_report_seller_daily_summary_rows(connection: sqlite3.Connection, period: str) -> list[sqlite3.Row]:
+    if not period:
+        return []
+    return connection.execute(
+        """
+        SELECT report_date,
+               report_date AS label,
+               COALESCE(SUM(quantity), 0) AS quantity,
+               COALESCE(SUM(sales_amount), 0) AS sales_amount,
+               COALESCE(SUM(sales_total), 0) AS sales_total,
+               COALESCE(SUM(profit_sales_amount), 0) AS profit_sales_amount,
+               COALESCE(SUM(profit_supply_amount), 0) AS profit_supply_amount,
+               COALESCE(SUM(profit_shipping), 0) AS profit_shipping,
+               COALESCE(SUM(profit_margin), 0) AS profit_margin,
+               CASE
+                   WHEN COALESCE(SUM(profit_sales_amount), 0) = 0 THEN 0
+                   ELSE ROUND(((COALESCE(SUM(profit_margin), 0) - COALESCE(SUM(profit_shipping), 0)) * 100.0) / COALESCE(SUM(profit_sales_amount), 0), 1)
+               END AS margin_rate
+          FROM sales_report_seller_rows
+         WHERE period = ? AND report_date != ''
+         GROUP BY report_date
+         ORDER BY report_date DESC
+        """,
+        (period,),
+    ).fetchall()
+
+
+def sales_report_combined_daily_summary_rows(connection: sqlite3.Connection, period: str) -> list[sqlite3.Row]:
+    if not period:
+        return []
+    daily_rows = connection.execute(
+        """
+        SELECT report_date, label, quantity, sales_amount, sales_total, profit_sales_amount,
+               profit_supply_amount, profit_shipping, profit_margin, margin_rate
+          FROM sales_report_daily_rows
+         WHERE period = ?
+         ORDER BY report_date DESC
+        """,
+        (period,),
+    ).fetchall()
+    rows_by_date = {str(row["report_date"] or ""): row for row in daily_rows if str(row["report_date"] or "")}
+    for row in sales_report_seller_daily_summary_rows(connection, period):
+        report_date = str(row["report_date"] or "")
+        if report_date:
+            rows_by_date[report_date] = row
+    return sorted(rows_by_date.values(), key=lambda row: str(row["report_date"] or ""), reverse=True)
+
+
+def sales_report_recent_daily_summary_rows(
+    connection: sqlite3.Connection,
+    selected_date: str = "",
+    limit: int = 7,
+) -> list[sqlite3.Row]:
+    cutoff_date = str(selected_date or "")
+    cutoff_sql = "report_date != '' AND (? = '' OR report_date <= ?)"
+    daily_rows = connection.execute(
+        f"""
+        SELECT report_date, label, quantity, sales_amount, sales_total, profit_sales_amount,
+               profit_supply_amount, profit_shipping, profit_margin, margin_rate
+          FROM sales_report_daily_rows
+         WHERE {cutoff_sql}
+         ORDER BY report_date DESC
+         LIMIT 60
+        """,
+        (cutoff_date, cutoff_date),
+    ).fetchall()
+    rows_by_date = {str(row["report_date"] or ""): row for row in daily_rows if str(row["report_date"] or "")}
+    seller_rows = connection.execute(
+        f"""
+        SELECT report_date,
+               report_date AS label,
+               COALESCE(SUM(quantity), 0) AS quantity,
+               COALESCE(SUM(sales_amount), 0) AS sales_amount,
+               COALESCE(SUM(sales_total), 0) AS sales_total,
+               COALESCE(SUM(profit_sales_amount), 0) AS profit_sales_amount,
+               COALESCE(SUM(profit_supply_amount), 0) AS profit_supply_amount,
+               COALESCE(SUM(profit_shipping), 0) AS profit_shipping,
+               COALESCE(SUM(profit_margin), 0) AS profit_margin,
+               0 AS margin_rate
+          FROM sales_report_seller_rows
+         WHERE {cutoff_sql}
+         GROUP BY report_date
+         ORDER BY report_date DESC
+         LIMIT 60
+        """,
+        (cutoff_date, cutoff_date),
+    ).fetchall()
+    for row in seller_rows:
+        report_date = str(row["report_date"] or "")
+        if report_date:
+            rows_by_date[report_date] = row
+    return sorted(
+        rows_by_date.values(),
+        key=lambda row: str(row["report_date"] or ""),
+        reverse=True,
+    )[:max(1, int(limit or 7))]
 
 
 def previous_sales_period(period: str) -> str:
@@ -22686,30 +26111,908 @@ def sales_report_compare_detail_public(row: sqlite3.Row) -> dict[str, object]:
     }
 
 
+def sales_report_period_options(connection: sqlite3.Connection) -> list[str]:
+    rows = connection.execute(
+        """
+        SELECT period
+          FROM (
+                SELECT period FROM sales_report_daily_rows WHERE period != ''
+                UNION ALL
+                SELECT period FROM sales_report_seller_rows WHERE period != ''
+                UNION ALL
+                SELECT period FROM sales_report_supplier_rows WHERE period != ''
+                UNION ALL
+                SELECT period FROM sales_report_product_rows WHERE period != ''
+               )
+         GROUP BY period
+         ORDER BY period DESC
+        """
+    ).fetchall()
+    return [str(row["period"] or "") for row in rows if row["period"]]
+
+
+def latest_sales_report_period(connection: sqlite3.Connection) -> str:
+    period_options = sales_report_period_options(connection)
+    return period_options[0] if period_options else ""
+
+
+def _sales_detail_metric(label: str, value: object) -> dict[str, object]:
+    return {"label": label, "value": value}
+
+
+def sales_report_margin_check(connection: sqlite3.Connection, period: str) -> dict[str, object]:
+    rows = connection.execute(
+        """
+        SELECT kind, name, report_date, profit_sales_amount, profit_supply_amount,
+               profit_shipping, cs_margin, profit_margin
+          FROM (
+                SELECT '일자별' AS kind, label AS name, report_date, profit_sales_amount,
+                       profit_supply_amount, profit_shipping, cs_margin, profit_margin - profit_shipping AS profit_margin
+                  FROM sales_report_daily_rows
+                 WHERE period = ?
+                UNION ALL
+                SELECT '매출처' AS kind, seller_name AS name, report_date, profit_sales_amount,
+                       profit_supply_amount, profit_shipping, cs_margin, profit_margin - profit_shipping AS profit_margin
+                  FROM sales_report_seller_rows
+                 WHERE period = ?
+                UNION ALL
+                SELECT '매입처' AS kind, supplier_name AS name, report_date, profit_sales_amount,
+                       profit_supply_amount, profit_shipping, cs_margin, profit_margin - profit_shipping AS profit_margin
+                  FROM sales_report_supplier_rows
+                 WHERE period = ?
+                UNION ALL
+                SELECT '상품' AS kind, product_name AS name, report_date, profit_sales_amount,
+                       profit_supply_amount, 0 AS profit_shipping, cs_margin, profit_margin
+                  FROM sales_report_product_rows
+                 WHERE period = ? AND product_name NOT LIKE ?
+               )
+         WHERE profit_margin > profit_sales_amount
+         ORDER BY (profit_margin - profit_sales_amount) DESC
+        """,
+        (period, period, period, period, SALES_REPORT_PRODUCT_EXCLUDE_PATTERN),
+    ).fetchall()
+    anomaly_count = len(rows)
+    negative_supply_count = sum(1 for row in rows if int(row["profit_supply_amount"] or 0) < 0)
+    positive_cs_count = sum(1 for row in rows if int(row["cs_margin"] or 0) > 0)
+    zero_sales_count = sum(1 for row in rows if int(row["profit_sales_amount"] or 0) == 0 and int(row["profit_margin"] or 0) > 0)
+    over_amount = sum(int(row["profit_margin"] or 0) - int(row["profit_sales_amount"] or 0) for row in rows)
+    if not anomaly_count:
+        return {
+            "anomaly_count": 0,
+            "message": "택배비 제외 기준으로 손익마진이 손익매출보다 큰 행은 확인되지 않았습니다.",
+            "examples": [],
+        }
+    reasons: list[str] = []
+    if negative_supply_count:
+        reasons.append(f"손익 공급금액이 음수인 행 {negative_supply_count}건")
+    if positive_cs_count:
+        reasons.append(f"CS 마진이 양수 보정된 행 {positive_cs_count}건")
+    if zero_sales_count:
+        reasons.append(f"손익매출이 0인데 마진만 양수인 행 {zero_sales_count}건")
+    if not reasons:
+        reasons.append("원본 손익 계산 컬럼의 판매금액/공급금액/CS 보정값 확인 필요")
+    return {
+        "anomaly_count": anomaly_count,
+        "over_amount": over_amount,
+        "message": "택배비 제외 후에도 마진이 손익매출보다 큰 행은 원본 데이터 확인이 필요한 신호입니다. "
+                   + ", ".join(reasons)
+                   + "이 원인일 수 있습니다. 화면의 손익마진은 손익-배송비를 제외해 계산합니다.",
+        "examples": [
+            {
+                "kind": str(row["kind"] or ""),
+                "name": str(row["name"] or ""),
+                "report_date": str(row["report_date"] or ""),
+                "profit_sales_amount": int(row["profit_sales_amount"] or 0),
+                "profit_supply_amount": int(row["profit_supply_amount"] or 0),
+                "profit_shipping": int(row["profit_shipping"] or 0),
+                "cs_margin": int(row["cs_margin"] or 0),
+                "profit_margin": int(row["profit_margin"] or 0),
+            }
+            for row in rows[:5]
+        ],
+    }
+
+
+def sales_report_row_count_for_date(
+    connection: sqlite3.Connection,
+    table_name: str,
+    period: str,
+    report_date: str,
+) -> int:
+    if not period:
+        return 0
+    if report_date:
+        row = connection.execute(
+            f"SELECT COUNT(*) AS count FROM {table_name} WHERE period = ? AND report_date = ?",
+            (period, report_date),
+        ).fetchone()
+    else:
+        row = connection.execute(
+            f"SELECT COUNT(*) AS count FROM {table_name} WHERE period = ?",
+            (period,),
+        ).fetchone()
+    return int(row["count"] or 0) if row else 0
+
+
+def sales_report_closing_check(
+    report_counts: dict[str, int],
+    period: str,
+    report_date: str,
+    month_total: dict[str, int],
+    seller_total: dict[str, int],
+    supplier_purchase_total: dict[str, int],
+    product_total: dict[str, int],
+    margin_check: dict[str, object],
+    review_count: int,
+) -> dict[str, object]:
+    required_reports = [
+        ("daily", "일자별 매출", "필수"),
+        ("seller", "매출처별 매출", "필수"),
+        ("supplier", "매입처별 매입", "필수"),
+        ("product", "상품별 매출", "필수"),
+    ]
+    report_statuses: list[dict[str, object]] = []
+    issues: list[dict[str, str]] = []
+    for key, label, required_label in required_reports:
+        count = int(report_counts.get(key, 0) or 0)
+        uploaded = count > 0
+        report_statuses.append({
+            "key": key,
+            "label": label,
+            "required": required_label,
+            "uploaded": uploaded,
+            "row_count": count,
+        })
+        if not uploaded:
+            level = "critical" if key in {"daily", "seller"} else "warning"
+            issues.append({
+                "level": level,
+                "title": f"{label} 데이터 없음",
+                "message": f"{report_date or period} 기준 {label} 파일을 업로드해야 마감 검증이 완성됩니다.",
+            })
+
+    month_sales = int(month_total.get("profit_sales_amount", 0) or 0)
+    seller_sales = int(seller_total.get("profit_sales_amount", 0) or 0)
+    difference = month_sales - seller_sales
+    if difference != 0:
+        issues.append({
+            "level": "warning",
+            "title": "월 누계와 매출처 합계 차이",
+            "message": f"월 손익매출과 매출처별 합계 차이가 {difference:,}원입니다.",
+        })
+    if int(margin_check.get("anomaly_count") or 0) > 0:
+        issues.append({
+            "level": "warning",
+            "title": "마진 이상 데이터 확인",
+            "message": str(margin_check.get("message") or "손익마진 검토가 필요한 행이 있습니다."),
+        })
+    if review_count > 0:
+        issues.append({
+            "level": "warning",
+            "title": "CS/음수 마진 검토건",
+            "message": f"CS 금액 또는 음수 마진이 포함된 검토 대상 {review_count:,}건이 있습니다.",
+        })
+    if int(supplier_purchase_total.get("purchase_total", 0) or 0) <= 0:
+        issues.append({
+            "level": "warning",
+            "title": "매입처 금액 확인 필요",
+            "message": "매입처별 총합계 금액이 0원 이하입니다. 매입처별 파일 업로드 여부를 확인하세요.",
+        })
+    if int(product_total.get("profit_sales_amount", 0) or 0) <= 0:
+        issues.append({
+            "level": "warning",
+            "title": "상품별 매출 확인 필요",
+            "message": "상품별 손익매출이 0원 이하입니다. 상품별 파일 업로드 여부를 확인하세요.",
+        })
+
+    has_critical = any(issue["level"] == "critical" for issue in issues)
+    status = "critical" if has_critical else ("warning" if issues else "ok")
+    if status == "ok":
+        title = "매출 마감 점검 완료"
+        message = "필수 매출표와 주요 합계, 마진 검증에서 추가 확인 항목이 없습니다."
+    elif status == "critical":
+        title = "매출 마감 전 필수 데이터 필요"
+        message = "일자별 또는 매출처별 필수 데이터가 없어 마감 판단 전 업로드가 필요합니다."
+    else:
+        title = "매출 마감 확인 필요"
+        message = "필수 데이터는 확인됐지만 합계 차이 또는 검토 항목이 있어 마감 전 확인이 필요합니다."
+    return {
+        "status": status,
+        "title": title,
+        "message": message,
+        "issue_count": len(issues),
+        "issues": issues[:8],
+        "required_reports": report_statuses,
+        "metrics": {
+            "month_profit_sales_amount": month_sales,
+            "seller_profit_sales_amount": seller_sales,
+            "supplier_purchase_total": int(supplier_purchase_total.get("purchase_total", 0) or 0),
+            "product_profit_sales_amount": int(product_total.get("profit_sales_amount", 0) or 0),
+            "difference": difference,
+            "margin_anomaly_count": int(margin_check.get("anomaly_count") or 0),
+            "review_count": review_count,
+        },
+    }
+
+
+def date_from_workhub_value(value: object) -> date | None:
+    text = clean_cell(value)
+    if not text:
+        return None
+    match = re.search(r"(20\d{2})[-./년\s]+(\d{1,2})[-./월\s]+(\d{1,2})", text)
+    if match:
+        try:
+            return date(int(match.group(1)), int(match.group(2)), int(match.group(3)))
+        except ValueError:
+            return None
+    match = re.search(r"(\d{1,2})\s*월\s*(\d{1,2})\s*일?", text)
+    if match:
+        try:
+            return date(date.today().year, int(match.group(1)), int(match.group(2)))
+        except ValueError:
+            return None
+    match = re.search(r"^(\d{1,2})[./-](\d{1,2})", text)
+    if match:
+        try:
+            return date(date.today().year, int(match.group(1)), int(match.group(2)))
+        except ValueError:
+            return None
+    return None
+
+
+def automation_section(status: str, title: str, summary: str, metrics: dict[str, object] | None = None, issues: list[dict[str, object]] | None = None) -> dict[str, object]:
+    return {
+        "status": status,
+        "title": title,
+        "summary": summary,
+        "metrics": metrics or {},
+        "issues": issues or [],
+    }
+
+
+def cs_automation_check(connection: sqlite3.Connection, today: date) -> dict[str, object]:
+    open_rows = connection.execute(
+        """
+        SELECT id, created_at, status, cs_type, receiver_name, product_name,
+               return_invoice, reship_invoice, occurred_at, completed_at
+          FROM cs_cases
+         WHERE COALESCE(completed_at, '') = ''
+           AND COALESCE(status, '') NOT LIKE '%완료%'
+         ORDER BY COALESCE(NULLIF(occurred_at, ''), created_at) ASC
+         LIMIT 500
+        """
+    ).fetchall()
+    old_count = 0
+    missing_return = 0
+    missing_reship = 0
+    for row in open_rows:
+        base_date = date_from_workhub_value(row["occurred_at"]) or date_from_workhub_value(row["created_at"])
+        if base_date and (today - base_date).days >= 3:
+            old_count += 1
+        cs_type = clean_cell(row["cs_type"])
+        if any(token in cs_type for token in ("회수", "반품", "오배송")) and not clean_cell(row["return_invoice"]):
+            missing_return += 1
+        if any(token in cs_type for token in ("재발송", "교환", "오출고", "파손", "누락")) and not clean_cell(row["reship_invoice"]):
+            missing_reship += 1
+    issues: list[dict[str, object]] = []
+    if old_count:
+        issues.append({"level": "warning", "title": "3일 이상 미처리 CS", "message": f"{old_count:,}건이 3일 이상 완료되지 않았습니다."})
+    if missing_return:
+        issues.append({"level": "warning", "title": "회수 송장 누락", "message": f"회수/반품 관련 CS 중 회수 송장 없는 건이 {missing_return:,}건입니다."})
+    if missing_reship:
+        issues.append({"level": "warning", "title": "재발송 송장 누락", "message": f"재발송/교환 관련 CS 중 재발송 송장 없는 건이 {missing_reship:,}건입니다."})
+    status = "warning" if issues else "ok"
+    return automation_section(
+        status,
+        "CS 미처리 자동 점검",
+        "미처리 CS, 회수 송장, 재발송 송장 누락을 확인했습니다." if issues else "미처리 CS 주요 위험 항목이 없습니다.",
+        {"open_count": len(open_rows), "old_count": old_count, "missing_return_invoice": missing_return, "missing_reship_invoice": missing_reship},
+        issues,
+    )
+
+
+def management_automation_check(connection: sqlite3.Connection, today: date) -> dict[str, object]:
+    month_prefix = today.strftime("%Y-%m")
+    row = connection.execute(
+        """
+        SELECT COUNT(*) AS total,
+               SUM(CASE WHEN COALESCE(product_name, '') = '' THEN 1 ELSE 0 END) AS missing_product,
+               SUM(CASE WHEN COALESCE(purchase_vendor, '') = '' AND COALESCE(sales_vendor, '') = '' THEN 1 ELSE 0 END) AS missing_vendor,
+               SUM(CASE WHEN COALESCE(quantity, '') = '' THEN 1 ELSE 0 END) AS missing_quantity,
+               SUM(CASE WHEN COALESCE(courier, '') != '' AND COALESCE(invoice_number, '') = '' THEN 1 ELSE 0 END) AS missing_invoice
+          FROM management_records
+         WHERE substr(COALESCE(NULLIF(ship_date, ''), NULLIF(order_date, '')), 1, 7) = ?
+        """,
+        (month_prefix,),
+    ).fetchone()
+    duplicate_row = connection.execute(
+        """
+        SELECT COUNT(*) AS count
+          FROM (
+                SELECT COALESCE(NULLIF(order_number, ''), NULLIF(order_item_id, ''), NULLIF(invoice_number, '')) AS key_value,
+                       COUNT(*) AS duplicate_count
+                  FROM management_records
+                 WHERE substr(COALESCE(NULLIF(ship_date, ''), NULLIF(order_date, '')), 1, 7) = ?
+                   AND COALESCE(NULLIF(order_number, ''), NULLIF(order_item_id, ''), NULLIF(invoice_number, '')) IS NOT NULL
+                 GROUP BY key_value
+                HAVING duplicate_count > 1
+               )
+        """,
+        (month_prefix,),
+    ).fetchone()
+    metrics = {
+        "month": month_prefix,
+        "total": int(row["total"] or 0) if row else 0,
+        "missing_product": int(row["missing_product"] or 0) if row else 0,
+        "missing_vendor": int(row["missing_vendor"] or 0) if row else 0,
+        "missing_quantity": int(row["missing_quantity"] or 0) if row else 0,
+        "missing_invoice": int(row["missing_invoice"] or 0) if row else 0,
+        "duplicate_groups": int(duplicate_row["count"] or 0) if duplicate_row else 0,
+    }
+    issues: list[dict[str, object]] = []
+    for key, title in (
+        ("missing_product", "상품명 누락"),
+        ("missing_vendor", "거래처 누락"),
+        ("missing_quantity", "수량 누락"),
+        ("missing_invoice", "송장번호 누락"),
+        ("duplicate_groups", "중복 의심 주문"),
+    ):
+        count = int(metrics[key] or 0)
+        if count:
+            issues.append({"level": "warning", "title": title, "message": f"{month_prefix} 기준 {count:,}건 확인이 필요합니다."})
+    return automation_section(
+        "warning" if issues else "ok",
+        "통합관리대장 오류 자동 점검",
+        "이번 달 통합관리대장 누락/중복 의심 항목을 확인했습니다." if issues else "이번 달 통합관리대장 주요 누락 항목이 없습니다.",
+        metrics,
+        issues,
+    )
+
+
+def inbound_automation_check(connection: sqlite3.Connection, today: date) -> dict[str, object]:
+    import_rows = connection.execute(
+        "SELECT warehouse_due_date, item, progress_status, completed_at FROM import_shipments WHERE COALESCE(completed_at, '') = ''"
+    ).fetchall()
+    cargo_rows = connection.execute(
+        "SELECT ship_date, cargo_type, item, customer, status, completed_at FROM cargo_shipments WHERE COALESCE(completed_at, '') = ''"
+    ).fetchall()
+    overdue = 0
+    due_soon = 0
+    for row in import_rows:
+        due = date_from_workhub_value(row["warehouse_due_date"])
+        if not due:
+            continue
+        if due < today:
+            overdue += 1
+        elif (due - today).days <= 3:
+            due_soon += 1
+    cargo_due_today = 0
+    for row in cargo_rows:
+        due = date_from_workhub_value(row["ship_date"])
+        if due == today:
+            cargo_due_today += 1
+    issues: list[dict[str, object]] = []
+    if overdue:
+        issues.append({"level": "warning", "title": "입고 예정일 경과", "message": f"완료 처리되지 않은 입고 지연 의심 {overdue:,}건이 있습니다."})
+    if due_soon:
+        issues.append({"level": "notice", "title": "3일 이내 입고 예정", "message": f"3일 이내 창고 입고 예정 {due_soon:,}건이 있습니다."})
+    if cargo_due_today:
+        issues.append({"level": "notice", "title": "오늘 화물 일정", "message": f"오늘 처리할 화물 입출고 일정 {cargo_due_today:,}건이 있습니다."})
+    return automation_section(
+        "warning" if overdue else ("notice" if issues else "ok"),
+        "입고 일정 자동 점검",
+        "수입제품 입고 예정과 화물 일정을 확인했습니다." if issues else "오늘 기준 임박/지연 입고 일정이 없습니다.",
+        {"active_imports": len(import_rows), "active_cargo": len(cargo_rows), "overdue": overdue, "due_soon": due_soon, "cargo_due_today": cargo_due_today},
+        issues,
+    )
+
+
+def mail_automation_check(connection: sqlite3.Connection) -> dict[str, object]:
+    settings = load_mail_settings(include_password=False)
+    purchase_count = connection.execute(
+        "SELECT COUNT(*) AS count FROM vendor_contacts WHERE vendor_type = 'purchase'"
+    ).fetchone()
+    sales_count = connection.execute(
+        "SELECT COUNT(*) AS count FROM vendor_contacts WHERE vendor_type = 'sales'"
+    ).fetchone()
+    metrics = {
+        "mail_account_configured": bool(clean_cell(settings.get("naver_email"))),
+        "purchase_contacts": int(purchase_count["count"] or 0) if purchase_count else 0,
+        "sales_contacts": int(sales_count["count"] or 0) if sales_count else 0,
+    }
+    issues: list[dict[str, object]] = []
+    if not metrics["mail_account_configured"]:
+        issues.append({"level": "warning", "title": "메일 계정 미설정", "message": "네이버 메일 연동을 저장해야 승인 후 발송 자동화를 사용할 수 있습니다."})
+    if int(metrics["purchase_contacts"] or 0) <= 0:
+        issues.append({"level": "warning", "title": "매입처 주소록 없음", "message": "입고/품절 공지 대상 매입처 주소록을 업로드해주세요."})
+    if int(metrics["sales_contacts"] or 0) <= 0:
+        issues.append({"level": "warning", "title": "매출처 주소록 없음", "message": "입고/품절 공지 대상 매출처 주소록을 업로드해주세요."})
+    return automation_section(
+        "warning" if issues else "ok",
+        "입고/품절 메일 자동화",
+        "메일 발송 계정과 업체 주소록 준비 상태를 확인했습니다." if issues else "입고/품절 공지 메일 자동화 준비가 완료됐습니다.",
+        metrics,
+        issues,
+    )
+
+
+def workhub_automation_overview(user: dict[str, str] | None = None) -> dict[str, object]:
+    init_db()
+    today = date.today()
+    sections: dict[str, object] = {}
+    sales_payload: dict[str, object] = {}
+    if not user or user_has_permission(user, "sales_report_manage"):
+        try:
+            sales_payload = sales_report_dashboard_payload()
+            closing = sales_payload.get("closing_check") or {}
+            sections["sales"] = automation_section(
+                str(closing.get("status") or "ok"),
+                str(closing.get("title") or "매출 마감 자동 점검"),
+                str(closing.get("message") or "매출 마감 데이터를 확인했습니다."),
+                dict(closing.get("metrics") or {}),
+                list(closing.get("issues") or []),
+            )
+        except Exception as exc:  # noqa: BLE001
+            sections["sales"] = automation_section("warning", "매출 마감 자동 점검", f"매출 점검 중 오류가 발생했습니다: {exc}")
+    else:
+        sections["sales"] = automation_section("locked", "매출 마감 자동 점검", "매출현황 권한이 없어 점검 결과를 표시하지 않습니다.")
+
+    connection = connect_db()
+    try:
+        sections["cs"] = cs_automation_check(connection, today)
+        sections["management"] = management_automation_check(connection, today)
+        sections["inbound"] = inbound_automation_check(connection, today)
+        sections["mail"] = mail_automation_check(connection)
+    finally:
+        connection.close()
+
+    ordered = [sections[key] for key in ("sales", "cs", "management", "inbound", "mail")]
+    issue_count = sum(int(section.get("issue_count", len(section.get("issues", []))) or 0) for section in ordered)
+    warning_count = sum(1 for section in ordered if section.get("status") in {"critical", "warning"})
+    status = "warning" if warning_count else "ok"
+    briefing_lines: list[str] = []
+    for section in ordered:
+        issues = list(section.get("issues") or [])
+        if issues:
+            briefing_lines.append(f"{section.get('title')}: {issues[0].get('title')}")
+    if not briefing_lines:
+        briefing_lines.append("오늘 자동화 점검에서 즉시 확인할 위험 항목은 없습니다.")
+    return {
+        "generated_at": now_text(),
+        "date": today.isoformat(),
+        "status": status,
+        "title": "업무 자동화 점검",
+        "summary": "확인 필요 항목이 있습니다." if warning_count else "주요 자동화 점검이 정상입니다.",
+        "issue_count": issue_count,
+        "sections": sections,
+        "briefing": briefing_lines[:6],
+        "sales_report": sales_payload,
+    }
+
+
+def sales_report_detail_payload(kind: str, key: str, period: str = "") -> dict[str, object]:
+    init_db()
+    connection = connect_db()
+    try:
+        selected_period = period or latest_sales_report_period(connection)
+        detail_kind = str(kind or "").strip().lower()
+        detail_key = str(key or "").strip()
+        if not selected_period:
+            raise ValueError("조회할 매출 월 데이터가 없습니다.")
+        if not detail_key:
+            raise ValueError("상세 조회 기준이 없습니다.")
+
+        if detail_kind == "daily":
+            summary = connection.execute(
+                "SELECT * FROM sales_report_daily_rows WHERE period = ? AND report_date = ?",
+                (selected_period, detail_key),
+            ).fetchone()
+            previous_seller_date_row = connection.execute(
+                """
+                SELECT MAX(report_date) AS report_date
+                  FROM sales_report_seller_rows
+                 WHERE period = ? AND report_date < ?
+                """,
+                (selected_period, detail_key),
+            ).fetchone()
+            previous_seller_date = str(previous_seller_date_row["report_date"] or "") if previous_seller_date_row else ""
+            current_seller_total = connection.execute(
+                """
+                SELECT COALESCE(SUM(profit_sales_amount), 0) AS profit_sales_amount
+                  FROM sales_report_seller_rows
+                 WHERE period = ? AND report_date = ?
+                """,
+                (selected_period, detail_key),
+            ).fetchone()
+            daily_profit_sales = int(summary["profit_sales_amount"] or 0) if summary else 0
+            current_profit_sales = int(current_seller_total["profit_sales_amount"] or 0) if current_seller_total else 0
+            use_seller_amounts = bool(previous_seller_date) or (
+                daily_profit_sales > 0 and abs(current_profit_sales - daily_profit_sales) <= max(1000, int(abs(daily_profit_sales) * 0.05))
+            )
+            if use_seller_amounts:
+                seller_rows = connection.execute(
+                    """
+                    WITH current_rows AS (
+                        SELECT TRIM(seller_name) AS seller_name,
+                               COALESCE(SUM(quantity), 0) AS quantity,
+                               COALESCE(SUM(profit_sales_amount), 0) AS profit_sales_amount,
+                               COALESCE(SUM(sales_total), 0) AS sales_total,
+                               COALESCE(SUM(profit_margin - profit_shipping), 0) AS profit_margin
+                          FROM sales_report_seller_rows
+                         WHERE period = ? AND report_date = ?
+                         GROUP BY TRIM(seller_name)
+                    ),
+                    previous_rows AS (
+                        SELECT TRIM(seller_name) AS seller_name,
+                               COALESCE(SUM(quantity), 0) AS quantity,
+                               COALESCE(SUM(profit_sales_amount), 0) AS profit_sales_amount,
+                               COALESCE(SUM(sales_total), 0) AS sales_total,
+                               COALESCE(SUM(profit_margin - profit_shipping), 0) AS profit_margin
+                          FROM sales_report_seller_rows
+                         WHERE period = ? AND report_date = ?
+                         GROUP BY TRIM(seller_name)
+                    ),
+                    ledger_rows AS (
+                        SELECT TRIM(COALESCE(NULLIF(sales_vendor, ''), '판매처 미입력')) AS seller_name,
+                               COUNT(*) AS order_count,
+                               COALESCE(SUM(CAST(REPLACE(quantity, ',', '') AS INTEGER)), 0) AS ledger_quantity
+                          FROM management_records
+                         WHERE substr(COALESCE(NULLIF(ship_date, ''), NULLIF(order_date, '')), 1, 10) = ?
+                         GROUP BY TRIM(COALESCE(NULLIF(sales_vendor, ''), '판매처 미입력'))
+                    ),
+                    keys AS (
+                        SELECT seller_name FROM current_rows
+                        UNION
+                        SELECT seller_name FROM previous_rows
+                        UNION
+                        SELECT seller_name FROM ledger_rows
+                    )
+                    SELECT keys.seller_name,
+                           COALESCE(ledger_rows.order_count, 0) AS order_count,
+                           CASE
+                               WHEN ledger_rows.seller_name IS NOT NULL THEN COALESCE(ledger_rows.ledger_quantity, 0)
+                               ELSE COALESCE(current_rows.quantity, 0) - COALESCE(previous_rows.quantity, 0)
+                           END AS quantity,
+                           COALESCE(current_rows.profit_sales_amount, 0) - COALESCE(previous_rows.profit_sales_amount, 0) AS profit_sales_amount,
+                           COALESCE(current_rows.sales_total, 0) - COALESCE(previous_rows.sales_total, 0) AS sales_total,
+                           COALESCE(current_rows.profit_margin, 0) - COALESCE(previous_rows.profit_margin, 0) AS profit_margin
+                      FROM keys
+                      LEFT JOIN current_rows ON current_rows.seller_name = keys.seller_name
+                      LEFT JOIN previous_rows ON previous_rows.seller_name = keys.seller_name
+                      LEFT JOIN ledger_rows ON ledger_rows.seller_name = keys.seller_name
+                     WHERE COALESCE(ledger_rows.order_count, 0) != 0
+                        OR COALESCE(current_rows.quantity, 0) - COALESCE(previous_rows.quantity, 0) != 0
+                        OR COALESCE(current_rows.profit_sales_amount, 0) - COALESCE(previous_rows.profit_sales_amount, 0) != 0
+                     ORDER BY profit_sales_amount DESC, quantity DESC, order_count DESC, keys.seller_name COLLATE NOCASE
+                    """,
+                    (selected_period, detail_key, selected_period, previous_seller_date, detail_key),
+                ).fetchall()
+            else:
+                seller_rows = connection.execute(
+                    """
+                    SELECT TRIM(COALESCE(NULLIF(sales_vendor, ''), '판매처 미입력')) AS seller_name,
+                           COUNT(*) AS order_count,
+                           COALESCE(SUM(CAST(REPLACE(quantity, ',', '') AS INTEGER)), 0) AS quantity,
+                           0 AS profit_sales_amount,
+                           0 AS sales_total,
+                           0 AS profit_margin
+                      FROM management_records
+                     WHERE substr(COALESCE(NULLIF(ship_date, ''), NULLIF(order_date, '')), 1, 10) = ?
+                     GROUP BY TRIM(COALESCE(NULLIF(sales_vendor, ''), '판매처 미입력'))
+                     ORDER BY quantity DESC, order_count DESC, seller_name COLLATE NOCASE
+                    """,
+                    (detail_key,),
+                ).fetchall()
+            product_rows = connection.execute(
+                """
+                SELECT TRIM(COALESCE(NULLIF(product_name, ''), '상품명 미입력')) AS product_name,
+                       TRIM(COALESCE(NULLIF(sales_vendor, ''), '판매처 미입력')) AS seller_name,
+                       COUNT(*) AS order_count,
+                       COALESCE(SUM(CAST(REPLACE(quantity, ',', '') AS INTEGER)), 0) AS quantity
+                  FROM management_records
+                 WHERE substr(COALESCE(NULLIF(ship_date, ''), NULLIF(order_date, '')), 1, 10) = ?
+                 GROUP BY TRIM(COALESCE(NULLIF(product_name, ''), '상품명 미입력')),
+                          TRIM(COALESCE(NULLIF(sales_vendor, ''), '판매처 미입력'))
+                 ORDER BY seller_name COLLATE NOCASE, quantity DESC, order_count DESC, product_name COLLATE NOCASE
+                """,
+                (detail_key,),
+            ).fetchall()
+            return {
+                "kind": "daily",
+                "title": f"{detail_key} 판매사별 당일 현황",
+                "period": selected_period,
+                "note": "판매금액은 매출처별 누적 스냅샷의 전일 대비 증가분으로 계산하고, 주문건수는 통합관리대장의 해당 날짜 기준으로 표시합니다." if use_seller_amounts else "해당 날짜의 전일 매출처 스냅샷이 없어 금액은 표시하지 않고 통합관리대장 기준 주문건수와 수량만 표시합니다.",
+                "metrics": [
+                    _sales_detail_metric("수량", int(summary["quantity"] or 0) if summary else 0),
+                    _sales_detail_metric("손익매출", int(summary["profit_sales_amount"] or 0) if summary else 0),
+                    _sales_detail_metric("판매합계", int(summary["sales_total"] or 0) if summary else 0),
+                    _sales_detail_metric("손익마진(택배비 제외)", int((summary["profit_margin"] or 0) - (summary["profit_shipping"] or 0)) if summary else 0),
+                ],
+                "sections": [
+                    {
+                        "title": "해당 날짜 판매사별 발생 건",
+                        "headers": ["판매사", "주문건수", "수량", "손익매출", "판매합계", "손익마진(택배비 제외)"],
+                        "rows": [
+                            [
+                                str(row["seller_name"] or ""),
+                                int(row["order_count"] or 0),
+                                int(row["quantity"] or 0),
+                                int(row["profit_sales_amount"] or 0),
+                                int(row["sales_total"] or 0),
+                                int(row["profit_margin"] or 0),
+                            ]
+                            for row in seller_rows
+                        ],
+                        "empty": "해당 날짜에 발생한 판매사별 주문/출고 데이터가 없습니다.",
+                    },
+                    {
+                        "title": "출고 제품 리스트",
+                        "headers": ["제품명", "판매처", "주문건수", "출고수량"],
+                        "rows": [
+                            [
+                                str(row["product_name"] or ""),
+                                str(row["seller_name"] or ""),
+                                int(row["order_count"] or 0),
+                                int(row["quantity"] or 0),
+                            ]
+                            for row in product_rows
+                        ],
+                        "empty": "해당 날짜의 출고 제품 데이터를 찾지 못했습니다.",
+                    }
+                ],
+            }
+
+        if detail_kind == "product":
+            shipment_rows = connection.execute(
+                """
+                WITH source AS (
+                    SELECT COALESCE(NULLIF(ship_date, ''), NULLIF(order_date, '')) AS sales_date,
+                           quantity
+                      FROM management_records
+                     WHERE COALESCE(NULLIF(ship_date, ''), NULLIF(order_date, '')) LIKE ?
+                       AND product_name != ''
+                       AND (product_name = ? OR instr(product_name, ?) > 0 OR instr(?, product_name) > 0)
+                )
+                SELECT substr(sales_date, 1, 10) AS sales_date,
+                       COUNT(*) AS order_count,
+                       COALESCE(SUM(CAST(REPLACE(quantity, ',', '') AS INTEGER)), 0) AS quantity
+                  FROM source
+                 GROUP BY substr(sales_date, 1, 10)
+                 ORDER BY sales_date DESC
+                """,
+                (f"{selected_period}%", detail_key, detail_key, detail_key),
+            ).fetchall()
+            seller_rows = connection.execute(
+                """
+                WITH source AS (
+                    SELECT COALESCE(NULLIF(sales_vendor, ''), '판매처 미입력') AS sales_vendor,
+                           quantity
+                      FROM management_records
+                     WHERE COALESCE(NULLIF(ship_date, ''), NULLIF(order_date, '')) LIKE ?
+                       AND product_name != ''
+                       AND (product_name = ? OR instr(product_name, ?) > 0 OR instr(?, product_name) > 0)
+                )
+                SELECT sales_vendor,
+                       COUNT(*) AS order_count,
+                       COALESCE(SUM(CAST(REPLACE(quantity, ',', '') AS INTEGER)), 0) AS quantity
+                  FROM source
+                 GROUP BY sales_vendor
+                 ORDER BY quantity DESC, order_count DESC, sales_vendor COLLATE NOCASE
+                """,
+                (f"{selected_period}%", detail_key, detail_key, detail_key),
+            ).fetchall()
+            shipped_quantity = sum(int(row["quantity"] or 0) for row in shipment_rows)
+            seller_count = len(seller_rows)
+            return {
+                "kind": "product",
+                "title": f"{detail_key} 상세",
+                "period": selected_period,
+                "note": "통합관리대장의 해당 월 출고일과 판매처별 수량만 표시합니다.",
+                "metrics": [
+                    _sales_detail_metric("출고 수량", shipped_quantity),
+                    _sales_detail_metric("출고 일수", len(shipment_rows)),
+                    _sales_detail_metric("판매처 수", seller_count),
+                ],
+                "sections": [
+                    {
+                        "title": "일자별 출고 현황",
+                        "headers": ["출고일", "주문건수", "출고수량"],
+                        "rows": [
+                            [str(row["sales_date"] or ""), int(row["order_count"] or 0), int(row["quantity"] or 0)]
+                            for row in shipment_rows
+                        ],
+                        "empty": "통합관리대장에서 해당 상품의 출고 데이터를 찾지 못했습니다.",
+                    },
+                    {
+                        "title": "판매처별 판매수량",
+                        "headers": ["판매처", "주문건수", "판매수량"],
+                        "rows": [
+                            [str(row["sales_vendor"] or ""), int(row["order_count"] or 0), int(row["quantity"] or 0)]
+                            for row in seller_rows
+                        ],
+                        "empty": "통합관리대장에서 해당 상품의 판매처별 수량을 찾지 못했습니다.",
+                    },
+                ],
+            }
+
+        if detail_kind in {"seller", "supplier"}:
+            is_seller = detail_kind == "seller"
+            table_name = "sales_report_seller_rows" if is_seller else "sales_report_supplier_rows"
+            name_column = "seller_name" if is_seller else "supplier_name"
+            amount_column = "profit_sales_amount" if is_seller else "supply_total"
+            sales_summary = connection.execute(
+                f"""
+                SELECT COALESCE(SUM(quantity), 0) AS quantity,
+                       COALESCE(SUM({amount_column}), 0) AS amount,
+                       COALESCE(SUM(profit_margin - profit_shipping), 0) AS profit_margin
+                   FROM {table_name}
+                  WHERE period = ? AND {name_column} = ?
+                 """,
+                (selected_period, detail_key),
+            ).fetchone()
+            vendor_column = "sales_vendor" if is_seller else "purchase_vendor"
+            ledger_rows = connection.execute(
+                f"""
+                WITH source AS (
+                    SELECT COALESCE(NULLIF(ship_date, ''), NULLIF(order_date, '')) AS activity_date,
+                           quantity
+                      FROM management_records
+                     WHERE COALESCE(NULLIF(ship_date, ''), NULLIF(order_date, '')) LIKE ?
+                       AND {vendor_column} = ?
+                )
+                SELECT substr(activity_date, 1, 10) AS activity_date,
+                       COUNT(*) AS order_count,
+                       COALESCE(SUM(CAST(REPLACE(quantity, ',', '') AS INTEGER)), 0) AS quantity
+                  FROM source
+                 GROUP BY substr(activity_date, 1, 10)
+                 ORDER BY activity_date ASC
+                """,
+                (f"{selected_period}%", detail_key),
+            ).fetchall()
+            product_rows = connection.execute(
+                f"""
+                SELECT substr(COALESCE(NULLIF(ship_date, ''), NULLIF(order_date, '')), 1, 10) AS activity_date,
+                       TRIM(COALESCE(NULLIF(product_name, ''), '상품명 미입력')) AS product_name,
+                       COUNT(*) AS order_count,
+                       COALESCE(SUM(CAST(REPLACE(quantity, ',', '') AS INTEGER)), 0) AS quantity
+                  FROM management_records
+                 WHERE COALESCE(NULLIF(ship_date, ''), NULLIF(order_date, '')) LIKE ?
+                   AND {vendor_column} = ?
+                 GROUP BY substr(COALESCE(NULLIF(ship_date, ''), NULLIF(order_date, '')), 1, 10),
+                          TRIM(COALESCE(NULLIF(product_name, ''), '상품명 미입력'))
+                 ORDER BY activity_date DESC, quantity DESC, order_count DESC, product_name COLLATE NOCASE
+                """,
+                (f"{selected_period}%", detail_key),
+            ).fetchall()
+            amount_date_stats = connection.execute(
+                f"""
+                SELECT COUNT(DISTINCT rows.report_date) AS date_count,
+                       COALESCE(SUM(CASE WHEN uploads.report_type = 'seller_daily_zip' THEN 1 ELSE 0 END), 0) AS daily_zip_rows
+                  FROM {table_name} AS rows
+                  LEFT JOIN sales_report_uploads AS uploads ON uploads.id = rows.file_id
+                 WHERE rows.period = ? AND rows.{name_column} = ? AND rows.report_date != ''
+                """,
+                (selected_period, detail_key),
+            ).fetchone()
+            amount_detail_active = bool(amount_date_stats) and int(amount_date_stats["date_count"] or 0) > 0
+            amount_rows = []
+            if amount_detail_active:
+                amount_rows = connection.execute(
+                    f"""
+                    SELECT report_date,
+                           COALESCE(SUM(quantity), 0) AS quantity_delta,
+                           COALESCE(SUM({amount_column}), 0) AS amount_delta,
+                           COALESCE(SUM(profit_margin - profit_shipping), 0) AS margin_delta
+                      FROM {table_name}
+                     WHERE period = ? AND {name_column} = ? AND report_date != ''
+                     GROUP BY report_date
+                     ORDER BY report_date
+                    """,
+                    (selected_period, detail_key),
+                ).fetchall()
+            amount_by_date = {
+                str(row["report_date"] or ""): {
+                    "quantity_delta": row["quantity_delta"],
+                    "amount_delta": row["amount_delta"],
+                    "margin_delta": row["margin_delta"],
+                }
+                for row in amount_rows
+            }
+            ledger_by_date = {
+                str(row["activity_date"] or ""): {
+                    "order_count": int(row["order_count"] or 0),
+                    "quantity": int(row["quantity"] or 0),
+                }
+                for row in ledger_rows
+            }
+            detail_dates = sorted(set(ledger_by_date) | set(amount_by_date))
+            rows = [
+                {
+                    "activity_date": activity_date,
+                    "order_count": ledger_by_date.get(activity_date, {}).get("order_count", 0),
+                    "quantity": ledger_by_date.get(activity_date, {}).get("quantity", 0),
+                    "amount_delta": amount_by_date.get(activity_date, {}).get("amount_delta"),
+                    "margin_delta": amount_by_date.get(activity_date, {}).get("margin_delta"),
+                }
+                for activity_date in detail_dates
+            ]
+            amount_detail_rows = [
+                row
+                for row in rows
+                if row["amount_delta"] is not None or row["margin_delta"] is not None
+            ]
+            total_quantity = sum(int(row["quantity"] or 0) for row in rows)
+            total_orders = sum(int(row["order_count"] or 0) for row in rows)
+            total_amount = int(sales_summary["amount"] or 0) if sales_summary else 0
+            total_margin = int(sales_summary["profit_margin"] or 0) if sales_summary else 0
+            return {
+                "kind": detail_kind,
+                "title": f"{detail_key} {'매출처' if is_seller else '매입처'} 월 전체 현황",
+                "period": selected_period,
+                "note": "월 전체 주문건수와 수량은 통합관리대장 기준입니다. 일자별 금액은 거래처별 업로드 파일의 일자 기준 금액을 표시합니다.",
+                "metrics": [
+                    _sales_detail_metric("주문건수", total_orders),
+                    _sales_detail_metric("관리대장 수량", total_quantity),
+                    _sales_detail_metric("매출금액" if is_seller else "매입금액", total_amount),
+                    _sales_detail_metric("손익마진(택배비 제외)", total_margin),
+                ],
+                "sections": [
+                    {
+                        "title": "월 전체 주문/수량",
+                        "headers": ["일자", "주문건수", "수량"],
+                        "rows": [
+                            [
+                                str(row["activity_date"] or ""),
+                                int(row["order_count"] or 0),
+                                int(row["quantity"] or 0),
+                            ]
+                            for row in rows
+                        ],
+                        "empty": "해당 거래처의 월 전체 관리대장 데이터가 없습니다.",
+                    },
+                    {
+                        "title": "출고 제품 리스트",
+                        "headers": ["출고일", "제품명", "주문건수", "출고수량"],
+                        "rows": [
+                            [
+                                str(row["activity_date"] or ""),
+                                str(row["product_name"] or ""),
+                                int(row["order_count"] or 0),
+                                int(row["quantity"] or 0),
+                            ]
+                            for row in product_rows
+                        ],
+                        "empty": "해당 거래처의 출고 제품 데이터를 찾지 못했습니다.",
+                    },
+                    {
+                        "title": "일자별 금액",
+                        "headers": ["일자", "매출금액" if is_seller else "매입금액", "손익마진(택배비 제외)"],
+                        "rows": [
+                            [
+                                str(row["activity_date"] or ""),
+                                int(row["amount_delta"]) if row["amount_delta"] is not None else 0,
+                                int(row["margin_delta"]) if row["margin_delta"] is not None else 0,
+                            ]
+                            for row in amount_detail_rows
+                        ],
+                        "empty": "거래처별 일자 금액 데이터가 없습니다.",
+                    },
+                ],
+            }
+        raise ValueError("지원하지 않는 상세 조회 유형입니다.")
+    finally:
+        connection.close()
+
+
 def sales_report_dashboard_payload(period: str = "", report_date: str = "") -> dict[str, object]:
     init_db()
     connection = connect_db()
     try:
+        period_options = sales_report_period_options(connection)
         selected_date = report_date or ""
         selected_period = period or selected_date[:7]
         if not selected_period:
-            row = connection.execute(
-                """
-                SELECT period
-                  FROM (
-                        SELECT period FROM sales_report_daily_rows WHERE period != ''
-                        UNION ALL
-                        SELECT period FROM sales_report_seller_rows WHERE period != ''
-                        UNION ALL
-                        SELECT period FROM sales_report_supplier_rows WHERE period != ''
-                        UNION ALL
-                        SELECT period FROM sales_report_product_rows WHERE period != ''
-                       )
-                 ORDER BY period DESC
-                 LIMIT 1
-                """
-            ).fetchone()
-            selected_period = str(row["period"] or "") if row else ""
+            selected_period = period_options[0] if period_options else ""
         if not selected_date and selected_period:
             row = connection.execute(
                 """
@@ -22735,6 +27038,9 @@ def sales_report_dashboard_payload(period: str = "", report_date: str = "") -> d
             "SELECT * FROM sales_report_daily_rows WHERE report_date = ?",
             (selected_date,),
         ).fetchone()
+        seller_today = sales_report_seller_daily_summary_row(connection, selected_date)
+        if seller_today is not None:
+            today = seller_today
         yesterday_public = sales_report_day_summary_from_sources(connection, previous_date)
         month = connection.execute(
             """
@@ -22743,7 +27049,7 @@ def sales_report_dashboard_payload(period: str = "", report_date: str = "") -> d
                    COALESCE(SUM(sales_total), 0) AS sales_total,
                    COALESCE(SUM(profit_sales_amount), 0) AS profit_sales_amount,
                    COALESCE(SUM(profit_supply_amount), 0) AS profit_supply_amount,
-                   COALESCE(SUM(profit_margin), 0) AS profit_margin
+                   COALESCE(SUM(profit_margin - profit_shipping), 0) AS profit_margin
               FROM sales_report_daily_rows
              WHERE period = ?
             """,
@@ -22754,50 +27060,124 @@ def sales_report_dashboard_payload(period: str = "", report_date: str = "") -> d
             SELECT COALESCE(SUM(quantity), 0) AS quantity,
                    COALESCE(SUM(sales_total), 0) AS sales_total,
                    COALESCE(SUM(profit_sales_amount), 0) AS profit_sales_amount,
-                   COALESCE(SUM(profit_margin), 0) AS profit_margin
+                   COALESCE(SUM(profit_margin - profit_shipping), 0) AS profit_margin
               FROM sales_report_daily_rows
              WHERE period = ?
             """,
             (previous_period,),
         ).fetchone()
-        seller_total = connection.execute(
+        daily_month_rows_exist = connection.execute(
+            "SELECT 1 FROM sales_report_daily_rows WHERE period = ? LIMIT 1",
+            (selected_period,),
+        ).fetchone() is not None
+        seller_date_stats = connection.execute(
             """
+            SELECT COUNT(DISTINCT report_date) AS date_count,
+                   MAX(report_date) AS report_date
+              FROM sales_report_seller_rows
+             WHERE period = ? AND report_date != ''
+            """,
+            (selected_period,),
+        ).fetchone()
+        seller_date_count = int(seller_date_stats["date_count"] or 0) if seller_date_stats else 0
+        latest_seller_date = str(seller_date_stats["report_date"] or "") if seller_date_stats else ""
+        seller_month_scope_active = seller_date_count > 1 or (seller_date_count > 0 and not daily_month_rows_exist)
+        if seller_month_scope_active:
+            seller_scope_sql = "period = ? AND report_date != '' AND report_date <= ?"
+            seller_scope_params: tuple[object, ...] = (selected_period, selected_date)
+        elif latest_seller_date:
+            seller_scope_sql = "period = ? AND report_date = ?"
+            seller_scope_params = (selected_period, latest_seller_date)
+        else:
+            seller_scope_sql = "period = ?"
+            seller_scope_params = (selected_period,)
+        if seller_month_scope_active:
+            month = connection.execute(
+                f"""
+                SELECT COALESCE(SUM(quantity), 0) AS quantity,
+                       COALESCE(SUM(sales_amount), 0) AS sales_amount,
+                       COALESCE(SUM(sales_total), 0) AS sales_total,
+                       COALESCE(SUM(profit_sales_amount), 0) AS profit_sales_amount,
+                       COALESCE(SUM(profit_supply_amount), 0) AS profit_supply_amount,
+                       COALESCE(SUM(profit_margin - profit_shipping), 0) AS profit_margin
+                  FROM sales_report_seller_rows
+                 WHERE {seller_scope_sql}
+                """,
+                seller_scope_params,
+            ).fetchone()
+        latest_previous_seller_date_row = connection.execute(
+            "SELECT MAX(report_date) AS report_date FROM sales_report_seller_rows WHERE period = ? AND report_date != ''",
+            (previous_period,),
+        ).fetchone()
+        latest_previous_seller_date = str(latest_previous_seller_date_row["report_date"] or "") if latest_previous_seller_date_row else ""
+        latest_supplier_date_row = connection.execute(
+            "SELECT MAX(report_date) AS report_date FROM sales_report_supplier_rows WHERE period = ? AND report_date != ''",
+            (selected_period,),
+        ).fetchone()
+        latest_supplier_date = str(latest_supplier_date_row["report_date"] or "") if latest_supplier_date_row else ""
+        supplier_date_stats = connection.execute(
+            """
+            SELECT COUNT(DISTINCT report_date) AS date_count,
+                   MAX(report_date) AS report_date
+              FROM sales_report_supplier_rows
+             WHERE period = ? AND report_date != ''
+            """,
+            (selected_period,),
+        ).fetchone()
+        supplier_date_count = int(supplier_date_stats["date_count"] or 0) if supplier_date_stats else 0
+        supplier_month_scope_active = supplier_date_count > 1 or (supplier_date_count > 0 and not daily_month_rows_exist)
+        latest_previous_supplier_date_row = connection.execute(
+            "SELECT MAX(report_date) AS report_date FROM sales_report_supplier_rows WHERE period = ? AND report_date != ''",
+            (previous_period,),
+        ).fetchone()
+        latest_previous_supplier_date = str(latest_previous_supplier_date_row["report_date"] or "") if latest_previous_supplier_date_row else ""
+        if supplier_month_scope_active:
+            supplier_scope_sql = "period = ? AND report_date != '' AND report_date <= ?"
+            supplier_scope_params: tuple[object, ...] = (selected_period, selected_date)
+        elif latest_supplier_date:
+            supplier_scope_sql = "period = ? AND report_date = ?"
+            supplier_scope_params = (selected_period, latest_supplier_date)
+        else:
+            supplier_scope_sql = "period = ?"
+            supplier_scope_params = (selected_period,)
+        seller_total = connection.execute(
+            f"""
             SELECT COALESCE(SUM(quantity), 0) AS quantity,
                    COALESCE(SUM(sales_amount), 0) AS sales_amount,
                    COALESCE(SUM(profit_sales_amount), 0) AS profit_sales_amount,
-                   COALESCE(SUM(profit_margin), 0) AS profit_margin
+                   COALESCE(SUM(profit_margin - profit_shipping), 0) AS profit_margin
               FROM sales_report_seller_rows
-             WHERE period = ?
+             WHERE {seller_scope_sql}
             """,
-            (selected_period,),
+            seller_scope_params,
         ).fetchone()
         previous_seller_total = connection.execute(
             """
             SELECT COALESCE(SUM(quantity), 0) AS quantity,
                    COALESCE(SUM(profit_sales_amount), 0) AS profit_sales_amount,
-                   COALESCE(SUM(profit_margin), 0) AS profit_margin
+                   COALESCE(SUM(profit_margin - profit_shipping), 0) AS profit_margin
               FROM sales_report_seller_rows
-             WHERE period = ?
+             WHERE period = ? AND (? = '' OR report_date = ?)
             """,
-            (previous_period,),
+            (previous_period, latest_previous_seller_date, latest_previous_seller_date),
         ).fetchone()
         supplier_purchase_total = connection.execute(
-            """
+            f"""
             SELECT COALESCE(SUM(quantity), 0) AS quantity,
-                   COALESCE(SUM(supply_total), 0) AS purchase_total
+                   COALESCE(SUM(profit_supply_amount), 0) AS purchase_total
               FROM sales_report_supplier_rows
-             WHERE period = ?
+             WHERE {supplier_scope_sql}
             """,
-            (selected_period,),
+            supplier_scope_params,
         ).fetchone()
         previous_supplier_purchase_total = connection.execute(
             """
             SELECT COALESCE(SUM(quantity), 0) AS quantity,
-                   COALESCE(SUM(supply_total), 0) AS purchase_total
+                   COALESCE(SUM(profit_supply_amount), 0) AS purchase_total
               FROM sales_report_supplier_rows
-             WHERE period = ?
+             WHERE period = ? AND (? = '' OR report_date = ?)
             """,
-            (previous_period,),
+            (previous_period, latest_previous_supplier_date, latest_previous_supplier_date),
         ).fetchone()
         product_total = connection.execute(
             """
@@ -22819,25 +27199,25 @@ def sales_report_dashboard_payload(period: str = "", report_date: str = "") -> d
             """,
             (previous_period, SALES_REPORT_PRODUCT_EXCLUDE_PATTERN),
         ).fetchone()
-        daily_rows = connection.execute(
-            """
-            SELECT report_date, label, quantity, sales_amount, sales_total, profit_sales_amount,
-                   profit_supply_amount, profit_margin, margin_rate
-              FROM sales_report_daily_rows
-             WHERE period = ?
-             ORDER BY report_date DESC
-            """,
-            (selected_period,),
-        ).fetchall()
+        daily_rows = sales_report_combined_daily_summary_rows(connection, selected_period)
+        recent_daily_rows = sales_report_recent_daily_summary_rows(connection, selected_date)
         seller_rows = connection.execute(
-            """
-            SELECT seller_name AS name, quantity, sales_amount, profit_sales_amount,
-                   profit_margin, margin_rate, cs_amount, cs_margin
+            f"""
+            SELECT seller_name AS name,
+                   COALESCE(SUM(quantity), 0) AS quantity,
+                   COALESCE(SUM(sales_amount), 0) AS sales_amount,
+                   COALESCE(SUM(profit_sales_amount), 0) AS profit_sales_amount,
+                   COALESCE(SUM(profit_shipping), 0) AS profit_shipping,
+                   COALESCE(SUM(profit_margin), 0) AS profit_margin,
+                   0 AS margin_rate,
+                   COALESCE(SUM(cs_amount), 0) AS cs_amount,
+                   COALESCE(SUM(cs_margin), 0) AS cs_margin
               FROM sales_report_seller_rows
-             WHERE period = ?
+             WHERE {seller_scope_sql}
+             GROUP BY seller_name
              ORDER BY profit_sales_amount DESC, quantity DESC, seller_name COLLATE NOCASE
             """,
-            (selected_period,),
+            seller_scope_params,
         ).fetchall()
         product_rows = connection.execute(
             """
@@ -22857,16 +27237,16 @@ def sales_report_dashboard_payload(period: str = "", report_date: str = "") -> d
             (selected_period, SALES_REPORT_PRODUCT_EXCLUDE_PATTERN),
         ).fetchall()
         supplier_purchase_rows = connection.execute(
-            """
+            f"""
             SELECT supplier_name AS name,
                    COALESCE(SUM(quantity), 0) AS quantity,
-                   COALESCE(SUM(supply_total), 0) AS purchase_total
+                   COALESCE(SUM(profit_supply_amount), 0) AS purchase_total
               FROM sales_report_supplier_rows
-             WHERE period = ?
+             WHERE {supplier_scope_sql}
              GROUP BY supplier_name
              ORDER BY purchase_total DESC, quantity DESC, supplier_name COLLATE NOCASE
             """,
-            (selected_period,),
+            supplier_scope_params,
         ).fetchall()
         daily_compare_rows = connection.execute(
             """
@@ -22950,7 +27330,7 @@ def sales_report_dashboard_payload(period: str = "", report_date: str = "") -> d
                        COALESCE(SUM(quantity), 0) AS current_quantity,
                        COALESCE(SUM(profit_sales_amount), 0) AS current
                   FROM sales_report_seller_rows
-                 WHERE period = ?
+                 WHERE period = ? AND (? = '' OR report_date = ?)
                  GROUP BY seller_name
             ),
             previous_rows AS (
@@ -22958,7 +27338,7 @@ def sales_report_dashboard_payload(period: str = "", report_date: str = "") -> d
                        COALESCE(SUM(quantity), 0) AS previous_quantity,
                        COALESCE(SUM(profit_sales_amount), 0) AS previous
                   FROM sales_report_seller_rows
-                 WHERE period = ?
+                 WHERE period = ? AND (? = '' OR report_date = ?)
                  GROUP BY seller_name
             ),
             keys AS (
@@ -22976,24 +27356,31 @@ def sales_report_dashboard_payload(period: str = "", report_date: str = "") -> d
               LEFT JOIN previous_rows ON previous_rows.label = keys.label
              ORDER BY current DESC, previous DESC, keys.label COLLATE NOCASE
             """,
-            (selected_period, previous_period),
+            (
+                selected_period,
+                latest_seller_date,
+                latest_seller_date,
+                previous_period,
+                latest_previous_seller_date,
+                latest_previous_seller_date,
+            ),
         ).fetchall()
         supplier_compare_rows = connection.execute(
-            """
+            f"""
             WITH current_rows AS (
                 SELECT supplier_name AS label,
                        COALESCE(SUM(quantity), 0) AS current_quantity,
-                       COALESCE(SUM(supply_total), 0) AS current
+                       COALESCE(SUM(profit_supply_amount), 0) AS current
                   FROM sales_report_supplier_rows
-                 WHERE period = ?
+                 WHERE {supplier_scope_sql}
                  GROUP BY supplier_name
             ),
             previous_rows AS (
                 SELECT supplier_name AS label,
                        COALESCE(SUM(quantity), 0) AS previous_quantity,
-                       COALESCE(SUM(supply_total), 0) AS previous
+                       COALESCE(SUM(profit_supply_amount), 0) AS previous
                   FROM sales_report_supplier_rows
-                 WHERE period = ?
+                 WHERE period = ? AND (? = '' OR report_date = ?)
                  GROUP BY supplier_name
             ),
             keys AS (
@@ -23011,7 +27398,12 @@ def sales_report_dashboard_payload(period: str = "", report_date: str = "") -> d
               LEFT JOIN previous_rows ON previous_rows.label = keys.label
              ORDER BY current DESC, previous DESC, keys.label COLLATE NOCASE
             """,
-            (selected_period, previous_period),
+            (
+                *supplier_scope_params,
+                previous_period,
+                latest_previous_supplier_date,
+                latest_previous_supplier_date,
+            ),
         ).fetchall()
         review_rows = connection.execute(
             """
@@ -23034,6 +27426,13 @@ def sales_report_dashboard_payload(period: str = "", report_date: str = "") -> d
             """,
             (selected_period, selected_period, selected_date, selected_date, selected_period),
         ).fetchall()
+        margin_check = sales_report_margin_check(connection, selected_period)
+        report_counts = {
+            "daily": sales_report_row_count_for_date(connection, "sales_report_daily_rows", selected_period, selected_date),
+            "seller": sales_report_row_count_for_date(connection, "sales_report_seller_rows", selected_period, selected_date),
+            "supplier": sales_report_row_count_for_date(connection, "sales_report_supplier_rows", selected_period, selected_date),
+            "product": sales_report_row_count_for_date(connection, "sales_report_product_rows", selected_period, selected_date),
+        }
     finally:
         connection.close()
 
@@ -23046,6 +27445,8 @@ def sales_report_dashboard_payload(period: str = "", report_date: str = "") -> d
     yesterday_quantity = int(yesterday_public.get("quantity", 0) or 0)
     quantity_delta = today_quantity - yesterday_quantity
     quantity_delta_rate = round((quantity_delta / yesterday_quantity) * 100, 1) if yesterday_quantity else 0
+    daily_rows_public = [_sales_report_daily_public(row) for row in daily_rows]
+    recent_daily_rows_public = [_sales_report_daily_public(row) for row in recent_daily_rows]
     month_total = {
         "quantity": int(month["quantity"] or 0),
         "sales_amount": int(month["sales_amount"] or 0),
@@ -23054,6 +27455,15 @@ def sales_report_dashboard_payload(period: str = "", report_date: str = "") -> d
         "profit_supply_amount": int(month["profit_supply_amount"] or 0),
         "profit_margin": int(month["profit_margin"] or 0),
     }
+    if daily_rows_public:
+        month_total = {
+            "quantity": sum(int(row.get("quantity", 0) or 0) for row in daily_rows_public),
+            "sales_amount": sum(int(row.get("sales_amount", 0) or 0) for row in daily_rows_public),
+            "sales_total": sum(int(row.get("sales_total", 0) or 0) for row in daily_rows_public),
+            "profit_sales_amount": sum(int(row.get("profit_sales_amount", 0) or 0) for row in daily_rows_public),
+            "profit_supply_amount": sum(int(row.get("profit_supply_amount", 0) or 0) for row in daily_rows_public),
+            "profit_margin": sum(int(row.get("profit_margin", 0) or 0) for row in daily_rows_public),
+        }
     previous_month_total = {
         "quantity": int(previous_month["quantity"] or 0),
         "sales_total": int(previous_month["sales_total"] or 0),
@@ -23090,12 +27500,24 @@ def sales_report_dashboard_payload(period: str = "", report_date: str = "") -> d
         "profit_margin": int(previous_product_total["profit_margin"] or 0),
     }
     difference = month_total["profit_sales_amount"] - seller_total_public["profit_sales_amount"]
+    closing_check = sales_report_closing_check(
+        report_counts,
+        selected_period,
+        selected_date,
+        month_total,
+        seller_total_public,
+        supplier_purchase_total_public,
+        product_total_public,
+        margin_check,
+        len(review_rows),
+    )
     return {
         "period": selected_period,
+        "period_options": period_options,
         "previous_period": previous_period,
         "selected_date": selected_date,
         "previous_business_date": previous_date,
-        "today_data_uploaded": bool(today),
+        "today_data_uploaded": bool(today_public),
         "today": today_public,
         "yesterday": yesterday_public,
         "comparison": {
@@ -23144,7 +27566,10 @@ def sales_report_dashboard_payload(period: str = "", report_date: str = "") -> d
             "difference": difference,
             "ok": difference == 0,
         },
-        "daily_rows": [_sales_report_daily_public(row) for row in daily_rows],
+        "margin_check": margin_check,
+        "closing_check": closing_check,
+        "daily_rows": daily_rows_public,
+        "recent_daily_rows": recent_daily_rows_public,
         "seller_top": [_sales_report_named_public(row) for row in seller_rows],
         "product_top": [_sales_report_named_public(row) for row in product_rows],
         "supplier_purchase_totals": [_sales_report_purchase_public(row) for row in supplier_purchase_rows],
@@ -23308,7 +27733,50 @@ def latest_sales_report_context(connection: sqlite3.Connection, fallback_today: 
     return today, today[:7]
 
 
-def save_sales_report_file(source_path: str | Path, original_name: str, uploaded_by: str = "") -> dict[str, str | int]:
+def sales_report_date_from_upload_name(name: str, period: str = "") -> str:
+    text = str(name or "")
+    match = re.search(r"(20\d{2})(\d{2})(\d{2})", text)
+    if match:
+        year, month, day = match.groups()
+        try:
+            return date(int(year), int(month), int(day)).isoformat()
+        except ValueError:
+            return ""
+    match = re.search(r"(?<!\d)(20\d{2})(\d{1,2})(\d{2})(?!\d)", text)
+    if match:
+        year, month, day = match.groups()
+        try:
+            candidate = date(int(year), int(month), int(day)).isoformat()
+            return candidate if not period or candidate.startswith(period) else ""
+        except ValueError:
+            return ""
+    if period:
+        compact_period = period.replace("-", "")
+        match = re.search(r"(?<!\d)(\d{1,2})(\d{2})(?!\d)", text)
+        if match:
+            month, day = match.groups()
+            year = int(period[:4])
+            try:
+                candidate = date(year, int(month), int(day)).isoformat()
+                return candidate if candidate.startswith(period) else ""
+            except ValueError:
+                return ""
+        match = re.search(rf"{re.escape(compact_period)}(\d{{2}})", text)
+        if match:
+            try:
+                return date(int(period[:4]), int(period[5:7]), int(match.group(1))).isoformat()
+            except ValueError:
+                return ""
+    return ""
+
+
+def save_sales_report_file(
+    source_path: str | Path,
+    original_name: str,
+    uploaded_by: str = "",
+    source_kind: str = "",
+    source_fingerprint: str = "",
+) -> dict[str, str | int]:
     source = Path(source_path)
     if not source.is_file():
         raise FileNotFoundError("매출표 파일을 찾지 못했습니다.")
@@ -23321,31 +27789,41 @@ def save_sales_report_file(source_path: str | Path, original_name: str, uploaded
     target = SALES_REPORT_DIR / stored_name
     target.write_bytes(source.read_bytes())
     uploaded_at = now_text()
-    report_type = detect_sales_report_type(target, safe_original)
     parsed_report: dict[str, object] | None = None
+    if target.suffix.lower() == ".zip":
+        parsed_report = parse_partner_daily_sales_zip(target, safe_original)
+        report_type = str(parsed_report.get("report_type") or "")
+    else:
+        report_type = detect_sales_report_type(target, safe_original)
     report_date = ""
     period = ""
     if report_type:
-        parsed_report = parse_sales_report_file(target, safe_original)
+        if parsed_report is None:
+            parsed_report = parse_sales_report_file(target, safe_original)
         report_date = str(parsed_report.get("report_date") or "")
         period = str(parsed_report.get("period") or report_date[:7] or "")
 
     connection = connect_db()
     try:
         if parsed_report and report_type in {"seller", "supplier", "product"} and (not report_date or not period):
+            original_date = sales_report_date_from_upload_name(safe_original, period)
             inferred_date, inferred_period = latest_sales_report_context(connection, fallback_today=not period)
             if not period:
-                period = inferred_period or report_date[:7]
-            if not report_date and inferred_date and (not inferred_period or inferred_period == period):
-                report_date = inferred_date
+                period = (original_date[:7] if original_date else "") or inferred_period or report_date[:7]
+            if not report_date:
+                if original_date and original_date.startswith(period):
+                    report_date = original_date
+                elif inferred_date and (not inferred_period or inferred_period == period):
+                    report_date = inferred_date
             parsed_report["report_date"] = report_date
             parsed_report["period"] = period
         cursor = connection.execute(
             """
             INSERT INTO sales_report_uploads (
-                stored_name, original_name, size, uploaded_by, uploaded_at, report_type, report_date, period
+                stored_name, original_name, size, uploaded_by, uploaded_at,
+                report_type, report_date, period, source_kind, source_fingerprint
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 stored_name,
@@ -23356,6 +27834,8 @@ def save_sales_report_file(source_path: str | Path, original_name: str, uploaded
                 report_type,
                 report_date,
                 period,
+                str(source_kind or ""),
+                str(source_fingerprint or ""),
             ),
         )
         connection.commit()
@@ -23373,6 +27853,10 @@ def save_sales_report_file(source_path: str | Path, original_name: str, uploaded
         "report_type": report_type,
         "report_date": report_date,
         "period": period,
+        "source_kind": str(source_kind or ""),
+        "row_count": len(parsed_report.get("rows", [])) if parsed_report else 0,
+        "source_file_count": int(parsed_report.get("source_file_count", 0)) if parsed_report else 0,
+        "skipped_current_or_future_rows": int(parsed_report.get("skipped_current_or_future_rows", 0)) if parsed_report else 0,
     }
 
 
@@ -23503,9 +27987,10 @@ def render_app_html(user: dict[str, str]) -> str:
     leave_workspace = LEAVE_WORKSPACE_HTML.replace("__LEAVE_TITLE__", leave_title) if leave_enabled else ""
     hermes_nav = HERMES_NAV_HTML if hermes_enabled else ""
     hermes_workspace = HERMES_WORKSPACE_HTML if hermes_enabled else ""
-    sales_report_nav = SALES_REPORT_NAV_HTML if is_admin and "sales_report_manage" in permissions else ""
+    sales_report_enabled = "sales_report_manage" in permissions
+    sales_report_nav = SALES_REPORT_NAV_HTML if sales_report_enabled else ""
     admin_tools_nav = ADMIN_TOOLS_NAV_HTML if is_admin else ""
-    admin_workspace = ADMIN_WORKSPACE_HTML.replace("__PERMISSION_CHECKBOXES__", permissions_html()) if is_admin else ""
+    admin_workspace = ADMIN_WORKSPACE_HTML.replace("__PERMISSION_CHECKBOXES__", permissions_html()) if is_admin or sales_report_enabled else ""
     backup_workspace = BACKUP_WORKSPACE_HTML if is_admin else ""
     system_workspace = SYSTEM_WORKSPACE_HTML if is_admin else ""
     return (
@@ -23825,6 +28310,8 @@ def init_db() -> None:
             "report_type": "TEXT",
             "report_date": "TEXT",
             "period": "TEXT",
+            "source_kind": "TEXT",
+            "source_fingerprint": "TEXT",
         }.items():
             if column not in sales_upload_columns:
                 connection.execute(f"ALTER TABLE sales_report_uploads ADD COLUMN {column} {column_type}")
@@ -24135,6 +28622,34 @@ def init_db() -> None:
             """
         )
         connection.execute("CREATE INDEX IF NOT EXISTS idx_vendor_contacts_name ON vendor_contacts(vendor_name)")
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS vendor_mail_send_logs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                created_at TEXT NOT NULL,
+                mail_type TEXT NOT NULL DEFAULT 'stock_notice',
+                status TEXT NOT NULL,
+                vendor_type TEXT,
+                vendor_name TEXT,
+                recipient_email TEXT,
+                bcc_emails TEXT,
+                bcc_vendors TEXT,
+                recipient_count INTEGER NOT NULL DEFAULT 0,
+                batch_count INTEGER NOT NULL DEFAULT 1,
+                subject TEXT,
+                body TEXT,
+                error TEXT,
+                sent_by TEXT
+            )
+            """
+        )
+        connection.execute("CREATE INDEX IF NOT EXISTS idx_vendor_mail_send_logs_created ON vendor_mail_send_logs(created_at)")
+        connection.execute("CREATE INDEX IF NOT EXISTS idx_vendor_mail_send_logs_type ON vendor_mail_send_logs(mail_type)")
+        existing_mail_log_columns = {
+            row["name"] for row in connection.execute("PRAGMA table_info(vendor_mail_send_logs)").fetchall()
+        }
+        if "batch_count" not in existing_mail_log_columns:
+            connection.execute("ALTER TABLE vendor_mail_send_logs ADD COLUMN batch_count INTEGER NOT NULL DEFAULT 1")
         if VENDOR_CONTACTS_PATH.exists():
             existing_count = connection.execute("SELECT COUNT(*) AS count FROM vendor_contacts").fetchone()["count"]
             if int(existing_count or 0) == 0:
@@ -24209,6 +28724,20 @@ def init_db() -> None:
         connection.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_management_source ON management_records(source_file, source_sheet, source_row)")
         connection.execute(
             """
+            UPDATE management_records
+               SET cs_received_at = ''
+             WHERE COALESCE(cs_received_at, '') <> ''
+               AND NOT EXISTS (
+                   SELECT 1
+                     FROM cs_cases
+                    WHERE cs_cases.source_file = '통합관리대장:' || management_records.source_file
+                      AND cs_cases.source_sheet = management_records.source_sheet
+                      AND cs_cases.source_row = management_records.source_row
+               )
+            """
+        )
+        connection.execute(
+            """
             CREATE TABLE IF NOT EXISTS import_shipments (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 created_at TEXT NOT NULL,
@@ -24259,6 +28788,21 @@ def init_db() -> None:
         if "cargo_type" not in cargo_columns:
             connection.execute("ALTER TABLE cargo_shipments ADD COLUMN cargo_type TEXT NOT NULL DEFAULT 'outbound'")
         connection.execute("CREATE INDEX IF NOT EXISTS idx_cargo_shipments_ship_date ON cargo_shipments(ship_date)")
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS portal_notices (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                notice_date TEXT NOT NULL,
+                title TEXT,
+                owner TEXT,
+                body TEXT,
+                created_by TEXT
+            )
+            """
+        )
+        connection.execute("CREATE INDEX IF NOT EXISTS idx_portal_notices_created ON portal_notices(created_at)")
         connection.execute(
             """
             CREATE TABLE IF NOT EXISTS leave_types (
@@ -25203,6 +29747,7 @@ RESTORE_ALLOWED_FILES = {
     "config/mail_settings.json": MAIL_SETTINGS_PATH,
     "config/vendor_contacts.json": VENDOR_CONTACTS_PATH,
     "config/backup_settings.json": BACKUP_SETTINGS_PATH,
+    "config/sales_automation_settings.json": SALES_AUTOMATION_SETTINGS_PATH,
     "config/secret.key": SECRET_KEY_PATH,
     "config/crm_webhook_token.txt": CRM_WEBHOOK_TOKEN_PATH,
     "config/hermes_settings.json": HERMES_SETTINGS_PATH,
@@ -25502,7 +30047,16 @@ def create_workhub_backup(
         with zipfile.ZipFile(output_path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
             archive.write(temp_db, "config/workhub.db")
             included = ["config/workhub.db"]
-            for path in (MAIL_SETTINGS_PATH, VENDOR_CONTACTS_PATH, BACKUP_SETTINGS_PATH, SECRET_KEY_PATH, CRM_WEBHOOK_TOKEN_PATH, HERMES_SETTINGS_PATH, HERMES_HISTORY_PATH):
+            for path in (
+                MAIL_SETTINGS_PATH,
+                VENDOR_CONTACTS_PATH,
+                BACKUP_SETTINGS_PATH,
+                SALES_AUTOMATION_SETTINGS_PATH,
+                SECRET_KEY_PATH,
+                CRM_WEBHOOK_TOKEN_PATH,
+                HERMES_SETTINGS_PATH,
+                HERMES_HISTORY_PATH,
+            ):
                 if path.exists() and path.is_file():
                     arcname = f"config/{path.name}"
                     archive.write(path, arcname)
@@ -25968,6 +30522,60 @@ def leave_approval_label(step: str) -> str:
     }.get(step, step)
 
 
+def leave_unit_label(unit: str) -> str:
+    return "\uBC18\uCC28" if unit == "HALF_DAY" else "\uC5F0\uCC28"
+
+
+def leave_days_text(value: object) -> str:
+    try:
+        days = float(value or 0)
+    except (TypeError, ValueError):
+        days = 0.0
+    return f"{days:g}\uC77C"
+
+
+def leave_request_date_text(row: sqlite3.Row) -> str:
+    start = str(row["start_date"] or "")
+    end = str(row["end_date"] or "")
+    if start and end and start != end:
+        return f"{start}~{end}"
+    return start or end or "\uC77C\uC790 \uBBF8\uC815"
+
+
+def leave_requester_name(row: sqlite3.Row) -> str:
+    display_name = row["display_name"] if "display_name" in row.keys() else ""
+    username = row["username"] if "username" in row.keys() else ""
+    return str(display_name or username or "\uC2E0\uCCAD\uC790")
+
+
+def leave_actor_name(actor: dict[str, str]) -> str:
+    return str(actor.get("display_name") or actor.get("username") or "\uCC98\uB9AC\uC790")
+
+
+def leave_request_alarm_summary(row: sqlite3.Row) -> str:
+    return " · ".join([
+        leave_request_date_text(row),
+        leave_unit_label(str(row["unit"] or "")),
+        leave_days_text(row["requested_days"]),
+    ])
+
+
+def get_leave_request_context(connection: sqlite3.Connection, request_id: int) -> sqlite3.Row:
+    row = connection.execute(
+        """
+        SELECT leave_requests.*, leave_types.name AS leave_type_name, users.display_name, users.username
+          FROM leave_requests
+          JOIN leave_types ON leave_types.id = leave_requests.leave_type_id
+          JOIN users ON users.id = leave_requests.user_id
+         WHERE leave_requests.id = ?
+        """,
+        (request_id,),
+    ).fetchone()
+    if not row:
+        raise ValueError("\uC5F0\uCC28 \uC2E0\uCCAD\uC744 \uCC3E\uC744 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4.")
+    return row
+
+
 def leave_step_permission(step: str) -> str:
     return {
         "TEAM_LEAD": "leave_approve_team",
@@ -25988,12 +30596,30 @@ def actor_can_override_leave(actor: dict[str, str]) -> bool:
     return user_has_permission(actor, "leave_director_override") or user_has_permission(actor, "leave_manage")
 
 
-def active_users_with_leave_permission(connection: sqlite3.Connection, permissions: list[str]) -> list[sqlite3.Row]:
+LEAVE_NOTIFICATION_PERMISSIONS = (
+    "leave_view",
+    "leave_approve",
+    "leave_approve_team",
+    "leave_approve_director",
+    "leave_approve_ceo",
+    "leave_director_override",
+    "leave_manage",
+)
+
+
+def active_users_with_leave_permission(
+    connection: sqlite3.Connection,
+    permissions: list[str],
+    exclude_user_ids: set[int] | None = None,
+) -> list[sqlite3.Row]:
+    excluded = exclude_user_ids or set()
     rows = connection.execute(
         "SELECT id, username, display_name, role, permissions FROM users WHERE active = 1"
     ).fetchall()
     matches = []
     for row in rows:
+        if int(row["id"]) in excluded:
+            continue
         normalized = normalize_permissions(row["permissions"], row["role"])
         if any(permission in normalized for permission in permissions):
             matches.append(row)
@@ -26016,21 +30642,51 @@ def add_leave_notification(
     )
 
 
-def notify_leave_step(connection: sqlite3.Connection, request_id: int, step: str, requester_name: str) -> None:
+def notify_leave_step(
+    connection: sqlite3.Connection,
+    request_id: int,
+    step: str,
+    requester_name: str,
+    request_summary: str = "",
+    exclude_user_ids: set[int] | None = None,
+) -> None:
     permission = leave_step_permission(step)
     permissions = [permission, "leave_manage"]
     if step == "TEAM_LEAD":
         permissions.append("leave_approve")
     if step == "DIRECTOR":
         permissions.append("leave_director_override")
-    users = active_users_with_leave_permission(connection, permissions)
-    message = f"{requester_name}\uB2D8\uC758 \uC5F0\uCC28 \uC2E0\uCCAD\uC774 {leave_approval_label(step)} \uC2B9\uC778\uC744 \uAE30\uB2E4\uB9BD\uB2C8\uB2E4."
+    users = active_users_with_leave_permission(connection, permissions, exclude_user_ids=exclude_user_ids)
+    detail = f" ({request_summary})" if request_summary else ""
+    message = f"{requester_name}\uB2D8\uC758 \uC5F0\uCC28 \uC2E0\uCCAD\uC774 {leave_approval_label(step)} \uC2B9\uC778\uC744 \uAE30\uB2E4\uB9BD\uB2C8\uB2E4.{detail}"
     for user in users:
         add_leave_notification(connection, int(user["id"]), request_id, "approval_waiting", message)
 
 
 def notify_leave_requester(connection: sqlite3.Connection, user_id: int, request_id: int, message: str) -> None:
     add_leave_notification(connection, user_id, request_id, "request_update", message)
+
+
+def notify_leave_admins(
+    connection: sqlite3.Connection,
+    request_id: int,
+    message: str,
+    exclude_user_ids: set[int] | None = None,
+) -> None:
+    users = active_users_with_leave_permission(
+        connection,
+        [
+            "leave_manage",
+            "leave_approve",
+            "leave_approve_team",
+            "leave_approve_director",
+            "leave_approve_ceo",
+            "leave_director_override",
+        ],
+        exclude_user_ids=exclude_user_ids,
+    )
+    for user in users:
+        add_leave_notification(connection, int(user["id"]), request_id, "admin_update", message)
 
 
 def list_leave_notifications(user: dict[str, str], connection: sqlite3.Connection | None = None) -> list[dict[str, str | int]]:
@@ -26053,6 +30709,36 @@ def list_leave_notifications(user: dict[str, str], connection: sqlite3.Connectio
     finally:
         if own_connection and connection is not None:
             connection.close()
+
+
+def mark_leave_notifications_read(user: dict[str, str], notification_ids: list[object] | None = None) -> int:
+    init_db()
+    user_id = int(user["id"])
+    ids: list[int] = []
+    for value in notification_ids or []:
+        try:
+            notification_id = int(value)
+        except (TypeError, ValueError):
+            continue
+        if notification_id > 0:
+            ids.append(notification_id)
+    connection = connect_db()
+    try:
+        if ids:
+            placeholders = ",".join("?" for _ in ids)
+            cursor = connection.execute(
+                f"UPDATE leave_notifications SET is_read = 1 WHERE user_id = ? AND id IN ({placeholders})",
+                [user_id, *ids],
+            )
+        else:
+            cursor = connection.execute(
+                "UPDATE leave_notifications SET is_read = 1 WHERE user_id = ? AND is_read = 0",
+                (user_id,),
+            )
+        connection.commit()
+        return int(cursor.rowcount or 0)
+    finally:
+        connection.close()
 
 
 def list_leave_requests_for_user(connection: sqlite3.Connection, user_id: int) -> list[dict[str, str | float | int]]:
@@ -26131,6 +30817,23 @@ def list_leave_admin_balances(connection: sqlite3.Connection) -> list[dict[str, 
     return rows
 
 
+def list_leave_admin_usage_requests(connection: sqlite3.Connection) -> dict[str, list[dict[str, str | float | int]]]:
+    rows = connection.execute(
+        """
+        SELECT leave_requests.*, leave_types.name AS leave_type_name, users.display_name
+          FROM leave_requests
+          JOIN leave_types ON leave_types.id = leave_requests.leave_type_id
+          JOIN users ON users.id = leave_requests.user_id
+         WHERE users.active = 1
+         ORDER BY users.display_name COLLATE NOCASE, leave_requests.start_date DESC, leave_requests.id DESC
+        """
+    ).fetchall()
+    grouped: dict[str, list[dict[str, str | float | int]]] = {}
+    for row in rows:
+        grouped.setdefault(str(row["user_id"]), []).append(leave_request_dict(row))
+    return grouped
+
+
 def leave_payload(user: dict[str, str]) -> dict:
     user_id = int(user["id"])
     connection = connect_db()
@@ -26160,6 +30863,7 @@ def leave_payload(user: dict[str, str]) -> dict:
             "pending_requests": [],
             "users": [],
             "admin_balances": [],
+            "admin_usage_requests": {},
             "notifications": list_leave_notifications(user, connection),
         }
         if payload["can_approve"]:
@@ -26168,6 +30872,7 @@ def leave_payload(user: dict[str, str]) -> dict:
             payload["users"] = list_active_users_for_leave(connection)
         if payload["can_manage"]:
             payload["admin_balances"] = list_leave_admin_balances(connection)
+            payload["admin_usage_requests"] = list_leave_admin_usage_requests(connection)
         connection.commit()
         return payload
     finally:
@@ -26208,8 +30913,16 @@ def create_leave_request(user: dict[str, str], payload: dict) -> int:
             int(balance["id"]),
             reserved_days=round(float(balance["reserved_days"] or 0) + requested_days, 2),
         )
-        requester_name = str(user.get("display_name") or user.get("username") or "\uC2E0\uCCAD\uC790")
-        notify_leave_step(connection, request_id, "TEAM_LEAD", requester_name)
+        request_row = get_leave_request_context(connection, request_id)
+        requester_name = leave_requester_name(request_row)
+        request_summary = leave_request_alarm_summary(request_row)
+        notify_leave_requester(
+            connection,
+            user_id,
+            request_id,
+            f"\uC5F0\uCC28 \uC2E0\uCCAD\uC774 \uC811\uC218\uB418\uC5C8\uC2B5\uB2C8\uB2E4. \uD604\uC7AC {leave_approval_label('TEAM_LEAD')} \uC2B9\uC778 \uB300\uAE30\uC785\uB2C8\uB2E4. ({request_summary})",
+        )
+        notify_leave_step(connection, request_id, "TEAM_LEAD", requester_name, request_summary, exclude_user_ids={user_id})
         connection.commit()
         return request_id
     finally:
@@ -26285,7 +30998,23 @@ def finalize_leave_approval(
         """,
         (int(actor["id"]), now, now, request_id),
     )
-    notify_leave_requester(connection, int(row["user_id"]), request_id, "\uC5F0\uCC28 \uC2E0\uCCAD\uC774 \uCD5C\uC885 \uC2B9\uC778\uB418\uC5C8\uC2B5\uB2C8\uB2E4.")
+    requester_id = int(row["user_id"])
+    requester_name = leave_requester_name(row)
+    request_summary = leave_request_alarm_summary(row)
+    actor_name = leave_actor_name(actor)
+    requester_message = (
+        f"\uC5F0\uCC28 \uC2E0\uCCAD\uC774 {actor_name}\uB2D8\uC758 \uC804\uACB0\uB85C \uC2B9\uC778\uB418\uC5C8\uC2B5\uB2C8\uB2E4. ({request_summary})"
+        if overridden
+        else f"\uC5F0\uCC28 \uC2E0\uCCAD\uC774 \uCD5C\uC885 \uC2B9\uC778\uB418\uC5C8\uC2B5\uB2C8\uB2E4. ({request_summary})"
+    )
+    notify_leave_requester(connection, requester_id, request_id, requester_message)
+    admin_status = "\uC804\uACB0 \uC2B9\uC778" if overridden else "\uCD5C\uC885 \uC2B9\uC778"
+    notify_leave_admins(
+        connection,
+        request_id,
+        f"{requester_name}\uB2D8\uC758 \uC5F0\uCC28 \uC2E0\uCCAD\uC774 {admin_status}\uB418\uC5C8\uC2B5\uB2C8\uB2E4. ({request_summary})",
+        exclude_user_ids={requester_id, int(actor["id"])},
+    )
 
 
 def decide_leave_request(request_id: int, actor: dict[str, str], decision: str, comment: str = "") -> None:
@@ -26295,12 +31024,14 @@ def decide_leave_request(request_id: int, actor: dict[str, str], decision: str, 
     clean_comment = str(comment or "").strip()
     connection = connect_db()
     try:
-        row = connection.execute("SELECT * FROM leave_requests WHERE id = ?", (request_id,)).fetchone()
-        if not row:
-            raise ValueError("\uC774\uBBF8 \uCC98\uB9AC\uB41C \uC2E0\uCCAD\uC785\uB2C8\uB2E4.")
+        row = get_leave_request_context(connection, request_id)
         if row["status"] != "PENDING":
             raise ValueError("\uC804\uACB0 \uAD8C\uD55C\uC774 \uC5C6\uC2B5\uB2C8\uB2E4.")
         step = str(row["approval_step"] or "TEAM_LEAD")
+        requester_id = int(row["user_id"])
+        requester_name = leave_requester_name(row)
+        request_summary = leave_request_alarm_summary(row)
+        actor_name = leave_actor_name(actor)
         if decision == "override":
             if not actor_can_override_leave(actor):
                 raise ValueError("\uC2B9\uC778 \uAD8C\uD55C\uC774 \uC5C6\uC2B5\uB2C8\uB2E4.")
@@ -26321,7 +31052,18 @@ def decide_leave_request(request_id: int, actor: dict[str, str], decision: str, 
                 """,
                 (clean_comment or "\uBC18\uB824", int(actor["id"]), now, now, request_id),
             )
-            notify_leave_requester(connection, int(row["user_id"]), request_id, "\uC5F0\uCC28 \uC2E0\uCCAD\uC774 \uBC18\uB824\uB418\uC5C8\uC2B5\uB2C8\uB2E4.")
+            notify_leave_requester(
+                connection,
+                requester_id,
+                request_id,
+                f"\uC5F0\uCC28 \uC2E0\uCCAD\uC774 {leave_approval_label(step)}\uC5D0\uC11C \uBC18\uB824\uB418\uC5C8\uC2B5\uB2C8\uB2E4. ({request_summary})",
+            )
+            notify_leave_admins(
+                connection,
+                request_id,
+                f"{requester_name}\uB2D8\uC758 \uC5F0\uCC28 \uC2E0\uCCAD\uC774 {actor_name}\uB2D8\uC5D0 \uC758\uD574 \uBC18\uB824\uB418\uC5C8\uC2B5\uB2C8\uB2E4. ({request_summary})",
+                exclude_user_ids={requester_id, int(actor["id"])},
+            )
             connection.commit()
             return
         set_leave_step_decision(connection, request_id, step, "APPROVED", int(actor["id"]), clean_comment)
@@ -26330,15 +31072,27 @@ def decide_leave_request(request_id: int, actor: dict[str, str], decision: str, 
                 "UPDATE leave_requests SET approval_step = 'DIRECTOR', director_status = 'PENDING', updated_at = ? WHERE id = ?",
                 (now_text(), request_id),
             )
-            notify_leave_step(connection, request_id, "DIRECTOR", row["display_name"] if "display_name" in row.keys() else "\uC2E0\uCCAD\uC790")
+            notify_leave_requester(
+                connection,
+                requester_id,
+                request_id,
+                f"{leave_approval_label(step)} \uC2B9\uC778\uC774 \uC644\uB8CC\uB418\uC5C8\uC2B5\uB2C8\uB2E4. \uB2E4\uC74C \uB2E8\uACC4: {leave_approval_label('DIRECTOR')}. ({request_summary})",
+            )
+            notify_leave_step(connection, request_id, "DIRECTOR", requester_name, request_summary, exclude_user_ids={requester_id})
         elif step == "DIRECTOR":
             connection.execute(
                 "UPDATE leave_requests SET approval_step = 'CEO', ceo_status = 'PENDING', updated_at = ? WHERE id = ?",
                 (now_text(), request_id),
             )
-            notify_leave_step(connection, request_id, "CEO", row["display_name"] if "display_name" in row.keys() else "\uC2E0\uCCAD\uC790")
+            notify_leave_requester(
+                connection,
+                requester_id,
+                request_id,
+                f"{leave_approval_label(step)} \uC2B9\uC778\uC774 \uC644\uB8CC\uB418\uC5C8\uC2B5\uB2C8\uB2E4. \uB2E4\uC74C \uB2E8\uACC4: {leave_approval_label('CEO')}. ({request_summary})",
+            )
+            notify_leave_step(connection, request_id, "CEO", requester_name, request_summary, exclude_user_ids={requester_id})
         else:
-            refreshed = connection.execute("SELECT * FROM leave_requests WHERE id = ?", (request_id,)).fetchone()
+            refreshed = get_leave_request_context(connection, request_id)
             finalize_leave_approval(connection, refreshed, actor, clean_comment)
         connection.commit()
     finally:
@@ -26349,9 +31103,7 @@ def cancel_leave_request(request_id: int, actor: dict[str, str], reason: str = "
     init_db()
     connection = connect_db()
     try:
-        row = connection.execute("SELECT * FROM leave_requests WHERE id = ?", (request_id,)).fetchone()
-        if not row:
-            raise ValueError("\uC5F0\uCC28 \uC2E0\uCCAD\uC744 \uCC3E\uC744 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4.")
+        row = get_leave_request_context(connection, request_id)
         if row["status"] != "PENDING":
             raise ValueError("\uC2B9\uC778 \uB300\uAE30 \uC0C1\uD0DC\uC758 \uC2E0\uCCAD\uB9CC \uCDE8\uC18C\uD560 \uC218 \uC788\uC2B5\uB2C8\uB2E4.")
         if int(row["user_id"]) != int(actor["id"]) and not user_has_permission(actor, "leave_manage"):
@@ -26367,7 +31119,22 @@ def cancel_leave_request(request_id: int, actor: dict[str, str], reason: str = "
             """,
             (clean_reason, int(actor["id"]), now, now, request_id),
         )
-        notify_leave_requester(connection, int(row["user_id"]), request_id, "\uC5F0\uCC28 \uC2E0\uCCAD\uC774 \uCDE8\uC18C\uB418\uC5C8\uC2B5\uB2C8\uB2E4.")
+        requester_id = int(row["user_id"])
+        requester_name = leave_requester_name(row)
+        request_summary = leave_request_alarm_summary(row)
+        actor_name = leave_actor_name(actor)
+        requester_message = (
+            f"\uC5F0\uCC28 \uC2E0\uCCAD \uCDE8\uC18C\uAC00 \uC811\uC218\uB418\uC5C8\uC2B5\uB2C8\uB2E4. ({request_summary})"
+            if requester_id == int(actor["id"])
+            else f"{actor_name}\uB2D8\uC774 \uC5F0\uCC28 \uC2E0\uCCAD\uC744 \uCDE8\uC18C\uD588\uC2B5\uB2C8\uB2E4. ({request_summary})"
+        )
+        notify_leave_requester(connection, requester_id, request_id, requester_message)
+        notify_leave_admins(
+            connection,
+            request_id,
+            f"{requester_name}\uB2D8\uC758 \uC5F0\uCC28 \uC2E0\uCCAD\uC774 \uCDE8\uC18C\uB418\uC5C8\uC2B5\uB2C8\uB2E4. ({request_summary})",
+            exclude_user_ids={requester_id, int(actor["id"])},
+        )
         connection.commit()
     finally:
         connection.close()
@@ -26601,9 +31368,18 @@ def normalize_progress_status(status: str, completed_at: str = "", occurred_at: 
 
 def cs_case_from_payload(payload: dict, status: str = "접수", mail_sent: bool = False) -> dict[str, str]:
     original_info = clean_payload_text(payload, "cs_origin")
+    vendor_type = clean_payload_text(payload, "vendor_type") or "purchase"
+    vendor_name = clean_payload_text(payload, "vendor_name")
+    sales_vendor = clean_payload_text(payload, "sales_vendor")
+    purchase_vendor = clean_payload_text(payload, "purchase_vendor")
+    if vendor_name:
+        if vendor_type == "sales" and not sales_vendor:
+            sales_vendor = vendor_name
+        elif vendor_type != "sales" and not purchase_vendor:
+            purchase_vendor = vendor_name
     return {
         "status": status,
-        "vendor_name": clean_payload_text(payload, "vendor_name"),
+        "vendor_name": vendor_name,
         "vendor_email": clean_payload_text(payload, "recipient_email"),
         "original_info": original_info,
         "original_invoice": clean_payload_text(payload, "original_invoice") or extract_invoice_number(original_info),
@@ -26620,6 +31396,14 @@ def cs_case_from_payload(payload: dict, status: str = "접수", mail_sent: bool 
         "mail_subject": clean_payload_text(payload, "subject"),
         "mail_body": clean_payload_text(payload, "body"),
         "mail_sent_at": now_text() if mail_sent else clean_payload_text(payload, "mail_sent_at"),
+        "occurred_at": clean_payload_text(payload, "occurred_at") or date.today().isoformat(),
+        "completed_at": clean_payload_text(payload, "completed_at"),
+        "order_date": clean_payload_text(payload, "order_date"),
+        "ship_date": clean_payload_text(payload, "ship_date"),
+        "sales_vendor": sales_vendor,
+        "purchase_vendor": purchase_vendor,
+        "courier": clean_payload_text(payload, "courier"),
+        "quantity": clean_payload_text(payload, "quantity"),
     }
 
 
@@ -26648,6 +31432,14 @@ def save_cs_case(payload: dict, status: str = "접수", mail_sent: bool = False)
         "mail_subject",
         "mail_body",
         "mail_sent_at",
+        "occurred_at",
+        "completed_at",
+        "order_date",
+        "ship_date",
+        "sales_vendor",
+        "purchase_vendor",
+        "courier",
+        "quantity",
     ]
     values = {
         "created_at": timestamp,
@@ -26685,6 +31477,44 @@ def date_period_condition(fields: list[str], year: str = "", month: str = "") ->
     return "(" + " OR ".join(f"{field} LIKE ?" for field in fields) + ")", [pattern] * len(fields)
 
 
+def management_period_condition(year: str = "", month: str = "") -> tuple[str, list[str]]:
+    year = clean_cell(year)
+    month = clean_cell(month).zfill(2) if clean_cell(month) else ""
+    if not re.fullmatch(r"\d{4}", year):
+        year = ""
+    if not re.fullmatch(r"\d{2}", month) or not (1 <= int(month) <= 12):
+        month = ""
+    if not year and not month:
+        return "", []
+    if year and month:
+        pattern = f"{year}-{month}%"
+    elif year:
+        pattern = f"{year}%"
+    else:
+        pattern = f"%-{month}-%"
+    return "COALESCE(NULLIF(order_date, ''), NULLIF(ship_date, '')) LIKE ?", [pattern]
+
+
+MANAGEMENT_FILTER_FIELDS = {
+    "order_date",
+    "ship_date",
+    "purchase_vendor",
+    "sales_vendor",
+    "transaction_type",
+    "ledger_checked",
+    "orderer_name",
+    "sender_phone",
+    "receiver_name",
+    "receiver_phone",
+    "product_name",
+    "quantity",
+    "receiver_address",
+    "courier",
+    "invoice_number",
+    "memo",
+}
+
+
 def list_cs_cases(query: str = "", status: str = "", limit: int = 20, year: str = "", month: str = "") -> list[dict[str, str | int]]:
     init_db()
     query = query.strip()
@@ -26720,7 +31550,7 @@ def list_cs_cases(query: str = "", status: str = "", limit: int = 20, year: str 
         conditions.append("status = ?")
         params.append(status)
     period_condition, period_params = date_period_condition(
-        ["occurred_at", "order_date", "ship_date", "created_at"],
+        ["occurred_at", "order_date", "ship_date"],
         year,
         month,
     )
@@ -26738,10 +31568,17 @@ def list_cs_cases(query: str = "", status: str = "", limit: int = 20, year: str 
                    receiver_phone, receiver_address, cs_type, cs_content, return_invoice,
                    reship_invoice, mail_subject, mail_sent_at, occurred_at, completed_at, order_date,
                    ship_date, sales_vendor, purchase_vendor, courier, quantity
-              FROM cs_cases
+             FROM cs_cases
               {where}
-             ORDER BY CASE WHEN date(occurred_at) IS NULL THEN 1 ELSE 0 END,
-                      date(occurred_at) DESC,
+             ORDER BY CASE
+                        WHEN COALESCE(date(NULLIF(occurred_at, '')),
+                                      date(NULLIF(order_date, '')),
+                                      date(NULLIF(ship_date, ''))) IS NULL THEN 1
+                        ELSE 0
+                      END,
+                      COALESCE(date(NULLIF(occurred_at, '')),
+                               date(NULLIF(order_date, '')),
+                               date(NULLIF(ship_date, ''))) DESC,
                       id DESC
              LIMIT ?
             """,
@@ -26773,26 +31610,48 @@ def should_mark_cs_case_complete(cs_type: str, cs_content: str, return_invoice: 
     return False
 
 
-def update_cs_case(case_id: int, payload: dict) -> None:
-    status = clean_payload_text(payload, "status")
-    cs_type = clean_payload_text(payload, "cs_type")
-    return_invoice = clean_payload_text(payload, "return_invoice")
-    reship_invoice = clean_payload_text(payload, "reship_invoice")
+CS_CASE_UPDATE_FIELDS = [
+    "status",
+    "sales_vendor",
+    "purchase_vendor",
+    "completed_at",
+    "cs_type",
+    "cs_content",
+    "return_invoice",
+    "reship_invoice",
+    "order_date",
+    "ship_date",
+    "orderer_name",
+    "orderer_phone",
+    "receiver_name",
+    "receiver_phone",
+    "product_name",
+    "quantity",
+    "receiver_address",
+    "courier",
+    "original_invoice",
+]
 
+
+def update_cs_case(case_id: int, payload: dict) -> None:
     init_db()
     connection = connect_db()
     try:
         previous = connection.execute(
-            "SELECT status, cs_type, cs_content, return_invoice, reship_invoice, completed_at FROM cs_cases WHERE id = ?",
+            f"SELECT {', '.join(CS_CASE_UPDATE_FIELDS)}, return_invoice_updated_at, reship_invoice_updated_at FROM cs_cases WHERE id = ?",
             (case_id,),
         ).fetchone()
         if not previous:
             raise ValueError("수정할 CS건을 찾지 못했습니다.")
-        cs_type = cs_type if "cs_type" in payload else (previous["cs_type"] or "")
-        cs_content = clean_payload_text(payload, "cs_content") if "cs_content" in payload else (previous["cs_content"] or "")
-        return_invoice = return_invoice if "return_invoice" in payload else (previous["return_invoice"] or "")
-        reship_invoice = reship_invoice if "reship_invoice" in payload else (previous["reship_invoice"] or "")
-        status = status if status else (previous["status"] or "")
+        values = {
+            field: clean_payload_text(payload, field) if field in payload else (previous[field] or "")
+            for field in CS_CASE_UPDATE_FIELDS
+        }
+        status = values["status"] or (previous["status"] or "")
+        cs_type = values["cs_type"]
+        cs_content = values["cs_content"]
+        return_invoice = values["return_invoice"]
+        reship_invoice = values["reship_invoice"]
         now = now_text()
         return_invoice_updated_at = None
         reship_invoice_updated_at = None
@@ -26802,28 +31661,23 @@ def update_cs_case(case_id: int, payload: dict) -> None:
             reship_invoice_updated_at = now
         if "status" not in payload and should_mark_cs_case_complete(cs_type, cs_content, return_invoice, reship_invoice):
             status = "전체 처리완료"
-        completion_date = date.today().isoformat() if "전체 처리완료" in status and not (previous["completed_at"] or "").strip() else None
+        completed_at = values["completed_at"]
+        if "전체 처리완료" in status and not completed_at.strip():
+            completed_at = date.today().isoformat()
+        values["status"] = status
+        values["completed_at"] = completed_at
+        assignments = ",\n                    ".join(f"{field} = ?" for field in CS_CASE_UPDATE_FIELDS)
         cursor = connection.execute(
-            """
+            f"""
             UPDATE cs_cases
-               SET status = ?,
-                   cs_type = ?,
-                   cs_content = ?,
-                   return_invoice = ?,
-                   reship_invoice = ?,
-                   completed_at = COALESCE(NULLIF(completed_at, ''), ?),
+               SET {assignments},
                    return_invoice_updated_at = COALESCE(?, return_invoice_updated_at),
                    reship_invoice_updated_at = COALESCE(?, reship_invoice_updated_at),
                    updated_at = ?
              WHERE id = ?
             """,
             [
-                status,
-                cs_type,
-                cs_content,
-                return_invoice,
-                reship_invoice,
-                completion_date,
+                *[values[field] for field in CS_CASE_UPDATE_FIELDS],
                 return_invoice_updated_at,
                 reship_invoice_updated_at,
                 now,
@@ -26870,14 +31724,47 @@ def delete_cs_cases(case_ids: list[int]) -> int:
     placeholders = ", ".join("?" for _ in case_ids)
     connection = connect_db()
     try:
+        source_rows = connection.execute(
+            f"""
+            SELECT source_file, source_sheet, source_row
+              FROM cs_cases
+             WHERE id IN ({placeholders})
+            """,
+            case_ids,
+        ).fetchall()
         cursor = connection.execute(f"DELETE FROM cs_cases WHERE id IN ({placeholders})", case_ids)
+        management_prefix = "통합관리대장:"
+        for row in source_rows:
+            source_file = str(row["source_file"] or "")
+            if not source_file.startswith(management_prefix):
+                continue
+            connection.execute(
+                """
+                UPDATE management_records
+                   SET cs_received_at = ''
+                 WHERE source_file = ?
+                   AND source_sheet = ?
+                   AND source_row = ?
+                """,
+                [
+                    source_file[len(management_prefix):],
+                    row["source_sheet"],
+                    row["source_row"],
+                ],
+            )
         connection.commit()
         return int(cursor.rowcount or 0)
     finally:
         connection.close()
 
 
-def management_query_conditions(query: str = "", year: str = "", month: str = "") -> tuple[str, list[object]]:
+def management_query_conditions(
+    query: str = "",
+    year: str = "",
+    month: str = "",
+    filters: dict[str, object] | None = None,
+    exclude_filter: str = "",
+) -> tuple[str, list[object]]:
     query = query.strip()
     params: list[object] = []
     conditions: list[str] = []
@@ -26909,16 +31796,30 @@ def management_query_conditions(query: str = "", year: str = "", month: str = ""
             """
         )
         params = [pattern] * 19
-    period_condition, period_params = date_period_condition(["order_date", "ship_date"], year, month)
+    period_condition, period_params = management_period_condition(year, month)
     if period_condition:
         conditions.append(period_condition)
         params.extend(period_params)
+    for field, raw_value in (filters or {}).items():
+        if field == exclude_filter or field not in MANAGEMENT_FILTER_FIELDS:
+            continue
+        value = clean_cell(raw_value)
+        if not value:
+            continue
+        conditions.append(f"COALESCE({field}, '') LIKE ?")
+        params.append(f"%{value}%")
     where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
     return where, params
 
-def list_management_records(query: str = "", limit: int | None = 300, year: str = "", month: str = "") -> list[dict[str, str | int]]:
+def list_management_records(
+    query: str = "",
+    limit: int | None = 300,
+    year: str = "",
+    month: str = "",
+    filters: dict[str, object] | None = None,
+) -> list[dict[str, str | int]]:
     init_db()
-    where, params = management_query_conditions(query, year, month)
+    where, params = management_query_conditions(query, year, month, filters)
     connection = connect_db()
     try:
         limit_sql = ""
@@ -26950,6 +31851,61 @@ def list_management_records(query: str = "", limit: int | None = 300, year: str 
     finally:
         connection.close()
     return [dict(row) for row in rows]
+
+def list_management_filter_options(
+    field: str,
+    query: str = "",
+    year: str = "",
+    month: str = "",
+    filters: dict[str, object] | None = None,
+    search: str = "",
+    limit: int = 500,
+) -> list[dict[str, str | int]]:
+    init_db()
+    field = clean_cell(field)
+    if field not in MANAGEMENT_FILTER_FIELDS:
+        raise ValueError("지원하지 않는 통합관리대장 필터입니다.")
+    if not clean_cell(year) or not clean_cell(month):
+        raise ValueError("통합관리대장 필터는 월을 먼저 선택한 뒤 사용할 수 있습니다.")
+    where, params = management_query_conditions(query, year, month, filters, exclude_filter=field)
+    search = clean_cell(search)
+    if search:
+        where = f"{where} AND COALESCE({field}, '') LIKE ?" if where else f"WHERE COALESCE({field}, '') LIKE ?"
+        params.append(f"%{search}%")
+    limit = min(max(int(limit or 500), 1), 2000)
+    params.append(limit)
+    connection = connect_db()
+    try:
+        rows = connection.execute(
+            f"""
+            SELECT value, COUNT(*) AS count, MIN(id) AS record_id
+              FROM (
+                    SELECT TRIM(COALESCE({field}, '')) AS value, id
+                      FROM management_records
+                      {where}
+                   )
+             WHERE value != ''
+             GROUP BY value
+             ORDER BY value COLLATE NOCASE
+             LIMIT ?
+            """,
+            params,
+        ).fetchall()
+    finally:
+        connection.close()
+    return [
+        {"value": str(row["value"] or ""), "count": int(row["count"] or 0), "record_id": int(row["record_id"] or 0)}
+        for row in rows
+    ]
+
+def management_filters_from_params(params: dict[str, list[str]]) -> dict[str, str]:
+    filters: dict[str, str] = {}
+    for field in MANAGEMENT_FILTER_FIELDS:
+        value = params.get(f"filter_{field}", [""])[0]
+        value = clean_cell(value)
+        if value:
+            filters[field] = value
+    return filters
 
 def list_management_records_by_ids(record_ids: list[int]) -> list[dict[str, str | int]]:
     init_db()
@@ -27110,6 +32066,75 @@ def list_cargo_shipments() -> list[dict[str, str | int]]:
     )
 
 
+def list_portal_notices(limit: int = 50) -> list[dict[str, str | int]]:
+    init_db()
+    safe_limit = max(1, min(int(limit or 50), 200))
+    connection = connect_db()
+    try:
+        rows = connection.execute(
+            """
+            SELECT id, created_at, updated_at, notice_date AS date, title, owner, body, created_by
+              FROM portal_notices
+             WHERE COALESCE(title, '') <> '' OR COALESCE(body, '') <> ''
+             ORDER BY created_at DESC, id DESC
+             LIMIT ?
+            """,
+            (safe_limit,),
+        ).fetchall()
+    finally:
+        connection.close()
+    return [dict(row) for row in rows]
+
+
+def save_portal_notice(payload: dict, user: dict[str, str]) -> dict[str, str | int]:
+    init_db()
+    notice_date = clean_payload_text(payload, "date") or date.today().isoformat()
+    title = clean_payload_text(payload, "title")
+    owner = clean_payload_text(payload, "owner")
+    body = clean_payload_text(payload, "body")
+    if not title and not body:
+        raise ValueError("공지 제목 또는 내용을 입력해주세요.")
+    now = now_text()
+    created_by = str(user.get("username") or user.get("display_name") or "")
+    connection = connect_db()
+    try:
+        cursor = connection.execute(
+            """
+            INSERT INTO portal_notices (created_at, updated_at, notice_date, title, owner, body, created_by)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (now, now, notice_date, title, owner, body, created_by),
+        )
+        notice_id = int(cursor.lastrowid)
+        connection.commit()
+    finally:
+        connection.close()
+    saved = [row for row in list_portal_notices(limit=1) if int(row["id"]) == notice_id]
+    return saved[0] if saved else {
+        "id": notice_id,
+        "created_at": now,
+        "updated_at": now,
+        "date": notice_date,
+        "title": title,
+        "owner": owner,
+        "body": body,
+        "created_by": created_by,
+    }
+
+
+def delete_portal_notice(notice_id: int) -> int:
+    init_db()
+    if not notice_id:
+        raise ValueError("삭제할 공지사항 ID가 없습니다.")
+    connection = connect_db()
+    try:
+        cursor = connection.execute("DELETE FROM portal_notices WHERE id = ?", (notice_id,))
+        connection.commit()
+        return int(cursor.rowcount or 0)
+    finally:
+        connection.close()
+
+
 def save_cargo_shipment(payload: dict) -> int:
     init_db()
     now = now_text()
@@ -27145,6 +32170,21 @@ def save_cargo_shipment(payload: dict) -> int:
         connection.close()
 
 
+def delete_cargo_shipment(shipment_id: int) -> int:
+    if not shipment_id:
+        raise ValueError("삭제할 화물 입출고건을 선택해주세요.")
+    init_db()
+    connection = connect_db()
+    try:
+        cursor = connection.execute("DELETE FROM cargo_shipments WHERE id = ?", (shipment_id,))
+        connection.commit()
+        if cursor.rowcount == 0:
+            raise ValueError("삭제할 화물 입출고건을 찾지 못했습니다.")
+        return int(cursor.rowcount or 0)
+    finally:
+        connection.close()
+
+
 def save_import_shipment(payload: dict) -> int:
     init_db()
     now = now_text()
@@ -27172,6 +32212,21 @@ def save_import_shipment(payload: dict) -> int:
             shipment_id = int(cursor.lastrowid)
         connection.commit()
         return shipment_id
+    finally:
+        connection.close()
+
+
+def delete_import_shipment(shipment_id: int) -> int:
+    if not shipment_id:
+        raise ValueError("삭제할 수입제품 입고 일정을 선택해주세요.")
+    init_db()
+    connection = connect_db()
+    try:
+        cursor = connection.execute("DELETE FROM import_shipments WHERE id = ?", (shipment_id,))
+        connection.commit()
+        if cursor.rowcount == 0:
+            raise ValueError("삭제할 수입제품 입고 일정을 찾지 못했습니다.")
+        return int(cursor.rowcount or 0)
     finally:
         connection.close()
 
@@ -29049,7 +34104,7 @@ def save_mail_settings(
 DEFAULT_HERMES_SETTINGS = {
     "enabled": env_bool("HERMES_ENABLED", False),
     "profile": os.environ.get("HERMES_PROFILE", "vps"),
-    "base_url": os.environ.get("HERMES_BASE_URL", "http://hermes-agent:4860"),
+    "base_url": os.environ.get("HERMES_BASE_URL", "http://hermes-agent:4871"),
     "health_path": os.environ.get("HERMES_HEALTH_PATH", "/health"),
     "chat_path": os.environ.get("HERMES_CHAT_PATH", "/api/chat"),
     "automation_path": os.environ.get("HERMES_AUTOMATION_PATH", "/api/automation"),
@@ -29076,7 +34131,7 @@ def normalize_hermes_settings(payload: dict | None = None) -> dict[str, object]:
         "chat_path": clean_path("chat_path", "/api/chat"),
         "automation_path": clean_path("automation_path", "/api/automation"),
         "api_key": str(source.get("api_key") or "").strip(),
-        "timeout_seconds": min(max(int(source.get("timeout_seconds") or 20), 3), 120),
+        "timeout_seconds": min(max(int(source.get("timeout_seconds") or 20), 3), 240),
     }
 
 
@@ -29103,6 +34158,262 @@ def save_hermes_settings(payload: dict) -> dict[str, object]:
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
     HERMES_SETTINGS_PATH.write_text(json.dumps(settings, ensure_ascii=False, indent=2), encoding="utf-8")
     return load_hermes_settings(include_secret=False)
+
+
+def normalize_hermes_chat_mode(value: object) -> str:
+    mode = str(value or "auto").strip().lower()
+    return mode if mode in {"auto", "automation", "general", "search", "image"} else "auto"
+
+
+def hermes_chat_intent(message: str, mode: str = "auto") -> str:
+    mode = normalize_hermes_chat_mode(mode)
+    if mode == "search":
+        return "web_search"
+    if mode == "image":
+        return "image_generation"
+    if mode in {"automation", "general"}:
+        return "chat"
+    text = str(message or "").strip().lower()
+    if text.startswith(("/검색", "검색:", "search:")) or any(token in text for token in ("검색해", "찾아봐", "최신", "뉴스", "인터넷")):
+        return "web_search"
+    if text.startswith(("/이미지", "이미지:", "image:")) or any(token in text for token in ("이미지 만들어", "그림 만들어", "로고 만들어", "배너 만들어", "포스터 만들어")):
+        return "image_generation"
+    return "chat"
+
+
+def hermes_sales_report_scope(message: object = "") -> str:
+    text = str(message or "").strip().lower()
+    if any(token in text for token in ("오늘", "금일", "당일", "today")):
+        return "today"
+    if any(token in text for token in ("이번 달", "이번달", "월간", "월 누계", "월누계", "누계", "month", "monthly")):
+        return "month"
+    return "default"
+
+
+def hermes_sales_report_context(payload: dict[str, object], scope: str = "default") -> dict[str, object]:
+    scope = scope if scope in {"today", "month", "default"} else "default"
+    base = {
+        "period": payload.get("period", ""),
+        "selected_date": payload.get("selected_date", ""),
+        "scope": scope,
+    }
+    if scope == "today":
+        return {
+            **base,
+            "today_only": True,
+            "instruction": "User asked for today's/current-day sales. Use sales_report.today only for sales figures. Do not answer with monthly cumulative totals.",
+            "today_data_uploaded": payload.get("today_data_uploaded", False),
+            "today": payload.get("today", {}),
+            "previous_business_date": payload.get("previous_business_date", ""),
+            "yesterday": payload.get("yesterday", {}),
+            "comparison": payload.get("comparison", {}),
+            "closing_check": payload.get("closing_check", {}),
+        }
+    if scope == "month":
+        return {
+            **base,
+            "today_only": False,
+            "instruction": "User asked for month/cumulative sales. Use monthly cumulative fields and label them as month-to-date totals.",
+            "month": payload.get("month", {}),
+            "seller_total": payload.get("seller_total", {}),
+            "supplier_purchase_total": payload.get("supplier_purchase_total", {}),
+            "top_sellers": payload.get("seller_top", [])[:5],
+            "top_products": payload.get("product_top", [])[:5],
+            "closing_check": payload.get("closing_check", {}),
+        }
+    return {
+        **base,
+        "today_only": False,
+        "instruction": "If the user's wording says today/current-day, use sales_report.today only. Use month fields only when the user asks for month or cumulative totals.",
+        "today_data_uploaded": payload.get("today_data_uploaded", False),
+        "today": payload.get("today", {}),
+        "month": payload.get("month", {}),
+        "seller_total": payload.get("seller_total", {}),
+        "supplier_purchase_total": payload.get("supplier_purchase_total", {}),
+        "top_sellers": payload.get("seller_top", [])[:5],
+        "top_products": payload.get("product_top", [])[:5],
+        "closing_check": payload.get("closing_check", {}),
+    }
+
+
+def hermes_workhub_context_snapshot(message: object = "") -> dict[str, object]:
+    init_db()
+    connection = connect_db()
+    try:
+        sales_period = latest_sales_report_period(connection)
+        sales_date, _ = latest_sales_report_context(connection, fallback_today=False)
+        cs_status_rows = connection.execute(
+            """
+            SELECT COALESCE(NULLIF(status, ''), '미지정') AS status, COUNT(*) AS count
+              FROM cs_cases
+             GROUP BY COALESCE(NULLIF(status, ''), '미지정')
+             ORDER BY count DESC
+             LIMIT 8
+            """
+        ).fetchall()
+        management_recent_rows = connection.execute(
+            """
+            SELECT substr(COALESCE(NULLIF(ship_date, ''), NULLIF(order_date, '')), 1, 10) AS activity_date,
+                   COUNT(*) AS count
+              FROM management_records
+             WHERE COALESCE(NULLIF(ship_date, ''), NULLIF(order_date, '')) != ''
+             GROUP BY substr(COALESCE(NULLIF(ship_date, ''), NULLIF(order_date, '')), 1, 10)
+             ORDER BY activity_date DESC
+             LIMIT 7
+            """
+        ).fetchall()
+        latest_management = connection.execute(
+            "SELECT COUNT(*) AS count FROM management_records"
+        ).fetchone()
+        shared_files = list_shared_files()[:5]
+    finally:
+        connection.close()
+
+    sales_summary: dict[str, object] = {}
+    if sales_period:
+        try:
+            payload = sales_report_dashboard_payload(sales_period, sales_date)
+            sales_summary = hermes_sales_report_context(payload, hermes_sales_report_scope(message))
+        except Exception as exc:
+            sales_summary = {"error": str(exc)}
+    try:
+        automation_overview = workhub_automation_overview()
+        automation_summary = {
+            "status": automation_overview.get("status", ""),
+            "issue_count": automation_overview.get("issue_count", 0),
+            "briefing": automation_overview.get("briefing", []),
+            "sections": automation_overview.get("sections", {}),
+        }
+    except Exception as exc:  # noqa: BLE001
+        automation_summary = {"error": str(exc)}
+
+    return {
+        "generated_at": now_text(),
+        "sales_report": sales_summary,
+        "automation_overview": automation_summary,
+        "cs_status_counts": [{"status": str(row["status"]), "count": int(row["count"] or 0)} for row in cs_status_rows],
+        "management": {
+            "total_records": int(latest_management["count"] or 0) if latest_management else 0,
+            "recent_dates": [{"date": str(row["activity_date"] or ""), "count": int(row["count"] or 0)} for row in management_recent_rows],
+        },
+        "recent_shared_files": shared_files,
+    }
+
+
+def hermes_capabilities_payload(intent: str = "chat", mode: str = "auto") -> dict[str, object]:
+    return {
+        "chat": True,
+        "workhub_context": True,
+        "automation_planning": True,
+        "web_search": "Codex-backed Hermes agent by default; direct OpenAI web_search only when WORKHUB_AI_TOOL_PROVIDER=openai",
+        "image_generation": "Codex-backed Hermes agent by default; direct OpenAI image API only when WORKHUB_AI_TOOL_PROVIDER=openai",
+        "downloadable_results": True,
+        "available_chat_modes": ["auto", "automation", "general", "search", "image"],
+        "requested_mode": normalize_hermes_chat_mode(mode),
+        "requested_intent": intent,
+    }
+
+
+def hermes_text_result_requested(message: object) -> bool:
+    text = str(message or "").strip().lower()
+    return any(token in text for token in (
+        "txt",
+        "텍스트 파일",
+        "파일로",
+        "다운로드 링크",
+        "다운로드 가능",
+        "다운로드할 수",
+        "결과물 파일",
+    ))
+
+
+def _safe_hermes_result_id(value: object) -> str:
+    result_id = str(value or "").strip()
+    if not re.fullmatch(r"[A-Za-z0-9_-]{12,80}", result_id):
+        raise ValueError("결과 파일을 찾지 못했습니다.")
+    return result_id
+
+
+def _hermes_result_paths(result_id: object) -> tuple[Path, Path]:
+    safe_id = _safe_hermes_result_id(result_id)
+    base_dir = HERMES_RESULT_DIR.resolve()
+    data_path = (HERMES_RESULT_DIR / safe_id).resolve()
+    meta_path = (HERMES_RESULT_DIR / f"{safe_id}.json").resolve()
+    if base_dir not in data_path.parents or base_dir not in meta_path.parents:
+        raise ValueError("결과 파일을 찾지 못했습니다.")
+    return data_path, meta_path
+
+
+def _hermes_result_public(result_id: str, metadata: dict[str, object]) -> dict[str, object]:
+    return {
+        "id": result_id,
+        "name": str(metadata.get("original_name") or metadata.get("filename") or "Hermes 결과물"),
+        "original_name": str(metadata.get("original_name") or metadata.get("filename") or "Hermes 결과물"),
+        "filename": str(metadata.get("filename") or metadata.get("original_name") or "Hermes 결과물"),
+        "mime": str(metadata.get("mime") or "application/octet-stream"),
+        "size": int(metadata.get("size") or 0),
+        "download_url": f"/api/hermes-result-download?id={quote(result_id)}",
+        "saveable": True,
+        "saved": False,
+    }
+
+
+def save_hermes_temp_result(data: bytes, original_name: str, mime: str = "application/octet-stream") -> dict[str, object]:
+    HERMES_RESULT_DIR.mkdir(parents=True, exist_ok=True)
+    result_id = secrets.token_urlsafe(18).replace("-", "_")
+    data_path, meta_path = _hermes_result_paths(result_id)
+    safe_original = _safe_shared_filename(original_name or f"hermes_result_{datetime.now().strftime('%Y%m%d_%H%M%S')}")
+    data_path.write_bytes(data)
+    metadata = {
+        "original_name": safe_original,
+        "filename": safe_original,
+        "mime": mime or mimetypes.guess_type(safe_original)[0] or "application/octet-stream",
+        "size": len(data),
+        "created_at": now_text(),
+    }
+    meta_path.write_text(json.dumps(metadata, ensure_ascii=False), encoding="utf-8")
+    return _hermes_result_public(result_id, metadata)
+
+
+def hermes_result_download_info(result_id: object) -> tuple[Path, dict[str, object]]:
+    data_path, meta_path = _hermes_result_paths(result_id)
+    if not data_path.is_file() or not meta_path.is_file():
+        raise ValueError("결과 파일을 찾지 못했습니다.")
+    metadata = json.loads(meta_path.read_text(encoding="utf-8"))
+    return data_path, metadata
+
+
+def save_hermes_result_to_shared(result_id: object, uploaded_by: str = "") -> dict[str, object]:
+    data_path, metadata = hermes_result_download_info(result_id)
+    saved = save_shared_file(data_path, str(metadata.get("original_name") or data_path.name), uploaded_by)
+    saved["download_url"] = f"/api/shared-file-download?id={saved['id']}"
+    saved["saved"] = True
+    return saved
+
+
+def save_hermes_generated_image(data: dict[str, object], uploaded_by: str = "") -> dict[str, object] | None:
+    image_base64 = str(data.get("image_base64") or "")
+    if not image_base64:
+        return None
+    image_mime = str(data.get("image_mime") or "image/png").lower()
+    extension = ".jpg" if "jpeg" in image_mime or "jpg" in image_mime else ".png"
+    image_bytes = base64.b64decode(image_base64)
+    return save_hermes_temp_result(
+        image_bytes,
+        f"hermes_generated_{datetime.now().strftime('%Y%m%d_%H%M%S')}{extension}",
+        image_mime,
+    )
+
+
+def save_hermes_text_result(text: str, mode: str = "auto", uploaded_by: str = "") -> dict[str, object] | None:
+    text = str(text or "").strip()
+    if not text:
+        return None
+    return save_hermes_temp_result(
+        text.encode("utf-8"),
+        f"hermes_{normalize_hermes_chat_mode(mode)}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt",
+        "text/plain; charset=utf-8",
+    )
 
 
 def describe_hermes_connection_error(exc: Exception, url: str, base_url: str) -> str:
@@ -29194,7 +34505,7 @@ def list_hermes_history(limit: int = 80) -> list[dict[str, str]]:
             item = json.loads(line)
         except json.JSONDecodeError:
             continue
-        rows.append({key: str(item.get(key, "")) for key in ("created_at", "kind", "title", "status", "message", "category", "summary", "source_count")})
+        rows.append({key: str(item.get(key, "")) for key in ("created_at", "kind", "title", "status", "message", "category", "summary", "source_count", "action_id", "task_id")})
     return list(reversed(rows))
 
 
@@ -29272,6 +34583,129 @@ def hermes_status_payload() -> dict[str, object]:
         return {"ok": True, "message": "Hermes Agent에 연결됐습니다.", "status": result.get("status"), "settings": settings}
     except Exception as exc:
         return {"ok": False, "message": str(exc), "settings": settings}
+
+
+HERMES_WORKHUB_ACTIONS: dict[str, dict[str, object]] = {
+    "crm.create_task": {
+        "id": "crm.create_task",
+        "label": "업무관리 새 업무 등록",
+        "description": "승인된 사용자 권한으로 업무관리 보드에 새 업무를 등록합니다.",
+        "required_permission": "crm_manage",
+        "required_label": "CRM 관리",
+        "category": "crm",
+        "mutates": True,
+        "parameters": [
+            {"name": "title", "label": "업무 제목", "required": True},
+            {"name": "assignee_name", "label": "담당자", "required": False},
+            {"name": "due_at", "label": "마감일", "required": False},
+            {"name": "priority", "label": "우선순위", "required": False},
+            {"name": "status", "label": "상태", "required": False},
+            {"name": "description", "label": "업무 설명", "required": False},
+        ],
+    },
+}
+
+
+def hermes_workhub_action_by_id(action_id: object) -> dict[str, object]:
+    action = HERMES_WORKHUB_ACTIONS.get(str(action_id or "").strip())
+    if not action:
+        raise ValueError("지원하지 않는 Workhub 실행 액션입니다.")
+    return action
+
+
+def hermes_workhub_action_request(payload: dict | None) -> tuple[str, dict[str, object]]:
+    if not isinstance(payload, dict):
+        raise ValueError("실행 요청 형식이 올바르지 않습니다.")
+    action_id = str(payload.get("action") or payload.get("action_id") or "").strip()
+    params = payload.get("params") if isinstance(payload.get("params"), dict) else payload
+    hermes_workhub_action_by_id(action_id)
+    return action_id, dict(params or {})
+
+
+def hermes_workhub_action_catalog(user: dict[str, object]) -> list[dict[str, object]]:
+    catalog: list[dict[str, object]] = []
+    for action in HERMES_WORKHUB_ACTIONS.values():
+        required_permission = str(action.get("required_permission") or "")
+        catalog.append({
+            **action,
+            "available": user_has_permission(user, required_permission),
+        })
+    return catalog
+
+
+def normalize_hermes_task_action_params(params: dict[str, object]) -> dict[str, object]:
+    title = str(params.get("title") or "").strip()
+    if not title:
+        raise ValueError("업무 제목을 입력해주세요.")
+    priority = str(params.get("priority") or "보통").strip()
+    if priority not in {"낮음", "보통", "높음"}:
+        raise ValueError("우선순위는 낮음/보통/높음 중 하나여야 합니다.")
+    status = str(params.get("status") or "대기").strip()
+    if status not in {"대기", "진행중", "보류"}:
+        raise ValueError("새 업무 상태는 대기/진행중/보류 중 하나여야 합니다.")
+    return {
+        "title": title[:160],
+        "description": str(params.get("description") or "").strip()[:2000],
+        "assignee_user_id": str(params.get("assignee_user_id") or "").strip(),
+        "assignee_name": str(params.get("assignee_name") or "").strip(),
+        "due_at": str(params.get("due_at") or "").strip(),
+        "priority": priority,
+        "status": status,
+        "source": "hermes",
+    }
+
+
+def preview_hermes_workhub_action(action_id: object, params: dict[str, object], user: dict[str, object]) -> dict[str, object]:
+    action = hermes_workhub_action_by_id(action_id)
+    if action["id"] == "crm.create_task":
+        normalized = normalize_hermes_task_action_params(params)
+        assignee = normalized["assignee_name"] or normalized["assignee_user_id"] or "미정"
+        preview = {
+            "title": "업무관리 새 업무 등록",
+            "message": "승인하면 업무관리 보드에 새 업무가 생성됩니다.",
+            "items": [
+                {"label": "업무 제목", "value": normalized["title"]},
+                {"label": "담당자", "value": assignee},
+                {"label": "마감일", "value": normalized["due_at"] or "없음"},
+                {"label": "우선순위", "value": normalized["priority"]},
+                {"label": "상태", "value": normalized["status"]},
+            ],
+        }
+        return {
+            "action": action,
+            "params": normalized,
+            "preview": preview,
+            "can_execute": user_has_permission(user, str(action.get("required_permission") or "")),
+        }
+    raise ValueError("지원하지 않는 Workhub 실행 액션입니다.")
+
+
+def execute_hermes_workhub_action(action_id: object, params: dict[str, object], user: dict[str, object]) -> dict[str, object]:
+    preview_payload = preview_hermes_workhub_action(action_id, params, user)
+    action = preview_payload["action"]
+    if not user_has_permission(user, str(action.get("required_permission") or "")):
+        raise PermissionError(f"{action.get('required_label') or '실행'} 권한이 없습니다.")
+    if action["id"] == "crm.create_task":
+        normalized = dict(preview_payload["params"])
+        task_id = save_crm_task(DB_PATH, normalized, user)
+        public_id = task_public_id(task_id)
+        message = f"{public_id} 업무가 등록됐습니다."
+        append_hermes_history(
+            "Workhub 실행",
+            "업무관리 새 업무 등록",
+            "성공",
+            message,
+            {"category": "automation", "action_id": str(action["id"]), "task_id": str(task_id)},
+        )
+        return {
+            "ok": True,
+            "action_id": action["id"],
+            "task_id": task_id,
+            "public_id": public_id,
+            "message": message,
+            "preview": preview_payload["preview"],
+        }
+    raise ValueError("지원하지 않는 Workhub 실행 액션입니다.")
 
 
 def contact_from_row(row: sqlite3.Row) -> dict[str, str]:
@@ -29366,6 +34800,122 @@ def save_vendor_contacts_bulk(new_contacts: list[dict[str, str]]) -> tuple[list[
     finally:
         connection.close()
     return load_vendor_contacts(), saved_count
+
+
+def vendor_mail_log_from_row(row: sqlite3.Row) -> dict[str, object]:
+    def parse_json_list(value: object) -> list[object]:
+        try:
+            loaded = json.loads(str(value or "[]"))
+        except json.JSONDecodeError:
+            return []
+        return loaded if isinstance(loaded, list) else []
+
+    bcc_emails = [str(item) for item in parse_json_list(row["bcc_emails"]) if str(item).strip()]
+    bcc_vendors = [
+        item
+        for item in parse_json_list(row["bcc_vendors"])
+        if isinstance(item, dict)
+    ]
+    return {
+        "id": int(row["id"]),
+        "created_at": str(row["created_at"] or ""),
+        "mail_type": str(row["mail_type"] or ""),
+        "status": str(row["status"] or ""),
+        "vendor_type": str(row["vendor_type"] or ""),
+        "vendor_type_label": vendor_type_label(row["vendor_type"]),
+        "vendor_name": str(row["vendor_name"] or ""),
+        "recipient_email": str(row["recipient_email"] or ""),
+        "bcc_emails": bcc_emails,
+        "bcc_vendors": bcc_vendors,
+        "recipient_count": int(row["recipient_count"] or 0),
+        "batch_count": int(row["batch_count"] or 1),
+        "subject": str(row["subject"] or ""),
+        "body": str(row["body"] or ""),
+        "error": str(row["error"] or ""),
+        "sent_by": str(row["sent_by"] or ""),
+    }
+
+
+def save_vendor_mail_send_log(
+    payload: dict,
+    status: str,
+    error: str = "",
+    sent_by: str = "",
+    mail_type: str = "stock_notice",
+) -> dict[str, object]:
+    init_db()
+    bcc_emails = normalize_mail_recipients(payload.get("bcc_emails") or payload.get("bcc_recipients"))
+    bcc_vendors = payload.get("bcc_vendors") if isinstance(payload.get("bcc_vendors"), list) else []
+    recipient_email = str(payload.get("recipient_email") or "").strip()
+    recipient_count = len(bcc_emails) if bcc_emails else (1 if recipient_email else 0)
+    batch_count = clean_int_setting(payload.get("batch_count"), 1, 1, 10000)
+    timestamp = now_text()
+    connection = connect_db()
+    try:
+        cursor = connection.execute(
+            """
+            INSERT INTO vendor_mail_send_logs (
+                created_at, mail_type, status, vendor_type, vendor_name, recipient_email,
+                bcc_emails, bcc_vendors, recipient_count, batch_count, subject, body, error, sent_by
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                timestamp,
+                mail_type,
+                "sent" if status == "sent" else "failed",
+                normalize_vendor_type(payload.get("vendor_type")),
+                str(payload.get("vendor_name") or "").strip(),
+                recipient_email,
+                json.dumps(bcc_emails, ensure_ascii=False),
+                json.dumps(bcc_vendors, ensure_ascii=False),
+                recipient_count,
+                batch_count,
+                str(payload.get("subject") or "").strip(),
+                str(payload.get("body") or "").strip(),
+                str(error or "").strip(),
+                str(sent_by or "").strip(),
+            ),
+        )
+        connection.commit()
+        row = connection.execute(
+            "SELECT * FROM vendor_mail_send_logs WHERE id = ?",
+            (cursor.lastrowid,),
+        ).fetchone()
+    finally:
+        connection.close()
+    return vendor_mail_log_from_row(row)
+
+
+def list_vendor_mail_send_logs(mail_type: str = "stock_notice", limit: int = 20) -> list[dict[str, object]]:
+    init_db()
+    limit = min(max(int(limit or 20), 1), 200)
+    connection = connect_db()
+    try:
+        if mail_type:
+            rows = connection.execute(
+                """
+                SELECT *
+                  FROM vendor_mail_send_logs
+                 WHERE mail_type = ?
+                 ORDER BY id DESC
+                 LIMIT ?
+                """,
+                (mail_type, limit),
+            ).fetchall()
+        else:
+            rows = connection.execute(
+                """
+                SELECT *
+                  FROM vendor_mail_send_logs
+                 ORDER BY id DESC
+                 LIMIT ?
+                """,
+                (limit,),
+            ).fetchall()
+    finally:
+        connection.close()
+    return [vendor_mail_log_from_row(row) for row in rows]
 
 
 def header_text(value: object) -> str:
@@ -29589,11 +35139,37 @@ def mark_cs_case_mail_sent(case_id: int, payload: dict) -> None:
         connection.close()
 
 
-def send_cs_mail(payload: dict, attachments: list[dict[str, object]] | None = None) -> None:
+def normalize_mail_recipients(value: object) -> list[str]:
+    raw_items: list[object]
+    if isinstance(value, (list, tuple, set)):
+        raw_items = list(value)
+    else:
+        raw_items = re.split(r"[,;\n]+", str(value or ""))
+    recipients: list[str] = []
+    seen: set[str] = set()
+    for item in raw_items:
+        email = str(item or "").strip()
+        if not email or "@" not in email:
+            continue
+        key = email.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        recipients.append(email)
+    return recipients
+
+
+def chunk_mail_recipients(recipients: list[str], size: int) -> list[list[str]]:
+    size = max(int(size or 1), 1)
+    return [recipients[index:index + size] for index in range(0, len(recipients), size)]
+
+
+def send_cs_mail(payload: dict, attachments: list[dict[str, object]] | None = None) -> dict[str, int]:
     saved = load_mail_settings(include_password=True)
     naver_email = normalize_naver_email(payload.get("naver_email")) or str(saved.get("naver_email", ""))
     naver_password = str(payload.get("naver_password") or saved.get("naver_password", ""))
     recipient = str(payload.get("recipient_email", "")).strip()
+    bcc_recipients = normalize_mail_recipients(payload.get("bcc_emails") or payload.get("bcc_recipients"))
     subject = str(payload.get("subject", "")).strip()
     body = str(payload.get("body", "")).strip()
 
@@ -29601,7 +35177,10 @@ def send_cs_mail(payload: dict, attachments: list[dict[str, object]] | None = No
         raise ValueError("네이버 메일 아이디를 입력해주세요.")
     if not naver_password:
         raise ValueError("네이버 메일 비밀번호를 입력해주세요.")
-    if not recipient:
+    if not recipient and bcc_recipients:
+        recipient = naver_email
+    bcc_recipients = [email for email in bcc_recipients if email.lower() != recipient.lower()]
+    if not recipient and not bcc_recipients:
         raise ValueError("받는 업체 메일을 입력해주세요.")
     if not subject:
         raise ValueError("메일 제목을 입력해주세요.")
@@ -29610,17 +35189,30 @@ def send_cs_mail(payload: dict, attachments: list[dict[str, object]] | None = No
 
     if payload.get("save_credentials", True):
         save_mail_settings(naver_email, naver_password)
-    send_naver_mail(
-        naver_email,
-        naver_password,
-        recipient,
-        subject,
-        body,
-        smtp_port=int(saved.get("smtp_port") or NAVER_SMTP_PORT),
-        smtp_security=str(saved.get("smtp_security") or "ssl"),
-        attachments=attachments,
+    batch_size = clean_int_setting(
+        saved.get("bulk_batch_size"),
+        int(DEFAULT_MAIL_TECHNICAL_SETTINGS["bulk_batch_size"]),
+        1,
+        100,
     )
-    return
+    bcc_batches = chunk_mail_recipients(bcc_recipients, batch_size) if bcc_recipients else [[]]
+    for bcc_batch in bcc_batches:
+        send_naver_mail(
+            naver_email,
+            naver_password,
+            recipient,
+            subject,
+            body,
+            smtp_port=int(saved.get("smtp_port") or NAVER_SMTP_PORT),
+            smtp_security=str(saved.get("smtp_security") or "ssl"),
+            attachments=attachments,
+            bcc_recipients=bcc_batch,
+        )
+    return {
+        "recipient_count": len(bcc_recipients) if bcc_recipients else 1,
+        "batch_count": len(bcc_batches),
+        "batch_size": batch_size,
+    }
 
     message = EmailMessage()
     message["Subject"] = subject
@@ -29637,8 +35229,8 @@ def send_cs_mail(payload: dict, attachments: list[dict[str, object]] | None = No
         raise ValueError("네이버 메일 로그인에 실패했습니다. 아이디/비밀번호와 네이버 메일 SMTP 사용 설정을 확인해주세요.") from exc
 
 
-def send_general_mail(payload: dict, attachments: list[dict[str, object]] | None = None) -> None:
-    send_cs_mail(payload, attachments=attachments)
+def send_general_mail(payload: dict, attachments: list[dict[str, object]] | None = None) -> dict[str, int]:
+    return send_cs_mail(payload, attachments=attachments)
 
 
 def send_naver_mail(
@@ -29650,11 +35242,15 @@ def send_naver_mail(
     smtp_port: int = NAVER_SMTP_PORT,
     smtp_security: str = "ssl",
     attachments: list[dict[str, object]] | None = None,
+    bcc_recipients: list[str] | tuple[str, ...] | None = None,
 ) -> None:
     message = EmailMessage()
     message["Subject"] = subject
     message["From"] = formataddr(("(주)소일브릿지", naver_email))
     message["To"] = recipient
+    normalized_bcc = normalize_mail_recipients(bcc_recipients or [])
+    if normalized_bcc:
+        message["Bcc"] = ", ".join(normalized_bcc)
     message.set_content(body)
     for attachment in attachments or []:
         filename = str(attachment.get("filename") or "attachment")
@@ -29863,6 +35459,13 @@ class WorkhubHandler(BaseHTTPRequestHandler):
             self.send_json({"files": list_shared_files()})
             return
 
+        if self.path == "/api/automation-overview":
+            if not any(user_has_permission(user, permission) for permission in ("crm_view", "ledger_edit", "hermes_use")):
+                self.send_json({"error": "업무 자동화 점검 권한이 없습니다."}, status=403)
+                return
+            self.send_json(workhub_automation_overview(user))
+            return
+
         if self.path == "/api/hermes-status":
             if not self.require_permission(user, "hermes_use", "헤르메스"):
                 return
@@ -29873,6 +35476,12 @@ class WorkhubHandler(BaseHTTPRequestHandler):
             if not self.require_permission(user, "hermes_use", "헤르메스"):
                 return
             self.send_json({"history": list_hermes_history()})
+            return
+
+        if self.path == "/api/hermes-actions":
+            if not self.require_permission(user, "hermes_automation", "헤르메스 자동화 요청"):
+                return
+            self.send_json({"actions": hermes_workhub_action_catalog(user)})
             return
 
         if self.path == "/api/hermes-summary":
@@ -29894,6 +35503,12 @@ class WorkhubHandler(BaseHTTPRequestHandler):
             self.send_json({"files": list_sales_report_uploads()})
             return
 
+        if self.path == "/api/sales-automation-settings":
+            if not self.require_permission(user, "sales_report_manage", "매출 자동화 설정"):
+                return
+            self.send_json(load_sales_automation_settings())
+            return
+
         if self.path.startswith("/api/sales-report-dashboard"):
             if not self.require_permission(user, "sales_report_manage", "매출현황"):
                 return
@@ -29904,6 +35519,44 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                 period=params.get("period", [""])[0],
                 report_date=params.get("date", [""])[0],
             ))
+            return
+
+        if self.path.startswith("/api/sales-report-detail"):
+            if not self.require_permission(user, "sales_report_manage", "매출현황"):
+                return
+            parsed = urlsplit(self.path)
+            params = parse_qs(parsed.query)
+            try:
+                self.send_json(sales_report_detail_payload(
+                    kind=params.get("kind", [""])[0],
+                    key=params.get("key", [""])[0],
+                    period=params.get("period", [""])[0],
+                ))
+            except Exception as exc:  # noqa: BLE001
+                self.send_json({"error": str(exc)}, status=400)
+            return
+
+        if self.path.startswith("/api/hermes-result-download"):
+            if not self.require_permission(user, "hermes_use", "헤르메스"):
+                return
+            parsed = urlsplit(self.path)
+            params = parse_qs(parsed.query)
+            try:
+                path, metadata = hermes_result_download_info(params.get("id", [""])[0])
+            except Exception as exc:  # noqa: BLE001
+                self.send_json({"error": str(exc)}, status=404)
+                return
+            data = path.read_bytes()
+            content_type = str(metadata.get("mime") or mimetypes.guess_type(str(path))[0] or "application/octet-stream")
+            filename = quote(str(metadata.get("original_name") or path.name))
+            self.send_response(200)
+            self.send_header("Content-Type", content_type)
+            self.send_header("Content-Disposition", f"attachment; filename*=UTF-8''{filename}")
+            self.send_header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
+            self.send_header("Pragma", "no-cache")
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
             return
 
         if self.path.startswith("/api/shared-file-download"):
@@ -30011,6 +35664,13 @@ class WorkhubHandler(BaseHTTPRequestHandler):
             self.send_json(leave_payload(user))
             return
 
+        if self.path == "/api/leave-notifications":
+            if not any(user_has_permission(user, permission) for permission in LEAVE_NOTIFICATION_PERMISSIONS):
+                self.send_json({"error": "연차 알림 조회 권한이 없습니다."}, status=403)
+                return
+            self.send_json({"notifications": list_leave_notifications(user)})
+            return
+
         if self.path == "/api/mail-settings":
             if not self.require_permission(user, "mail_send", "메일 발송"):
                 return
@@ -30021,6 +35681,19 @@ class WorkhubHandler(BaseHTTPRequestHandler):
             if not self.require_permission(user, "mail_send", "메일 발송"):
                 return
             self.send_json({"contacts": load_vendor_contacts()})
+            return
+
+        if self.path.startswith("/api/vendor-mail-send-logs"):
+            if not self.require_permission(user, "mail_send", "메일 발송"):
+                return
+            parsed = urlsplit(self.path)
+            params = parse_qs(parsed.query)
+            try:
+                limit = min(max(int(params.get("limit", ["20"])[0]), 1), 200)
+            except ValueError:
+                limit = 20
+            mail_type = params.get("mail_type", ["stock_notice"])[0]
+            self.send_json({"logs": list_vendor_mail_send_logs(mail_type=mail_type, limit=limit)})
             return
 
         if self.path == "/api/cs-followup-alerts":
@@ -30037,9 +35710,9 @@ class WorkhubHandler(BaseHTTPRequestHandler):
             year = params.get("year", [""])[0]
             month = params.get("month", [""])[0]
             try:
-                limit = min(max(int(params.get("limit", ["100"])[0]), 1), 5000)
+                limit = min(max(int(params.get("limit", ["500"])[0]), 1), 5000)
             except ValueError:
-                limit = 100
+                limit = 500
             self.send_json({"cases": list_cs_cases(query=query, status=status, limit=limit, year=year, month=month)})
             return
 
@@ -30049,11 +35722,28 @@ class WorkhubHandler(BaseHTTPRequestHandler):
             query = params.get("q", [""])[0]
             year = params.get("year", [""])[0]
             month = params.get("month", [""])[0]
+            filters = management_filters_from_params(params)
             try:
-                limit = min(max(int(params.get("limit", ["100"])[0]), 1), 5000)
+                limit = min(max(int(params.get("limit", ["500"])[0]), 1), 50000)
             except ValueError:
-                limit = 100
-            self.send_json({"records": list_management_records(query=query, limit=limit, year=year, month=month)})
+                limit = 500
+            self.send_json({"records": list_management_records(query=query, limit=limit, year=year, month=month, filters=filters)})
+            return
+
+        if self.path.startswith("/api/management-filter-options"):
+            parsed = urlsplit(self.path)
+            params = parse_qs(parsed.query)
+            query = params.get("q", [""])[0]
+            year = params.get("year", [""])[0]
+            month = params.get("month", [""])[0]
+            field = params.get("field", [""])[0]
+            search = params.get("search", [""])[0]
+            filters = management_filters_from_params(params)
+            try:
+                options = list_management_filter_options(field, query=query, year=year, month=month, filters=filters, search=search)
+                self.send_json({"options": options})
+            except Exception as exc:  # noqa: BLE001
+                self.send_json({"error": str(exc)}, status=400)
             return
 
         if self.path == "/api/management-periods":
@@ -30102,6 +35792,22 @@ class WorkhubHandler(BaseHTTPRequestHandler):
             if not self.require_permission(user, "crm_view", "CRM 조회"):
                 return
             self.send_json(crm_dashboard_payload(DB_PATH))
+            return
+
+        if self.path.startswith("/api/crm-daily-logs"):
+            if not self.require_permission(user, "crm_view", "CRM 조회"):
+                return
+            parsed = urlsplit(self.path)
+            params = parse_qs(parsed.query)
+            try:
+                filter_user_id = int(params.get("user_id", ["0"])[0] or 0) or None
+            except ValueError:
+                filter_user_id = None
+            self.send_json(list_crm_daily_logs(
+                DB_PATH,
+                log_date=params.get("date", [""])[0],
+                user_id=filter_user_id,
+            ))
             return
 
         if self.path.startswith("/api/crm-accounts"):
@@ -30205,6 +35911,10 @@ class WorkhubHandler(BaseHTTPRequestHandler):
             self.send_json({"shipments": list_cargo_shipments()})
             return
 
+        if self.path == "/api/notices":
+            self.send_json({"notices": list_portal_notices()})
+            return
+
         self.send_error(404)
 
     def do_POST(self) -> None:
@@ -30275,6 +35985,23 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                 self.send_json({"error": "로그인이 필요합니다."}, status=401)
                 return
 
+            if self.path == "/api/sales-automation-settings":
+                if not self.require_permission(user, "sales_report_manage", "매출 자동화 설정"):
+                    return
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(length).decode("utf-8") or "{}")
+                settings = save_sales_automation_settings(payload if isinstance(payload, dict) else {})
+                self.send_json({"message": "매출 자동화 설정을 저장했습니다.", "settings": settings})
+                return
+
+            if self.path == "/api/sales-automation-scan":
+                if not self.require_permission(user, "sales_report_manage", "매출 자동 스캔"):
+                    return
+                uploaded_by = str(user.get("display_name") or user.get("username") or SALES_REPORT_NAS_UPLOADER)
+                result = scan_sales_report_nas_folder(uploaded_by=uploaded_by)
+                self.send_json({"message": result.get("message") or "스캔을 완료했습니다.", "result": result, "files": list_sales_report_uploads()})
+                return
+
             if self.path == "/api/internal-message-save":
                 length = int(self.headers.get("Content-Length", "0"))
                 payload = json.loads(self.rfile.read(length).decode("utf-8") or "{}")
@@ -30298,6 +36025,20 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                 payload = json.loads(self.rfile.read(length).decode("utf-8"))
                 task_id = save_crm_task(DB_PATH, payload, user)
                 self.send_json({"message": "CRM 업무를 저장했습니다.", "task_id": task_id})
+                return
+
+            if self.path == "/api/crm-daily-log-save":
+                if not self.require_permission(user, "crm_view", "CRM 조회"):
+                    return
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(length).decode("utf-8"))
+                log_id = save_crm_daily_log(
+                    DB_PATH,
+                    payload,
+                    user,
+                    can_manage=user_has_permission(user, "crm_manage"),
+                )
+                self.send_json({"message": "일일 업무일지를 저장했습니다.", "log_id": log_id})
                 return
 
             if self.path == "/api/crm-task-status":
@@ -30434,9 +36175,30 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                 message = clean_payload_text(payload, "message")
                 if not message:
                     raise ValueError("헤르메스에 보낼 내용을 입력해주세요.")
+                chat_mode = normalize_hermes_chat_mode(payload.get("mode"))
+                intent = hermes_chat_intent(message, chat_mode)
+                effective_mode = chat_mode
+                if chat_mode == "auto":
+                    if intent == "web_search":
+                        effective_mode = "search"
+                    elif intent == "image_generation":
+                        effective_mode = "image"
+                    else:
+                        effective_mode = "automation"
+                user_label = str(user.get("display_name") or user.get("username") or "")
+                workhub_context = (
+                    hermes_workhub_context_snapshot(message)
+                    if effective_mode not in {"general", "search", "image"}
+                    else {}
+                )
                 request_payload = {
                     "message": message,
+                    "intent": intent,
+                    "mode": effective_mode,
+                    "requested_mode": chat_mode,
                     "source": "workhub",
+                    "capabilities": hermes_capabilities_payload(intent, effective_mode),
+                    "workhub_context": workhub_context,
                     "user": {
                         "id": int(user.get("id") or 0),
                         "username": user.get("username", ""),
@@ -30445,10 +36207,51 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                 }
                 try:
                     result = hermes_request("chat_path", request_payload)
-                    append_hermes_history("AI 업무채팅", message, "성공", json.dumps(result.get("data", {}), ensure_ascii=False)[:1000])
-                    self.send_json({"message": "헤르메스 응답을 받았습니다.", "result": result})
+                    data = result.get("data", {}) if isinstance(result.get("data"), dict) else {}
+                    generated_file = save_hermes_generated_image(
+                        data,
+                        user_label,
+                    ) if intent == "image_generation" else None
+                    answer_text = str(data.get("answer") or data.get("text") or hermes_result_text(result) or "응답을 받았습니다.")
+                    result_files = []
+                    if generated_file:
+                        data["generated_file"] = generated_file
+                        result_files.append(generated_file)
+                        answer_text = f"{answer_text or '이미지를 생성했습니다.'}\n다운로드: {generated_file['download_url']}"
+                        answer_text = f"{answer_text}\n업무파일 저장은 결과 링크의 저장 버튼을 눌러 승인하면 진행됩니다."
+                        data["answer"] = answer_text
+                        data["text"] = answer_text
+                        result["data"] = data
+                    elif intent == "image_generation" and data.get("image_url"):
+                        answer_text = f"{answer_text or '이미지를 생성했습니다.'}\n이미지 URL: {data['image_url']}"
+                        data["answer"] = answer_text
+                        data["text"] = answer_text
+                        result["data"] = data
+                    if hermes_text_result_requested(message):
+                        text_file = save_hermes_text_result(answer_text, effective_mode, user_label)
+                        if text_file:
+                            data["generated_text_file"] = text_file
+                            result_files.append(text_file)
+                    if result_files:
+                        data["generated_files"] = result_files
+                        result["data"] = data
+                    append_hermes_history(
+                        "AI 업무채팅",
+                        message,
+                        "성공",
+                        json.dumps(data, ensure_ascii=False)[:1000],
+                        {"category": "chat", "intent": intent, "mode": effective_mode},
+                    )
+                    self.send_json({
+                        "message": "헤르메스 응답을 받았습니다.",
+                        "result": result,
+                        "intent": intent,
+                        "mode": effective_mode,
+                        "files": result_files,
+                        "image_url": data.get("image_url", ""),
+                    })
                 except Exception as exc:
-                    append_hermes_history("AI 업무채팅", message, "실패", str(exc))
+                    append_hermes_history("AI 업무채팅", message, "실패", str(exc), {"category": "chat", "intent": intent, "mode": effective_mode})
                     raise
                 return
 
@@ -30457,6 +36260,43 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                     return
                 summary = summarize_hermes_chat_history()
                 self.send_json({"message": "헤르메스 채팅 요약을 저장했습니다.", "summary": summary})
+                return
+
+            if self.path == "/api/hermes-result-save":
+                if not self.require_permission(user, "hermes_use", "헤르메스"):
+                    return
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(length).decode("utf-8") or "{}")
+                uploaded_by = str(user.get("display_name") or user.get("username") or "")
+                saved = save_hermes_result_to_shared(payload.get("id"), uploaded_by)
+                self.send_json({
+                    "message": "업무파일에 저장했습니다.",
+                    "file": saved,
+                    "files": list_shared_files(),
+                })
+                return
+
+            if self.path == "/api/hermes-action-preview":
+                if not self.require_permission(user, "hermes_automation", "헤르메스 자동화 요청"):
+                    return
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(length).decode("utf-8") or "{}")
+                action_id, params = hermes_workhub_action_request(payload)
+                preview = preview_hermes_workhub_action(action_id, params, user)
+                self.send_json({"message": "실행 전 미리보기를 만들었습니다.", **preview})
+                return
+
+            if self.path == "/api/hermes-action-execute":
+                if not self.require_permission(user, "hermes_automation", "헤르메스 자동화 요청"):
+                    return
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(length).decode("utf-8") or "{}")
+                action_id, params = hermes_workhub_action_request(payload)
+                action = hermes_workhub_action_by_id(action_id)
+                if not self.require_permission(user, str(action.get("required_permission") or ""), str(action.get("required_label") or "Workhub 실행")):
+                    return
+                result = execute_hermes_workhub_action(action_id, params, user)
+                self.send_json({"message": result.get("message") or "Workhub 실행을 완료했습니다.", "result": result})
                 return
 
             if self.path == "/api/hermes-automation":
@@ -30472,6 +36312,8 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                     "title": title,
                     "body": body,
                     "source": "workhub",
+                    "capabilities": hermes_capabilities_payload("automation"),
+                    "workhub_context": hermes_workhub_context_snapshot(f"{title}\n{body}"),
                     "user": {
                         "id": int(user.get("id") or 0),
                         "username": user.get("username", ""),
@@ -30575,6 +36417,18 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                 self.send_json({"message": "\uC5F0\uCC28 \uC2E0\uCCAD\uC744 \uCDE8\uC18C\uD588\uC2B5\uB2C8\uB2E4."})
                 return
 
+            if self.path == "/api/leave-notifications-read":
+                if not any(user_has_permission(user, permission) for permission in LEAVE_NOTIFICATION_PERMISSIONS):
+                    self.send_json({"error": "연차 알림 읽음 처리 권한이 없습니다."}, status=403)
+                    return
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(length).decode("utf-8")) if length else {}
+                if not isinstance(payload, dict):
+                    raise ValueError("연차 알림 읽음 처리 형식이 올바르지 않습니다.")
+                updated = mark_leave_notifications_read(user, payload.get("ids") or [])
+                self.send_json({"message": "연차 알림을 확인 처리했습니다.", "updated": updated})
+                return
+
             if self.path == "/api/leave-accrual":
                 if not self.require_permission(user, "leave_manage", "\uC5F0\uCC28 \uAD00\uB9AC"):
                     return
@@ -30643,8 +36497,33 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                     return
                 length = int(self.headers.get("Content-Length", "0"))
                 payload = json.loads(self.rfile.read(length).decode("utf-8"))
-                send_general_mail(payload)
-                self.send_json({"message": "메일 발송이 완료되었습니다."})
+                sent_by = str(user.get("username") or user.get("name") or "")
+                try:
+                    result = send_general_mail(payload)
+                except Exception as exc:  # noqa: BLE001
+                    failed_payload = {**payload, "batch_count": 1}
+                    log = save_vendor_mail_send_log(failed_payload, "failed", error=str(exc), sent_by=sent_by)
+                    self.send_json(
+                        {
+                            "error": str(exc),
+                            "log": log,
+                            "logs": list_vendor_mail_send_logs(mail_type="stock_notice", limit=20),
+                        },
+                        status=400,
+                    )
+                    return
+                success_payload = {**payload, "batch_count": result.get("batch_count", 1)}
+                log = save_vendor_mail_send_log(success_payload, "sent", sent_by=sent_by)
+                batch_count = int(result.get("batch_count", 1))
+                recipient_count = int(result.get("recipient_count", log.get("recipient_count", 0)))
+                self.send_json({
+                    "message": f"공지 메일을 {recipient_count}곳에 숨은참조 방식으로 {batch_count}회 나눠 발송했습니다.",
+                    "batch_count": batch_count,
+                    "recipient_count": recipient_count,
+                    "batch_size": int(result.get("batch_size", 0)),
+                    "log": log,
+                    "logs": list_vendor_mail_send_logs(mail_type="stock_notice", limit=20),
+                })
                 return
 
             if self.path == "/api/cs-mail":
@@ -30795,6 +36674,15 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                 self.send_json({"message": "수입제품 입고 진행 상황을 저장했습니다.", "shipment_id": shipment_id})
                 return
 
+            if self.path == "/api/import-shipment-delete":
+                if not self.require_permission(user, "import_shipment_manage", "수입제품 진행 관리"):
+                    return
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(length).decode("utf-8") or "{}")
+                deleted = delete_import_shipment(int(payload.get("id") or 0))
+                self.send_json({"message": "수입제품 입고 일정을 삭제했습니다.", "deleted": deleted})
+                return
+
             if self.path == "/api/cargo-shipment-save":
                 if not (user_has_permission(user, "notice_manage") or user_has_permission(user, "import_shipment_manage")):
                     self.send_json({"error": "화물 입출고건 입력 권한이 없습니다."}, status=403)
@@ -30803,6 +36691,34 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                 payload = json.loads(self.rfile.read(length).decode("utf-8"))
                 cargo_id = save_cargo_shipment(payload)
                 self.send_json({"message": "화물 입출고건을 저장했습니다.", "shipment_id": cargo_id})
+                return
+
+            if self.path == "/api/cargo-shipment-delete":
+                if not (user_has_permission(user, "notice_manage") or user_has_permission(user, "import_shipment_manage")):
+                    self.send_json({"error": "화물 입출고건 입력 권한이 없습니다."}, status=403)
+                    return
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(length).decode("utf-8") or "{}")
+                deleted = delete_cargo_shipment(int(payload.get("id") or 0))
+                self.send_json({"message": "화물 입출고건을 삭제했습니다.", "deleted": deleted})
+                return
+
+            if self.path == "/api/notice-save":
+                if not self.require_permission(user, "notice_manage", "공지사항 관리"):
+                    return
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(length).decode("utf-8") or "{}")
+                saved = save_portal_notice(payload, user)
+                self.send_json({"message": "공지사항을 저장했습니다.", "notice": saved, "notices": list_portal_notices()})
+                return
+
+            if self.path == "/api/notice-delete":
+                if not self.require_permission(user, "notice_manage", "공지사항 관리"):
+                    return
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(length).decode("utf-8") or "{}")
+                deleted = delete_portal_notice(int(payload.get("id") or 0))
+                self.send_json({"message": "공지사항을 삭제했습니다.", "deleted": deleted, "notices": list_portal_notices()})
                 return
 
             if self.path == "/api/import-shipment-complete":
@@ -31134,6 +37050,7 @@ def run(host: str = "127.0.0.1", port: int = 8765) -> None:
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     init_db()
     start_backup_scheduler()
+    start_sales_report_nas_scheduler()
     start_sales_report_alert_scheduler()
     server = ThreadingHTTPServer((host, port), WorkhubHandler)
     print(f"(주)소일브릿지 발주 업무자동화 앱 실행 중: http://{host}:{port}")
