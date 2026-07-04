@@ -2062,6 +2062,9 @@ HTML = r"""<!doctype html>
       font-weight: 800;
       line-height: 1.45;
     }
+    .sales-upload-status[hidden] {
+      display: none !important;
+    }
     .sales-upload-panel {
       display: grid;
       grid-template-columns: minmax(0, 1fr) auto;
@@ -23950,7 +23953,7 @@ ADMIN_WORKSPACE_HTML = r"""
                 <input id="salesReportFileInput" name="sales_report" type="file" accept=".xlsx,.xlsm,.xls,.csv,.zip" hidden />
                 <button class="sales-upload-button" id="salesReportManualUpload" type="button">매출표 업로드</button>
               </div>
-              <div class="sales-upload-status">
+              <div class="sales-upload-status" hidden>
                 <div id="salesReportUploadMessage">매출표 파일을 직접 업로드해서 현황을 갱신합니다.</div>
                 <div id="salesReportRecentList">업로드된 매출표가 없습니다.</div>
               </div>
