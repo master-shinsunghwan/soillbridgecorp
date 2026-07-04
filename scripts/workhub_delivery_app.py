@@ -2227,6 +2227,35 @@ HTML = r"""<!doctype html>
       grid-template-columns: repeat(4, minmax(140px, 1fr));
       gap: 8px;
     }
+    .import-cost-result-card {
+      border: 2px solid #2563eb;
+      background: linear-gradient(180deg, #eff6ff 0%, #ffffff 42%);
+      box-shadow: 0 14px 32px rgba(37, 99, 235, 0.16);
+    }
+    .import-cost-result-card .admin-section-title {
+      align-items: center;
+      color: #0f172a;
+      font-size: 15px;
+    }
+    .import-cost-result-card .admin-section-title::before {
+      content: "";
+      width: 8px;
+      height: 26px;
+      border-radius: 999px;
+      background: #2563eb;
+      display: inline-block;
+      margin-right: 8px;
+      vertical-align: middle;
+    }
+    .import-cost-result-card .import-cost-summary-card {
+      border-color: #93b7ff;
+      background: #ffffff;
+      box-shadow: inset 3px 0 0 #2563eb;
+    }
+    .import-cost-result-card .import-cost-summary-card strong {
+      font-size: 22px;
+      color: #0b1f4d;
+    }
     .import-cost-charge-summary {
       display: grid;
       grid-template-columns: repeat(4, minmax(140px, 1fr));
@@ -15774,6 +15803,12 @@ HTML = r"""<!doctype html>
       return `$${number.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
     }
 
+    function formatImportCostRate(value) {
+      const number = Number(String(value ?? "").replace(/,/g, "") || 0);
+      if (!Number.isFinite(number) || number <= 0) return "";
+      return number.toLocaleString("ko-KR", { minimumFractionDigits: 0, maximumFractionDigits: 4 });
+    }
+
     const importCostWonInputIds = new Set([
       "importCostDocFee",
       "importCostDuty",
@@ -16020,7 +16055,7 @@ HTML = r"""<!doctype html>
         <tr>
           <td>${escapeHtml(report.hbl_no || "-")}</td>
           <td>${escapeHtml(report.invoice_no || "-")}</td>
-          <td>${escapeHtml(report.remittance_rate || "-")}</td>
+          <td>${escapeHtml(formatImportCostRate(report.remittance_rate) || "-")}</td>
           <td>${formatImportCostWon(report.landed_total || 0)}</td>
           <td>${escapeHtml(report.updated_at || "-")}</td>
           <td>
@@ -25368,6 +25403,26 @@ IMPORT_COST_WORKSPACE_HTML = r"""
             <div class="import-cost-run-status" id="importCostRunStatus">대기 중 · 인보이스, 패킹리스트, 수입정산서를 선택해주세요.</div>
             <div class="import-cost-detail-list" id="importCostDetailList"></div>
           </section>
+          <section class="import-cost-card import-cost-result-card">
+            <div class="admin-section-title">계산 결과</div>
+            <div class="import-cost-summary" id="importCostSummary"></div>
+            <div class="import-cost-table-wrap">
+              <table class="import-cost-table">
+                <thead>
+                  <tr>
+                    <th>제품명</th>
+                    <th>수량</th>
+                    <th>매입원가</th>
+                    <th>배부비용</th>
+                    <th>총 수입원가</th>
+                    <th>개당 원가</th>
+                    <th>배부율</th>
+                  </tr>
+                </thead>
+                <tbody id="importCostResultBody"></tbody>
+              </table>
+            </div>
+          </section>
           <section class="import-cost-card">
             <div class="admin-section-title">저장된 수입 원가 데이터</div>
             <div class="import-cost-upload-panel">
@@ -25462,26 +25517,6 @@ IMPORT_COST_WORKSPACE_HTML = r"""
               <button class="workspace-button" type="button" id="importCostCalculate">제품별 원가 계산</button>
               <button class="workspace-button" type="button" id="importCostExportReport">보고서 엑셀 출력</button>
               <span id="importCostMessage">인보이스와 패킹리스트 값을 입력해주세요.</span>
-            </div>
-          </section>
-          <section class="import-cost-card">
-            <div class="admin-section-title">계산 결과</div>
-            <div class="import-cost-summary" id="importCostSummary"></div>
-            <div class="import-cost-table-wrap">
-              <table class="import-cost-table">
-                <thead>
-                  <tr>
-                    <th>제품명</th>
-                    <th>수량</th>
-                    <th>매입원가</th>
-                    <th>배부비용</th>
-                    <th>총 수입원가</th>
-                    <th>개당 원가</th>
-                    <th>배부율</th>
-                  </tr>
-                </thead>
-                <tbody id="importCostResultBody"></tbody>
-              </table>
             </div>
           </section>
         </div>
@@ -30066,7 +30101,13 @@ def can_view_automation_center(user: dict[str, object] | None) -> bool:
 
 
 def can_view_import_cost_program(user: dict[str, object] | None) -> bool:
-    return can_view_automation_center(user)
+    if can_view_automation_center(user):
+        return True
+    if not user:
+        return False
+    username = str(user.get("username") or "").strip()
+    display_name = str(user.get("display_name") or "").strip()
+    return username == "신성민 대표" or display_name == "신성민 대표" or display_name.startswith("신성민")
 
 
 def import_cost_decimal(value: object, default: str = "0") -> Decimal:

@@ -1109,7 +1109,7 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         self.assertNotIn('id="adminToolsNavGroup"', html_source)
         self.assertIn('mode === "userAdmin" && (!userAdminWorkspace || currentUser.role !== "admin")', html_source)
 
-    def test_import_cost_program_is_limited_to_admin_and_director(self) -> None:
+    def test_import_cost_program_is_limited_to_admin_director_and_ceo(self) -> None:
         app = self.load_app()
 
         admin_html = app.render_app_html({
@@ -1124,6 +1124,12 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
             "role": "user",
             "permissions": ["ledger_edit"],
         })
+        ceo_html = app.render_app_html({
+            "username": "ceo",
+            "display_name": "신성민 대표",
+            "role": "user",
+            "permissions": ["ledger_edit"],
+        })
         staff_html = app.render_app_html({
             "username": "staff",
             "display_name": "직원",
@@ -1135,6 +1141,8 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         self.assertIn('id="importCostWorkspace"', admin_html)
         self.assertIn('id="importCostNavGroup"', director_html)
         self.assertIn('id="importCostWorkspace"', director_html)
+        self.assertIn('id="importCostNavGroup"', ceo_html)
+        self.assertIn('id="importCostWorkspace"', ceo_html)
         self.assertNotIn('id="importCostNavGroup"', staff_html)
         self.assertNotIn('id="importCostWorkspace"', staff_html)
         self.assertIn("function calculateImportCost()", admin_html)
@@ -1150,6 +1158,7 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         self.assertIn("const importCostWonInputIds = new Set", admin_html)
         self.assertIn("function normalizeImportCostMoneyValue", admin_html)
         self.assertIn("function formatImportCostMoneyInput", admin_html)
+        self.assertIn("function formatImportCostRate", admin_html)
         self.assertIn('id="importCostDocFee" type="text" inputmode="numeric"', admin_html)
         self.assertIn('id="importCostImportVat" type="text" inputmode="numeric"', admin_html)
         self.assertIn('placeholder="예) 2,191,192원"', admin_html)
@@ -1164,6 +1173,9 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         self.assertIn('id="importCostExportReport"', admin_html)
         self.assertIn('id="importCostSaveReport"', admin_html)
         self.assertIn('id="importCostSavedBody"', admin_html)
+        self.assertIn('class="import-cost-card import-cost-result-card"', admin_html)
+        self.assertLess(admin_html.index('id="importCostResultBody"'), admin_html.index('id="importCostSavedBody"'))
+        self.assertIn("formatImportCostRate(report.remittance_rate)", admin_html)
         self.assertIn("function loadImportCostSavedReports", admin_html)
         self.assertIn("function saveCurrentImportCostReport", admin_html)
         self.assertIn('"/api/import-cost-report-save"', admin_html)
