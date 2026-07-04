@@ -398,6 +398,8 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         self.assertIn('data-hermes-chat-mode="general"', html_source)
         self.assertIn('data-hermes-chat-mode="search"', html_source)
         self.assertIn('data-hermes-chat-mode="image"', html_source)
+        self.assertIn("Workhub 업무 자동화와 분리해서 일반 Codex/GPT 영역으로 답합니다.", html_source)
+        self.assertIn("생성된 파일은 먼저 다운로드 링크를 제공하고, 업무파일 저장은 승인 후에만 처리합니다.", html_source)
         self.assertIn("function setHermesChatMode(mode)", html_source)
         self.assertIn('effective_mode not in {"general", "search", "image"}', html_source)
         self.assertIn('"workhub_context": workhub_context', html_source)
@@ -595,6 +597,8 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         self.assertIn('id="automationCenterPopup"', html_source)
         self.assertIn("automation-center-popup", html_source)
         self.assertIn("automation-center-body", html_source)
+        self.assertIn('id="automationLogBody"', html_source)
+        self.assertIn("/api/automation-operation-logs", html_source)
         self.assertIn("function canViewAutomationCenter()", html_source)
         self.assertIn("can_view_automation_center", html_source)
         self.assertIn("/api/automation-center", html_source)
@@ -605,6 +609,7 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         self.assertIn("execute_bulk_db_change", html_source)
         self.assertIn("execute_cs_bulk_mail", html_source)
         self.assertIn("execute_notice_auto", html_source)
+        self.assertIn("list_automation_operation_logs", html_source)
 
     def test_excel_style_filter_reset_controls_exist_for_ledgers(self) -> None:
         html_source = (ROOT / "scripts" / "workhub_delivery_app.py").read_text(encoding="utf-8")
@@ -617,6 +622,8 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         self.assertIn("delete managementFilters[activeManagementFilterField];", html_source)
         self.assertIn("Object.keys(ledgerFilters).forEach", html_source)
         self.assertIn("Object.keys(managementFilters).forEach", html_source)
+        self.assertIn('id="ledgerFilterScope"', html_source)
+        self.assertIn("월 전체 데이터에서 필터 후보를 보여주고", html_source)
         self.assertIn('ledgerFilterResetAll.addEventListener("click"', html_source)
 
     def test_ledger_filter_options_follow_other_active_filters(self) -> None:

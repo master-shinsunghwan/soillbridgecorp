@@ -1149,7 +1149,7 @@ HTML = r"""<!doctype html>
       white-space: pre-line;
     }
     .app-confirm-highlight {
-      display: inline-flex;
+      display: block;
       width: fit-content;
       max-width: 100%;
       padding: 5px 9px;
@@ -1158,6 +1158,7 @@ HTML = r"""<!doctype html>
       color: #155bc8;
       font-size: 12px;
       font-weight: 950;
+      white-space: pre-line;
       word-break: keep-all;
     }
     .app-confirm-actions {
@@ -3224,6 +3225,16 @@ HTML = r"""<!doctype html>
       font-weight: 800;
       line-height: 1.45;
     }
+    .hermes-scope-note {
+      padding: 9px 10px;
+      border: 1px solid #dbeafe;
+      border-radius: 8px;
+      background: #f8fbff;
+      color: #1e3a8a;
+      font-size: 12px;
+      font-weight: 850;
+      line-height: 1.45;
+    }
     .hermes-response {
       min-height: 48px;
       padding: 12px;
@@ -4563,6 +4574,17 @@ HTML = r"""<!doctype html>
       font-size: 13px;
       margin-bottom: 8px;
     }
+    .ledger-filter-scope {
+      margin: 0 0 8px;
+      padding: 7px 8px;
+      border: 1px solid #dbeafe;
+      border-radius: 7px;
+      background: #f8fbff;
+      color: #1e3a8a;
+      font-size: 11px;
+      font-weight: 850;
+      line-height: 1.45;
+    }
     .ledger-filter-option-list {
       max-height: 230px;
       overflow: auto;
@@ -5488,7 +5510,7 @@ HTML = r"""<!doctype html>
     .automation-center-main {
       padding: 16px;
       display: grid;
-      grid-template-rows: auto auto auto minmax(0, 1fr);
+      grid-template-rows: auto auto auto minmax(170px, 1fr) auto minmax(130px, .55fr);
       gap: 12px;
       overflow: hidden;
       background: #ffffff;
@@ -5534,6 +5556,43 @@ HTML = r"""<!doctype html>
       border: 1px solid #dbe4f0;
       border-radius: 8px;
       background: #fff;
+    }
+    .automation-log-panel {
+      min-height: 0;
+      overflow: auto;
+      border: 1px solid #dbe4f0;
+      border-radius: 8px;
+      background: #ffffff;
+    }
+    .automation-log-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+    }
+    .automation-log-table th {
+      position: sticky;
+      top: 0;
+      z-index: 1;
+      height: 32px;
+      padding: 0 8px;
+      background: #eef4ff;
+      border-bottom: 1px solid #dbe4f0;
+      color: #0f172a;
+      text-align: left;
+      font-weight: 950;
+      white-space: nowrap;
+    }
+    .automation-log-table td {
+      padding: 7px 8px;
+      border-bottom: 1px solid #edf2f7;
+      color: #334155;
+      vertical-align: top;
+    }
+    .automation-log-table .empty {
+      height: 64px;
+      color: #64748b;
+      text-align: center;
+      font-weight: 800;
     }
     .company-notice {
       margin: 0;
@@ -10402,6 +10461,13 @@ HTML = r"""<!doctype html>
           </div>
           <div class="automation-center-message" id="automationCenterMessage">기능을 선택하면 미리보기가 표시됩니다.</div>
           <div class="automation-preview-panel" id="automationPreviewPanel"></div>
+          <div class="automation-center-title">최근 실행 이력</div>
+          <div class="automation-log-panel">
+            <table class="automation-log-table">
+              <thead><tr><th>일시</th><th>기능</th><th>상태</th><th>실행자</th><th>백업</th><th>메시지</th></tr></thead>
+              <tbody id="automationLogBody"><tr><td class="empty" colspan="6">실행 이력을 불러오는 중입니다.</td></tr></tbody>
+            </table>
+          </div>
         </section>
       </div>
     </div>
@@ -11057,6 +11123,7 @@ HTML = r"""<!doctype html>
         <div class="ledger-filter-popover" id="ledgerFilterPopover">
           <div class="ledger-filter-title" id="ledgerFilterTitle">필터</div>
           <input class="ledger-filter-search" id="ledgerFilterSearch" type="text" placeholder="검색어 입력" />
+          <div class="ledger-filter-scope" id="ledgerFilterScope">현재 조회된 데이터 기준으로 필터링합니다.</div>
           <div class="ledger-filter-color" id="managementFilterColorControls">
             <button type="button" id="managementFilterColoredOnly">색상 표시된 셀만</button>
           </div>
@@ -11619,6 +11686,7 @@ HTML = r"""<!doctype html>
     const ledgerFilterPopover = document.querySelector("#ledgerFilterPopover");
     const ledgerFilterTitle = document.querySelector("#ledgerFilterTitle");
     const ledgerFilterSearch = document.querySelector("#ledgerFilterSearch");
+    const ledgerFilterScope = document.querySelector("#ledgerFilterScope");
     const ledgerFilterOptions = document.querySelector("#ledgerFilterOptions");
     const managementFilterColorControls = document.querySelector("#managementFilterColorControls");
     const managementFilterColoredOnly = document.querySelector("#managementFilterColoredOnly");
@@ -11953,6 +12021,7 @@ HTML = r"""<!doctype html>
     const automationCenterMessage = document.querySelector("#automationCenterMessage");
     const automationPreviewButton = document.querySelector("#automationPreviewButton");
     const automationExecuteButton = document.querySelector("#automationExecuteButton");
+    const automationLogBody = document.querySelector("#automationLogBody");
     const automationBulkField = document.querySelector("#automationBulkField");
     const automationBulkFind = document.querySelector("#automationBulkFind");
     const automationBulkReplace = document.querySelector("#automationBulkReplace");
@@ -12605,13 +12674,21 @@ HTML = r"""<!doctype html>
       return `${data.message || "백업 데이터 복원이 완료되었습니다."} 프로그램을 다시 실행하거나 로그아웃 후 다시 로그인해주세요.`;
     }
 
+    function backupRestoreWarning(targetName) {
+      return [
+        `복원 대상: ${targetName}`,
+        "현재 DB와 업무파일은 복원 데이터로 덮어씁니다.",
+        "실행 직전 현재 상태 예비 백업을 자동 생성합니다.",
+      ].join("\n");
+    }
+
     async function restoreBackupByName(name) {
       if (!await requestAppConfirm({
         kicker: "백업 복원",
         title: "백업 데이터로 현재 업무 데이터를 복원할까요?",
-        message: "복원 전 현재 데이터는 자동으로 예비 백업됩니다.",
-        highlight: name,
-        okText: "복원",
+        message: "복원은 되돌리기 영향이 큰 작업입니다. 아래 내용을 확인한 뒤 실행해주세요.",
+        highlight: backupRestoreWarning(name),
+        okText: "예비백업 후 복원",
         cancelText: "취소",
       })) return;
       backupMessage.textContent = "백업 데이터를 복원하는 중입니다.";
@@ -12635,9 +12712,9 @@ HTML = r"""<!doctype html>
       if (!await requestAppConfirm({
         kicker: "백업 파일 복원",
         title: "업로드한 파일로 현재 업무 데이터를 복원할까요?",
-        message: "복원 전 현재 데이터는 자동으로 예비 백업됩니다.",
-        highlight: file.name,
-        okText: "복원",
+        message: "복원은 되돌리기 영향이 큰 작업입니다. 아래 내용을 확인한 뒤 실행해주세요.",
+        highlight: backupRestoreWarning(file.name),
+        okText: "예비백업 후 복원",
         cancelText: "취소",
       })) {
         backupRestoreInput.value = "";
@@ -15260,9 +15337,9 @@ HTML = r"""<!doctype html>
     const HERMES_CHAT_MODE_HINTS = {
       auto: "자동선택: 요청에 맞는 Workhub 업무, 일반 AI, 검색, 이미지 기능을 자동으로 고릅니다.",
       automation: "업무자동화: Workhub 데이터와 업무 흐름을 우선으로 판단합니다.",
-      general: "일반 AI: Workhub 내부 기능에 억지로 묶지 않고 일반 Codex/GPT처럼 답합니다.",
-      search: "자료검색: 최신 정보와 웹 조사 요청을 검색 중심으로 처리합니다.",
-      image: "이미지생성: 이미지 제작 결과를 미리보기와 다운로드 링크로 제공합니다.",
+      general: "일반 AI: Workhub 업무 자동화와 분리해서 일반 Codex/GPT 영역으로 답합니다.",
+      search: "자료검색: Workhub 데이터 수정 없이 외부 자료 조사와 검색 중심으로 처리합니다.",
+      image: "이미지생성: Workhub 데이터 수정 없이 이미지를 만들고 다운로드 링크를 제공합니다.",
     };
 
     function hermesPayloadFromResult(data) {
@@ -16449,11 +16526,38 @@ HTML = r"""<!doctype html>
       `;
     }
 
+    function renderAutomationLogs(logs = []) {
+      if (!automationLogBody) return;
+      automationLogBody.innerHTML = logs.length
+        ? logs.map((log) => `
+          <tr>
+            <td>${escapeHtml(log.created_at || "")}</td>
+            <td>${escapeHtml(log.action_label || log.action_id || "")}</td>
+            <td>${escapeHtml(log.status || "")}</td>
+            <td>${escapeHtml(log.requested_by || "")}</td>
+            <td>${escapeHtml(log.backup_name || "-")}</td>
+            <td>${escapeHtml(log.message || "")}</td>
+          </tr>
+        `).join("")
+        : `<tr><td class="empty" colspan="6">아직 자동화 실행 이력이 없습니다.</td></tr>`;
+    }
+
+    async function loadAutomationLogs() {
+      if (!automationLogBody) return;
+      try {
+        const data = await crmFetchJson("/api/automation-operation-logs");
+        renderAutomationLogs(data.logs || []);
+      } catch (error) {
+        automationLogBody.innerHTML = `<tr><td class="empty" colspan="6">${escapeHtml(error.message || "실행 이력을 불러오지 못했습니다.")}</td></tr>`;
+      }
+    }
+
     async function loadAutomationCenter() {
       const data = await crmFetchJson("/api/automation-center");
       automationActions = data.actions || [];
       activeAutomationAction = activeAutomationAction || automationActions[0]?.id || "";
       renderAutomationActions();
+      renderAutomationLogs(data.logs || []);
       if (activeAutomationAction) await previewAutomationAction();
     }
 
@@ -16492,6 +16596,7 @@ HTML = r"""<!doctype html>
         automationCenterMessage.textContent = data.message || "자동화 실행이 완료되었습니다.";
         renderAutomationPreview(data.result || data.preview || {});
         await loadAutomationOverview();
+        await loadAutomationLogs();
       } catch (error) {
         automationCenterMessage.textContent = error.message;
       } finally {
@@ -19160,13 +19265,11 @@ HTML = r"""<!doctype html>
       syncManagementColorFilterControl();
       ledgerFilterOptions.innerHTML = `<button class="ledger-filter-option" type="button" disabled>월 전체 데이터를 확인하는 중입니다.</button>`;
       const params = new URLSearchParams({ field, search: searchText.trim() });
-      const query = managementSearchInput.value.trim();
       const period = selectedManagementPeriod();
       if (!period.year || !period.month) {
         ledgerFilterOptions.innerHTML = `<button class="ledger-filter-option" type="button" disabled>먼저 조회할 월을 선택해주세요.</button>`;
         return;
       }
-      if (query) params.set("q", query);
       if (period.year) params.set("year", period.year);
       if (period.month) params.set("month", period.month);
       appendManagementFilterParams(params, { excludeField: field });
@@ -19205,6 +19308,7 @@ HTML = r"""<!doctype html>
       activeLedgerFilterField = button.dataset.ledgerFilterButton || "";
       syncManagementColorFilterControl();
       ledgerFilterTitle.textContent = `${button.dataset.label || "필터"} 필터`;
+      if (ledgerFilterScope) ledgerFilterScope.textContent = "현재 불러온 CS 처리대장 데이터 기준으로 필터링합니다.";
       ledgerFilterSearch.value = ledgerFilters[activeLedgerFilterField] || "";
       renderLedgerFilterOptions(activeLedgerFilterField, ledgerFilterSearch.value);
       const rect = button.getBoundingClientRect();
@@ -19220,6 +19324,12 @@ HTML = r"""<!doctype html>
       activeManagementFilterField = button.dataset.managementFilterButton || "";
       syncManagementColorFilterControl();
       ledgerFilterTitle.textContent = `${button.dataset.label || "필터"} 필터`;
+      const period = selectedManagementPeriod();
+      if (ledgerFilterScope) {
+        ledgerFilterScope.textContent = period.year && period.month
+          ? `${period.year}-${String(period.month).padStart(2, "0")} 월 전체 데이터에서 필터 후보를 보여주고, 선택하면 해당 행으로 이동합니다.`
+          : "먼저 조회할 월을 선택하면 해당 월 전체 데이터에서 필터링합니다.";
+      }
       ledgerFilterSearch.value = managementFilters[activeManagementFilterField] || "";
       renderManagementFilterOptions(activeManagementFilterField, ledgerFilterSearch.value);
       const rect = button.getBoundingClientRect();
@@ -19888,6 +19998,10 @@ HTML = r"""<!doctype html>
       if (normalized) managementFilters[activeManagementFilterField] = normalized;
       else delete managementFilters[activeManagementFilterField];
       pendingManagementHighlightId = targetRecordId ? String(targetRecordId) : "";
+      if (managementSearchInput) managementSearchInput.value = "";
+      if (normalized && currentMode === "management") {
+        notice.textContent = `"${normalized}" 기준으로 해당 월 전체 데이터를 조회하고 이동합니다.`;
+      }
       loadManagementRecords();
       closeLedgerFilter();
     }
@@ -24213,6 +24327,7 @@ HERMES_WORKSPACE_HTML = r"""
                   <button class="hermes-mode-button" type="button" data-hermes-chat-mode="image">이미지생성</button>
                 </div>
                 <div class="hermes-mode-hint" id="hermesChatModeHint">자동선택: 요청에 맞는 Workhub 업무, 일반 AI, 검색, 이미지 기능을 자동으로 고릅니다.</div>
+                <div class="hermes-scope-note">일반 AI, 자료검색, 이미지생성은 Workhub 업무 자동화와 분리해서 실행합니다. 생성된 파일은 먼저 다운로드 링크를 제공하고, 업무파일 저장은 승인 후에만 처리합니다.</div>
                 <textarea class="hermes-textarea" id="hermesChatInput" placeholder="예) 오늘 미처리 CS를 요약하고 우선순위를 추천해줘."></textarea>
                 <div class="hermes-actions">
                   <button class="workspace-button" type="button" id="hermesChatSend">헤르메스에 보내기</button>
@@ -27051,7 +27166,7 @@ def automation_center_payload(user: dict[str, str]) -> dict[str, object]:
         for action in AUTOMATION_CENTER_ACTIONS
         if user_can_use_action(user, action)
     ]
-    return {"actions": actions}
+    return {"actions": actions, "logs": list_automation_operation_logs()}
 
 
 def automation_action_config(action_id: str, user: dict[str, str]) -> dict[str, object]:
@@ -27102,6 +27217,26 @@ def record_automation_operation(
         connection.commit()
     finally:
         connection.close()
+
+
+def list_automation_operation_logs(limit: int = 30) -> list[dict[str, object]]:
+    init_db()
+    limit = min(max(int(limit or 30), 1), 200)
+    connection = connect_db()
+    try:
+        rows = connection.execute(
+            """
+            SELECT id, created_at, action_id, action_label, status, requested_by,
+                   backup_name, message
+              FROM automation_operation_logs
+             ORDER BY id DESC
+             LIMIT ?
+            """,
+            (limit,),
+        ).fetchall()
+    finally:
+        connection.close()
+    return [dict(row) for row in rows]
 
 
 def automation_table_preview(summary: str, columns: list[str], rows: list[dict[str, object]]) -> dict[str, object]:
@@ -36567,6 +36702,13 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                 self.send_json({"error": "업무 자동화 실행 권한이 없습니다."}, status=403)
                 return
             self.send_json(automation_center_payload(user))
+            return
+
+        if self.path == "/api/automation-operation-logs":
+            if not can_view_automation_center(user):
+                self.send_json({"error": "업무 자동화 실행 이력 권한이 없습니다."}, status=403)
+                return
+            self.send_json({"logs": list_automation_operation_logs()})
             return
 
         if self.path == "/api/hermes-status":

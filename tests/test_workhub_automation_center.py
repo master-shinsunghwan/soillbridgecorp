@@ -155,6 +155,18 @@ class WorkhubAutomationCenterTests(unittest.TestCase):
             self.assertEqual(len(notices), 1)
             self.assertEqual(notices[0]["title"], "업무 자동화 점검 공지")
 
+    def test_automation_operation_logs_are_listed_after_execute(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            app = load_app(Path(directory))
+            user = admin_user()
+
+            app.automation_center_execute("notice_auto", {}, user)
+            logs = app.list_automation_operation_logs()
+
+            self.assertEqual(logs[0]["action_id"], "notice_auto")
+            self.assertEqual(logs[0]["status"], "executed")
+            self.assertEqual(logs[0]["requested_by"], "관리자")
+
 
 if __name__ == "__main__":
     unittest.main()
