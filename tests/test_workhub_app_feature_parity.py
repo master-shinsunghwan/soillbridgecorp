@@ -952,7 +952,7 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
             self.assertIn('stockVendorSearchInput?.addEventListener("input"', html_source)
             self.assertIn('stockVendorTree?.addEventListener("change"', html_source)
             self.assertIn("function defaultStockNoticeBody()", html_source)
-            self.assertIn("function collectStockNoticePayload(vendor = null)", html_source)
+            self.assertIn("function collectStockNoticePayload", html_source)
             self.assertIn('stockNoticeFields.style.display = "block"', html_source)
             self.assertIn('"/api/mail-send"', html_source)
             self.assertIn('send_general_mail(payload)', html_source)
@@ -965,6 +965,10 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
             self.assertNotIn("안내 내용", html_source)
             self.assertNotIn("확인 후 관련 일정", html_source)
             self.assertNotIn("csBodyInput.value = defaultStockNoticeBody();", html_source)
+        app_html_source = (ROOT / "scripts" / "workhub_delivery_app.py").read_text(encoding="utf-8")
+        self.assertIn("bcc_emails: bccEmails", app_html_source)
+        self.assertIn("숨은참조 방식으로 1회 발송", app_html_source)
+        self.assertNotIn("for (const recipient of recipients)", app_html_source)
 
     def test_vendor_contact_upload_is_managed_from_admin_workspace(self) -> None:
         for app_file in (

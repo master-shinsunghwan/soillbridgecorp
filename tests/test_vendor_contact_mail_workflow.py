@@ -477,6 +477,62 @@ class VendorContactMailWorkflowTests(unittest.TestCase):
             self.assertEqual(len(attachments), 1)
             self.assertEqual(attachments[0].get_content_type(), "image/jpeg")
 
+    def test_stock_notice_mail_uses_single_bcc_send(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            app = load_app(Path(directory))
+            app.save_mail_settings("soilbridge@naver.com", "application-password")
+
+            with patch.object(app, "send_naver_mail") as send_mail:
+                app.send_general_mail({
+                    "recipient_email": "",
+                    "bcc_emails": ["purchase@example.com", "sales@example.com", "purchase@example.com"],
+                    "subject": "입고 및 품절 공지",
+                    "body": "공지 내용",
+                })
+
+            send_mail.assert_called_once()
+            args = send_mail.call_args.args
+            kwargs = send_mail.call_args.kwargs
+            self.assertEqual(args[:3], ("soilbridge@naver.com", "application-password", "soilbridge@naver.com"))
+            self.assertEqual(kwargs["bcc_recipients"], ["purchase@example.com", "sales@example.com"])
+
+    def test_naver_mail_message_sets_bcc_header(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            app = load_app(Path(directory))
+
+            sent_messages = []
+
+            class FakeSmtp:
+                def __init__(self, *args, **kwargs):
+                    pass
+
+                def __enter__(self):
+                    return self
+
+                def __exit__(self, exc_type, exc, tb):
+                    return False
+
+                def login(self, email, password):
+                    self.login_args = (email, password)
+
+                def send_message(self, message):
+                    sent_messages.append(message)
+
+            with patch.object(app.smtplib, "SMTP_SSL", FakeSmtp):
+                app.send_naver_mail(
+                    "soilbridge@naver.com",
+                    "application-password",
+                    "soilbridge@naver.com",
+                    "입고 및 품절 공지",
+                    "공지 내용",
+                    bcc_recipients=["purchase@example.com", "sales@example.com"],
+                )
+
+            self.assertEqual(len(sent_messages), 1)
+            self.assertEqual(sent_messages[0]["To"], "soilbridge@naver.com")
+            self.assertIn("purchase@example.com", sent_messages[0]["Bcc"])
+            self.assertIn("sales@example.com", sent_messages[0]["Bcc"])
+
 
 if __name__ == "__main__":
     unittest.main()

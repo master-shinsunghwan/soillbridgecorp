@@ -14823,11 +14823,22 @@ HTML = r"""<!doctype html>
       }];
     }
 
-    function collectStockNoticePayload(vendor = null) {
+    function collectStockNoticePayload(vendor = null, recipients = null) {
+      const targetRecipients = recipients || (vendor ? [vendor] : collectStockNoticeRecipients());
+      const bccEmails = [...new Set(targetRecipients.map((item) => item.email).filter(Boolean))];
+      const contact = defaultStockContactInfo();
+      const selectedType = targetRecipients[0]?.vendor_type || stockVendorTypeSelect?.value || "purchase";
+      const selectedLabel = selectedType === "sales" ? "매출처" : "매입처";
       return {
-        vendor_type: vendor?.vendor_type || stockVendorTypeSelect?.value || "purchase",
-        recipient_email: vendor?.email || stockRecipientEmailInput?.value.trim() || "",
-        vendor_name: vendor?.vendor_name || stockVendorNameInput?.value.trim() || "",
+        vendor_type: selectedType,
+        recipient_email: contact.senderEmail || "",
+        bcc_emails: bccEmails,
+        bcc_vendors: targetRecipients.map((item) => ({
+          vendor_type: item.vendor_type || selectedType,
+          vendor_name: item.vendor_name || "",
+          email: item.email || "",
+        })),
+        vendor_name: targetRecipients.length === 1 ? (targetRecipients[0]?.vendor_name || "") : `${selectedLabel} ${targetRecipients.length}곳`,
         subject: stockSubjectInput?.value.trim() || "",
         body: stockBodyInput?.value.trim() || "",
         save_credentials: true,
@@ -14837,29 +14848,20 @@ HTML = r"""<!doctype html>
     async function sendCurrentStockNoticeMail() {
       refreshStockNoticeBody();
       const recipients = collectStockNoticeRecipients();
-      const basePayload = collectStockNoticePayload(recipients[0] || null);
+      const basePayload = collectStockNoticePayload(null, recipients);
       if (!recipients.length || !basePayload.subject || !basePayload.body) {
         throw new Error("받는 업체를 선택하고 제목, 공지 내용을 입력해주세요.");
       }
-      const failedVendors = [];
-      for (const recipient of recipients) {
-        const payload = collectStockNoticePayload(recipient);
-        const response = await fetch("/api/mail-send", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-        });
-        const data = await response.json();
-        if (!response.ok) {
-          failedVendors.push(`${recipient.vendor_name || recipient.email}: ${data.error || "발송 실패"}`);
-        }
-      }
-      if (failedVendors.length) {
-        throw new Error(`공지 메일 ${recipients.length - failedVendors.length}/${recipients.length}건 발송, 실패: ${failedVendors.join(", ")}`);
-      }
+      const response = await fetch("/api/mail-send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(basePayload),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "공지 메일 발송에 실패했습니다.");
       notice.textContent = recipients.length === 1
-        ? "공지 메일 발송이 완료되었습니다."
-        : `공지 메일 ${recipients.length}건 발송이 완료되었습니다.`;
+        ? "공지 메일을 숨은참조 방식으로 발송했습니다."
+        : `공지 메일을 ${recipients.length}곳에 숨은참조 방식으로 1회 발송했습니다.`;
     }
 
     function renderCsCases(cases) {
@@ -34940,11 +34942,32 @@ def mark_cs_case_mail_sent(case_id: int, payload: dict) -> None:
         connection.close()
 
 
+def normalize_mail_recipients(value: object) -> list[str]:
+    raw_items: list[object]
+    if isinstance(value, (list, tuple, set)):
+        raw_items = list(value)
+    else:
+        raw_items = re.split(r"[,;\n]+", str(value or ""))
+    recipients: list[str] = []
+    seen: set[str] = set()
+    for item in raw_items:
+        email = str(item or "").strip()
+        if not email or "@" not in email:
+            continue
+        key = email.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        recipients.append(email)
+    return recipients
+
+
 def send_cs_mail(payload: dict, attachments: list[dict[str, object]] | None = None) -> None:
     saved = load_mail_settings(include_password=True)
     naver_email = normalize_naver_email(payload.get("naver_email")) or str(saved.get("naver_email", ""))
     naver_password = str(payload.get("naver_password") or saved.get("naver_password", ""))
     recipient = str(payload.get("recipient_email", "")).strip()
+    bcc_recipients = normalize_mail_recipients(payload.get("bcc_emails") or payload.get("bcc_recipients"))
     subject = str(payload.get("subject", "")).strip()
     body = str(payload.get("body", "")).strip()
 
@@ -34952,7 +34975,10 @@ def send_cs_mail(payload: dict, attachments: list[dict[str, object]] | None = No
         raise ValueError("네이버 메일 아이디를 입력해주세요.")
     if not naver_password:
         raise ValueError("네이버 메일 비밀번호를 입력해주세요.")
-    if not recipient:
+    if not recipient and bcc_recipients:
+        recipient = naver_email
+    bcc_recipients = [email for email in bcc_recipients if email.lower() != recipient.lower()]
+    if not recipient and not bcc_recipients:
         raise ValueError("받는 업체 메일을 입력해주세요.")
     if not subject:
         raise ValueError("메일 제목을 입력해주세요.")
@@ -34970,6 +34996,7 @@ def send_cs_mail(payload: dict, attachments: list[dict[str, object]] | None = No
         smtp_port=int(saved.get("smtp_port") or NAVER_SMTP_PORT),
         smtp_security=str(saved.get("smtp_security") or "ssl"),
         attachments=attachments,
+        bcc_recipients=bcc_recipients,
     )
     return
 
@@ -35001,11 +35028,15 @@ def send_naver_mail(
     smtp_port: int = NAVER_SMTP_PORT,
     smtp_security: str = "ssl",
     attachments: list[dict[str, object]] | None = None,
+    bcc_recipients: list[str] | tuple[str, ...] | None = None,
 ) -> None:
     message = EmailMessage()
     message["Subject"] = subject
     message["From"] = formataddr(("(주)소일브릿지", naver_email))
     message["To"] = recipient
+    normalized_bcc = normalize_mail_recipients(bcc_recipients or [])
+    if normalized_bcc:
+        message["Bcc"] = ", ".join(normalized_bcc)
     message.set_content(body)
     for attachment in attachments or []:
         filename = str(attachment.get("filename") or "attachment")
