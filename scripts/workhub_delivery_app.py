@@ -2062,6 +2062,30 @@ HTML = r"""<!doctype html>
       font-weight: 800;
       line-height: 1.45;
     }
+    .sales-upload-panel {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 10px;
+      align-items: center;
+      padding: 12px;
+      border: 1px solid #bfdbfe;
+      border-left: 4px solid #2563eb;
+      border-radius: 8px;
+      background: #eff6ff;
+    }
+    .sales-upload-panel strong {
+      display: block;
+      color: #0f172a;
+      font-size: 14px;
+      font-weight: 950;
+    }
+    .sales-upload-panel span {
+      display: block;
+      margin-top: 2px;
+      color: #475569;
+      font-size: 12px;
+      font-weight: 800;
+    }
     .sales-period-current {
       min-width: 0;
       display: grid;
@@ -23918,6 +23942,18 @@ ADMIN_WORKSPACE_HTML = r"""
             </div>
             <div class="admin-card" id="salesReportUploadCard">
               <div class="admin-section-title">매출현황</div>
+              <div class="sales-upload-panel">
+                <div>
+                  <strong>매출표 업로드</strong>
+                  <span>일자별, 매출처별, 매입처별, 상품별 매출표 파일을 업로드합니다.</span>
+                </div>
+                <input id="salesReportFileInput" name="sales_report" type="file" accept=".xlsx,.xlsm,.xls,.csv,.zip" hidden />
+                <button class="sales-upload-button" id="salesReportManualUpload" type="button">매출표 업로드</button>
+              </div>
+              <div class="sales-upload-status">
+                <div id="salesReportUploadMessage">매출표 파일을 직접 업로드해서 현황을 갱신합니다.</div>
+                <div id="salesReportRecentList">업로드된 매출표가 없습니다.</div>
+              </div>
               <div class="sales-dashboard" id="salesReportDashboard">
                 <div class="sales-period-toolbar" id="salesReportPeriodToolbar">
                   <div class="sales-period-current">
@@ -23925,17 +23961,11 @@ ADMIN_WORKSPACE_HTML = r"""
                     <strong id="salesReportPeriodLabel">월 선택</strong>
                   </div>
                   <div class="sales-period-actions">
-                    <input id="salesReportFileInput" name="sales_report" type="file" accept=".xlsx,.xlsm,.xls,.csv,.zip" hidden />
-                    <button class="sales-upload-button" id="salesReportManualUpload" type="button">매출표 업로드</button>
                     <label class="sales-period-select-label" for="salesReportPeriodSelect">
                       <span>월별 보기</span>
                       <select class="sales-period-select" id="salesReportPeriodSelect" aria-label="매출현황 조회 월"></select>
                     </label>
                   </div>
-                </div>
-                <div class="sales-upload-status">
-                  <div id="salesReportUploadMessage">매출표 파일을 직접 업로드해서 현황을 갱신합니다.</div>
-                  <div id="salesReportRecentList">업로드된 매출표가 없습니다.</div>
                 </div>
                 <div class="sales-kpi-grid" id="salesReportKpiGrid"></div>
                 <div class="sales-margin-diagnosis" id="salesReportMarginDiagnosis">
