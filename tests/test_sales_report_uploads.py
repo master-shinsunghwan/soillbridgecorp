@@ -68,18 +68,42 @@ class SalesReportUploadTests(unittest.TestCase):
                 """,
                 ("2026-07", "2026-07-04", file_id, "P-001", "테스트 제품", 1, 1000, 400, 1000, 600, 1, 1, 1000, 400, 600, 60),
             )
+            connection.execute(
+                """
+                INSERT INTO sales_report_seller_rows
+                    (period, report_date, file_id, seller_name, quantity, sales_amount, supply_amount,
+                     sales_total, supply_total, sales_margin, profit_quantity_sales, profit_quantity_supply,
+                     profit_sales_amount, profit_supply_amount, profit_sales_margin, profit_margin, margin_rate)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                ("2026-07", "2026-07-04", file_id, "기존 판매처", 1, 1000, 400, 1000, 400, 600, 1, 1, 1000, 400, 600, 600, 60),
+            )
+            connection.execute(
+                """
+                INSERT INTO sales_report_supplier_rows
+                    (period, report_date, file_id, supplier_name, quantity, sales_amount, supply_amount,
+                     sales_total, supply_total, sales_margin, profit_quantity_sales, profit_quantity_supply,
+                     profit_sales_amount, profit_supply_amount, profit_sales_margin, profit_margin, margin_rate)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                ("2026-07", "2026-07-04", file_id, "기존 매입처", 1, 1000, 400, 1000, 400, 600, 1, 1, 1000, 400, 600, 600, 60),
+            )
             connection.commit()
         finally:
             connection.close()
 
-        products = self.app.list_sales_report_product_options()
+        options = self.app.sales_report_manual_options_payload()
+        products = options["products"]
         self.assertEqual(products[0]["name"], "테스트 제품")
         self.assertEqual(products[0]["code"], "P-001")
+        self.assertEqual(options["sellers"][0]["name"], "기존 판매처")
+        self.assertEqual(options["suppliers"][0]["name"], "기존 매입처")
 
         entry = self.app.save_manual_sales_report_entry(
             {
                 "report_date": "2026-07-05",
-                "seller_name": "수기 판매처",
+                "seller_name": options["sellers"][0]["name"],
+                "supplier_name": options["suppliers"][0]["name"],
                 "product_code": products[0]["code"],
                 "product_name": products[0]["name"],
                 "quantity": 3,
@@ -97,9 +121,12 @@ class SalesReportUploadTests(unittest.TestCase):
         self.assertEqual(dashboard["today"]["profit_sales_amount"], 30000)
         self.assertEqual(dashboard["today"]["profit_margin"], 18000)
         seller_names = {row["name"] for row in dashboard["seller_top"]}
+        supplier_names = {row["name"] for row in dashboard["supplier_purchase_totals"]}
         product_names = {row["name"] for row in dashboard["product_top"]}
-        self.assertIn("수기 판매처", seller_names)
+        self.assertIn("기존 판매처", seller_names)
+        self.assertIn("기존 매입처", supplier_names)
         self.assertIn("테스트 제품", product_names)
+        self.assertEqual(dashboard["supplier_purchase_total"]["purchase_total"], 12400)
 
     def test_hermes_sales_report_context_uses_today_only_for_today_request(self) -> None:
         payload = {
