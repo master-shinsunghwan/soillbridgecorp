@@ -16233,7 +16233,10 @@ HTML = r"""<!doctype html>
         <div class="import-cost-detail-item">
           <strong>저장 원본 · ${escapeHtml(file.original_name || "")}</strong>
           <span>${Number(file.file_size || 0).toLocaleString("ko-KR")} bytes · ${escapeHtml(file.created_at || "")}</span>
-          <span><a href="/api/import-cost-original-download?id=${encodeURIComponent(file.id)}" download>원본 파일 다운로드</a></span>
+          <span>
+            <a href="/api/import-cost-original-download?id=${encodeURIComponent(file.id)}" download>원본 파일 다운로드</a>
+            <button class="btn" type="button" data-import-cost-file-analyze="${escapeHtml(file.id)}">다시 분석</button>
+          </span>
         </div>
       `).join("") : `
         <div class="import-cost-detail-item warn">
@@ -16310,6 +16313,31 @@ HTML = r"""<!doctype html>
         setImportCostRunStatus("error", message);
       } finally {
         if (importCostSaveReport) importCostSaveReport.disabled = false;
+      }
+    }
+
+    async function analyzeSavedImportCostFile(fileId) {
+      if (!fileId || !importCostMessage || !canViewImportCostProgram()) return;
+      importCostMessage.textContent = "저장된 원본 파일을 다시 분석하는 중입니다.";
+      setImportCostRunStatus("running", "저장 원본 파일을 다시 읽어 계산 화면에 불러옵니다.");
+      try {
+        const response = await fetch("/api/import-cost-original-analyze", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: fileId, options: collectImportCostPayload() }),
+        });
+        const data = await response.json();
+        if (!response.ok || data.error) throw new Error(data.error || "저장 원본 파일을 다시 분석하지 못했습니다.");
+        if (data.payload) fillImportCostForm(data.payload);
+        if (data.result) renderImportCostResult(data.result);
+        currentImportCostReport = null;
+        importCostMessage.textContent = "저장된 원본 파일을 계산 화면에 불러왔습니다. 변경 내용을 DB에 반영하려면 저장을 눌러주세요.";
+        setImportCostRunStatus("done", "저장 원본 파일을 다시 분석했습니다.");
+        setImportCostTab("calculate");
+      } catch (error) {
+        const message = error.message || "저장 원본 파일을 다시 분석하지 못했습니다.";
+        importCostMessage.textContent = message;
+        setImportCostRunStatus("error", message);
       }
     }
 
@@ -24584,6 +24612,12 @@ HTML = r"""<!doctype html>
       if (!button) return;
       loadImportCostReport(button.dataset.importCostLoad);
     });
+    importCostWorkspace?.addEventListener("click", (event) => {
+      const button = event.target.closest("[data-import-cost-file-analyze]");
+      if (!button) return;
+      event.preventDefault();
+      analyzeSavedImportCostFile(button.dataset.importCostFileAnalyze);
+    });
     importCostWorkspace?.addEventListener("input", (event) => {
       const target = event.target;
       if (target?.matches?.("#importCostDocFee, #importCostDuty, #importCostBrokerFee, #importCostOtherCost, #importCostImportVat, #importCostServiceVat, #importCostIncludeImportVat, #importCostIncludeServiceVat")) {
@@ -31091,6 +31125,18 @@ def import_cost_file_download_info(file_id: object) -> tuple[Path, dict[str, obj
     if not path.exists():
         raise FileNotFoundError("저장된 수입원가 원본 파일이 없습니다.")
     return path, dict(row)
+
+
+def analyze_import_cost_original_file(file_id: object, options: dict[str, object] | None = None) -> dict[str, object]:
+    path, metadata = import_cost_file_download_info(file_id)
+    analysis = analyze_import_cost_files([path], options if isinstance(options, dict) else {})
+    analysis["source_file"] = {
+        "id": int(metadata.get("id") or 0),
+        "report_id": int(metadata.get("report_id") or 0),
+        "original_name": str(metadata.get("original_name") or path.name),
+        "file_size": int(metadata.get("file_size") or path.stat().st_size),
+    }
+    return analysis
 
 
 def import_cost_cell_text(value: object) -> str:
@@ -40781,6 +40827,29 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                     self.send_json({"error": str(exc)}, status=400)
                     return
                 self.send_json({"message": "수입 원가 데이터를 DB에 저장했습니다.", "report": report, "result": result})
+                return
+
+            if self.path == "/api/import-cost-original-analyze":
+                if not can_view_import_cost_program(user):
+                    self.send_json({"error": "수입 원가 계산 권한이 없습니다."}, status=403)
+                    return
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(length).decode("utf-8") or "{}")
+                if not isinstance(payload, dict):
+                    self.send_json({"error": "저장 원본 분석 요청이 올바르지 않습니다."}, status=400)
+                    return
+                try:
+                    analysis = analyze_import_cost_original_file(
+                        payload.get("id"),
+                        payload.get("options") if isinstance(payload.get("options"), dict) else {},
+                    )
+                except FileNotFoundError as exc:
+                    self.send_json({"error": str(exc)}, status=404)
+                    return
+                except ValueError as exc:
+                    self.send_json({"error": str(exc)}, status=400)
+                    return
+                self.send_json(analysis)
                 return
 
             if self.path == "/api/import-cost-report-status":

@@ -1184,6 +1184,7 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         self.assertIn('id="importCostSavedResetFilters"', admin_html)
         self.assertIn('id="importCostOriginalFilesPanel"', admin_html)
         self.assertIn('id="importCostHistoryPanel"', admin_html)
+        self.assertIn("data-import-cost-file-analyze", admin_html)
         self.assertIn('id="importCostSavedBody"', admin_html)
         self.assertIn('class="import-cost-card import-cost-result-card"', admin_html)
         self.assertLess(admin_html.index('id="importCostResultBody"'), admin_html.index('id="importCostSavedBody"'))
@@ -1192,8 +1193,10 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         self.assertIn("function loadImportCostSavedReports", admin_html)
         self.assertIn("function saveCurrentImportCostReport", admin_html)
         self.assertIn("function finalizeCurrentImportCostReport", admin_html)
+        self.assertIn("function analyzeSavedImportCostFile", admin_html)
         self.assertIn('"/api/import-cost-report-save"', admin_html)
         self.assertIn('"/api/import-cost-report-status"', admin_html)
+        self.assertIn('"/api/import-cost-original-analyze"', admin_html)
         self.assertIn('"/api/import-cost-reports"', admin_html)
         self.assertIn("import-cost-rate-field", admin_html)
         self.assertIn("제품 원가 계산의 기준 환율입니다.", admin_html)
@@ -1370,6 +1373,56 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         detailed = app.get_import_cost_report(first["id"])
         self.assertGreaterEqual(len(detailed["history"]), 3)
         self.assertEqual(detailed["history"][-1]["action"], "status")
+
+    def test_import_cost_saved_original_file_can_be_reanalyzed(self) -> None:
+        app = self.load_app()
+        payload = {
+            "hbl_no": "XLTNGB26040216",
+            "invoice_no": "SXT20260420",
+            "remittance_rate": "1482.04",
+            "allocation_basis": "amount",
+            "products": [{
+                "name": "28CM POT",
+                "quantity": "3985",
+                "unit_usd": "3.86",
+                "amount_usd": "15382.10",
+                "gross_weight": "6463.7",
+                "cbm": "68",
+            }],
+        }
+        result = app.calculate_import_cost(payload)
+        upload_path = Path(os.environ["WORKHUB_DATA_DIR"]) / "XLTNGB26040216.xlsx"
+        upload_path.write_bytes(b"stored workbook bytes")
+        report = app.save_import_cost_report(
+            payload,
+            result,
+            user={"display_name": "Admin", "role": "admin"},
+            upload_paths=[upload_path],
+        )
+
+        original_analyzer = app.analyze_import_cost_files
+
+        def fake_analyzer(paths, options=None):
+            self.assertEqual(len(paths), 1)
+            self.assertTrue(paths[0].exists())
+            self.assertEqual((options or {}).get("remittance_rate"), "1550")
+            return {
+                "payload": {**payload, "remittance_rate": "1550"},
+                "result": {"summary": {"landed_total": 1234}},
+            }
+
+        app.analyze_import_cost_files = fake_analyzer
+        try:
+            analysis = app.analyze_import_cost_original_file(
+                report["files"][0]["id"],
+                {"remittance_rate": "1550"},
+            )
+        finally:
+            app.analyze_import_cost_files = original_analyzer
+
+        self.assertEqual(analysis["source_file"]["original_name"], "XLTNGB26040216.xlsx")
+        self.assertEqual(analysis["payload"]["remittance_rate"], "1550")
+        self.assertEqual(analysis["result"]["summary"]["landed_total"], 1234)
 
     def test_import_cost_upload_analysis_reads_invoice_and_packing_files(self) -> None:
         app = self.load_app()
