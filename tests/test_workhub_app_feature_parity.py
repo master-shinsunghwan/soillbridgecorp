@@ -1172,13 +1172,28 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         self.assertIn("function setImportCostRunStatus", admin_html)
         self.assertIn('id="importCostExportReport"', admin_html)
         self.assertIn('id="importCostSaveReport"', admin_html)
+        self.assertIn('id="importCostFinalizeReport"', admin_html)
+        self.assertIn('id="importCostTabs"', admin_html)
+        self.assertIn('data-import-cost-tab="calculate"', admin_html)
+        self.assertIn('data-import-cost-tab="saved"', admin_html)
+        self.assertIn('data-import-cost-tab="files"', admin_html)
+        self.assertIn('data-import-cost-tab="history"', admin_html)
+        self.assertIn('id="importCostSavedSearch"', admin_html)
+        self.assertIn('id="importCostSavedStatusFilter"', admin_html)
+        self.assertIn('id="importCostSavedMonthFilter"', admin_html)
+        self.assertIn('id="importCostSavedResetFilters"', admin_html)
+        self.assertIn('id="importCostOriginalFilesPanel"', admin_html)
+        self.assertIn('id="importCostHistoryPanel"', admin_html)
         self.assertIn('id="importCostSavedBody"', admin_html)
         self.assertIn('class="import-cost-card import-cost-result-card"', admin_html)
         self.assertLess(admin_html.index('id="importCostResultBody"'), admin_html.index('id="importCostSavedBody"'))
         self.assertIn("formatImportCostRate(report.remittance_rate)", admin_html)
+        self.assertIn("function setImportCostTab", admin_html)
         self.assertIn("function loadImportCostSavedReports", admin_html)
         self.assertIn("function saveCurrentImportCostReport", admin_html)
+        self.assertIn("function finalizeCurrentImportCostReport", admin_html)
         self.assertIn('"/api/import-cost-report-save"', admin_html)
+        self.assertIn('"/api/import-cost-report-status"', admin_html)
         self.assertIn('"/api/import-cost-reports"', admin_html)
         self.assertIn("import-cost-rate-field", admin_html)
         self.assertIn("제품 원가 계산의 기준 환율입니다.", admin_html)
@@ -1311,6 +1326,50 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         self.assertEqual(shipments[0]["hbl_no"], "XLTNGB26040216")
         self.assertEqual(shipments[0]["import_cost_report_id"], report["id"])
         self.assertEqual(shipments[0]["import_cost_landed_total"], result["summary"]["landed_total"])
+
+    def test_import_cost_reports_track_status_version_and_history(self) -> None:
+        app = self.load_app()
+        payload = {
+            "hbl_no": "XLTNGB26040216",
+            "invoice_no": "SXT20260420",
+            "remittance_rate": "1482.04",
+            "allocation_basis": "amount",
+            "doc_fee": "2191192",
+            "duty": "0",
+            "broker_fee": "53240",
+            "other_cost": "",
+            "import_vat": "2418290",
+            "service_vat": "49603",
+            "include_import_vat": True,
+            "include_service_vat": True,
+            "products": [{
+                "name": "28CM POT",
+                "quantity": "3985",
+                "unit_usd": "3.86",
+                "amount_usd": "15382.10",
+                "gross_weight": "6463.7",
+                "cbm": "68",
+            }],
+        }
+        result = app.calculate_import_cost(payload)
+
+        first = app.save_import_cost_report(payload, result, user={"display_name": "Admin", "role": "admin"})
+        self.assertEqual(first["status"], "saved")
+        self.assertEqual(first["version"], 1)
+        self.assertIn("product_summary", first)
+
+        payload["remittance_rate"] = "1550"
+        second_result = app.calculate_import_cost(payload)
+        second = app.save_import_cost_report(payload, second_result, user={"display_name": "Admin", "role": "admin"})
+        self.assertEqual(second["id"], first["id"])
+        self.assertEqual(second["version"], 2)
+
+        finalized = app.set_import_cost_report_status(first["id"], "final", user={"display_name": "Admin", "role": "admin"})
+        self.assertEqual(finalized["status"], "final")
+
+        detailed = app.get_import_cost_report(first["id"])
+        self.assertGreaterEqual(len(detailed["history"]), 3)
+        self.assertEqual(detailed["history"][-1]["action"], "status")
 
     def test_import_cost_upload_analysis_reads_invoice_and_packing_files(self) -> None:
         app = self.load_app()

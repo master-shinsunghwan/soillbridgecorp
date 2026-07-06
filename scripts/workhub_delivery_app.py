@@ -2035,6 +2035,61 @@ HTML = r"""<!doctype html>
       border-radius: 8px;
       background: #fbfcff;
     }
+    .import-cost-tabs {
+      display: flex;
+      gap: 6px;
+      align-items: center;
+      padding: 4px;
+      border: 1px solid #d7e0ed;
+      border-radius: 8px;
+      background: #eef4fb;
+      overflow-x: auto;
+    }
+    .import-cost-tab {
+      min-height: 34px;
+      padding: 0 13px;
+      border: 1px solid transparent;
+      border-radius: 7px;
+      background: transparent;
+      color: #475569;
+      font-family: inherit;
+      font-size: 13px;
+      font-weight: 850;
+      white-space: nowrap;
+      cursor: pointer;
+    }
+    .import-cost-tab.active {
+      border-color: #bfdbfe;
+      background: #ffffff;
+      color: #1d4ed8;
+      box-shadow: 0 5px 14px rgba(15, 23, 42, .06);
+    }
+    .import-cost-tab-panel {
+      display: none;
+      gap: 12px;
+    }
+    .import-cost-tab-panel.active {
+      display: grid;
+    }
+    .import-cost-filter-bar {
+      display: grid;
+      grid-template-columns: minmax(220px, 1fr) 150px 150px auto;
+      gap: 8px;
+      align-items: center;
+    }
+    .import-cost-filter-bar input,
+    .import-cost-filter-bar select {
+      width: 100%;
+      height: 34px;
+      border: 1px solid #cbd5e1;
+      border-radius: 7px;
+      padding: 0 10px;
+      background: white;
+      color: #0f172a;
+      font-family: inherit;
+      font-size: 13px;
+      font-weight: 760;
+    }
     .import-cost-grid {
       display: grid;
       grid-template-columns: repeat(4, minmax(160px, 1fr));
@@ -2284,6 +2339,46 @@ HTML = r"""<!doctype html>
       border-color: #f6c78f;
       background: #fff8ef;
     }
+    .import-cost-status {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 23px;
+      padding: 0 8px;
+      border-radius: 999px;
+      border: 1px solid #cbd5e1;
+      background: #f8fafc;
+      color: #475569;
+      font-size: 12px;
+      font-weight: 900;
+    }
+    .import-cost-status.saved { border-color: #bfdbfe; background: #eff6ff; color: #1d4ed8; }
+    .import-cost-status.final { border-color: #86efac; background: #f0fdf4; color: #15803d; }
+    .import-cost-status.draft { border-color: #fcd34d; background: #fffbeb; color: #b45309; }
+    .import-cost-muted {
+      color: #64748b;
+      font-size: 12px;
+      font-weight: 760;
+    }
+    .import-cost-history-list {
+      display: grid;
+      gap: 8px;
+    }
+    .import-cost-history-item {
+      display: grid;
+      gap: 4px;
+      padding: 10px 12px;
+      border: 1px solid #dbe6f4;
+      border-radius: 8px;
+      background: white;
+      color: #334155;
+      font-size: 13px;
+      font-weight: 760;
+    }
+    .import-cost-history-item strong {
+      color: #0f172a;
+      font-weight: 900;
+    }
     .import-cost-remove {
       width: 34px;
       min-width: 34px;
@@ -2295,7 +2390,8 @@ HTML = r"""<!doctype html>
       .import-cost-grid,
       .import-cost-grid.compact,
       .import-cost-charge-summary,
-      .import-cost-summary {
+      .import-cost-summary,
+      .import-cost-filter-bar {
         grid-template-columns: repeat(2, minmax(0, 1fr));
       }
     }
@@ -12259,10 +12355,20 @@ HTML = r"""<!doctype html>
     const importCostDetailList = document.querySelector("#importCostDetailList");
     const importCostRunStatus = document.querySelector("#importCostRunStatus");
     const importCostSaveReport = document.querySelector("#importCostSaveReport");
+    const importCostFinalizeReport = document.querySelector("#importCostFinalizeReport");
     const importCostSavedRefresh = document.querySelector("#importCostSavedRefresh");
     const importCostSavedBody = document.querySelector("#importCostSavedBody");
+    const importCostTabs = Array.from(document.querySelectorAll("[data-import-cost-tab]"));
+    const importCostTabPanels = Array.from(document.querySelectorAll("[data-import-cost-panel]"));
+    const importCostSavedSearch = document.querySelector("#importCostSavedSearch");
+    const importCostSavedStatusFilter = document.querySelector("#importCostSavedStatusFilter");
+    const importCostSavedMonthFilter = document.querySelector("#importCostSavedMonthFilter");
+    const importCostSavedResetFilters = document.querySelector("#importCostSavedResetFilters");
+    const importCostOriginalFilesBody = document.querySelector("#importCostOriginalFilesBody");
+    const importCostHistoryBody = document.querySelector("#importCostHistoryBody");
     let selectedImportCostFiles = [];
     let importCostSavedReports = [];
+    let currentImportCostReport = null;
     const orderWorkspace = document.querySelector("#orderWorkspace");
     const orderWorkspaceTitle = document.querySelector("#orderWorkspaceTitle");
     const orderWorkspacePanelTitle = document.querySelector("#orderWorkspacePanelTitle");
@@ -16045,24 +16151,64 @@ HTML = r"""<!doctype html>
       }
     }
 
+    function setImportCostTab(tabName = "calculate") {
+      const nextTab = ["calculate", "saved", "files", "history"].includes(tabName) ? tabName : "calculate";
+      importCostTabs.forEach((button) => {
+        button.classList.toggle("active", button.dataset.importCostTab === nextTab);
+      });
+      importCostTabPanels.forEach((panel) => {
+        panel.classList.toggle("active", panel.dataset.importCostPanel === nextTab);
+      });
+    }
+
+    function importCostStatusLabel(status = "saved") {
+      const labels = { draft: "계산중", saved: "저장됨", final: "최종확정" };
+      return labels[status] || labels.saved;
+    }
+
+    function filteredImportCostSavedReports() {
+      const keyword = String(importCostSavedSearch?.value || "").trim().toLowerCase();
+      const status = String(importCostSavedStatusFilter?.value || "").trim();
+      const month = String(importCostSavedMonthFilter?.value || "").trim();
+      return importCostSavedReports.filter((report) => {
+        const haystack = [
+          report.hbl_no,
+          report.invoice_no,
+          report.product_summary,
+          report.created_by,
+        ].join(" ").toLowerCase();
+        const updatedMonth = String(report.updated_at || report.created_at || "").slice(0, 7);
+        if (keyword && !haystack.includes(keyword)) return false;
+        if (status && String(report.status || "saved") !== status) return false;
+        if (month && updatedMonth !== month) return false;
+        return true;
+      });
+    }
+
     function renderImportCostSavedReports() {
       if (!importCostSavedBody) return;
-      if (!importCostSavedReports.length) {
-        importCostSavedBody.innerHTML = `<tr><td colspan="6" class="empty">저장된 수입 원가 데이터가 없습니다.</td></tr>`;
+      const reports = filteredImportCostSavedReports();
+      if (!reports.length) {
+        importCostSavedBody.innerHTML = `<tr><td colspan="9" class="empty">저장된 수입 원가 데이터가 없습니다.</td></tr>`;
         return;
       }
-      importCostSavedBody.innerHTML = importCostSavedReports.map((report) => `
+      importCostSavedBody.innerHTML = reports.map((report) => {
+        const status = report.status || "saved";
+        return `
         <tr>
+          <td><span class="import-cost-status ${escapeHtml(status)}">${escapeHtml(report.status_label || importCostStatusLabel(status))}</span></td>
           <td>${escapeHtml(report.hbl_no || "-")}</td>
           <td>${escapeHtml(report.invoice_no || "-")}</td>
+          <td>${escapeHtml(report.product_summary || "-")}</td>
           <td>${escapeHtml(formatImportCostRate(report.remittance_rate) || "-")}</td>
           <td>${formatImportCostWon(report.landed_total || 0)}</td>
+          <td>v${Number(report.version || 1).toLocaleString("ko-KR")}</td>
           <td>${escapeHtml(report.updated_at || "-")}</td>
           <td>
             <button class="btn" type="button" data-import-cost-load="${escapeHtml(report.id)}">불러오기</button>
           </td>
         </tr>
-      `).join("");
+      `}).join("");
     }
 
     async function loadImportCostSavedReports() {
@@ -16081,7 +16227,7 @@ HTML = r"""<!doctype html>
     }
 
     function renderImportCostSavedFiles(report = {}) {
-      if (!importCostDetailList) return;
+      const targets = [importCostDetailList, importCostOriginalFilesBody].filter(Boolean);
       const files = report.files || [];
       const fileHtml = files.length ? files.map((file) => `
         <div class="import-cost-detail-item">
@@ -16095,7 +16241,23 @@ HTML = r"""<!doctype html>
           <span>이 계산 데이터에는 연결된 원본 업로드 파일이 없습니다.</span>
         </div>
       `;
-      importCostDetailList.innerHTML = fileHtml;
+      targets.forEach((target) => { target.innerHTML = fileHtml; });
+    }
+
+    function renderImportCostHistory(report = {}) {
+      if (!importCostHistoryBody) return;
+      const history = Array.isArray(report.history) ? report.history : [];
+      if (!history.length) {
+        importCostHistoryBody.innerHTML = `<div class="import-cost-history-item"><span>변경 이력이 없습니다.</span></div>`;
+        return;
+      }
+      importCostHistoryBody.innerHTML = history.map((item) => `
+        <div class="import-cost-history-item">
+          <strong>${escapeHtml(item.created_at || "")} · ${escapeHtml(importCostStatusLabel(item.status || "saved"))} · v${Number(item.version || 1).toLocaleString("ko-KR")}</strong>
+          <span>${escapeHtml(item.note || item.action || "")}</span>
+          <span class="import-cost-muted">${escapeHtml(item.created_by || "-")}</span>
+        </div>
+      `).join("");
     }
 
     async function loadImportCostReport(reportId) {
@@ -16104,11 +16266,14 @@ HTML = r"""<!doctype html>
         const response = await fetch(`/api/import-cost-report?id=${encodeURIComponent(reportId)}`);
         const data = await response.json();
         if (!response.ok || data.error) throw new Error(data.error || "수입 원가 데이터를 불러오지 못했습니다.");
+        currentImportCostReport = data.report || null;
         fillImportCostForm(data.report?.payload || {});
         if (data.report?.result) renderImportCostResult(data.report.result);
         renderImportCostSavedFiles(data.report || {});
+        renderImportCostHistory(data.report || {});
         importCostMessage.textContent = "저장된 수입 원가 데이터를 불러왔습니다.";
         setImportCostRunStatus("done", "저장된 DB 데이터와 원본 파일 목록을 불러왔습니다.");
+        setImportCostTab("calculate");
       } catch (error) {
         const message = error.message || "수입 원가 데이터를 불러오지 못했습니다.";
         importCostMessage.textContent = message;
@@ -16129,7 +16294,12 @@ HTML = r"""<!doctype html>
         });
         const data = await response.json();
         if (!response.ok || data.error) throw new Error(data.error || "수입 원가 데이터 저장에 실패했습니다.");
+        currentImportCostReport = data.report || null;
         if (data.result) renderImportCostResult(data.result);
+        if (currentImportCostReport) {
+          renderImportCostSavedFiles(currentImportCostReport);
+          renderImportCostHistory(currentImportCostReport);
+        }
         importCostMessage.textContent = data.message || "수입 원가 데이터를 DB에 저장했습니다.";
         setImportCostRunStatus("done", "수입 원가 데이터가 DB에 저장됐습니다.");
         await loadImportCostSavedReports();
@@ -16140,6 +16310,46 @@ HTML = r"""<!doctype html>
         setImportCostRunStatus("error", message);
       } finally {
         if (importCostSaveReport) importCostSaveReport.disabled = false;
+      }
+    }
+
+    async function finalizeCurrentImportCostReport() {
+      if (!importCostMessage || !canViewImportCostProgram()) return;
+      if (!currentImportCostReport?.id) {
+        importCostMessage.textContent = "먼저 현재 계산 데이터를 DB에 저장하거나 저장된 데이터를 불러와주세요.";
+        setImportCostTab("saved");
+        return;
+      }
+      if (!await requestAppConfirm({
+        kicker: "수입 원가 최종 확정",
+        title: "현재 수입 원가 데이터를 최종 확정할까요?",
+        message: "최종 확정 후 일반 수정은 제한되고, 관리자만 확정 해제할 수 있습니다.",
+        okText: "최종 확정",
+        cancelText: "취소",
+      })) return;
+      importCostMessage.textContent = "수입 원가 데이터를 최종 확정하는 중입니다.";
+      if (importCostFinalizeReport) importCostFinalizeReport.disabled = true;
+      try {
+        const response = await fetch("/api/import-cost-report-status", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: currentImportCostReport.id, status: "final" }),
+        });
+        const data = await response.json();
+        if (!response.ok || data.error) throw new Error(data.error || "수입 원가 데이터 확정에 실패했습니다.");
+        currentImportCostReport = data.report || currentImportCostReport;
+        renderImportCostSavedFiles(currentImportCostReport);
+        renderImportCostHistory(currentImportCostReport);
+        await loadImportCostSavedReports();
+        importCostMessage.textContent = data.message || "수입 원가 데이터가 최종 확정됐습니다.";
+        setImportCostRunStatus("done", "수입 원가 데이터가 최종 확정됐습니다.");
+        setImportCostTab("saved");
+      } catch (error) {
+        const message = error.message || "수입 원가 데이터 확정에 실패했습니다.";
+        importCostMessage.textContent = message;
+        setImportCostRunStatus("error", message);
+      } finally {
+        if (importCostFinalizeReport) importCostFinalizeReport.disabled = false;
       }
     }
 
@@ -24355,7 +24565,20 @@ HTML = r"""<!doctype html>
     importCostCalculate?.addEventListener("click", calculateImportCost);
     importCostExportReport?.addEventListener("click", exportImportCostReport);
     importCostSaveReport?.addEventListener("click", saveCurrentImportCostReport);
+    importCostFinalizeReport?.addEventListener("click", finalizeCurrentImportCostReport);
     importCostSavedRefresh?.addEventListener("click", loadImportCostSavedReports);
+    importCostTabs.forEach((button) => {
+      button.addEventListener("click", () => setImportCostTab(button.dataset.importCostTab || "calculate"));
+    });
+    importCostSavedSearch?.addEventListener("input", renderImportCostSavedReports);
+    importCostSavedStatusFilter?.addEventListener("change", renderImportCostSavedReports);
+    importCostSavedMonthFilter?.addEventListener("change", renderImportCostSavedReports);
+    importCostSavedResetFilters?.addEventListener("click", () => {
+      if (importCostSavedSearch) importCostSavedSearch.value = "";
+      if (importCostSavedStatusFilter) importCostSavedStatusFilter.value = "";
+      if (importCostSavedMonthFilter) importCostSavedMonthFilter.value = "";
+      renderImportCostSavedReports();
+    });
     importCostSavedBody?.addEventListener("click", (event) => {
       const button = event.target.closest("[data-import-cost-load]");
       if (!button) return;
@@ -25392,6 +25615,13 @@ IMPORT_COST_WORKSPACE_HTML = r"""
           </div>
         </div>
         <div class="import-cost-panel">
+          <div class="import-cost-tabs" id="importCostTabs" role="tablist" aria-label="수입 원가 관리 탭">
+            <button class="import-cost-tab active" type="button" data-import-cost-tab="calculate">계산하기</button>
+            <button class="import-cost-tab" type="button" data-import-cost-tab="saved">저장 데이터</button>
+            <button class="import-cost-tab" type="button" data-import-cost-tab="files">원본 파일</button>
+            <button class="import-cost-tab" type="button" data-import-cost-tab="history">변경 이력</button>
+          </div>
+          <div class="import-cost-tab-panel active" data-import-cost-panel="calculate">
           <section class="import-cost-card">
             <div class="admin-section-title">파일 자동 분석</div>
             <div class="import-cost-upload-panel">
@@ -25420,31 +25650,6 @@ IMPORT_COST_WORKSPACE_HTML = r"""
                   </tr>
                 </thead>
                 <tbody id="importCostResultBody"></tbody>
-              </table>
-            </div>
-          </section>
-          <section class="import-cost-card">
-            <div class="admin-section-title">저장된 수입 원가 데이터</div>
-            <div class="import-cost-upload-panel">
-              <button class="workspace-button" type="button" id="importCostSaveReport">현재 계산 DB 저장</button>
-              <button class="workspace-button ghost" type="button" id="importCostSavedRefresh">저장 목록 새로고침</button>
-              <span>업로드 원본 파일도 계산 데이터와 함께 보관됩니다.</span>
-            </div>
-            <div class="import-cost-table-wrap">
-              <table class="import-cost-table">
-                <thead>
-                  <tr>
-                    <th>HBL</th>
-                    <th>Invoice</th>
-                    <th>송금환율</th>
-                    <th>총 수입원가</th>
-                    <th>저장일</th>
-                    <th>작업</th>
-                  </tr>
-                </thead>
-                <tbody id="importCostSavedBody">
-                  <tr><td colspan="6" class="empty">저장된 수입 원가 데이터가 없습니다.</td></tr>
-                </tbody>
               </table>
             </div>
           </section>
@@ -25519,6 +25724,65 @@ IMPORT_COST_WORKSPACE_HTML = r"""
               <span id="importCostMessage">인보이스와 패킹리스트 값을 입력해주세요.</span>
             </div>
           </section>
+          </div>
+          <div class="import-cost-tab-panel" data-import-cost-panel="saved">
+          <section class="import-cost-card">
+            <div class="admin-section-title">저장된 수입 원가 데이터</div>
+            <div class="import-cost-upload-panel">
+              <button class="workspace-button" type="button" id="importCostSaveReport">현재 계산 DB 저장</button>
+              <button class="workspace-button" type="button" id="importCostFinalizeReport">최종 확정</button>
+              <button class="workspace-button ghost" type="button" id="importCostSavedRefresh">저장 목록 새로고침</button>
+              <span>HBL/Invoice 기준으로 저장하고, 원본 파일과 변경 이력을 함께 보관합니다.</span>
+            </div>
+            <div class="import-cost-filter-bar">
+              <input id="importCostSavedSearch" type="search" placeholder="HBL, Invoice, 제품명 검색" />
+              <select id="importCostSavedStatusFilter">
+                <option value="">전체 상태</option>
+                <option value="saved">저장됨</option>
+                <option value="final">최종확정</option>
+                <option value="draft">계산중</option>
+              </select>
+              <input id="importCostSavedMonthFilter" type="month" />
+              <button class="workspace-button ghost" type="button" id="importCostSavedResetFilters">필터 초기화</button>
+            </div>
+            <div class="import-cost-table-wrap">
+              <table class="import-cost-table">
+                <thead>
+                  <tr>
+                    <th>상태</th>
+                    <th>HBL</th>
+                    <th>Invoice</th>
+                    <th>제품 요약</th>
+                    <th>송금환율</th>
+                    <th>총 수입원가</th>
+                    <th>버전</th>
+                    <th>저장일</th>
+                    <th>작업</th>
+                  </tr>
+                </thead>
+                <tbody id="importCostSavedBody">
+                  <tr><td colspan="9" class="empty">저장된 수입 원가 데이터가 없습니다.</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+          </div>
+          <div class="import-cost-tab-panel" data-import-cost-panel="files">
+            <section class="import-cost-card" id="importCostOriginalFilesPanel">
+              <div class="admin-section-title">원본 파일</div>
+              <div class="import-cost-detail-list" id="importCostOriginalFilesBody">
+                <div class="import-cost-detail-item"><span>저장된 수입 원가 데이터를 불러오면 원본 파일 목록이 표시됩니다.</span></div>
+              </div>
+            </section>
+          </div>
+          <div class="import-cost-tab-panel" data-import-cost-panel="history">
+            <section class="import-cost-card" id="importCostHistoryPanel">
+              <div class="admin-section-title">변경 이력</div>
+              <div class="import-cost-history-list" id="importCostHistoryBody">
+                <div class="import-cost-history-item"><span>저장된 수입 원가 데이터를 불러오면 생성, 수정, 최종 확정 이력이 표시됩니다.</span></div>
+              </div>
+            </section>
+          </div>
         </div>
       </section>
 """
@@ -30434,10 +30698,83 @@ def import_cost_report_workbook_bytes(payload: dict, result: dict[str, object]) 
     return stream.getvalue()
 
 
+IMPORT_COST_STATUS_LABELS = {
+    "draft": "계산중",
+    "saved": "저장됨",
+    "final": "최종확정",
+}
+
+
+def normalize_import_cost_status(value: object) -> str:
+    status = str(value or "saved").strip().lower()
+    if status in {"finalized", "confirmed", "complete"}:
+        status = "final"
+    return status if status in IMPORT_COST_STATUS_LABELS else "saved"
+
+
+def import_cost_product_summary(payload: dict[str, object] | None) -> str:
+    products = payload.get("products") if isinstance(payload, dict) else []
+    if not isinstance(products, list) or not products:
+        return ""
+    names = [
+        str(product.get("name") or "").strip()
+        for product in products
+        if isinstance(product, dict) and str(product.get("name") or "").strip()
+    ]
+    if not names:
+        return ""
+    if len(names) <= 2:
+        return " / ".join(names)
+    return f"{names[0]} 외 {len(names) - 1}건"
+
+
+def import_cost_report_history(report_id: int) -> list[dict[str, object]]:
+    if not report_id:
+        return []
+    init_db()
+    connection = connect_db()
+    try:
+        rows = connection.execute(
+            """
+            SELECT id, report_id, created_at, action, status, version, created_by, note
+              FROM import_cost_report_history
+             WHERE report_id = ?
+             ORDER BY id
+            """,
+            (report_id,),
+        ).fetchall()
+    finally:
+        connection.close()
+    return [dict(row) for row in rows]
+
+
+def add_import_cost_report_history(
+    connection: sqlite3.Connection,
+    report_id: int,
+    *,
+    action: str,
+    status: str,
+    version: int,
+    created_by: str,
+    note: str = "",
+    payload_json: str = "",
+    result_json: str = "",
+) -> None:
+    connection.execute(
+        """
+        INSERT INTO import_cost_report_history (
+            report_id, created_at, action, status, version, created_by, note, payload_json, result_json
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (report_id, now_text(), action, status, version, created_by, note, payload_json, result_json),
+    )
+
+
 def import_cost_public_report(row: sqlite3.Row | dict[str, object], include_payload: bool = False) -> dict[str, object]:
     item = dict(row)
     result = json.loads(str(item.get("result_json") or "{}"))
     payload = json.loads(str(item.get("payload_json") or "{}"))
+    status = normalize_import_cost_status(item.get("status"))
     public = {
         "id": int(item.get("id") or 0),
         "created_at": str(item.get("created_at") or ""),
@@ -30446,9 +30783,13 @@ def import_cost_public_report(row: sqlite3.Row | dict[str, object], include_payl
         "invoice_no": str(item.get("invoice_no") or ""),
         "remittance_rate": str(item.get("remittance_rate") or ""),
         "allocation_basis": str(item.get("allocation_basis") or ""),
+        "status": status,
+        "status_label": IMPORT_COST_STATUS_LABELS[status],
+        "version": int(item.get("version") or 1),
         "landed_total": int(item.get("landed_total") or 0),
         "allocated_cost_total": int(item.get("allocated_cost_total") or 0),
         "created_by": str(item.get("created_by") or ""),
+        "product_summary": import_cost_product_summary(payload),
         "summary": result.get("summary") if isinstance(result, dict) else {},
     }
     if include_payload:
@@ -30492,22 +30833,32 @@ def save_import_cost_report(
     result_json = json.dumps(result, ensure_ascii=False, default=str)
     landed_total = int(summary.get("landed_total") or 0)
     allocated_cost_total = int(summary.get("allocated_cost_total") or 0)
+    requested_status = normalize_import_cost_status(payload.get("status") or "saved")
     connection = connect_db()
     try:
         existing_id = 0
+        existing_status = "saved"
+        existing_version = 0
         if hbl_no:
             row = connection.execute(
-                "SELECT id FROM import_cost_reports WHERE UPPER(COALESCE(hbl_no, '')) = ? ORDER BY id DESC LIMIT 1",
+                "SELECT id, status, version FROM import_cost_reports WHERE UPPER(COALESCE(hbl_no, '')) = ? ORDER BY id DESC LIMIT 1",
                 (hbl_no,),
             ).fetchone()
-            existing_id = int(row["id"]) if row else 0
+            if row:
+                existing_id = int(row["id"])
+                existing_status = normalize_import_cost_status(row["status"])
+                existing_version = int(row["version"] or 1)
         if existing_id:
+            if existing_status == "final" and str((user or {}).get("role") or "") != "admin":
+                raise ValueError("최종 확정된 수입 원가 데이터는 관리자만 수정할 수 있습니다.")
+            next_version = max(1, existing_version + 1)
+            next_status = existing_status if existing_status == "final" else requested_status
             connection.execute(
                 """
                 UPDATE import_cost_reports
                    SET updated_at = ?, hbl_no = ?, invoice_no = ?, remittance_rate = ?,
                        allocation_basis = ?, landed_total = ?, allocated_cost_total = ?,
-                       payload_json = ?, result_json = ?, created_by = ?
+                       payload_json = ?, result_json = ?, created_by = ?, status = ?, version = ?
                  WHERE id = ?
                 """,
                 (
@@ -30521,17 +30872,32 @@ def save_import_cost_report(
                     payload_json,
                     result_json,
                     created_by,
+                    next_status,
+                    next_version,
                     existing_id,
                 ),
             )
             report_id = existing_id
+            add_import_cost_report_history(
+                connection,
+                report_id,
+                action="update",
+                status=next_status,
+                version=next_version,
+                created_by=created_by,
+                note="수입 원가 계산 데이터 수정 저장",
+                payload_json=payload_json,
+                result_json=result_json,
+            )
         else:
+            next_version = 1
+            next_status = requested_status
             cursor = connection.execute(
                 """
                 INSERT INTO import_cost_reports (
                     created_at, updated_at, hbl_no, invoice_no, remittance_rate, allocation_basis,
-                    landed_total, allocated_cost_total, payload_json, result_json, created_by
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    landed_total, allocated_cost_total, payload_json, result_json, created_by, status, version
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     now,
@@ -30545,9 +30911,22 @@ def save_import_cost_report(
                     payload_json,
                     result_json,
                     created_by,
+                    next_status,
+                    next_version,
                 ),
             )
             report_id = int(cursor.lastrowid)
+            add_import_cost_report_history(
+                connection,
+                report_id,
+                action="create",
+                status=next_status,
+                version=next_version,
+                created_by=created_by,
+                note="수입 원가 계산 데이터 최초 저장",
+                payload_json=payload_json,
+                result_json=result_json,
+            )
 
         for path in upload_paths or []:
             if not path.exists():
@@ -30612,7 +30991,7 @@ def list_import_cost_reports(limit: int = 100) -> list[dict[str, object]]:
             """
             SELECT id, created_at, updated_at, hbl_no, invoice_no, remittance_rate,
                    allocation_basis, landed_total, allocated_cost_total, payload_json,
-                   result_json, created_by
+                   result_json, created_by, status, version
               FROM import_cost_reports
              ORDER BY updated_at DESC, id DESC
              LIMIT ?
@@ -30634,7 +31013,7 @@ def get_import_cost_report(report_id: int) -> dict[str, object] | None:
             """
             SELECT id, created_at, updated_at, hbl_no, invoice_no, remittance_rate,
                    allocation_basis, landed_total, allocated_cost_total, payload_json,
-                   result_json, created_by
+                   result_json, created_by, status, version
               FROM import_cost_reports
              WHERE id = ?
             """,
@@ -30646,6 +31025,49 @@ def get_import_cost_report(report_id: int) -> dict[str, object] | None:
         return None
     report = import_cost_public_report(row, include_payload=True)
     report["files"] = import_cost_report_files(report_id)
+    report["history"] = import_cost_report_history(report_id)
+    return report
+
+
+def set_import_cost_report_status(report_id: int, status: str, user: dict[str, object] | None = None) -> dict[str, object]:
+    init_db()
+    normalized_status = normalize_import_cost_status(status)
+    if normalized_status == "saved":
+        normalized_status = "saved"
+    created_by = str((user or {}).get("display_name") or (user or {}).get("username") or "")
+    connection = connect_db()
+    try:
+        row = connection.execute(
+            "SELECT id, status, version, payload_json, result_json FROM import_cost_reports WHERE id = ?",
+            (int(report_id or 0),),
+        ).fetchone()
+        if not row:
+            raise ValueError("수입 원가 데이터를 찾지 못했습니다.")
+        current_status = normalize_import_cost_status(row["status"])
+        if current_status == "final" and normalized_status != "final" and str((user or {}).get("role") or "") != "admin":
+            raise ValueError("최종 확정 해제는 관리자만 가능합니다.")
+        version = int(row["version"] or 1)
+        connection.execute(
+            "UPDATE import_cost_reports SET updated_at = ?, status = ? WHERE id = ?",
+            (now_text(), normalized_status, int(report_id)),
+        )
+        add_import_cost_report_history(
+            connection,
+            int(report_id),
+            action="status",
+            status=normalized_status,
+            version=version,
+            created_by=created_by,
+            note=f"상태 변경: {IMPORT_COST_STATUS_LABELS[normalized_status]}",
+            payload_json=str(row["payload_json"] or ""),
+            result_json=str(row["result_json"] or ""),
+        )
+        connection.commit()
+    finally:
+        connection.close()
+    report = get_import_cost_report(int(report_id))
+    if not report:
+        raise ValueError("수입 원가 데이터를 찾지 못했습니다.")
     return report
 
 
@@ -32765,6 +33187,13 @@ def init_db() -> None:
             )
             """
         )
+        import_cost_report_columns = {
+            row["name"] for row in connection.execute("PRAGMA table_info(import_cost_reports)").fetchall()
+        }
+        if "status" not in import_cost_report_columns:
+            connection.execute("ALTER TABLE import_cost_reports ADD COLUMN status TEXT NOT NULL DEFAULT 'saved'")
+        if "version" not in import_cost_report_columns:
+            connection.execute("ALTER TABLE import_cost_reports ADD COLUMN version INTEGER NOT NULL DEFAULT 1")
         connection.execute("CREATE INDEX IF NOT EXISTS idx_import_cost_reports_hbl ON import_cost_reports(hbl_no)")
         connection.execute(
             """
@@ -32776,6 +33205,23 @@ def init_db() -> None:
                 stored_name TEXT NOT NULL,
                 file_path TEXT NOT NULL,
                 file_size INTEGER NOT NULL DEFAULT 0,
+                FOREIGN KEY(report_id) REFERENCES import_cost_reports(id) ON DELETE CASCADE
+            )
+            """
+        )
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS import_cost_report_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                report_id INTEGER NOT NULL,
+                created_at TEXT NOT NULL,
+                action TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'saved',
+                version INTEGER NOT NULL DEFAULT 1,
+                created_by TEXT,
+                note TEXT,
+                payload_json TEXT,
+                result_json TEXT,
                 FOREIGN KEY(report_id) REFERENCES import_cost_reports(id) ON DELETE CASCADE
             )
             """
@@ -40335,6 +40781,27 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                     self.send_json({"error": str(exc)}, status=400)
                     return
                 self.send_json({"message": "수입 원가 데이터를 DB에 저장했습니다.", "report": report, "result": result})
+                return
+
+            if self.path == "/api/import-cost-report-status":
+                if not can_view_import_cost_program(user):
+                    self.send_json({"error": "수입 원가 계산 권한이 없습니다."}, status=403)
+                    return
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(length).decode("utf-8") or "{}")
+                if not isinstance(payload, dict):
+                    self.send_json({"error": "상태 변경 요청이 올바르지 않습니다."}, status=400)
+                    return
+                try:
+                    report = set_import_cost_report_status(
+                        int(payload.get("id") or 0),
+                        str(payload.get("status") or "saved"),
+                        user=user,
+                    )
+                except ValueError as exc:
+                    self.send_json({"error": str(exc)}, status=400)
+                    return
+                self.send_json({"message": "수입 원가 데이터 상태를 변경했습니다.", "report": report})
                 return
 
             if self.path == "/api/import-cost-report-export":
