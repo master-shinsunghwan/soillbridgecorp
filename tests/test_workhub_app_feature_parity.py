@@ -1166,6 +1166,8 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         self.assertIn('id="importCostRunStatus"', admin_html)
         self.assertIn('id="importCostChargeSummary"', admin_html)
         self.assertIn("function renderImportCostChargeSummary", admin_html)
+        self.assertIn("import-cost-unit-cost", admin_html)
+        self.assertIn("import-cost-unit-cost-value", admin_html)
         self.assertIn("D/O/운임비", admin_html)
         self.assertIn('["수입부가세", formatImportCostWon(vat), ""]', admin_html)
         self.assertIn("const freight = values.docFee + values.otherCost + values.serviceVat;", admin_html)

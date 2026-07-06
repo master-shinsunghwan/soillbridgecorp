@@ -2264,6 +2264,33 @@ HTML = r"""<!doctype html>
       color: #0f172a;
       font-weight: 820;
     }
+    .import-cost-table th.import-cost-unit-cost,
+    .import-cost-table td.import-cost-unit-cost {
+      background: linear-gradient(180deg, #ecfdf5 0%, #d1fae5 100%);
+      border-left: 2px solid #10b981;
+      border-right: 2px solid #10b981;
+      color: #065f46;
+      text-align: center;
+    }
+    .import-cost-table th.import-cost-unit-cost {
+      color: #064e3b;
+      font-weight: 950;
+      box-shadow: inset 0 3px 0 #10b981;
+    }
+    .import-cost-unit-cost-value {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 86px;
+      min-height: 28px;
+      padding: 3px 10px;
+      border-radius: 999px;
+      background: #ffffff;
+      color: #047857;
+      font-size: 15px;
+      font-weight: 950;
+      box-shadow: 0 0 0 1px rgba(16, 185, 129, .28), 0 6px 14px rgba(4, 120, 87, .12);
+    }
     .import-cost-table tbody tr:last-child td {
       border-bottom: 0;
     }
@@ -16144,7 +16171,7 @@ HTML = r"""<!doctype html>
             <td>${formatImportCostWon(row.purchase_krw)}</td>
             <td>${formatImportCostWon(row.allocated_cost)}</td>
             <td>${formatImportCostWon(row.landed_total)}</td>
-            <td><strong>${formatImportCostWon(row.landed_unit)}</strong></td>
+            <td class="import-cost-unit-cost"><strong class="import-cost-unit-cost-value">${formatImportCostWon(row.landed_unit)}</strong></td>
             <td>${Number(row.allocation_ratio || 0).toLocaleString("ko-KR", { maximumFractionDigits: 2 })}%</td>
           </tr>
         `).join("") : `<tr><td colspan="7" class="empty">계산 결과가 없습니다.</td></tr>`;
@@ -25679,7 +25706,7 @@ IMPORT_COST_WORKSPACE_HTML = r"""
                     <th>매입원가</th>
                     <th>배부비용</th>
                     <th>총 수입원가</th>
-                    <th>개당 원가</th>
+                    <th class="import-cost-unit-cost">개당 원가</th>
                     <th>배부율</th>
                   </tr>
                 </thead>
