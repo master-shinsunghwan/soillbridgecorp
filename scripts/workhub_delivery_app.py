@@ -2266,41 +2266,48 @@ HTML = r"""<!doctype html>
     }
     .import-cost-table th.import-cost-unit-cost,
     .import-cost-table td.import-cost-unit-cost {
-      background: linear-gradient(135deg, #0f172a 0%, #0f766e 100%);
-      border-left: 3px solid #14b8a6;
-      border-right: 3px solid #14b8a6;
-      color: #ffffff;
+      width: 124px;
+      min-width: 112px;
+      max-width: 132px;
+      padding-left: 8px;
+      padding-right: 8px;
+      background: #fff7ed;
+      border-left: 1px solid #fdba74;
+      border-right: 1px solid #fdba74;
+      color: #7c2d12;
       text-align: center;
-      box-shadow: inset 0 0 0 1px rgba(255,255,255,.12);
+      box-shadow: inset 0 0 0 1px rgba(251, 146, 60, .08);
     }
     .import-cost-table th.import-cost-unit-cost {
-      color: #ecfeff;
+      background: #ffedd5;
+      color: #7c2d12;
       font-weight: 950;
       letter-spacing: 0;
-      box-shadow: inset 0 3px 0 #2dd4bf;
+      box-shadow: inset 0 2px 0 #fb923c;
     }
     .import-cost-unit-price-card {
       display: inline-flex;
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      min-width: 118px;
-      min-height: 52px;
-      padding: 7px 13px;
-      border-radius: 10px;
-      background: rgba(255, 255, 255, .12);
-      color: #ffffff;
-      box-shadow: 0 10px 22px rgba(15, 23, 42, .22), inset 0 0 0 1px rgba(255,255,255,.18);
+      min-width: 82px;
+      min-height: 38px;
+      padding: 5px 9px;
+      border: 1px solid #fed7aa;
+      border-radius: 8px;
+      background: #ffffff;
+      color: #9a3412;
+      box-shadow: 0 4px 10px rgba(154, 52, 18, .10);
     }
     .import-cost-unit-price-card span {
-      color: #99f6e4;
-      font-size: 10px;
+      color: #c2410c;
+      font-size: 9px;
       font-weight: 950;
       line-height: 1.1;
     }
     .import-cost-unit-price-card strong {
-      color: #ffffff;
-      font-size: 19px;
+      color: #7c2d12;
+      font-size: 16px;
       font-weight: 950;
       line-height: 1.2;
     }
@@ -12480,6 +12487,7 @@ HTML = r"""<!doctype html>
     const importCostReset = document.querySelector("#importCostReset");
     const importCostCalculate = document.querySelector("#importCostCalculate");
     const importCostExportReport = document.querySelector("#importCostExportReport");
+    const importCostSaveFinalReport = document.querySelector("#importCostSaveFinalReport");
     const importCostProductBody = document.querySelector("#importCostProductBody");
     const importCostResultBody = document.querySelector("#importCostResultBody");
     const importCostSummary = document.querySelector("#importCostSummary");
@@ -16089,12 +16097,22 @@ HTML = r"""<!doctype html>
       input.value = importCostWonInputIds.has(id) ? formatImportCostMoneyValue(value) : value;
     }
 
+    function formatImportCostProductNumber(value, integer = false) {
+      const raw = String(value ?? "").trim().replace(/,/g, "");
+      if (!raw) return "";
+      const number = Number(raw);
+      if (!Number.isFinite(number)) return String(value ?? "");
+      if (integer) return String(Math.round(number));
+      return String(number);
+    }
+
     function addImportCostProductRow(product = {}) {
       if (!importCostProductBody) return;
       const row = document.createElement("tr");
+      const quantityValue = formatImportCostProductNumber(product.quantity, true);
       row.innerHTML = `
         <td><input data-import-cost-field="name" type="text" value="${escapeHtml(product.name || "")}" placeholder="제품명" /></td>
-        <td><input data-import-cost-field="quantity" type="number" min="0" step="1" value="${escapeHtml(product.quantity || "")}" /></td>
+        <td><input data-import-cost-field="quantity" type="number" min="0" step="1" value="${escapeHtml(quantityValue)}" /></td>
         <td><input data-import-cost-field="unit_usd" type="number" min="0" step="0.0001" value="${escapeHtml(product.unit_usd || "")}" /></td>
         <td><input data-import-cost-field="amount_usd" type="number" min="0" step="0.01" value="${escapeHtml(product.amount_usd || "")}" /></td>
         <td><input data-import-cost-field="gross_weight" type="number" min="0" step="0.0001" value="${escapeHtml(product.gross_weight || "")}" /></td>
@@ -16509,6 +16527,7 @@ HTML = r"""<!doctype html>
       importCostMessage.textContent = "현재 수입 원가 계산 데이터를 DB에 저장하는 중입니다.";
       setImportCostRunStatus("running", "현재 입력값 기준으로 계산 후 DB에 저장합니다.");
       if (importCostSaveReport) importCostSaveReport.disabled = true;
+      if (importCostSaveFinalReport) importCostSaveFinalReport.disabled = true;
       try {
         const response = await fetch("/api/import-cost-report-save", {
           method: "POST",
@@ -16533,6 +16552,59 @@ HTML = r"""<!doctype html>
         setImportCostRunStatus("error", message);
       } finally {
         if (importCostSaveReport) importCostSaveReport.disabled = false;
+        if (importCostSaveFinalReport) importCostSaveFinalReport.disabled = false;
+      }
+    }
+
+    async function saveAndFinalizeCurrentImportCostReport() {
+      if (!importCostMessage || !canViewImportCostProgram()) return;
+      if (!await requestAppConfirm({
+        kicker: "수입 원가 최종 저장",
+        title: "현재 계산 내용을 최종 저장할까요?",
+        message: "입력된 기준 정보와 제품별 원가를 DB에 저장한 뒤 최종 확정 상태로 변경합니다.",
+        okText: "최종 저장",
+        cancelText: "취소",
+      })) return;
+      importCostMessage.textContent = "현재 수입 원가 계산 데이터를 최종 저장하는 중입니다.";
+      setImportCostRunStatus("running", "현재 입력값을 DB에 저장한 뒤 최종 확정합니다.");
+      if (importCostSaveReport) importCostSaveReport.disabled = true;
+      if (importCostFinalizeReport) importCostFinalizeReport.disabled = true;
+      if (importCostSaveFinalReport) importCostSaveFinalReport.disabled = true;
+      try {
+        const saveResponse = await fetch("/api/import-cost-report-save", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(collectImportCostPayload()),
+        });
+        const saveData = await saveResponse.json();
+        if (!saveResponse.ok || saveData.error) throw new Error(saveData.error || "수입 원가 데이터 저장에 실패했습니다.");
+        if (saveData.result) renderImportCostResult(saveData.result);
+        const savedReport = saveData.report || {};
+        if (!savedReport.id) throw new Error("최종 확정할 저장 데이터를 찾지 못했습니다.");
+        currentImportCostReport = savedReport;
+        const finalResponse = await fetch("/api/import-cost-report-status", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: savedReport.id, status: "final" }),
+        });
+        const finalData = await finalResponse.json();
+        if (!finalResponse.ok || finalData.error) throw new Error(finalData.error || "수입 원가 데이터 최종 저장에 실패했습니다.");
+        currentImportCostReport = finalData.report || savedReport;
+        renderImportCostSavedFiles(currentImportCostReport);
+        renderImportCostHistory(currentImportCostReport);
+        await loadImportCostSavedReports();
+        await loadImportShipments().catch(() => {});
+        importCostMessage.textContent = finalData.message || "수입 원가 데이터가 최종 저장됐습니다.";
+        setImportCostRunStatus("done", "수입 원가 데이터가 최종 저장됐습니다.");
+        setImportCostTab("saved");
+      } catch (error) {
+        const message = error.message || "수입 원가 데이터 최종 저장에 실패했습니다.";
+        importCostMessage.textContent = message;
+        setImportCostRunStatus("error", message);
+      } finally {
+        if (importCostSaveReport) importCostSaveReport.disabled = false;
+        if (importCostFinalizeReport) importCostFinalizeReport.disabled = false;
+        if (importCostSaveFinalReport) importCostSaveFinalReport.disabled = false;
       }
     }
 
@@ -24834,6 +24906,7 @@ HTML = r"""<!doctype html>
     importCostReset?.addEventListener("click", resetImportCostProgram);
     importCostCalculate?.addEventListener("click", calculateImportCost);
     importCostExportReport?.addEventListener("click", exportImportCostReport);
+    importCostSaveFinalReport?.addEventListener("click", saveAndFinalizeCurrentImportCostReport);
     importCostSaveReport?.addEventListener("click", saveCurrentImportCostReport);
     importCostFinalizeReport?.addEventListener("click", finalizeCurrentImportCostReport);
     importCostSavedRefresh?.addEventListener("click", loadImportCostSavedReports);
@@ -26026,6 +26099,7 @@ IMPORT_COST_WORKSPACE_HTML = r"""
             </div>
             <div class="import-cost-actions">
               <button class="workspace-button" type="button" id="importCostCalculate">제품별 원가 계산</button>
+              <button class="workspace-button" type="button" id="importCostSaveFinalReport">최종 저장</button>
               <button class="workspace-button" type="button" id="importCostExportReport">보고서 엑셀 출력</button>
               <span id="importCostMessage">인보이스와 패킹리스트 값을 입력해주세요.</span>
             </div>
