@@ -16097,26 +16097,32 @@ HTML = r"""<!doctype html>
       input.value = importCostWonInputIds.has(id) ? formatImportCostMoneyValue(value) : value;
     }
 
-    function formatImportCostProductNumber(value, integer = false) {
+    function formatImportCostProductNumber(value, integer = false, maxDecimals = 4) {
       const raw = String(value ?? "").trim().replace(/,/g, "");
       if (!raw) return "";
       const number = Number(raw);
       if (!Number.isFinite(number)) return String(value ?? "");
       if (integer) return String(Math.round(number));
-      return String(number);
+      const factor = 10 ** maxDecimals;
+      const rounded = Math.round((number + Number.EPSILON) * factor) / factor;
+      return String(rounded);
     }
 
     function addImportCostProductRow(product = {}) {
       if (!importCostProductBody) return;
       const row = document.createElement("tr");
       const quantityValue = formatImportCostProductNumber(product.quantity, true);
+      const unitUsdValue = formatImportCostProductNumber(product.unit_usd, false, 4);
+      const amountUsdValue = formatImportCostProductNumber(product.amount_usd, false, 2);
+      const grossWeightValue = formatImportCostProductNumber(product.gross_weight, false, 4);
+      const cbmValue = formatImportCostProductNumber(product.cbm, false, 4);
       row.innerHTML = `
         <td><input data-import-cost-field="name" type="text" value="${escapeHtml(product.name || "")}" placeholder="제품명" /></td>
         <td><input data-import-cost-field="quantity" type="number" min="0" step="1" value="${escapeHtml(quantityValue)}" /></td>
-        <td><input data-import-cost-field="unit_usd" type="number" min="0" step="0.0001" value="${escapeHtml(product.unit_usd || "")}" /></td>
-        <td><input data-import-cost-field="amount_usd" type="number" min="0" step="0.01" value="${escapeHtml(product.amount_usd || "")}" /></td>
-        <td><input data-import-cost-field="gross_weight" type="number" min="0" step="0.0001" value="${escapeHtml(product.gross_weight || "")}" /></td>
-        <td><input data-import-cost-field="cbm" type="number" min="0" step="0.0001" value="${escapeHtml(product.cbm || "")}" /></td>
+        <td><input data-import-cost-field="unit_usd" type="number" min="0" step="0.0001" value="${escapeHtml(unitUsdValue)}" /></td>
+        <td><input data-import-cost-field="amount_usd" type="number" min="0" step="0.01" value="${escapeHtml(amountUsdValue)}" /></td>
+        <td><input data-import-cost-field="gross_weight" type="number" min="0" step="0.0001" value="${escapeHtml(grossWeightValue)}" /></td>
+        <td><input data-import-cost-field="cbm" type="number" min="0" step="0.0001" value="${escapeHtml(cbmValue)}" /></td>
         <td><button class="btn import-cost-remove" type="button" data-import-cost-remove>삭제</button></td>
       `;
       importCostProductBody.appendChild(row);
