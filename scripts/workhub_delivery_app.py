@@ -31540,6 +31540,152 @@ def analyze_import_cost_original_file(file_id: object, options: dict[str, object
     return analysis
 
 
+IMPORT_COST_CHARGE_KEYS = ("doc_fee", "duty", "broker_fee", "other_cost", "import_vat", "service_vat")
+
+
+def import_cost_reanalysis_options(payload: dict[str, object]) -> dict[str, object]:
+    return {
+        "hbl_no": payload.get("hbl_no") or "",
+        "invoice_no": payload.get("invoice_no") or "",
+        "remittance_rate": payload.get("remittance_rate") or "",
+        "allocation_basis": payload.get("allocation_basis") or "amount",
+        "include_import_vat": payload.get("include_import_vat", True),
+        "include_service_vat": payload.get("include_service_vat", True),
+    }
+
+
+def recalculate_import_cost_reports_from_originals(
+    report_id: int | None = None,
+    user: dict[str, object] | None = None,
+) -> dict[str, object]:
+    init_db()
+    created_by = str((user or {}).get("display_name") or (user or {}).get("username") or "system")
+    connection = connect_db()
+    updated = 0
+    skipped = 0
+    errors: list[dict[str, object]] = []
+    reports: list[sqlite3.Row] = []
+    try:
+        if report_id:
+            reports = connection.execute(
+                """
+                SELECT id, hbl_no, invoice_no, managed_product_name, payload_json, result_json,
+                       status, version
+                  FROM import_cost_reports
+                 WHERE id = ?
+                """,
+                (int(report_id),),
+            ).fetchall()
+        else:
+            reports = connection.execute(
+                """
+                SELECT id, hbl_no, invoice_no, managed_product_name, payload_json, result_json,
+                       status, version
+                  FROM import_cost_reports
+                 ORDER BY id
+                """
+            ).fetchall()
+
+        for row in reports:
+            current_report_id = int(row["id"])
+            status = normalize_import_cost_status(row["status"])
+            try:
+                payload = json.loads(str(row["payload_json"] or "{}"))
+                if not isinstance(payload, dict):
+                    raise ValueError("saved payload is not an object")
+                file_rows = connection.execute(
+                    """
+                    SELECT id, file_path, original_name
+                      FROM import_cost_report_files
+                     WHERE report_id = ?
+                     ORDER BY id
+                    """,
+                    (current_report_id,),
+                ).fetchall()
+                paths = [Path(str(file_row["file_path"] or "")) for file_row in file_rows]
+                paths = [path for path in paths if path.exists()]
+                if not paths:
+                    skipped += 1
+                    errors.append({"id": current_report_id, "reason": "original files missing"})
+                    continue
+
+                analysis = analyze_import_cost_files(paths, import_cost_reanalysis_options(payload))
+                analyzed_payload = analysis.get("payload") if isinstance(analysis, dict) else {}
+                if not isinstance(analyzed_payload, dict):
+                    analyzed_payload = {}
+
+                merged_payload = dict(payload)
+                merged_payload["hbl_no"] = str(payload.get("hbl_no") or row["hbl_no"] or "").strip().upper()
+                merged_payload["invoice_no"] = str(payload.get("invoice_no") or row["invoice_no"] or "").strip()
+                merged_payload["managed_product_name"] = str(
+                    payload.get("managed_product_name") or row["managed_product_name"] or ""
+                ).strip()
+                for key in IMPORT_COST_CHARGE_KEYS:
+                    value = str(analyzed_payload.get(key) or "").strip()
+                    if value:
+                        merged_payload[key] = value
+                if not any(str(analyzed_payload.get(key) or "").strip() for key in IMPORT_COST_CHARGE_KEYS):
+                    skipped += 1
+                    errors.append({"id": current_report_id, "reason": "no re-read charge values"})
+                    continue
+
+                result = calculate_import_cost(merged_payload)
+                payload_json = json.dumps(merged_payload, ensure_ascii=False, default=str)
+                result_json = json.dumps(result, ensure_ascii=False, default=str)
+                summary = result.get("summary") if isinstance(result.get("summary"), dict) else {}
+                next_version = int(row["version"] or 1) + 1
+                now = now_text()
+                connection.execute(
+                    """
+                    UPDATE import_cost_reports
+                       SET updated_at = ?, hbl_no = ?, invoice_no = ?, remittance_rate = ?,
+                           allocation_basis = ?, landed_total = ?, allocated_cost_total = ?,
+                           payload_json = ?, result_json = ?, created_by = ?, version = ?,
+                           managed_product_name = ?
+                     WHERE id = ?
+                    """,
+                    (
+                        now,
+                        str(merged_payload.get("hbl_no") or ""),
+                        str(merged_payload.get("invoice_no") or ""),
+                        str(merged_payload.get("remittance_rate") or ""),
+                        str(merged_payload.get("allocation_basis") or ""),
+                        int(summary.get("landed_total") or 0),
+                        int(summary.get("allocated_cost_total") or 0),
+                        payload_json,
+                        result_json,
+                        created_by,
+                        next_version,
+                        str(merged_payload.get("managed_product_name") or ""),
+                        current_report_id,
+                    ),
+                )
+                add_import_cost_report_history(
+                    connection,
+                    current_report_id,
+                    action="recalculate",
+                    status=status,
+                    version=next_version,
+                    created_by=created_by,
+                    note="Recalculated saved report from original files.",
+                    payload_json=payload_json,
+                    result_json=result_json,
+                )
+                updated += 1
+            except Exception as exc:  # noqa: BLE001
+                skipped += 1
+                errors.append({"id": current_report_id, "reason": str(exc)})
+        connection.commit()
+    finally:
+        connection.close()
+    return {
+        "checked": len(reports),
+        "updated": updated,
+        "skipped": skipped,
+        "errors": errors,
+    }
+
+
 def import_cost_cell_text(value: object) -> str:
     if value is None:
         return ""

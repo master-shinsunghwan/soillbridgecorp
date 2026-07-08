@@ -1474,6 +1474,67 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         self.assertEqual(analysis["payload"]["remittance_rate"], "1550")
         self.assertEqual(analysis["result"]["summary"]["landed_total"], 1234)
 
+    def test_import_cost_saved_reports_can_be_recalculated_from_original_charges(self) -> None:
+        app = self.load_app()
+        payload = {
+            "hbl_no": "XLTNGB26040216",
+            "invoice_no": "SXT20260420",
+            "remittance_rate": "1482.04",
+            "allocation_basis": "amount",
+            "doc_fee": "2191192",
+            "include_import_vat": True,
+            "include_service_vat": True,
+            "products": [{
+                "name": "28CM POT",
+                "quantity": "3985",
+                "unit_usd": "3.86",
+                "amount_usd": "15382.10",
+                "gross_weight": "6463.7",
+                "cbm": "68",
+            }],
+        }
+        old_result = app.calculate_import_cost(payload)
+        upload_path = Path(os.environ["WORKHUB_DATA_DIR"]) / "XLTNGB26040216.pdf"
+        upload_path.write_bytes(b"stored settlement pdf bytes")
+        report = app.save_import_cost_report(
+            payload,
+            old_result,
+            user={"display_name": "Admin", "role": "admin"},
+            upload_paths=[upload_path],
+        )
+
+        original_analyzer = app.analyze_import_cost_files
+
+        def fake_analyzer(paths, options=None):
+            self.assertEqual(len(paths), 1)
+            self.assertTrue(paths[0].exists())
+            self.assertEqual((options or {}).get("remittance_rate"), "1482.04")
+            return {
+                "payload": {
+                    "broker_fee": "53240",
+                    "import_vat": "2418290",
+                    "duty": "0",
+                    "service_vat": "49603",
+                },
+                "details": ["re-read saved customs charges"],
+            }
+
+        app.analyze_import_cost_files = fake_analyzer
+        try:
+            fixed = app.recalculate_import_cost_reports_from_originals(
+                report_id=report["id"],
+                user={"display_name": "Admin", "role": "admin"},
+            )
+        finally:
+            app.analyze_import_cost_files = original_analyzer
+
+        updated = app.get_import_cost_report(report["id"])
+        self.assertEqual(fixed["updated"], 1)
+        self.assertEqual(updated["payload"]["broker_fee"], "53240")
+        self.assertEqual(updated["payload"]["import_vat"], "2418290")
+        self.assertGreater(updated["result"]["summary"]["allocated_cost_total"], old_result["summary"]["allocated_cost_total"])
+        self.assertEqual(updated["history"][-1]["action"], "recalculate")
+
     def test_import_cost_upload_analysis_reads_invoice_and_packing_files(self) -> None:
         app = self.load_app()
         with tempfile.TemporaryDirectory() as directory:
