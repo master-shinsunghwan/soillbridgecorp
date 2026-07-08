@@ -31632,6 +31632,10 @@ def recalculate_import_cost_reports_from_originals(
                 result = calculate_import_cost(merged_payload)
                 payload_json = json.dumps(merged_payload, ensure_ascii=False, default=str)
                 result_json = json.dumps(result, ensure_ascii=False, default=str)
+                if payload_json == str(row["payload_json"] or "") and result_json == str(row["result_json"] or ""):
+                    skipped += 1
+                    errors.append({"id": current_report_id, "reason": "already current"})
+                    continue
                 summary = result.get("summary") if isinstance(result.get("summary"), dict) else {}
                 next_version = int(row["version"] or 1) + 1
                 now = now_text()

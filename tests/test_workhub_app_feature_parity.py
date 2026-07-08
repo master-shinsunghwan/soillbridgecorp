@@ -1525,6 +1525,10 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
                 report_id=report["id"],
                 user={"display_name": "Admin", "role": "admin"},
             )
+            second = app.recalculate_import_cost_reports_from_originals(
+                report_id=report["id"],
+                user={"display_name": "Admin", "role": "admin"},
+            )
         finally:
             app.analyze_import_cost_files = original_analyzer
 
@@ -1534,6 +1538,8 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         self.assertEqual(updated["payload"]["import_vat"], "2418290")
         self.assertGreater(updated["result"]["summary"]["allocated_cost_total"], old_result["summary"]["allocated_cost_total"])
         self.assertEqual(updated["history"][-1]["action"], "recalculate")
+        self.assertEqual(second["updated"], 0)
+        self.assertEqual(second["errors"][0]["reason"], "already current")
 
     def test_import_cost_upload_analysis_reads_invoice_and_packing_files(self) -> None:
         app = self.load_app()
