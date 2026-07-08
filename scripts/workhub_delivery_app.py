@@ -2266,30 +2266,159 @@ HTML = r"""<!doctype html>
     }
     .import-cost-table th.import-cost-unit-cost,
     .import-cost-table td.import-cost-unit-cost {
-      background: linear-gradient(180deg, #ecfdf5 0%, #d1fae5 100%);
-      border-left: 2px solid #10b981;
-      border-right: 2px solid #10b981;
-      color: #065f46;
+      background: linear-gradient(135deg, #0f172a 0%, #0f766e 100%);
+      border-left: 3px solid #14b8a6;
+      border-right: 3px solid #14b8a6;
+      color: #ffffff;
       text-align: center;
+      box-shadow: inset 0 0 0 1px rgba(255,255,255,.12);
     }
     .import-cost-table th.import-cost-unit-cost {
-      color: #064e3b;
+      color: #ecfeff;
       font-weight: 950;
-      box-shadow: inset 0 3px 0 #10b981;
+      letter-spacing: 0;
+      box-shadow: inset 0 3px 0 #2dd4bf;
     }
-    .import-cost-unit-cost-value {
+    .import-cost-unit-price-card {
       display: inline-flex;
+      flex-direction: column;
       align-items: center;
       justify-content: center;
-      min-width: 86px;
-      min-height: 28px;
-      padding: 3px 10px;
-      border-radius: 999px;
-      background: #ffffff;
-      color: #047857;
-      font-size: 15px;
+      min-width: 118px;
+      min-height: 52px;
+      padding: 7px 13px;
+      border-radius: 10px;
+      background: rgba(255, 255, 255, .12);
+      color: #ffffff;
+      box-shadow: 0 10px 22px rgba(15, 23, 42, .22), inset 0 0 0 1px rgba(255,255,255,.18);
+    }
+    .import-cost-unit-price-card span {
+      color: #99f6e4;
+      font-size: 10px;
       font-weight: 950;
-      box-shadow: 0 0 0 1px rgba(16, 185, 129, .28), 0 6px 14px rgba(4, 120, 87, .12);
+      line-height: 1.1;
+    }
+    .import-cost-unit-price-card strong {
+      color: #ffffff;
+      font-size: 19px;
+      font-weight: 950;
+      line-height: 1.2;
+    }
+    .import-cost-report-list {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+      gap: 12px;
+      margin-top: 12px;
+    }
+    .import-cost-report-card {
+      display: grid;
+      gap: 12px;
+      padding: 14px;
+      border: 1px solid #cbdaf1;
+      border-radius: 10px;
+      background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+      box-shadow: 0 10px 24px rgba(15, 23, 42, .06);
+    }
+    .import-cost-report-card-head {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 10px;
+    }
+    .import-cost-managed-product {
+      display: grid;
+      gap: 6px;
+    }
+    .import-cost-managed-product span {
+      color: #0f172a;
+      font-size: 12px;
+      font-weight: 950;
+    }
+    .import-cost-managed-product-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 8px;
+      align-items: center;
+    }
+    .import-cost-managed-product-row input {
+      height: 38px;
+      border: 1px solid #cbd5e1;
+      border-radius: 8px;
+      padding: 0 10px;
+      font-family: inherit;
+      font-size: 13px;
+      font-weight: 850;
+      color: #111827;
+      background: white;
+    }
+    .import-cost-report-meta {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+    }
+    .import-cost-report-meta div {
+      min-height: 54px;
+      padding: 8px 10px;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      background: #f8fafc;
+    }
+    .import-cost-report-meta span {
+      display: block;
+      color: #667085;
+      font-size: 11px;
+      font-weight: 900;
+      margin-bottom: 4px;
+    }
+    .import-cost-report-meta strong {
+      color: #0f172a;
+      font-size: 13px;
+      font-weight: 950;
+      word-break: keep-all;
+      overflow-wrap: anywhere;
+    }
+    .import-cost-report-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 7px;
+      justify-content: flex-end;
+    }
+    .import-cost-legacy-table {
+      display: none;
+    }
+    .import-cost-history-list {
+      display: grid;
+      gap: 10px;
+    }
+    .import-cost-history-item {
+      position: relative;
+      display: grid;
+      gap: 4px;
+      padding: 12px 12px 12px 36px;
+      border: 1px solid #e2e8f0;
+      border-radius: 9px;
+      background: #ffffff;
+    }
+    .import-cost-history-item::before {
+      content: "";
+      position: absolute;
+      left: 14px;
+      top: 14px;
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: #2563eb;
+      box-shadow: 0 0 0 4px #dbeafe;
+    }
+    .import-cost-history-item strong {
+      color: #0f172a;
+      font-size: 13px;
+      font-weight: 950;
+    }
+    .import-cost-history-item span {
+      color: #475467;
+      font-size: 12px;
+      font-weight: 800;
     }
     .import-cost-table tbody tr:last-child td {
       border-bottom: 0;
@@ -2386,25 +2515,6 @@ HTML = r"""<!doctype html>
       color: #64748b;
       font-size: 12px;
       font-weight: 760;
-    }
-    .import-cost-history-list {
-      display: grid;
-      gap: 8px;
-    }
-    .import-cost-history-item {
-      display: grid;
-      gap: 4px;
-      padding: 10px 12px;
-      border: 1px solid #dbe6f4;
-      border-radius: 8px;
-      background: white;
-      color: #334155;
-      font-size: 13px;
-      font-weight: 760;
-    }
-    .import-cost-history-item strong {
-      color: #0f172a;
-      font-weight: 900;
     }
     .import-cost-remove {
       width: 34px;
@@ -12385,6 +12495,7 @@ HTML = r"""<!doctype html>
     const importCostFinalizeReport = document.querySelector("#importCostFinalizeReport");
     const importCostSavedRefresh = document.querySelector("#importCostSavedRefresh");
     const importCostSavedBody = document.querySelector("#importCostSavedBody");
+    const importCostSavedCards = document.querySelector("#importCostSavedCards");
     const importCostTabs = Array.from(document.querySelectorAll("[data-import-cost-tab]"));
     const importCostTabPanels = Array.from(document.querySelectorAll("[data-import-cost-panel]"));
     const importCostSavedSearch = document.querySelector("#importCostSavedSearch");
@@ -16171,7 +16282,7 @@ HTML = r"""<!doctype html>
             <td>${formatImportCostWon(row.purchase_krw)}</td>
             <td>${formatImportCostWon(row.allocated_cost)}</td>
             <td>${formatImportCostWon(row.landed_total)}</td>
-            <td class="import-cost-unit-cost"><strong class="import-cost-unit-cost-value">${formatImportCostWon(row.landed_unit)}</strong></td>
+            <td class="import-cost-unit-cost"><span class="import-cost-unit-price-card"><span>핵심 원가</span><strong>${formatImportCostWon(row.landed_unit)}</strong></span></td>
             <td>${Number(row.allocation_ratio || 0).toLocaleString("ko-KR", { maximumFractionDigits: 2 })}%</td>
           </tr>
         `).join("") : `<tr><td colspan="7" class="empty">계산 결과가 없습니다.</td></tr>`;
@@ -16201,6 +16312,7 @@ HTML = r"""<!doctype html>
         const haystack = [
           report.hbl_no,
           report.invoice_no,
+          report.managed_product_name,
           report.product_summary,
           report.created_by,
         ].join(" ").toLowerCase();
@@ -16212,7 +16324,7 @@ HTML = r"""<!doctype html>
       });
     }
 
-    function renderImportCostSavedReports() {
+    function renderImportCostSavedReportsLegacy() {
       if (!importCostSavedBody) return;
       const reports = filteredImportCostSavedReports();
       if (!reports.length) {
@@ -16234,6 +16346,63 @@ HTML = r"""<!doctype html>
           <td>
             <button class="btn" type="button" data-import-cost-load="${escapeHtml(report.id)}">불러오기</button>
           </td>
+        </tr>
+      `}).join("");
+    }
+
+    function renderImportCostSavedReports() {
+      if (!importCostSavedBody && !importCostSavedCards) return;
+      const reports = filteredImportCostSavedReports();
+      if (!reports.length) {
+        if (importCostSavedBody) importCostSavedBody.innerHTML = `<tr><td colspan="9" class="empty">저장된 수입 원가 데이터가 없습니다.</td></tr>`;
+        if (importCostSavedCards) importCostSavedCards.innerHTML = `<div class="import-cost-report-card"><strong>저장된 원가 리스트가 없습니다.</strong><span class="import-cost-muted">계산 후 DB 저장을 누르면 이곳에 표시됩니다.</span></div>`;
+        return;
+      }
+      if (importCostSavedCards) {
+        importCostSavedCards.innerHTML = reports.map((report) => {
+          const status = report.status || "saved";
+          const managedName = report.managed_product_name || "";
+          return `
+          <article class="import-cost-report-card">
+            <div class="import-cost-report-card-head">
+              <span class="import-cost-status ${escapeHtml(status)}">${escapeHtml(report.status_label || importCostStatusLabel(status))}</span>
+              <span class="import-cost-muted">v${Number(report.version || 1).toLocaleString("ko-KR")} · ${escapeHtml(report.updated_at || "-")}</span>
+            </div>
+            <label class="import-cost-managed-product">
+              <span>우리가 관리하는 품명</span>
+              <div class="import-cost-managed-product-row">
+                <input type="text" data-import-cost-managed-product="${escapeHtml(report.id)}" value="${escapeHtml(managedName)}" placeholder="예) 노르디쿡 IH 무쇠팬 28cm" />
+                <button class="workspace-button ghost" type="button" data-import-cost-managed-product-save="${escapeHtml(report.id)}">저장</button>
+              </div>
+            </label>
+            <div class="import-cost-report-meta">
+              <div><span>HBL</span><strong>${escapeHtml(report.hbl_no || "-")}</strong></div>
+              <div><span>Invoice</span><strong>${escapeHtml(report.invoice_no || "-")}</strong></div>
+              <div><span>제품 요약</span><strong>${escapeHtml(report.product_summary || "-")}</strong></div>
+              <div><span>총 수입원가</span><strong>${formatImportCostWon(report.landed_total || 0)}</strong></div>
+            </div>
+            <div class="import-cost-report-actions">
+              <button class="btn" type="button" data-import-cost-load="${escapeHtml(report.id)}">불러오기</button>
+              <button class="btn" type="button" data-import-cost-show-files="${escapeHtml(report.id)}">원본파일</button>
+              <button class="btn" type="button" data-import-cost-show-history="${escapeHtml(report.id)}">변경이력</button>
+            </div>
+          </article>
+        `}).join("");
+      }
+      if (!importCostSavedBody) return;
+      importCostSavedBody.innerHTML = reports.map((report) => {
+        const status = report.status || "saved";
+        return `
+        <tr>
+          <td><span class="import-cost-status ${escapeHtml(status)}">${escapeHtml(report.status_label || importCostStatusLabel(status))}</span></td>
+          <td>${escapeHtml(report.hbl_no || "-")}</td>
+          <td>${escapeHtml(report.invoice_no || "-")}</td>
+          <td>${escapeHtml(report.product_summary || "-")}</td>
+          <td>${escapeHtml(formatImportCostRate(report.remittance_rate) || "-")}</td>
+          <td>${formatImportCostWon(report.landed_total || 0)}</td>
+          <td>v${Number(report.version || 1).toLocaleString("ko-KR")}</td>
+          <td>${escapeHtml(report.updated_at || "-")}</td>
+          <td><button class="btn" type="button" data-import-cost-load="${escapeHtml(report.id)}">불러오기</button></td>
         </tr>
       `}).join("");
     }
@@ -16308,6 +16477,30 @@ HTML = r"""<!doctype html>
         const message = error.message || "수입 원가 데이터를 불러오지 못했습니다.";
         importCostMessage.textContent = message;
         setImportCostRunStatus("error", message);
+      }
+    }
+
+    async function saveImportCostManagedProductName(reportId) {
+      if (!reportId || !canViewImportCostProgram()) return;
+      const input = importCostWorkspace?.querySelector(`[data-import-cost-managed-product="${CSS.escape(String(reportId))}"]`);
+      try {
+        const response = await fetch("/api/import-cost-report-managed-product", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            id: reportId,
+            managed_product_name: input?.value || "",
+          }),
+        });
+        const data = await response.json();
+        if (!response.ok || data.error) throw new Error(data.error || "관리 품명을 저장하지 못했습니다.");
+        currentImportCostReport = data.report || currentImportCostReport;
+        importCostSavedReports = importCostSavedReports.map((report) => String(report.id) === String(reportId) ? data.report : report);
+        renderImportCostSavedReports();
+        renderImportCostHistory(data.report || {});
+        if (importCostMessage) importCostMessage.textContent = data.message || "관리 품명을 저장했습니다.";
+      } catch (error) {
+        if (importCostMessage) importCostMessage.textContent = error.message || "관리 품명을 저장하지 못했습니다.";
       }
     }
 
@@ -23823,6 +24016,7 @@ HTML = r"""<!doctype html>
         ledger: "#ledgerNavGroup",
         crm: "#crmNavGroup",
         hermes: "#hermesNavGroup",
+        importCost: "#importCostNavGroup",
       };
       if (!button.classList.contains("nav-item")) return null;
       const selector = groupByMode[mode];
@@ -23854,6 +24048,13 @@ HTML = r"""<!doctype html>
           if (showWorkspace("hermes") === false) return;
           if (button.dataset.hermesTab) setHermesTab(button.dataset.hermesTab);
           hermesGroup?.classList.add("open");
+          return;
+        }
+        if (mode === "importCost") {
+          const importCostGroup = document.querySelector("#importCostNavGroup");
+          if (showWorkspace("importCost") === false) return;
+          setImportCostTab(button.dataset.importCostTab || "calculate");
+          importCostGroup?.classList.add("open");
           return;
         }
         if (mode === "order") {
@@ -24612,8 +24813,22 @@ HTML = r"""<!doctype html>
     document.querySelector("#salesReportNavToggle")?.addEventListener("click", () => {
       showWorkspace("salesReport");
     });
-    document.querySelector("#importCostNavToggle")?.addEventListener("click", () => {
+    document.querySelector("#importCostNavToggle")?.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      const importCostGroup = document.querySelector("#importCostNavGroup");
       showWorkspace("importCost");
+      importCostGroup?.classList.add("open");
+      setImportCostTab("calculate");
+    });
+    document.querySelectorAll("#importCostNavGroup [data-import-cost-tab]").forEach((button) => {
+      button.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        showWorkspace("importCost");
+        document.querySelector("#importCostNavGroup")?.classList.add("open");
+        setImportCostTab(button.dataset.importCostTab || "calculate");
+      });
     });
     importCostAddProduct?.addEventListener("click", () => addImportCostProductRow());
     importCostReset?.addEventListener("click", resetImportCostProgram);
@@ -24640,6 +24855,30 @@ HTML = r"""<!doctype html>
       loadImportCostReport(button.dataset.importCostLoad);
     });
     importCostWorkspace?.addEventListener("click", (event) => {
+      const loadButton = event.target.closest("[data-import-cost-load]");
+      if (loadButton) {
+        event.preventDefault();
+        loadImportCostReport(loadButton.dataset.importCostLoad);
+        return;
+      }
+      const filesButton = event.target.closest("[data-import-cost-show-files]");
+      if (filesButton) {
+        event.preventDefault();
+        loadImportCostReport(filesButton.dataset.importCostShowFiles).then(() => setImportCostTab("files"));
+        return;
+      }
+      const historyButton = event.target.closest("[data-import-cost-show-history]");
+      if (historyButton) {
+        event.preventDefault();
+        loadImportCostReport(historyButton.dataset.importCostShowHistory).then(() => setImportCostTab("history"));
+        return;
+      }
+      const managedProductSaveButton = event.target.closest("[data-import-cost-managed-product-save]");
+      if (managedProductSaveButton) {
+        event.preventDefault();
+        saveImportCostManagedProductName(managedProductSaveButton.dataset.importCostManagedProductSave);
+        return;
+      }
       const button = event.target.closest("[data-import-cost-file-analyze]");
       if (!button) return;
       event.preventDefault();
@@ -25657,9 +25896,15 @@ SALES_REPORT_NAV_HTML = r"""
 
 IMPORT_COST_NAV_HTML = r"""
       <div class="nav-group" id="importCostNavGroup">
-        <button class="nav-item" id="importCostNavToggle" type="button" data-open="importCost" data-nav-tone="import">
+        <button class="nav-item" id="importCostNavToggle" type="button" data-open="importCost" data-import-cost-tab="calculate" data-nav-tone="import">
           <span class="nav-label"><i data-lucide="circle-dollar-sign"></i> <span>수입 원가 계산</span></span>
+          <i class="nav-chevron" data-lucide="chevron-right"></i>
         </button>
+        <div class="nav-submenu">
+          <button class="nav-subitem active" id="importCostCalculateNav" type="button" data-open="importCost" data-import-cost-tab="calculate">원가 계산</button>
+          <button class="nav-subitem" id="importCostSavedListNav" type="button" data-open="importCost" data-import-cost-tab="saved">저장된 원가 리스트</button>
+          <button class="nav-subitem" id="importCostHistoryNav" type="button" data-open="importCost" data-import-cost-tab="history">변경 이력</button>
+        </div>
       </div>
 """
 
@@ -25806,7 +26051,8 @@ IMPORT_COST_WORKSPACE_HTML = r"""
               <input id="importCostSavedMonthFilter" type="month" />
               <button class="workspace-button ghost" type="button" id="importCostSavedResetFilters">필터 초기화</button>
             </div>
-            <div class="import-cost-table-wrap">
+            <div class="import-cost-report-list" id="importCostSavedCards"></div>
+            <div class="import-cost-table-wrap import-cost-legacy-table">
               <table class="import-cost-table">
                 <thead>
                   <tr>
@@ -30842,6 +31088,7 @@ def import_cost_public_report(row: sqlite3.Row | dict[str, object], include_payl
         "updated_at": str(item.get("updated_at") or ""),
         "hbl_no": str(item.get("hbl_no") or ""),
         "invoice_no": str(item.get("invoice_no") or ""),
+        "managed_product_name": str(item.get("managed_product_name") or payload.get("managed_product_name") or ""),
         "remittance_rate": str(item.get("remittance_rate") or ""),
         "allocation_basis": str(item.get("allocation_basis") or ""),
         "status": status,
@@ -30888,6 +31135,7 @@ def save_import_cost_report(
     now = now_text()
     hbl_no = str(payload.get("hbl_no") or "").strip().upper()
     invoice_no = str(payload.get("invoice_no") or "").strip()
+    managed_product_name = str(payload.get("managed_product_name") or "").strip()
     summary = result.get("summary") if isinstance(result.get("summary"), dict) else {}
     created_by = str((user or {}).get("display_name") or (user or {}).get("username") or "")
     payload_json = json.dumps(payload, ensure_ascii=False, default=str)
@@ -30902,13 +31150,15 @@ def save_import_cost_report(
         existing_version = 0
         if hbl_no:
             row = connection.execute(
-                "SELECT id, status, version FROM import_cost_reports WHERE UPPER(COALESCE(hbl_no, '')) = ? ORDER BY id DESC LIMIT 1",
+                "SELECT id, status, version, managed_product_name FROM import_cost_reports WHERE UPPER(COALESCE(hbl_no, '')) = ? ORDER BY id DESC LIMIT 1",
                 (hbl_no,),
             ).fetchone()
             if row:
                 existing_id = int(row["id"])
                 existing_status = normalize_import_cost_status(row["status"])
                 existing_version = int(row["version"] or 1)
+                if "managed_product_name" not in payload and not managed_product_name:
+                    managed_product_name = str(row["managed_product_name"] or "")
         if existing_id:
             if existing_status == "final" and str((user or {}).get("role") or "") != "admin":
                 raise ValueError("최종 확정된 수입 원가 데이터는 관리자만 수정할 수 있습니다.")
@@ -30919,7 +31169,8 @@ def save_import_cost_report(
                 UPDATE import_cost_reports
                    SET updated_at = ?, hbl_no = ?, invoice_no = ?, remittance_rate = ?,
                        allocation_basis = ?, landed_total = ?, allocated_cost_total = ?,
-                       payload_json = ?, result_json = ?, created_by = ?, status = ?, version = ?
+                       payload_json = ?, result_json = ?, created_by = ?, status = ?, version = ?,
+                       managed_product_name = ?
                  WHERE id = ?
                 """,
                 (
@@ -30935,6 +31186,7 @@ def save_import_cost_report(
                     created_by,
                     next_status,
                     next_version,
+                    managed_product_name,
                     existing_id,
                 ),
             )
@@ -30957,8 +31209,9 @@ def save_import_cost_report(
                 """
                 INSERT INTO import_cost_reports (
                     created_at, updated_at, hbl_no, invoice_no, remittance_rate, allocation_basis,
-                    landed_total, allocated_cost_total, payload_json, result_json, created_by, status, version
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    landed_total, allocated_cost_total, payload_json, result_json, created_by, status, version,
+                    managed_product_name
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     now,
@@ -30974,6 +31227,7 @@ def save_import_cost_report(
                     created_by,
                     next_status,
                     next_version,
+                    managed_product_name,
                 ),
             )
             report_id = int(cursor.lastrowid)
@@ -31050,7 +31304,7 @@ def list_import_cost_reports(limit: int = 100) -> list[dict[str, object]]:
     try:
         rows = connection.execute(
             """
-            SELECT id, created_at, updated_at, hbl_no, invoice_no, remittance_rate,
+            SELECT id, created_at, updated_at, hbl_no, invoice_no, managed_product_name, remittance_rate,
                    allocation_basis, landed_total, allocated_cost_total, payload_json,
                    result_json, created_by, status, version
               FROM import_cost_reports
@@ -31072,7 +31326,7 @@ def get_import_cost_report(report_id: int) -> dict[str, object] | None:
     try:
         row = connection.execute(
             """
-            SELECT id, created_at, updated_at, hbl_no, invoice_no, remittance_rate,
+            SELECT id, created_at, updated_at, hbl_no, invoice_no, managed_product_name, remittance_rate,
                    allocation_basis, landed_total, allocated_cost_total, payload_json,
                    result_json, created_by, status, version
               FROM import_cost_reports
@@ -31120,6 +31374,46 @@ def set_import_cost_report_status(report_id: int, status: str, user: dict[str, o
             version=version,
             created_by=created_by,
             note=f"상태 변경: {IMPORT_COST_STATUS_LABELS[normalized_status]}",
+            payload_json=str(row["payload_json"] or ""),
+            result_json=str(row["result_json"] or ""),
+        )
+        connection.commit()
+    finally:
+        connection.close()
+    report = get_import_cost_report(int(report_id))
+    if not report:
+        raise ValueError("수입 원가 데이터를 찾지 못했습니다.")
+    return report
+
+
+def update_import_cost_report_managed_product(
+    report_id: int,
+    managed_product_name: object,
+    user: dict[str, object] | None = None,
+) -> dict[str, object]:
+    init_db()
+    cleaned_name = str(managed_product_name or "").strip()
+    created_by = str((user or {}).get("display_name") or (user or {}).get("username") or "")
+    connection = connect_db()
+    try:
+        row = connection.execute(
+            "SELECT id, status, version, payload_json, result_json FROM import_cost_reports WHERE id = ?",
+            (int(report_id or 0),),
+        ).fetchone()
+        if not row:
+            raise ValueError("수입 원가 데이터를 찾지 못했습니다.")
+        connection.execute(
+            "UPDATE import_cost_reports SET updated_at = ?, managed_product_name = ? WHERE id = ?",
+            (now_text(), cleaned_name, int(report_id)),
+        )
+        add_import_cost_report_history(
+            connection,
+            int(report_id),
+            action="managed_product",
+            status=normalize_import_cost_status(row["status"]),
+            version=int(row["version"] or 1),
+            created_by=created_by,
+            note="관리 품명 변경",
             payload_json=str(row["payload_json"] or ""),
             result_json=str(row["result_json"] or ""),
         )
@@ -33250,6 +33544,7 @@ def init_db() -> None:
                 updated_at TEXT NOT NULL,
                 hbl_no TEXT,
                 invoice_no TEXT,
+                managed_product_name TEXT NOT NULL DEFAULT '',
                 remittance_rate TEXT,
                 allocation_basis TEXT,
                 landed_total INTEGER NOT NULL DEFAULT 0,
@@ -33267,6 +33562,8 @@ def init_db() -> None:
             connection.execute("ALTER TABLE import_cost_reports ADD COLUMN status TEXT NOT NULL DEFAULT 'saved'")
         if "version" not in import_cost_report_columns:
             connection.execute("ALTER TABLE import_cost_reports ADD COLUMN version INTEGER NOT NULL DEFAULT 1")
+        if "managed_product_name" not in import_cost_report_columns:
+            connection.execute("ALTER TABLE import_cost_reports ADD COLUMN managed_product_name TEXT NOT NULL DEFAULT ''")
         connection.execute("CREATE INDEX IF NOT EXISTS idx_import_cost_reports_hbl ON import_cost_reports(hbl_no)")
         connection.execute(
             """
@@ -40898,6 +41195,27 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                     self.send_json({"error": str(exc)}, status=400)
                     return
                 self.send_json({"message": "수입 원가 데이터 상태를 변경했습니다.", "report": report})
+                return
+
+            if self.path == "/api/import-cost-report-managed-product":
+                if not can_view_import_cost_program(user):
+                    self.send_json({"error": "수입 원가 계산 권한이 없습니다."}, status=403)
+                    return
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(length).decode("utf-8") or "{}")
+                if not isinstance(payload, dict):
+                    self.send_json({"error": "관리 품명 저장 요청이 올바르지 않습니다."}, status=400)
+                    return
+                try:
+                    report = update_import_cost_report_managed_product(
+                        int(payload.get("id") or 0),
+                        payload.get("managed_product_name"),
+                        user=user,
+                    )
+                except ValueError as exc:
+                    self.send_json({"error": str(exc)}, status=400)
+                    return
+                self.send_json({"message": "관리 품명을 저장했습니다.", "report": report})
                 return
 
             if self.path == "/api/import-cost-report-export":

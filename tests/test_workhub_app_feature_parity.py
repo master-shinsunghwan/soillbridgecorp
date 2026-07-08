@@ -1167,7 +1167,8 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         self.assertIn('id="importCostChargeSummary"', admin_html)
         self.assertIn("function renderImportCostChargeSummary", admin_html)
         self.assertIn("import-cost-unit-cost", admin_html)
-        self.assertIn("import-cost-unit-cost-value", admin_html)
+        self.assertIn("import-cost-unit-price-card", admin_html)
+        self.assertIn("핵심 원가", admin_html)
         self.assertIn("D/O/운임비", admin_html)
         self.assertIn('["수입부가세", formatImportCostWon(vat), ""]', admin_html)
         self.assertIn("const freight = values.docFee + values.otherCost + values.serviceVat;", admin_html)
@@ -1180,6 +1181,11 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         self.assertIn('data-import-cost-tab="saved"', admin_html)
         self.assertIn('data-import-cost-tab="files"', admin_html)
         self.assertIn('data-import-cost-tab="history"', admin_html)
+        self.assertIn('id="importCostSavedListNav"', admin_html)
+        self.assertIn('id="importCostHistoryNav"', admin_html)
+        self.assertIn('id="importCostSavedCards"', admin_html)
+        self.assertIn("function saveImportCostManagedProductName", admin_html)
+        self.assertIn('"/api/import-cost-report-managed-product"', admin_html)
         self.assertIn('id="importCostSavedSearch"', admin_html)
         self.assertIn('id="importCostSavedStatusFilter"', admin_html)
         self.assertIn('id="importCostSavedMonthFilter"', admin_html)
@@ -1208,6 +1214,40 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         self.assertIn('setImportCostRunStatus("running"', admin_html)
         self.assertIn('setImportCostRunStatus("done"', admin_html)
         self.assertIn('setImportCostRunStatus("error"', admin_html)
+
+    def test_import_cost_report_tracks_managed_product_name(self) -> None:
+        app = self.load_app()
+        payload = {
+            "hbl_no": "XLTNGB26040216",
+            "invoice_no": "SXT20260420",
+            "remittance_rate": "1482.04",
+            "allocation_basis": "amount",
+            "managed_product_name": "28CM POT INTERNAL",
+            "products": [{
+                "name": "28CM POT",
+                "quantity": "3985",
+                "unit_usd": "3.86",
+                "amount_usd": "15382.10",
+                "gross_weight": "6463.7",
+                "cbm": "68",
+            }],
+        }
+        result = app.calculate_import_cost(payload)
+        report = app.save_import_cost_report(payload, result, user={"display_name": "Admin", "role": "admin"})
+
+        self.assertEqual(report["managed_product_name"], "28CM POT INTERNAL")
+        self.assertEqual(app.list_import_cost_reports()[0]["managed_product_name"], "28CM POT INTERNAL")
+
+        updated = app.update_import_cost_report_managed_product(
+            report["id"],
+            "노르디쿡 IH 무쇠팬 28cm",
+            user={"display_name": "Admin", "role": "admin"},
+        )
+
+        self.assertEqual(updated["managed_product_name"], "노르디쿡 IH 무쇠팬 28cm")
+        detailed = app.get_import_cost_report(report["id"])
+        self.assertEqual(detailed["managed_product_name"], "노르디쿡 IH 무쇠팬 28cm")
+        self.assertEqual(detailed["history"][-1]["action"], "managed_product")
 
     def test_import_cost_calculation_allocates_to_product_unit_cost(self) -> None:
         app = self.load_app()
