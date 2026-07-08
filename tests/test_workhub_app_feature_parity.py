@@ -1599,6 +1599,24 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         self.assertIn("TRUCKING CHARGE: 내륙 운송료", detail_text)
         self.assertIn("X-RAY 검사료", detail_text)
 
+    def test_import_cost_domestic_settlement_keeps_labeled_customs_without_claim_total(self) -> None:
+        app = self.load_app()
+
+        parsed = app.parse_import_cost_domestic_settlement_text("""
+        통관자금(청구)정산서
+        B / L XLTSWA26030027
+        관세 0
+        부가가치세 2,418,290
+        통관수수료 53,240
+        JTS SHIPPING CO., LTD.
+        TOTAL AMOUNT: KRW 2,141,964
+        """)
+
+        self.assertTrue(parsed["trusted"])
+        self.assertEqual(parsed["charges"]["duty"], "0")
+        self.assertEqual(parsed["charges"]["import_vat"], "2418290")
+        self.assertEqual(parsed["charges"]["broker_fee"], "53240")
+
     def test_import_cost_verified_customs_charges_keeps_do_total_separate_when_jts_exists(self) -> None:
         app = self.load_app()
 

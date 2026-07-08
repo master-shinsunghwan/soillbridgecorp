@@ -31936,6 +31936,10 @@ def parse_import_cost_domestic_settlement_text(text: str) -> dict[str, object]:
             if abs(customs_total - claim_value) <= Decimal("10") or (jts_total and abs(customs_total + jts_total - claim_value) <= Decimal("10")):
                 charges.update(customs_charges)
                 trusted = True
+        elif customs_charges and not customs_claim:
+            charges.update(customs_charges)
+            trusted = True
+            details.append("청구금액 합계는 없지만 관세/부가세/통관수수료 라벨 금액을 자동 반영했습니다.")
     except ValueError:
         trusted = False
 
