@@ -1662,6 +1662,20 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         self.assertEqual(charges["broker_fee"], "48400")
         self.assertEqual(charges["service_vat"], "4840")
 
+    def test_import_cost_settlement_text_treats_negative_duty_ocr_noise_as_zero(self) -> None:
+        app = self.load_app()
+
+        charges = app.parse_import_cost_settlement_text("""
+        DOC / FEE
+        2,141,964
+        包 技 -61
+        何 啊 技 3,923,910
+        烹包荐荐丰 86,350
+        """)
+
+        self.assertNotEqual(charges.get("duty"), "-61")
+        self.assertEqual(charges["doc_fee"], "2141964")
+
     def test_import_cost_scanned_pdf_ocr_does_not_auto_apply_costs(self) -> None:
         app = self.load_app()
         with tempfile.TemporaryDirectory() as directory:
@@ -1731,6 +1745,24 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         self.assertEqual(parsed["charges"]["duty"], "0")
         self.assertEqual(parsed["charges"]["import_vat"], "2418290")
         self.assertEqual(parsed["charges"]["broker_fee"], "53240")
+
+    def test_import_cost_domestic_settlement_treats_negative_duty_ocr_noise_as_zero(self) -> None:
+        app = self.load_app()
+
+        parsed = app.parse_import_cost_domestic_settlement_text("""
+        통관자금(청구)정산서
+        B / L XLTSWA26030027
+        관세 -61
+        부가가치세 3,923,910
+        통관수수료 86,350
+        JTS SHIPPING CO., LTD.
+        TOTAL AMOUNT: KRW 2,141,964
+        """)
+
+        self.assertTrue(parsed["trusted"])
+        self.assertEqual(parsed["charges"]["duty"], "0")
+        self.assertEqual(parsed["charges"]["import_vat"], "3923910")
+        self.assertEqual(parsed["charges"]["broker_fee"], "86350")
 
     def test_import_cost_verified_customs_charges_keeps_do_total_separate_when_jts_exists(self) -> None:
         app = self.load_app()

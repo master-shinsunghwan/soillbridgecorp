@@ -32282,6 +32282,18 @@ def import_cost_amount_near_line(lines: list[str], line_index: int, window: int 
     return ""
 
 
+def import_cost_charge_amount(value: object, *, zero_when_negative: bool = False) -> str:
+    amount = str(value or "").strip()
+    if not amount:
+        return ""
+    try:
+        if import_cost_decimal(amount) < 0:
+            return "0" if zero_when_negative else ""
+    except ValueError:
+        return ""
+    return amount
+
+
 def import_cost_last_amount_near_label(lines: list[str], label_patterns: list[str], window: int = 2) -> str:
     for index, line in enumerate(lines):
         compact = re.sub(r"\s+", "", line)
@@ -32354,10 +32366,10 @@ def parse_import_cost_domestic_settlement_text(text: str) -> dict[str, object]:
     if hbl_match:
         hbl_no = hbl_match.group(0).upper()
 
-    duty = import_cost_last_amount_near_label(lines, [r"관세"], 1)
-    import_vat = import_cost_last_amount_near_label(lines, [r"부가가치세", r"부가세"], 1)
-    broker_fee = import_cost_last_amount_near_label(lines, [r"통관수수료"], 1)
-    do_total = import_cost_last_amount_near_label(lines, [r"D/?O비용", r"D/O\s*비용", r"DO비용"], 1)
+    duty = import_cost_charge_amount(import_cost_last_amount_near_label(lines, [r"관세"], 1), zero_when_negative=True)
+    import_vat = import_cost_charge_amount(import_cost_last_amount_near_label(lines, [r"부가가치세", r"부가세"], 1))
+    broker_fee = import_cost_charge_amount(import_cost_last_amount_near_label(lines, [r"통관수수료"], 1))
+    do_total = import_cost_charge_amount(import_cost_last_amount_near_label(lines, [r"D/?O비용", r"D/O\s*비용", r"DO비용"], 1))
     jts_amount, jts_vat = import_cost_jts_line_totals(lines)
     if not jts_amount:
         jts_amount, jts_vat = import_cost_amount_from_total_line(lines)
@@ -32427,26 +32439,26 @@ def parse_import_cost_settlement_text(text: str) -> dict[str, str]:
         if "부가세" in compact:
             vat_indices.append(index)
         if "DOC" in upper_line and "FEE" in upper_line and not charges.get("doc_fee"):
-            amount = import_cost_amount_near_line(lines, index)
+            amount = import_cost_charge_amount(import_cost_amount_near_line(lines, index))
             if amount:
                 charges["doc_fee"] = amount
         if "관세" in compact and "부가세" not in compact and "통관" not in compact and not charges.get("duty"):
-            amount = import_cost_amount_near_line(lines, index)
+            amount = import_cost_charge_amount(import_cost_amount_near_line(lines, index), zero_when_negative=True)
             if amount:
                 charges["duty"] = amount
         if "통관수수료" in compact and not charges.get("broker_fee"):
-            amount = import_cost_amount_near_line(lines, index)
+            amount = import_cost_charge_amount(import_cost_amount_near_line(lines, index))
             if amount:
                 charges["broker_fee"] = amount
 
     import_vat_index = next((index for index in vat_indices if broker_index < 0 or index < broker_index), -1)
     service_vat_index = next((index for index in vat_indices if broker_index >= 0 and index > broker_index), -1)
     if import_vat_index >= 0:
-        amount = import_cost_amount_near_line(lines, import_vat_index)
+        amount = import_cost_charge_amount(import_cost_amount_near_line(lines, import_vat_index))
         if amount:
             charges["import_vat"] = amount
     if service_vat_index >= 0:
-        amount = import_cost_amount_near_line(lines, service_vat_index)
+        amount = import_cost_charge_amount(import_cost_amount_near_line(lines, service_vat_index))
         if amount:
             charges["service_vat"] = amount
 
@@ -32460,7 +32472,9 @@ def parse_import_cost_settlement_text(text: str) -> dict[str, str]:
         for key, pattern in fallback_patterns.items():
             match = re.search(pattern, text, re.I)
             if match:
-                charges[key] = match.group(1).replace(",", "")
+                amount = import_cost_charge_amount(match.group(1).replace(",", ""), zero_when_negative=(key == "duty"))
+                if amount:
+                    charges[key] = amount
     return charges
 
 
