@@ -164,6 +164,7 @@ PERMISSION_DEFINITIONS = (
     ("cs_receive", "CS접수", "통합관리대장에서 CS 처리대장 접수"),
     ("mail_send", "메일 발송", "업체 CS 메일 발송"),
     ("import_shipment_manage", "수입제품 진행 관리", "수입제품 입고 진행 입력/완료 처리"),
+    ("import_cost_manage", "수입원가 계산", "수입원가 계산, 저장 목록, 원본 파일 관리"),
     ("user_admin", "사용자 관리", "계정 추가/수정/권한 변경"),
     ("backup_manage", "백업 관리", "수동/자동 백업 파일 관리"),
     ("system_update", "시스템 업데이트", "GitHub 업데이트 확인/적용"),
@@ -12178,7 +12179,7 @@ HTML = r"""<!doctype html>
     }
 
     function canViewImportCostProgram() {
-      return canViewAutomationCenter();
+      return can("import_cost_manage");
     }
 
     function permissionLabel(permission) {
@@ -31036,13 +31037,7 @@ def can_view_automation_center(user: dict[str, object] | None) -> bool:
 
 
 def can_view_import_cost_program(user: dict[str, object] | None) -> bool:
-    if can_view_automation_center(user):
-        return True
-    if not user:
-        return False
-    username = str(user.get("username") or "").strip()
-    display_name = str(user.get("display_name") or "").strip()
-    return username == "신성민 대표" or display_name == "신성민 대표" or display_name.startswith("신성민")
+    return bool(user) and user_has_permission(user, "import_cost_manage")
 
 
 def import_cost_decimal(value: object, default: str = "0") -> Decimal:

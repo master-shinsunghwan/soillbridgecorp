@@ -1109,7 +1109,7 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         self.assertNotIn('id="adminToolsNavGroup"', html_source)
         self.assertIn('mode === "userAdmin" && (!userAdminWorkspace || currentUser.role !== "admin")', html_source)
 
-    def test_import_cost_program_is_limited_to_admin_director_and_ceo(self) -> None:
+    def test_import_cost_program_is_controlled_by_dedicated_permission(self) -> None:
         app = self.load_app()
 
         admin_html = app.render_app_html({
@@ -1134,17 +1134,20 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
             "username": "staff",
             "display_name": "직원",
             "role": "user",
-            "permissions": app.ALL_PERMISSIONS,
+            "permissions": ["import_cost_manage"],
         })
 
+        self.assertIn("import_cost_manage", app.ALL_PERMISSIONS)
         self.assertIn('id="importCostNavGroup"', admin_html)
         self.assertIn('id="importCostWorkspace"', admin_html)
-        self.assertIn('id="importCostNavGroup"', director_html)
-        self.assertIn('id="importCostWorkspace"', director_html)
-        self.assertIn('id="importCostNavGroup"', ceo_html)
-        self.assertIn('id="importCostWorkspace"', ceo_html)
-        self.assertNotIn('id="importCostNavGroup"', staff_html)
-        self.assertNotIn('id="importCostWorkspace"', staff_html)
+        self.assertNotIn('id="importCostNavGroup"', director_html)
+        self.assertNotIn('id="importCostWorkspace"', director_html)
+        self.assertNotIn('id="importCostNavGroup"', ceo_html)
+        self.assertNotIn('id="importCostWorkspace"', ceo_html)
+        self.assertIn('id="importCostNavGroup"', staff_html)
+        self.assertIn('id="importCostWorkspace"', staff_html)
+        self.assertNotIn('id="salesReportNavGroup"', ceo_html)
+        self.assertNotIn('id="salesReportDashboard"', ceo_html)
         self.assertIn("function calculateImportCost()", admin_html)
         self.assertIn('"/api/import-cost-calculate"', admin_html)
         self.assertIn('id="importCostFileInput"', admin_html)
