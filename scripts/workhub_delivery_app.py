@@ -2384,6 +2384,34 @@ HTML = r"""<!doctype html>
       word-break: keep-all;
       overflow-wrap: anywhere;
     }
+    .import-cost-report-warning {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 10px;
+      border: 1px solid #fdba74;
+      border-radius: 8px;
+      background: #fff7ed;
+      color: #9a3412;
+      font-size: 12px;
+      font-weight: 950;
+    }
+    .import-cost-report-warning::before {
+      content: "!";
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 18px;
+      height: 18px;
+      border-radius: 999px;
+      background: #f97316;
+      color: #ffffff;
+      font-size: 12px;
+      line-height: 1;
+    }
+    .import-cost-charge-summary .import-cost-report-warning {
+      grid-column: 1 / -1;
+    }
     .import-cost-report-actions {
       display: flex;
       flex-wrap: wrap;
@@ -16163,6 +16191,14 @@ HTML = r"""<!doctype html>
       return Number.isFinite(number) ? number : 0;
     }
 
+    function importCostMissingSettlementWarnings() {
+      const warnings = [];
+      const includeImportVat = Boolean(document.querySelector("#importCostIncludeImportVat")?.checked);
+      if (!importCostInputValue("importCostBrokerFee")) warnings.push("통관수수료");
+      if (includeImportVat && !importCostInputValue("importCostImportVat")) warnings.push("수입부가세");
+      return warnings;
+    }
+
     function renderImportCostChargeSummary() {
       if (!importCostChargeSummary) return;
       const includeImportVat = Boolean(document.querySelector("#importCostIncludeImportVat")?.checked);
@@ -16185,11 +16221,15 @@ HTML = r"""<!doctype html>
         ["관세/통관수수료", formatImportCostWon(customs), ""],
         ["수입부가세", formatImportCostWon(vat), ""],
       ];
+      const warningItems = importCostMissingSettlementWarnings();
+      const warningHtml = warningItems.length
+        ? `<div class="import-cost-report-warning">정산 비용 누락: ${escapeHtml(warningItems.join(", "))}</div>`
+        : "";
       importCostChargeSummary.innerHTML = cards.map(([label, value, tone]) => `
         <div class="import-cost-summary-card ${tone}">
           <span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong>
         </div>
-      `).join("");
+      `).join("") + warningHtml;
     }
 
     function renderImportCostDetails(data = {}) {
@@ -16386,6 +16426,10 @@ HTML = r"""<!doctype html>
         importCostSavedCards.innerHTML = reports.map((report) => {
           const status = report.status || "saved";
           const managedName = report.managed_product_name || "";
+          const warnings = Array.isArray(report.warnings) ? report.warnings : [];
+          const warningHtml = warnings.length
+            ? `<div class="import-cost-report-warning">정산 비용 누락: ${escapeHtml(warnings.join(", "))}</div>`
+            : "";
           return `
           <article class="import-cost-report-card">
             <div class="import-cost-report-card-head">
@@ -16405,6 +16449,7 @@ HTML = r"""<!doctype html>
               <div><span>제품 요약</span><strong>${escapeHtml(report.product_summary || "-")}</strong></div>
               <div><span>총 수입원가</span><strong>${formatImportCostWon(report.landed_total || 0)}</strong></div>
             </div>
+            ${warningHtml}
             <div class="import-cost-report-actions">
               <button class="btn" type="button" data-import-cost-load="${escapeHtml(report.id)}">불러오기</button>
               <button class="btn" type="button" data-import-cost-show-files="${escapeHtml(report.id)}">원본파일</button>
@@ -16416,6 +16461,7 @@ HTML = r"""<!doctype html>
       if (!importCostSavedBody) return;
       importCostSavedBody.innerHTML = reports.map((report) => {
         const status = report.status || "saved";
+        const warnings = Array.isArray(report.warnings) ? report.warnings : [];
         return `
         <tr>
           <td><span class="import-cost-status ${escapeHtml(status)}">${escapeHtml(report.status_label || importCostStatusLabel(status))}</span></td>
@@ -16426,7 +16472,10 @@ HTML = r"""<!doctype html>
           <td>${formatImportCostWon(report.landed_total || 0)}</td>
           <td>v${Number(report.version || 1).toLocaleString("ko-KR")}</td>
           <td>${escapeHtml(report.updated_at || "-")}</td>
-          <td><button class="btn" type="button" data-import-cost-load="${escapeHtml(report.id)}">불러오기</button></td>
+          <td>
+            ${warnings.length ? `<div class="import-cost-report-warning">정산 비용 누락: ${escapeHtml(warnings.join(", "))}</div>` : ""}
+            <button class="btn" type="button" data-import-cost-load="${escapeHtml(report.id)}">불러오기</button>
+          </td>
         </tr>
       `}).join("");
     }
@@ -31099,6 +31148,30 @@ def normalize_import_cost_status(value: object) -> str:
     return status if status in IMPORT_COST_STATUS_LABELS else "saved"
 
 
+def import_cost_charge_present(payload: dict[str, object], key: str) -> bool:
+    return str(payload.get(key) or "").strip() != ""
+
+
+def import_cost_report_warnings(payload: dict[str, object] | None) -> list[str]:
+    if not isinstance(payload, dict):
+        return []
+    warnings: list[str] = []
+    if not import_cost_charge_present(payload, "broker_fee"):
+        warnings.append("통관수수료")
+    if bool(payload.get("include_import_vat", True)) and not import_cost_charge_present(payload, "import_vat"):
+        warnings.append("수입부가세")
+    return warnings
+
+
+def validate_import_cost_final_ready(payload: dict[str, object]) -> None:
+    warnings = import_cost_report_warnings(payload)
+    if warnings:
+        raise ValueError(
+            "수입 원가 최종 확정 전에 누락된 정산 비용을 입력해주세요: "
+            + ", ".join(warnings)
+        )
+
+
 def import_cost_product_summary(payload: dict[str, object] | None) -> str:
     products = payload.get("products") if isinstance(payload, dict) else []
     if not isinstance(products, list) or not products:
@@ -31179,6 +31252,7 @@ def import_cost_public_report(row: sqlite3.Row | dict[str, object], include_payl
         "created_by": str(item.get("created_by") or ""),
         "product_summary": import_cost_product_summary(payload),
         "summary": result.get("summary") if isinstance(result, dict) else {},
+        "warnings": import_cost_report_warnings(payload),
     }
     if include_payload:
         public["payload"] = payload
@@ -31223,6 +31297,8 @@ def save_import_cost_report(
     landed_total = int(summary.get("landed_total") or 0)
     allocated_cost_total = int(summary.get("allocated_cost_total") or 0)
     requested_status = normalize_import_cost_status(payload.get("status") or "saved")
+    if requested_status == "final":
+        validate_import_cost_final_ready(payload)
     connection = connect_db()
     try:
         existing_id = 0
@@ -31439,6 +31515,11 @@ def set_import_cost_report_status(report_id: int, status: str, user: dict[str, o
         if not row:
             raise ValueError("수입 원가 데이터를 찾지 못했습니다.")
         current_status = normalize_import_cost_status(row["status"])
+        if normalized_status == "final":
+            payload = json.loads(str(row["payload_json"] or "{}"))
+            if not isinstance(payload, dict):
+                payload = {}
+            validate_import_cost_final_ready(payload)
         if current_status == "final" and normalized_status != "final" and str((user or {}).get("role") or "") != "admin":
             raise ValueError("최종 확정 해제는 관리자만 가능합니다.")
         version = int(row["version"] or 1)

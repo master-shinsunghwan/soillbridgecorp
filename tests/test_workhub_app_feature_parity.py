@@ -1166,6 +1166,7 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         self.assertIn('id="importCostRunStatus"', admin_html)
         self.assertIn('id="importCostChargeSummary"', admin_html)
         self.assertIn("function renderImportCostChargeSummary", admin_html)
+        self.assertIn("function importCostMissingSettlementWarnings", admin_html)
         self.assertIn("import-cost-unit-cost", admin_html)
         self.assertIn("import-cost-unit-price-card", admin_html)
         self.assertIn("핵심 원가", admin_html)
@@ -1202,6 +1203,7 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         self.assertIn("function loadImportCostSavedReports", admin_html)
         self.assertIn("function saveCurrentImportCostReport", admin_html)
         self.assertIn("function saveAndFinalizeCurrentImportCostReport", admin_html)
+        self.assertIn("import-cost-report-warning", admin_html)
         self.assertIn("function formatImportCostProductNumber", admin_html)
         self.assertIn("formatImportCostProductNumber(product.quantity, true)", admin_html)
         self.assertIn("formatImportCostProductNumber(product.unit_usd, false, 4)", admin_html)
@@ -1540,6 +1542,42 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         self.assertEqual(updated["history"][-1]["action"], "recalculate")
         self.assertEqual(second["updated"], 0)
         self.assertEqual(second["errors"][0]["reason"], "already current")
+
+    def test_import_cost_missing_settlement_values_are_flagged_and_not_finalized(self) -> None:
+        app = self.load_app()
+        payload = {
+            "hbl_no": "XLTSWA26030027",
+            "invoice_no": "",
+            "remittance_rate": "1512",
+            "allocation_basis": "amount",
+            "doc_fee": "2092337",
+            "service_vat": "49627",
+            "include_import_vat": True,
+            "include_service_vat": True,
+            "products": [{
+                "name": "아이제나흐 베틴 IH 스텐냄비",
+                "quantity": "1800",
+                "unit_usd": "3.18",
+                "amount_usd": "5724",
+                "gross_weight": "1728",
+                "cbm": "69",
+            }],
+        }
+        result = app.calculate_import_cost(payload)
+        report = app.save_import_cost_report(
+            payload,
+            result,
+            user={"display_name": "Admin", "role": "admin"},
+        )
+
+        self.assertIn("통관수수료", report["warnings"])
+        self.assertIn("수입부가세", report["warnings"])
+        with self.assertRaisesRegex(ValueError, "통관수수료.*수입부가세"):
+            app.set_import_cost_report_status(
+                report["id"],
+                "final",
+                user={"display_name": "Admin", "role": "admin"},
+            )
 
     def test_import_cost_upload_analysis_reads_invoice_and_packing_files(self) -> None:
         app = self.load_app()
