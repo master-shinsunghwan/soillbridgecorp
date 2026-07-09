@@ -2236,6 +2236,133 @@ HTML = r"""<!doctype html>
       border-color: #f6c78f;
       background: #fff8ef;
     }
+    .import-cost-review-backdrop {
+      position: fixed;
+      inset: 0;
+      z-index: 80;
+      display: none;
+      place-items: center;
+      padding: 24px;
+      background: rgba(15, 23, 42, .42);
+    }
+    .import-cost-review-backdrop.open {
+      display: grid;
+    }
+    .import-cost-review-dialog {
+      width: min(980px, calc(100vw - 48px));
+      max-height: min(760px, calc(100vh - 48px));
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      border: 1px solid #cbd5e1;
+      border-radius: 10px;
+      background: #ffffff;
+      box-shadow: 0 24px 70px rgba(15, 23, 42, .24);
+    }
+    .import-cost-review-head {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 18px 20px 14px;
+      border-bottom: 1px solid #e2e8f0;
+    }
+    .import-cost-review-head strong {
+      display: block;
+      color: #0f172a;
+      font-size: 18px;
+      font-weight: 950;
+    }
+    .import-cost-review-head span {
+      display: block;
+      margin-top: 4px;
+      color: #64748b;
+      font-size: 13px;
+      font-weight: 750;
+    }
+    .import-cost-review-body {
+      padding: 16px 20px;
+      overflow: auto;
+    }
+    .import-cost-review-alert {
+      margin-bottom: 12px;
+      padding: 10px 12px;
+      border: 1px solid #fdba74;
+      border-radius: 8px;
+      background: #fff7ed;
+      color: #9a3412;
+      font-size: 13px;
+      font-weight: 850;
+      line-height: 1.45;
+    }
+    .import-cost-review-grid {
+      display: grid;
+      gap: 8px;
+    }
+    .import-cost-review-row {
+      display: grid;
+      grid-template-columns: 150px minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.2fr);
+      gap: 8px;
+      align-items: center;
+      padding: 9px;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      background: #f8fafc;
+    }
+    .import-cost-review-row.changed {
+      border-color: #f59e0b;
+      background: #fffbeb;
+    }
+    .import-cost-review-label {
+      color: #0f172a;
+      font-size: 13px;
+      font-weight: 950;
+    }
+    .import-cost-review-value {
+      color: #334155;
+      font-size: 13px;
+      font-weight: 800;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .import-cost-review-value small {
+      display: block;
+      color: #64748b;
+      font-size: 11px;
+      font-weight: 850;
+      margin-bottom: 3px;
+    }
+    .import-cost-review-row input {
+      width: 100%;
+      height: 36px;
+      border: 1px solid #cbd5e1;
+      border-radius: 7px;
+      padding: 0 10px;
+      color: #0f172a;
+      font-family: inherit;
+      font-size: 13px;
+      font-weight: 900;
+      outline: none;
+      background: #ffffff;
+    }
+    .import-cost-review-row.changed input {
+      border-color: #f59e0b;
+      box-shadow: 0 0 0 2px rgba(245, 158, 11, .16);
+    }
+    .import-cost-review-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+      padding: 14px 20px 18px;
+      border-top: 1px solid #e2e8f0;
+      background: #fbfcff;
+    }
+    @media (max-width: 820px) {
+      .import-cost-review-row {
+        grid-template-columns: 1fr;
+      }
+    }
     .import-cost-table-wrap {
       overflow-x: auto;
       border: 1px solid #dce5f2;
@@ -12526,6 +12653,11 @@ HTML = r"""<!doctype html>
     const importCostFileUpload = document.querySelector("#importCostFileUpload");
     const importCostFileSummary = document.querySelector("#importCostFileSummary");
     const importCostDetailList = document.querySelector("#importCostDetailList");
+    const importCostReviewBackdrop = document.querySelector("#importCostReviewBackdrop");
+    const importCostReviewBody = document.querySelector("#importCostReviewBody");
+    const importCostReviewClose = document.querySelector("#importCostReviewClose");
+    const importCostReviewCancel = document.querySelector("#importCostReviewCancel");
+    const importCostReviewApply = document.querySelector("#importCostReviewApply");
     const importCostRunStatus = document.querySelector("#importCostRunStatus");
     const importCostSaveReport = document.querySelector("#importCostSaveReport");
     const importCostFinalizeReport = document.querySelector("#importCostFinalizeReport");
@@ -12543,6 +12675,7 @@ HTML = r"""<!doctype html>
     let selectedImportCostFiles = [];
     let importCostSavedReports = [];
     let currentImportCostReport = null;
+    let pendingImportCostAnalysis = null;
     const orderWorkspace = document.querySelector("#orderWorkspace");
     const orderWorkspaceTitle = document.querySelector("#orderWorkspaceTitle");
     const orderWorkspacePanelTitle = document.querySelector("#orderWorkspacePanelTitle");
@@ -16121,7 +16254,11 @@ HTML = r"""<!doctype html>
 
     function setImportCostInputValue(id, value) {
       const input = document.querySelector(`#${id}`);
-      if (!input || value === undefined || value === null || String(value) === "") return;
+      if (!input) return;
+      if (value === undefined || value === null || String(value) === "") {
+        input.value = "";
+        return;
+      }
       input.value = importCostWonInputIds.has(id) ? formatImportCostMoneyValue(value) : value;
     }
 
@@ -16183,6 +16320,84 @@ HTML = r"""<!doctype html>
       if (includeServiceVat) includeServiceVat.checked = payload.include_service_vat !== false;
       fillImportCostProductRows(payload.products || []);
       renderImportCostChargeSummary();
+    }
+
+    const importCostChargeReviewFields = [
+      ["doc_fee", "D/O/운임비", "importCostDocFee"],
+      ["duty", "관세", "importCostDuty"],
+      ["broker_fee", "통관수수료", "importCostBrokerFee"],
+      ["other_cost", "기타 비용", "importCostOtherCost"],
+      ["import_vat", "수입부가세", "importCostImportVat"],
+      ["service_vat", "수수료 부가세", "importCostServiceVat"],
+    ];
+
+    function importCostReviewDisplayValue(value) {
+      const normalized = normalizeImportCostMoneyValue(value);
+      return normalized ? formatImportCostMoneyValue(normalized) : "-";
+    }
+
+    function importCostReviewComparable(value) {
+      return normalizeImportCostMoneyValue(value || "");
+    }
+
+    function closeImportCostChargeReview() {
+      pendingImportCostAnalysis = null;
+      importCostReviewBackdrop?.classList.remove("open");
+      importCostReviewBackdrop?.setAttribute("aria-hidden", "true");
+    }
+
+    function openImportCostChargeReview(data = {}) {
+      if (!importCostReviewBackdrop || !importCostReviewBody) {
+        fillImportCostForm(data.payload || {});
+        renderImportCostDetails(data);
+        if (data.result) renderImportCostResult(data.result);
+        return;
+      }
+      const payload = data.payload || {};
+      pendingImportCostAnalysis = data;
+      const rows = importCostChargeReviewFields.map(([key, label, inputId]) => {
+        const currentValue = importCostInputValue(inputId);
+        const autoValue = payload[key] ?? "";
+        const applyValue = importCostReviewComparable(autoValue) || importCostReviewComparable(currentValue);
+        const changed = importCostReviewComparable(currentValue) !== importCostReviewComparable(autoValue);
+        return `
+          <div class="import-cost-review-row ${changed ? "changed" : ""}">
+            <div class="import-cost-review-label">${escapeHtml(label)}</div>
+            <div class="import-cost-review-value"><small>현재 입력값</small>${escapeHtml(importCostReviewDisplayValue(currentValue))}</div>
+            <div class="import-cost-review-value"><small>자동 인식값</small>${escapeHtml(importCostReviewDisplayValue(autoValue))}</div>
+            <input type="text" inputmode="numeric" data-import-cost-review-field="${escapeHtml(key)}" value="${escapeHtml(formatImportCostMoneyValue(applyValue))}" />
+          </div>
+        `;
+      }).join("");
+      const missing = Array.isArray(data.missing) && data.missing.length
+        ? `<div class="import-cost-review-alert">자동 인식 누락 항목: ${escapeHtml(data.missing.join(", "))}</div>`
+        : "";
+      const scannedWarning = (data.files || []).some((file) =>
+        String(file.role || "").includes("PDF")
+        && (file.details || []).some((detail) => String(detail).includes("스캔") || String(detail).includes("OCR") || String(detail).includes("읽지 못"))
+      );
+      const warning = scannedWarning
+        ? `<div class="import-cost-review-alert">스캔 PDF는 자동 인식 오차가 생길 수 있습니다. 통관수수료, 수입부가세, 관세는 반드시 육안 확인 후 적용해주세요.</div>`
+        : "";
+      importCostReviewBody.innerHTML = `${warning}${missing}<div class="import-cost-review-grid">${rows}</div>`;
+      importCostReviewBackdrop.classList.add("open");
+      importCostReviewBackdrop.setAttribute("aria-hidden", "false");
+    }
+
+    async function applyImportCostChargeReview() {
+      if (!pendingImportCostAnalysis) return;
+      const data = pendingImportCostAnalysis;
+      const payload = { ...(data.payload || {}) };
+      importCostChargeReviewFields.forEach(([key]) => {
+        const input = importCostReviewBody?.querySelector(`[data-import-cost-review-field="${key}"]`);
+        payload[key] = normalizeImportCostMoneyValue(input?.value || "");
+      });
+      closeImportCostChargeReview();
+      fillImportCostForm(payload);
+      renderImportCostDetails(data);
+      renderSelectedImportCostFiles("검토 완료 · ");
+      importCostMessage.textContent = "검토한 정산 비용을 적용했습니다. 계산 결과를 다시 확인해주세요.";
+      await calculateImportCost();
     }
 
     function importCostNumericValue(id) {
@@ -16801,20 +17016,15 @@ HTML = r"""<!doctype html>
         if (key === "products") return;
         formData.append(key, typeof value === "boolean" ? (value ? "1" : "") : String(value ?? ""));
       });
+      formData.append("review_only", "1");
       try {
         const response = await fetch("/api/import-cost-upload", { method: "POST", body: formData });
         const data = await response.json();
         if (!response.ok || data.error) throw new Error(data.error || "파일 분석에 실패했습니다.");
-        fillImportCostForm(data.payload || {});
-        renderImportCostDetails(data);
-        if (data.result) renderImportCostResult(data.result);
-        if (data.report) {
-          await loadImportCostSavedReports();
-          await loadImportShipments().catch(() => {});
-        }
+        openImportCostChargeReview(data);
         renderSelectedImportCostFiles("분석 완료 · ");
-        importCostMessage.textContent = data.calculation_error || "업로드 파일 기준 제품별 수입원가 계산이 완료됐습니다.";
-        setImportCostRunStatus(data.calculation_error ? "error" : "done", data.calculation_error || "업로드 파일 기준 제품별 수입원가 계산이 완료됐습니다.");
+        importCostMessage.textContent = data.calculation_error || "자동 인식값을 검토한 뒤 적용해주세요.";
+        setImportCostRunStatus(data.calculation_error ? "error" : "done", data.calculation_error || "파일 분석이 완료되었습니다. 자동 인식값 검토창에서 비용을 확인해주세요.");
       } catch (error) {
         const message = error.message || "파일 분석에 실패했습니다.";
         importCostMessage.textContent = message;
@@ -25042,6 +25252,15 @@ HTML = r"""<!doctype html>
     });
     importCostFileChoose?.addEventListener("click", () => importCostFileInput?.click());
     importCostFileUpload?.addEventListener("click", uploadImportCostFiles);
+    importCostReviewClose?.addEventListener("click", closeImportCostChargeReview);
+    importCostReviewCancel?.addEventListener("click", closeImportCostChargeReview);
+    importCostReviewApply?.addEventListener("click", () => {
+      applyImportCostChargeReview().catch((error) => {
+        const message = error.message || "수입 원가 검토값 적용에 실패했습니다.";
+        importCostMessage.textContent = message;
+        setImportCostRunStatus("error", message);
+      });
+    });
     importCostFileInput?.addEventListener("change", () => {
       const files = Array.from(importCostFileInput.files || []);
       appendImportCostSelectedFiles(files);
@@ -26066,6 +26285,22 @@ IMPORT_COST_WORKSPACE_HTML = r"""
             </div>
             <div class="import-cost-run-status" id="importCostRunStatus">대기 중 · 인보이스, 패킹리스트, 수입정산서를 선택해주세요.</div>
             <div class="import-cost-detail-list" id="importCostDetailList"></div>
+            <div class="import-cost-review-backdrop" id="importCostReviewBackdrop" aria-hidden="true">
+              <section class="import-cost-review-dialog" role="dialog" aria-modal="true" aria-labelledby="importCostReviewTitle">
+                <div class="import-cost-review-head">
+                  <div>
+                    <strong id="importCostReviewTitle">자동 인식값 검토</strong>
+                    <span>스캔 PDF와 OCR 값은 오차가 날 수 있습니다. 사람 눈으로 확인한 값과 비교한 뒤 적용해주세요.</span>
+                  </div>
+                  <button class="popup-close-button" type="button" id="importCostReviewClose" aria-label="닫기">×</button>
+                </div>
+                <div class="import-cost-review-body" id="importCostReviewBody"></div>
+                <div class="import-cost-review-actions">
+                  <button class="workspace-button ghost" type="button" id="importCostReviewCancel">취소</button>
+                  <button class="workspace-button" type="button" id="importCostReviewApply">확인 후 적용</button>
+                </div>
+              </section>
+            </div>
           </section>
           <section class="import-cost-card import-cost-result-card">
             <div class="admin-section-title">계산 결과</div>
@@ -42475,10 +42710,11 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                 }
                 options["include_import_vat"] = str(fields.get("include_import_vat") or "").strip() in {"1", "true", "on", "yes"}
                 options["include_service_vat"] = str(fields.get("include_service_vat") or "").strip() in {"1", "true", "on", "yes"}
+                review_only = str(fields.get("review_only") or "").strip() in {"1", "true", "on", "yes"}
                 analysis = analyze_import_cost_files(upload_paths, options)
                 result = analysis.get("result") if isinstance(analysis.get("result"), dict) else None
                 payload = analysis.get("payload") if isinstance(analysis.get("payload"), dict) else None
-                if result and payload:
+                if result and payload and not review_only:
                     analysis["report"] = save_import_cost_report(payload, result, user=user, upload_paths=upload_paths)
                 self.send_json(analysis)
                 return
