@@ -2440,10 +2440,97 @@ HTML = r"""<!doctype html>
       line-height: 1.2;
     }
     .import-cost-report-list {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
-      gap: 12px;
+      display: block;
       margin-top: 12px;
+      max-height: 560px;
+      overflow: auto;
+      border: 1px solid #cbdaf1;
+      border-radius: 10px;
+      background: #ffffff;
+      box-shadow: 0 10px 24px rgba(15, 23, 42, .05);
+    }
+    .import-cost-report-table-wrap {
+      min-width: 100%;
+      overflow: auto;
+    }
+    .import-cost-report-table {
+      width: max-content;
+      min-width: 1640px;
+      border-collapse: collapse;
+      font-size: 12px;
+    }
+    .import-cost-report-table th {
+      position: sticky;
+      top: 0;
+      z-index: 2;
+      height: 38px;
+      padding: 0 10px;
+      border: 1px solid #d6e2f2;
+      background: #eef6ff;
+      color: #1f2937;
+      text-align: center;
+      font-weight: 950;
+      white-space: nowrap;
+    }
+    .import-cost-report-table td {
+      height: 54px;
+      padding: 7px 10px;
+      border: 1px solid #e2e8f0;
+      background: #ffffff;
+      color: #111827;
+      font-weight: 850;
+      vertical-align: middle;
+      white-space: nowrap;
+    }
+    .import-cost-report-table tbody tr:nth-child(even) td {
+      background: #f8fbff;
+    }
+    .import-cost-report-table tbody tr:hover td {
+      background: #eef6ff;
+    }
+    .import-cost-report-table .center {
+      text-align: center;
+    }
+    .import-cost-report-table .right {
+      text-align: right;
+    }
+    .import-cost-report-table .muted {
+      color: #667085;
+      font-size: 11px;
+      font-weight: 850;
+    }
+    .import-cost-report-table .wide {
+      min-width: 320px;
+      max-width: 420px;
+    }
+    .import-cost-report-table .ellipsis {
+      display: block;
+      max-width: 420px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .import-cost-managed-product-inline {
+      display: inline-grid;
+      grid-template-columns: minmax(260px, 360px) auto;
+      gap: 7px;
+      align-items: center;
+    }
+    .import-cost-managed-product-inline input {
+      height: 34px;
+      min-width: 260px;
+      border: 1px solid #cbd5e1;
+      border-radius: 8px;
+      padding: 0 10px;
+      font-family: inherit;
+      font-size: 12px;
+      font-weight: 900;
+      color: #111827;
+      background: #ffffff;
+    }
+    .import-cost-report-actions.inline {
+      flex-wrap: nowrap;
+      justify-content: center;
     }
     .import-cost-report-card {
       display: grid;
@@ -16584,6 +16671,22 @@ HTML = r"""<!doctype html>
       return labels[status] || labels.saved;
     }
 
+    function importCostReportBasisDate(report = {}) {
+      return String(report.import_ledger_date || report.import_ledger_date_label || report.updated_at || report.created_at || "").trim();
+    }
+
+    function importCostReportDateLabel(value) {
+      const text = String(value || "").trim();
+      if (!text) return "-";
+      return text.length > 10 ? text.slice(0, 10) : text;
+    }
+
+    function importCostReportSortValue(report = {}) {
+      const basis = importCostReportBasisDate(report);
+      if (basis) return importCostReportDateLabel(basis);
+      return String(report.updated_at || report.created_at || "").trim();
+    }
+
     function filteredImportCostSavedReports() {
       const keyword = String(importCostSavedSearch?.value || "").trim().toLowerCase();
       const status = String(importCostSavedStatusFilter?.value || "").trim();
@@ -16596,11 +16699,17 @@ HTML = r"""<!doctype html>
           report.product_summary,
           report.created_by,
         ].join(" ").toLowerCase();
-        const updatedMonth = String(report.updated_at || report.created_at || "").slice(0, 7);
+        const updatedMonth = importCostReportDateLabel(importCostReportBasisDate(report)).slice(0, 7);
         if (keyword && !haystack.includes(keyword)) return false;
         if (status && String(report.status || "saved") !== status) return false;
         if (month && updatedMonth !== month) return false;
         return true;
+      }).sort((a, b) => {
+        const dateCompare = importCostReportSortValue(b).localeCompare(importCostReportSortValue(a));
+        if (dateCompare) return dateCompare;
+        const updatedCompare = String(b.updated_at || b.created_at || "").localeCompare(String(a.updated_at || a.created_at || ""));
+        if (updatedCompare) return updatedCompare;
+        return Number(b.id || 0) - Number(a.id || 0);
       });
     }
 
@@ -16639,6 +16748,65 @@ HTML = r"""<!doctype html>
         return;
       }
       if (importCostSavedCards) {
+        const rows = reports.map((report, index) => {
+          const status = report.status || "saved";
+          const managedName = report.managed_product_name || "";
+          const warnings = Array.isArray(report.warnings) ? report.warnings : [];
+          const warningText = warnings.length ? warnings.join(", ") : "";
+          const basisDate = importCostReportDateLabel(importCostReportBasisDate(report));
+          return `
+            <tr>
+              <td class="center">${index + 1}</td>
+              <td class="center"><strong>${escapeHtml(basisDate)}</strong></td>
+              <td class="center"><span class="import-cost-status ${escapeHtml(status)}">${escapeHtml(report.status_label || importCostStatusLabel(status))}</span></td>
+              <td class="wide">
+                <div class="import-cost-managed-product-inline">
+                  <input type="text" data-import-cost-managed-product="${escapeHtml(report.id)}" value="${escapeHtml(managedName)}" placeholder="우리가 관리하는 품명" title="${escapeHtml(managedName || "")}" />
+                  <button class="workspace-button ghost" type="button" data-import-cost-managed-product-save="${escapeHtml(report.id)}">저장</button>
+                </div>
+              </td>
+              <td><span class="ellipsis" title="${escapeHtml(report.hbl_no || "-")}">${escapeHtml(report.hbl_no || "-")}</span></td>
+              <td><span class="ellipsis" title="${escapeHtml(report.invoice_no || "-")}">${escapeHtml(report.invoice_no || "-")}</span></td>
+              <td class="wide"><span class="ellipsis" title="${escapeHtml(report.product_summary || "-")}">${escapeHtml(report.product_summary || "-")}</span></td>
+              <td class="right"><strong>${formatImportCostWon(report.landed_total || 0)}</strong></td>
+              <td class="center">v${Number(report.version || 1).toLocaleString("ko-KR")}</td>
+              <td class="center"><span class="muted">${escapeHtml(report.updated_at || "-")}</span></td>
+              <td>${warningText ? `<span class="import-cost-report-warning">${escapeHtml(warningText)}</span>` : `<span class="muted">-</span>`}</td>
+              <td>
+                <div class="import-cost-report-actions inline">
+                  <button class="btn" type="button" data-import-cost-load="${escapeHtml(report.id)}">불러오기</button>
+                  <button class="btn" type="button" data-import-cost-show-files="${escapeHtml(report.id)}">원본파일</button>
+                  <button class="btn" type="button" data-import-cost-show-history="${escapeHtml(report.id)}">변경이력</button>
+                </div>
+              </td>
+            </tr>
+          `;
+        }).join("");
+        importCostSavedCards.innerHTML = `
+          <div class="import-cost-report-table-wrap">
+            <table class="import-cost-report-table">
+              <thead>
+                <tr>
+                  <th>순번</th>
+                  <th>수입원장 기준일자</th>
+                  <th>상태</th>
+                  <th>우리가 관리하는 품명</th>
+                  <th>HBL</th>
+                  <th>Invoice</th>
+                  <th>제품 요약</th>
+                  <th>총 수입원가</th>
+                  <th>버전</th>
+                  <th>저장/수정일</th>
+                  <th>확인</th>
+                  <th>작업</th>
+                </tr>
+              </thead>
+              <tbody>${rows}</tbody>
+            </table>
+          </div>
+        `;
+      }
+      if (false && importCostSavedCards) {
         importCostSavedCards.innerHTML = reports.map((report) => {
           const status = report.status || "saved";
           const managedName = report.managed_product_name || "";
@@ -31465,6 +31633,8 @@ def import_cost_public_report(row: sqlite3.Row | dict[str, object], include_payl
     result = json.loads(str(item.get("result_json") or "{}"))
     payload = json.loads(str(item.get("payload_json") or "{}"))
     status = normalize_import_cost_status(item.get("status"))
+    import_ledger_date_raw = str(item.get("import_ledger_date") or "").strip()
+    import_ledger_date = import_shipment_date_iso(import_ledger_date_raw) or import_ledger_date_raw
     public = {
         "id": int(item.get("id") or 0),
         "created_at": str(item.get("created_at") or ""),
@@ -31481,6 +31651,8 @@ def import_cost_public_report(row: sqlite3.Row | dict[str, object], include_payl
         "allocated_cost_total": int(item.get("allocated_cost_total") or 0),
         "created_by": str(item.get("created_by") or ""),
         "product_summary": import_cost_product_summary(payload),
+        "import_ledger_date": import_ledger_date,
+        "import_ledger_date_label": import_ledger_date or import_ledger_date_raw,
         "summary": result.get("summary") if isinstance(result, dict) else {},
         "warnings": import_cost_report_warnings(payload),
     }
@@ -31683,6 +31855,20 @@ def save_import_cost_report(
     return saved or {"id": report_id}
 
 
+def import_cost_report_sort_key(report: dict[str, object]) -> tuple[int, int, int, str, int]:
+    date_text = report.get("import_ledger_date") or report.get("updated_at") or report.get("created_at")
+    year, month, day = import_shipment_date_key(date_text)
+    if year == 9999:
+        year, month, day = 0, 0, 0
+    return (
+        year,
+        month,
+        day,
+        str(report.get("updated_at") or report.get("created_at") or ""),
+        int(report.get("id") or 0),
+    )
+
+
 def list_import_cost_reports(limit: int = 100) -> list[dict[str, object]]:
     init_db()
     safe_limit = max(1, min(int(limit or 100), 300))
@@ -31692,7 +31878,15 @@ def list_import_cost_reports(limit: int = 100) -> list[dict[str, object]]:
             """
             SELECT id, created_at, updated_at, hbl_no, invoice_no, managed_product_name, remittance_rate,
                    allocation_basis, landed_total, allocated_cost_total, payload_json,
-                   result_json, created_by, status, version
+                   result_json, created_by, status, version,
+                   (
+                       SELECT COALESCE(NULLIF(warehouse_due_date, ''), NULLIF(arrival_date, ''), NULLIF(departure_date, ''))
+                         FROM import_shipments
+                        WHERE UPPER(COALESCE(import_shipments.hbl_no, '')) = UPPER(COALESCE(import_cost_reports.hbl_no, ''))
+                          AND COALESCE(import_shipments.hbl_no, '') <> ''
+                        ORDER BY id DESC
+                        LIMIT 1
+                   ) AS import_ledger_date
               FROM import_cost_reports
              ORDER BY updated_at DESC, id DESC
              LIMIT ?
@@ -31701,7 +31895,8 @@ def list_import_cost_reports(limit: int = 100) -> list[dict[str, object]]:
         ).fetchall()
     finally:
         connection.close()
-    return [import_cost_public_report(row) for row in rows]
+    reports = [import_cost_public_report(row) for row in rows]
+    return sorted(reports, key=import_cost_report_sort_key, reverse=True)
 
 
 def get_import_cost_report(report_id: int) -> dict[str, object] | None:
@@ -31714,7 +31909,15 @@ def get_import_cost_report(report_id: int) -> dict[str, object] | None:
             """
             SELECT id, created_at, updated_at, hbl_no, invoice_no, managed_product_name, remittance_rate,
                    allocation_basis, landed_total, allocated_cost_total, payload_json,
-                   result_json, created_by, status, version
+                   result_json, created_by, status, version,
+                   (
+                       SELECT COALESCE(NULLIF(warehouse_due_date, ''), NULLIF(arrival_date, ''), NULLIF(departure_date, ''))
+                         FROM import_shipments
+                        WHERE UPPER(COALESCE(import_shipments.hbl_no, '')) = UPPER(COALESCE(import_cost_reports.hbl_no, ''))
+                          AND COALESCE(import_shipments.hbl_no, '') <> ''
+                        ORDER BY id DESC
+                        LIMIT 1
+                   ) AS import_ledger_date
               FROM import_cost_reports
              WHERE id = ?
             """,

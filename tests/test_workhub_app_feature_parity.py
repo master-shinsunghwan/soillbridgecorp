@@ -1199,6 +1199,11 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         self.assertIn('id="importCostHistoryPanel"', admin_html)
         self.assertIn("data-import-cost-file-analyze", admin_html)
         self.assertIn('id="importCostSavedBody"', admin_html)
+        self.assertIn("import-cost-report-table-wrap", admin_html)
+        self.assertIn("import-cost-report-table", admin_html)
+        self.assertIn("importCostReportBasisDate", admin_html)
+        self.assertIn("import-cost-managed-product-inline", admin_html)
+        self.assertIn("index + 1", admin_html)
         self.assertIn('class="import-cost-card import-cost-result-card"', admin_html)
         self.assertLess(admin_html.index('id="importCostResultBody"'), admin_html.index('id="importCostSavedBody"'))
         self.assertIn("formatImportCostRate(report.remittance_rate)", admin_html)
@@ -1268,6 +1273,60 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         detailed = app.get_import_cost_report(report["id"])
         self.assertEqual(detailed["managed_product_name"], "노르디쿡 IH 무쇠팬 28cm")
         self.assertEqual(detailed["history"][-1]["action"], "managed_product")
+
+    def test_import_cost_saved_reports_are_ordered_by_import_ledger_date(self) -> None:
+        app = self.load_app()
+        app.init_db()
+
+        def save_report(hbl_no: str, warehouse_due_date: str) -> dict:
+            app.save_import_shipment(
+                {
+                    "warehouse_due_date": warehouse_due_date,
+                    "hbl_no": hbl_no,
+                    "item": f"Product {hbl_no}",
+                    "quantity": "1",
+                }
+            )
+            payload = {
+                "hbl_no": hbl_no,
+                "invoice_no": f"INV-{hbl_no}",
+                "managed_product_name": f"Managed {hbl_no}",
+                "remittance_rate": "1512",
+                "allocation_basis": "amount",
+                "doc_fee": "1000",
+                "duty": "0",
+                "broker_fee": "0",
+                "other_cost": "",
+                "import_vat": "0",
+                "service_vat": "0",
+                "include_import_vat": True,
+                "include_service_vat": True,
+                "products": [
+                    {
+                        "name": f"Product {hbl_no}",
+                        "quantity": "10",
+                        "unit_usd": "1",
+                        "amount_usd": "10",
+                        "gross_weight": "1",
+                        "cbm": "1",
+                    }
+                ],
+            }
+            return app.save_import_cost_report(
+                payload,
+                app.calculate_import_cost(payload),
+                user={"display_name": "Admin", "role": "admin"},
+            )
+
+        save_report("NEW-DATE-HBL", "2026-07-09")
+        save_report("OLD-DATE-HBL", "2026-06-10")
+
+        reports = app.list_import_cost_reports()
+
+        self.assertEqual(reports[0]["hbl_no"], "NEW-DATE-HBL")
+        self.assertEqual(reports[0]["import_ledger_date"], "2026-07-09")
+        self.assertEqual(reports[0]["import_ledger_date_label"], "2026-07-09")
+        self.assertEqual(reports[1]["hbl_no"], "OLD-DATE-HBL")
 
     def test_import_cost_calculation_allocates_to_product_unit_cost(self) -> None:
         app = self.load_app()
