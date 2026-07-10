@@ -28,11 +28,21 @@ function New-WorkhubDesktopShortcut {
 
 $Desktop = [Environment]::GetFolderPath("Desktop")
 $Programs = [Environment]::GetFolderPath("Programs")
+$Startup = [Environment]::GetFolderPath("Startup")
 $ShortcutName = "(주)소일브릿지 업무자동화.lnk"
 New-WorkhubDesktopShortcut -Path (Join-Path $Desktop $ShortcutName)
 New-WorkhubDesktopShortcut -Path (Join-Path $Programs $ShortcutName)
+
+$StartupScript = Join-Path $Startup "SoilbridgeWorkhubDesktop_AutoStart.vbs"
+$StartupCommand = ('"' + $ExeTarget + '"').Replace('"', '""')
+$StartupContent = @"
+Set shell = CreateObject("WScript.Shell")
+shell.Run "$StartupCommand", 1, False
+"@
+Set-Content -LiteralPath $StartupScript -Value $StartupContent -Encoding Unicode
 
 Write-Host "Install complete"
 Write-Host "Install folder: $InstallRoot"
 Write-Host "Desktop shortcut: $(Join-Path $Desktop $ShortcutName)"
 Write-Host "Start menu shortcut: $(Join-Path $Programs $ShortcutName)"
+Write-Host "Startup launcher: $StartupScript"

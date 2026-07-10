@@ -57,22 +57,23 @@ $InstallCmd = @"
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0install_workhub_desktop_app.ps1"
 pause
 "@
-Set-Content -LiteralPath (Join-Path $PackageDir "설치.cmd") -Value $InstallCmd -Encoding ASCII
+Set-Content -LiteralPath (Join-Path $PackageDir "Install.cmd") -Value $InstallCmd -Encoding ASCII
 
 $UninstallCmd = @"
 @echo off
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0uninstall_workhub_desktop_app.ps1"
 pause
 "@
-Set-Content -LiteralPath (Join-Path $PackageDir "삭제.cmd") -Value $UninstallCmd -Encoding ASCII
+Set-Content -LiteralPath (Join-Path $PackageDir "Uninstall.cmd") -Value $UninstallCmd -Encoding ASCII
 
 $Readme = @"
 (주)소일브릿지 업무자동화 PC 앱
 
 실행 방법
 1. SoilbridgeWorkhub.exe를 더블클릭하면 주소창 없는 업무자동화 앱 창이 열립니다.
-2. 설치해서 쓰려면 '설치.cmd'를 실행합니다.
-3. 설치 후 바탕화면 또는 시작 메뉴의 '(주)소일브릿지 업무자동화' 바로가기를 실행합니다.
+2. 한 번 실행하면 현재 사용자 시작프로그램에 자동 등록되어 다음 PC 부팅부터 자동 실행됩니다.
+3. 설치해서 쓰려면 'Install.cmd'를 실행합니다.
+4. 설치 후 바탕화면 또는 시작 메뉴의 '(주)소일브릿지 업무자동화' 바로가기를 실행합니다.
 
 접속 대상
 - https://workhub.soilbridgecorp.cloud/

@@ -14,6 +14,7 @@ from urllib.request import Request, urlopen
 APP_TITLE = "(주)소일브릿지 업무자동화"
 DEFAULT_APP_URL = "https://workhub.soilbridgecorp.cloud/"
 APP_USER_AGENT = "SoilbridgeWorkhubDesktop/1.0"
+STARTUP_SCRIPT_NAME = "SoilbridgeWorkhubDesktop_AutoStart.vbs"
 
 LOCAL_APPDATA = Path(os.environ.get("LOCALAPPDATA") or Path.home() / "AppData" / "Local")
 DEFAULT_STORAGE_DIR = LOCAL_APPDATA / "SoilbridgeWorkhubDesktop" / "WebViewData"
@@ -34,6 +35,38 @@ def desktop_storage_dir() -> Path:
     if configured:
         return Path(configured).expanduser()
     return DEFAULT_STORAGE_DIR
+
+
+def startup_folder() -> Path | None:
+    appdata = os.environ.get("APPDATA")
+    if not appdata:
+        return None
+    return Path(appdata) / "Microsoft" / "Windows" / "Start Menu" / "Programs" / "Startup"
+
+
+def register_startup_launch() -> None:
+    if os.environ.get("WORKHUB_DESKTOP_DISABLE_AUTOSTART", "").strip() == "1":
+        return
+    folder = startup_folder()
+    if not folder:
+        return
+    try:
+        folder.mkdir(parents=True, exist_ok=True)
+        startup_script = folder / STARTUP_SCRIPT_NAME
+        executable = Path(sys.executable).resolve()
+        if getattr(sys, "frozen", False):
+            command = f'"{executable}"'
+        else:
+            command = f'"{executable}" "{Path(__file__).resolve()}"'
+        escaped_command = command.replace('"', '""')
+        script = (
+            'Set shell = CreateObject("WScript.Shell")\n'
+            f'shell.Run "{escaped_command}", 1, False\n'
+        )
+        if not startup_script.exists() or startup_script.read_text(encoding="utf-16", errors="ignore") != script:
+            startup_script.write_text(script, encoding="utf-16")
+    except Exception:
+        return
 
 
 def app_is_reachable(app_url: str, timeout: float = 6.0) -> tuple[bool, str]:
@@ -239,6 +272,7 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps({"ok": ok, "url": app_url, "message": message}, ensure_ascii=False))
         return 0 if ok else 1
 
+    register_startup_launch()
     run_desktop_app(app_url, debug=args.debug, skip_preflight=args.skip_preflight)
     return 0
 

@@ -385,6 +385,27 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         self.assertIn("highlightHtml: `<div class=\"cs-followup-alert-list\">${cards.join(\"\")}</div>`", html_source)
         self.assertIn("wide: true", html_source)
 
+    def test_desktop_launchers_register_user_startup_on_first_run(self) -> None:
+        vps_launcher = (ROOT / "scripts" / "workhub_vps_desktop_app.py").read_text(encoding="utf-8")
+        local_launcher = (ROOT / "scripts" / "workhub_desktop_launcher.py").read_text(encoding="utf-8")
+        desktop_installer = (ROOT / "install_workhub_desktop_app.ps1").read_text(encoding="utf-8")
+        local_installer = (ROOT / "install_workhub_app.ps1").read_text(encoding="utf-8")
+        desktop_uninstaller = (ROOT / "uninstall_workhub_desktop_app.ps1").read_text(encoding="utf-8")
+        local_uninstaller = (ROOT / "uninstall_workhub_app.ps1").read_text(encoding="utf-8")
+
+        self.assertIn("def register_startup_launch()", vps_launcher)
+        self.assertIn("SoilbridgeWorkhubDesktop_AutoStart.vbs", vps_launcher)
+        self.assertIn("register_startup_launch()", vps_launcher)
+        self.assertIn("def register_startup_launch()", local_launcher)
+        self.assertIn("Workhub_AutoStart.vbs", local_launcher)
+        self.assertIn("register_startup_launch()", local_launcher)
+        self.assertIn("WORKHUB_DESKTOP_DISABLE_AUTOSTART", vps_launcher)
+        self.assertIn("WORKHUB_DESKTOP_DISABLE_AUTOSTART", local_launcher)
+        self.assertIn("SoilbridgeWorkhubDesktop_AutoStart.vbs", desktop_installer)
+        self.assertIn("Workhub_AutoStart.vbs", local_installer)
+        self.assertIn("SoilbridgeWorkhubDesktop_AutoStart.vbs", desktop_uninstaller)
+        self.assertIn("Workhub_AutoStart.vbs", local_uninstaller)
+
     def test_management_duplicate_rows_override_even_row_striping(self) -> None:
         html_source = (ROOT / "scripts" / "workhub_delivery_app.py").read_text(encoding="utf-8")
 

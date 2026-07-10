@@ -4,6 +4,8 @@ import sys
 import threading
 import time
 import webbrowser
+import os
+from pathlib import Path
 from urllib.request import urlopen
 
 from workhub_delivery_app import run
@@ -12,6 +14,39 @@ from workhub_delivery_app import run
 PORT = 8770
 URL = f"http://127.0.0.1:{PORT}/"
 APP_TITLE = "(주)소일브릿지 업무자동화"
+STARTUP_SCRIPT_NAME = "Workhub_AutoStart.vbs"
+
+
+def startup_folder() -> Path | None:
+    appdata = os.environ.get("APPDATA")
+    if not appdata:
+        return None
+    return Path(appdata) / "Microsoft" / "Windows" / "Start Menu" / "Programs" / "Startup"
+
+
+def register_startup_launch() -> None:
+    if os.environ.get("WORKHUB_DESKTOP_DISABLE_AUTOSTART", "").strip() == "1":
+        return
+    folder = startup_folder()
+    if not folder:
+        return
+    try:
+        folder.mkdir(parents=True, exist_ok=True)
+        startup_script = folder / STARTUP_SCRIPT_NAME
+        executable = Path(sys.executable).resolve()
+        if getattr(sys, "frozen", False):
+            command = f'"{executable}"'
+        else:
+            command = f'"{executable}" "{Path(__file__).resolve()}"'
+        escaped_command = command.replace('"', '""')
+        script = (
+            'Set shell = CreateObject("WScript.Shell")\n'
+            f'shell.Run "{escaped_command}", 1, False\n'
+        )
+        if not startup_script.exists() or startup_script.read_text(encoding="utf-16", errors="ignore") != script:
+            startup_script.write_text(script, encoding="utf-16")
+    except Exception:
+        return
 
 
 def is_running() -> bool:
@@ -23,6 +58,7 @@ def is_running() -> bool:
 
 
 def main() -> None:
+    register_startup_launch()
     server_thread: threading.Thread | None = None
 
     if not is_running():

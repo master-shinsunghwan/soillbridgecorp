@@ -89,10 +89,20 @@ function New-WorkhubShortcut {
 
 $Desktop = [Environment]::GetFolderPath("Desktop")
 $Programs = [Environment]::GetFolderPath("Programs")
+$Startup = [Environment]::GetFolderPath("Startup")
 New-WorkhubShortcut -Path (Join-Path $Desktop "Workhub.lnk")
 New-WorkhubShortcut -Path (Join-Path $Programs "Workhub.lnk")
+
+$StartupScript = Join-Path $Startup "Workhub_AutoStart.vbs"
+$StartupCommand = ('"' + $Launcher + '"').Replace('"', '""')
+$StartupContent = @"
+Set shell = CreateObject("WScript.Shell")
+shell.Run "$StartupCommand", 1, False
+"@
+Set-Content -LiteralPath $StartupScript -Value $StartupContent -Encoding Unicode
 
 Write-Host "Install complete"
 Write-Host "Install folder: $InstallRoot"
 Write-Host "Desktop shortcut: $(Join-Path $Desktop 'Workhub.lnk')"
 Write-Host "Start menu shortcut: $(Join-Path $Programs 'Workhub.lnk')"
+Write-Host "Startup launcher: $StartupScript"
