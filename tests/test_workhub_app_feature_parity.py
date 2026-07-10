@@ -372,6 +372,19 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         self.assertIn('row.classList.add("completed-cs")', html_source)
         self.assertIn('row.classList.toggle("completed-cs", isCompletedByValues(csType, status) || Boolean(completedAt));', html_source)
 
+    def test_cs_followup_alert_uses_spacious_cards_and_direct_row_shortcuts(self) -> None:
+        html_source = (ROOT / "scripts" / "workhub_delivery_app.py").read_text(encoding="utf-8")
+
+        self.assertIn(".app-confirm.wide", html_source)
+        self.assertIn(".cs-followup-alert-card", html_source)
+        self.assertIn('data-cs-followup-open="${escapeHtml(item.id)}"', html_source)
+        self.assertIn("function openCsCaseFromAlert(caseId)", html_source)
+        self.assertIn('if (ledgerPageSize) ledgerPageSize.value = "5000";', html_source)
+        self.assertIn('tr[data-case-id="${CSS.escape(id)}"]', html_source)
+        self.assertIn("openCsCaseFromAlert(followupButton.dataset.csFollowupOpen)", html_source)
+        self.assertIn("highlightHtml: `<div class=\"cs-followup-alert-list\">${cards.join(\"\")}</div>`", html_source)
+        self.assertIn("wide: true", html_source)
+
     def test_management_duplicate_rows_override_even_row_striping(self) -> None:
         html_source = (ROOT / "scripts" / "workhub_delivery_app.py").read_text(encoding="utf-8")
 
@@ -1402,7 +1415,7 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         finally:
             workbook.close()
 
-    def test_import_cost_report_is_saved_with_original_files_and_synced_to_import_shipments(self) -> None:
+    def test_import_cost_report_is_saved_without_linking_to_import_shipments(self) -> None:
         app = self.load_app()
         payload = {
             "hbl_no": "XLTNGB26040216",
@@ -1448,8 +1461,8 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         self.assertEqual(reports[0]["id"], report["id"])
         shipments = app.list_import_shipments()
         self.assertEqual(shipments[0]["hbl_no"], "XLTNGB26040216")
-        self.assertEqual(shipments[0]["import_cost_report_id"], report["id"])
-        self.assertEqual(shipments[0]["import_cost_landed_total"], result["summary"]["landed_total"])
+        self.assertNotIn("import_cost_report_id", shipments[0])
+        self.assertNotIn("import_cost_landed_total", shipments[0])
 
     def test_import_cost_reports_track_status_version_and_history(self) -> None:
         app = self.load_app()

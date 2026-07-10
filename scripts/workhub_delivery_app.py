@@ -1104,6 +1104,9 @@ HTML = r"""<!doctype html>
       overflow: hidden;
       animation: app-confirm-pop .16s ease-out;
     }
+    .app-confirm.wide {
+      width: min(760px, calc(100vw - 32px));
+    }
     @keyframes app-confirm-pop {
       from { opacity: 0; transform: translateY(8px) scale(.98); }
       to { opacity: 1; transform: translateY(0) scale(1); }
@@ -1165,6 +1168,87 @@ HTML = r"""<!doctype html>
       font-weight: 950;
       white-space: pre-line;
       word-break: keep-all;
+    }
+    .app-confirm.wide .app-confirm-highlight {
+      width: 100%;
+      padding: 0;
+      background: transparent;
+      color: inherit;
+      font-weight: 800;
+      max-height: min(54vh, 520px);
+      overflow: auto;
+    }
+    .cs-followup-alert-list {
+      display: grid;
+      gap: 10px;
+      white-space: normal;
+    }
+    .cs-followup-alert-card {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 12px;
+      align-items: center;
+      padding: 12px;
+      border: 1px solid #dbe7ff;
+      border-radius: 10px;
+      background: #f8fbff;
+      box-shadow: inset 3px 0 0 #2563eb;
+    }
+    .cs-followup-alert-main {
+      min-width: 0;
+      display: grid;
+      gap: 5px;
+    }
+    .cs-followup-alert-title {
+      color: #0f172a;
+      font-size: 13px;
+      font-weight: 950;
+      line-height: 1.35;
+      overflow-wrap: anywhere;
+    }
+    .cs-followup-alert-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      color: #475569;
+      font-size: 11px;
+      font-weight: 850;
+    }
+    .cs-followup-alert-meta span {
+      padding: 3px 7px;
+      border-radius: 999px;
+      background: #eef4ff;
+      color: #1d4ed8;
+    }
+    .cs-followup-alert-action {
+      min-width: 74px;
+      height: 32px;
+      border: 1px solid #2563eb;
+      border-radius: 8px;
+      background: #2563eb;
+      color: #fff;
+      font-family: inherit;
+      font-size: 12px;
+      font-weight: 950;
+      cursor: pointer;
+      box-shadow: 0 8px 18px rgba(37, 99, 235, .16);
+    }
+    .cs-followup-alert-more {
+      padding: 9px 11px;
+      border: 1px dashed #b9cdf8;
+      border-radius: 10px;
+      color: #475569;
+      font-size: 12px;
+      font-weight: 900;
+      background: #fff;
+    }
+    @media (max-width: 640px) {
+      .cs-followup-alert-card {
+        grid-template-columns: 1fr;
+      }
+      .cs-followup-alert-action {
+        width: 100%;
+      }
     }
     .app-confirm-actions {
       display: flex;
@@ -10927,14 +11011,13 @@ HTML = r"""<!doctype html>
                   <th>제품수량</th>
                   <th>선명</th>
                   <th>HBL NO.</th>
-                  <th>수입원가</th>
                   <th>SIZE</th>
                   <th>진행상황</th>
                   <th>프리타임</th>
                 </tr>
               </thead>
               <tbody id="importShipmentBody">
-                <tr><td colspan="12"><div class="import-empty">등록된 수입제품 입고 진행 건이 없습니다.</div></td></tr>
+                <tr><td colspan="11"><div class="import-empty">등록된 수입제품 입고 진행 건이 없습니다.</div></td></tr>
               </tbody>
             </table>
           </div>
@@ -14659,7 +14742,7 @@ HTML = r"""<!doctype html>
       importShipmentSummary.textContent = `진행 ${activeCount}건 / 완료 ${doneCount}건`;
       renderDashboardImportSchedule();
       if (!importShipments.length) {
-        importShipmentBody.innerHTML = `<tr><td colspan="12"><div class="import-empty">등록된 수입제품 입고 진행 건이 없습니다.</div></td></tr>`;
+        importShipmentBody.innerHTML = `<tr><td colspan="11"><div class="import-empty">등록된 수입제품 입고 진행 건이 없습니다.</div></td></tr>`;
         return;
       }
       importShipmentBody.innerHTML = "";
@@ -14687,11 +14770,6 @@ HTML = r"""<!doctype html>
           <td class="${escapeHtml(quantityLevelClass(record.quantity))}">${escapeHtml(record.quantity)}</td>
           <td>${escapeHtml(record.vessel_name)}</td>
           <td>${escapeHtml(record.hbl_no)}</td>
-          <td>${record.import_cost_report_id ? `
-            <button class="btn" type="button" data-import-cost-open="${escapeHtml(record.import_cost_report_id)}">
-              ${escapeHtml(formatImportCostWon(record.import_cost_landed_total || 0))}
-            </button>
-          ` : "-"}</td>
           <td>${escapeHtml(record.size)}</td>
           ${progressCell}
           <td>${escapeHtml(record.free_time)}</td>
@@ -21200,6 +21278,23 @@ HTML = r"""<!doctype html>
       setTimeout(() => row.classList.remove("search-target-highlight"), 1900);
     }
 
+    async function openCsCaseFromAlert(caseId) {
+      const id = String(caseId || "").trim();
+      if (!id) return;
+      closeAppConfirmDialog(false);
+      showWorkspace("ledger");
+      if (ledgerPageSize) ledgerPageSize.value = "5000";
+      if (ledgerSearchInput) ledgerSearchInput.value = "";
+      await loadLedgerCases();
+      const row = document.querySelector(`tr[data-case-id="${CSS.escape(id)}"]`);
+      if (row) {
+        highlightTableRow(row);
+        notice.textContent = `CS #${id} 건으로 이동했습니다.`;
+      } else {
+        notice.textContent = `CS #${id} 건을 현재 목록에서 찾지 못했습니다.`;
+      }
+    }
+
     async function maybeOpenSearchPicker(scope, query, rows) {
       const normalizedQuery = normalizeSearchKeyword(query);
       if (!normalizedQuery || !rows.length) return;
@@ -22265,17 +22360,36 @@ HTML = r"""<!doctype html>
         const alerts = data.alerts || [];
         localStorage.setItem(storageKey, "1");
         if (!alerts.length) return;
-        const lines = alerts.slice(0, 12).map((item) => {
-          const invoice = [item.return_invoice ? `회수 ${item.return_invoice}` : "", item.reship_invoice ? `재발송 ${item.reship_invoice}` : ""].filter(Boolean).join(" / ");
+        const cards = alerts.slice(0, 12).map((item) => {
+          const invoiceItems = [
+            item.return_invoice ? `회수 ${item.return_invoice}` : "",
+            item.reship_invoice ? `재발송 ${item.reship_invoice}` : "",
+          ].filter(Boolean);
           const owner = item.receiver_name || item.sales_vendor || item.purchase_vendor || `CS #${item.id}`;
-          return `- ${owner} · ${item.product_name || "상품명 없음"} · ${invoice || "송장번호 없음"} · ${item.status || "상태 없음"}`;
+          const title = `${owner} · ${item.product_name || "상품명 없음"}`;
+          const meta = [
+            `#${item.id}`,
+            item.status || "상태 없음",
+            item.purchase_vendor || item.sales_vendor || "",
+            invoiceItems.join(" / ") || "송장번호 없음",
+          ].filter(Boolean);
+          return `
+            <div class="cs-followup-alert-card">
+              <div class="cs-followup-alert-main">
+                <div class="cs-followup-alert-title">${escapeHtml(title)}</div>
+                <div class="cs-followup-alert-meta">${meta.map((text) => `<span>${escapeHtml(text)}</span>`).join("")}</div>
+              </div>
+              <button class="cs-followup-alert-action" type="button" data-cs-followup-open="${escapeHtml(item.id)}">바로가기</button>
+            </div>
+          `;
         });
-        if (alerts.length > 12) lines.push(`외 ${alerts.length - 12}건`);
+        if (alerts.length > 12) cards.push(`<div class="cs-followup-alert-more">외 ${escapeHtml(alerts.length - 12)}건은 CS 처리대장에서 확인해주세요.</div>`);
         await requestAppConfirm({
           kicker: "CS 확인",
           title: `전체 처리완료가 아닌 CS건이 ${alerts.length}건 있습니다.`,
           message: "전날 송장이 입력된 미처리 CS를 확인해주세요.",
-          highlight: lines.join("\n"),
+          highlightHtml: `<div class="cs-followup-alert-list">${cards.join("")}</div>`,
+          wide: true,
           okText: "확인",
           cancelText: "닫기",
         });
@@ -23161,6 +23275,7 @@ HTML = r"""<!doctype html>
       releaseDialogFocus(appConfirmDialog);
       appConfirmDialog?.classList.remove("open");
       appConfirmDialog?.setAttribute("aria-hidden", "true");
+      appConfirmDialog?.querySelector(".app-confirm")?.classList.remove("wide");
       const resolver = activeAppConfirmResolver;
       activeAppConfirmResolver = null;
       if (resolver) resolver(Boolean(result));
@@ -23171,6 +23286,8 @@ HTML = r"""<!doctype html>
       title = "처리상태를 변경할까요?",
       message = "",
       highlight = "",
+      highlightHtml = "",
+      wide = false,
       okText = "변경",
       cancelText = "유지",
     } = {}) {
@@ -23179,10 +23296,12 @@ HTML = r"""<!doctype html>
       appConfirmKicker.textContent = kicker;
       appConfirmTitle.textContent = title;
       appConfirmMessage.textContent = message;
-      appConfirmHighlight.textContent = highlight;
-      appConfirmHighlight.hidden = !highlight;
+      if (highlightHtml) appConfirmHighlight.innerHTML = highlightHtml;
+      else appConfirmHighlight.textContent = highlight;
+      appConfirmHighlight.hidden = !(highlightHtml || highlight);
       appConfirmOk.textContent = okText;
       appConfirmCancel.textContent = cancelText;
+      appConfirmDialog.querySelector(".app-confirm")?.classList.toggle("wide", Boolean(wide));
       appConfirmDialog.classList.add("open");
       appConfirmDialog.setAttribute("aria-hidden", "false");
       setTimeout(() => appConfirmOk?.focus(), 0);
@@ -25549,12 +25668,6 @@ HTML = r"""<!doctype html>
       if (event.target === importShipmentPopup) closeImportShipmentPopup();
     });
     importShipmentBody.addEventListener("click", (event) => {
-      const costButton = event.target.closest("[data-import-cost-open]");
-      if (costButton) {
-        showWorkspace("importCost");
-        loadImportCostReport(costButton.dataset.importCostOpen);
-        return;
-      }
       const editButton = event.target.closest("[data-import-edit]");
       const completeButton = event.target.closest("[data-import-complete]");
       if (completeButton) {
@@ -25998,6 +26111,15 @@ HTML = r"""<!doctype html>
     appConfirmOk?.addEventListener("click", () => closeAppConfirmDialog(true));
     appConfirmCancel?.addEventListener("click", () => closeAppConfirmDialog(false));
     appConfirmDialog?.addEventListener("click", (event) => {
+      const followupButton = event.target.closest("[data-cs-followup-open]");
+      if (followupButton) {
+        event.preventDefault();
+        event.stopPropagation();
+        openCsCaseFromAlert(followupButton.dataset.csFollowupOpen).catch((error) => {
+          notice.textContent = error.message || "CS건으로 이동하지 못했습니다.";
+        });
+        return;
+      }
       if (event.target === appConfirmDialog) closeAppConfirmDialog(false);
     });
     document.addEventListener("keydown", (event) => {
@@ -37660,31 +37782,7 @@ def list_import_shipments() -> list[dict[str, str | int]]:
             """
             SELECT id, created_at, updated_at, departure_date, arrival_date,
                    loading_port, arrival_port, shipper, item, quantity, vessel_name,
-                   hbl_no, size, progress_status, free_time, warehouse_due_date, completed_at,
-                   (
-                       SELECT id
-                         FROM import_cost_reports
-                        WHERE UPPER(COALESCE(import_cost_reports.hbl_no, '')) = UPPER(COALESCE(import_shipments.hbl_no, ''))
-                          AND COALESCE(import_shipments.hbl_no, '') <> ''
-                        ORDER BY updated_at DESC, id DESC
-                        LIMIT 1
-                   ) AS import_cost_report_id,
-                   (
-                       SELECT landed_total
-                         FROM import_cost_reports
-                        WHERE UPPER(COALESCE(import_cost_reports.hbl_no, '')) = UPPER(COALESCE(import_shipments.hbl_no, ''))
-                          AND COALESCE(import_shipments.hbl_no, '') <> ''
-                        ORDER BY updated_at DESC, id DESC
-                        LIMIT 1
-                   ) AS import_cost_landed_total,
-                   (
-                       SELECT remittance_rate
-                         FROM import_cost_reports
-                        WHERE UPPER(COALESCE(import_cost_reports.hbl_no, '')) = UPPER(COALESCE(import_shipments.hbl_no, ''))
-                          AND COALESCE(import_shipments.hbl_no, '') <> ''
-                        ORDER BY updated_at DESC, id DESC
-                        LIMIT 1
-                   ) AS import_cost_remittance_rate
+                   hbl_no, size, progress_status, free_time, warehouse_due_date, completed_at
               FROM import_shipments
              ORDER BY CASE WHEN completed_at IS NULL OR completed_at = '' THEN 0 ELSE 1 END,
                       id DESC
