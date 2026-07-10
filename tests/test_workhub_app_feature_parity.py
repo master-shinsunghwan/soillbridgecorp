@@ -1308,7 +1308,7 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         self.assertEqual(detailed["managed_product_name"], "노르디쿡 IH 무쇠팬 28cm")
         self.assertEqual(detailed["history"][-1]["action"], "managed_product")
 
-    def test_import_cost_saved_reports_are_ordered_by_import_ledger_date(self) -> None:
+    def test_import_cost_saved_reports_do_not_read_import_shipment_dates(self) -> None:
         app = self.load_app()
         app.init_db()
 
@@ -1357,10 +1357,9 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
 
         reports = app.list_import_cost_reports()
 
-        self.assertEqual(reports[0]["hbl_no"], "NEW-DATE-HBL")
-        self.assertEqual(reports[0]["import_ledger_date"], "2026-07-09")
-        self.assertEqual(reports[0]["import_ledger_date_label"], "2026-07-09")
-        self.assertEqual(reports[1]["hbl_no"], "OLD-DATE-HBL")
+        self.assertEqual({report["hbl_no"] for report in reports}, {"NEW-DATE-HBL", "OLD-DATE-HBL"})
+        self.assertTrue(all("import_ledger_date" not in report for report in reports))
+        self.assertTrue(all("import_ledger_date_label" not in report for report in reports))
 
     def test_import_cost_calculation_allocates_to_product_unit_cost(self) -> None:
         app = self.load_app()
@@ -1480,10 +1479,27 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         self.assertEqual(metadata["original_name"], "XLTNGB26040216.pdf")
         reports = app.list_import_cost_reports()
         self.assertEqual(reports[0]["id"], report["id"])
-        shipments = app.list_import_shipments()
-        self.assertEqual(shipments[0]["hbl_no"], "XLTNGB26040216")
-        self.assertNotIn("import_cost_report_id", shipments[0])
-        self.assertNotIn("import_cost_landed_total", shipments[0])
+        self.assertEqual(app.list_import_shipments(), [])
+
+        shipment_id = app.save_import_shipment({
+            "hbl_no": "XLTNGB26040216",
+            "item": "사용자 입력 제품명",
+            "quantity": "77",
+            "progress_status": "출항예정",
+        })
+        before = app.list_import_shipments()
+        payload["products"][0]["name"] = "원가 계산 제품명"
+        payload["products"][0]["quantity"] = "999"
+        app.save_import_cost_report(payload, app.calculate_import_cost(payload), user={"display_name": "신성환 실장"})
+        after = app.list_import_shipments()
+
+        self.assertEqual(len(after), 1)
+        self.assertEqual(after, before)
+        self.assertEqual(after[0]["id"], shipment_id)
+        self.assertEqual(after[0]["item"], "사용자 입력 제품명")
+        self.assertEqual(after[0]["quantity"], "77")
+        self.assertNotIn("import_cost_report_id", after[0])
+        self.assertNotIn("import_cost_landed_total", after[0])
 
     def test_import_cost_reports_track_status_version_and_history(self) -> None:
         app = self.load_app()

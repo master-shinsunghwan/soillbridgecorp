@@ -16750,7 +16750,7 @@ HTML = r"""<!doctype html>
     }
 
     function importCostReportBasisDate(report = {}) {
-      return String(report.import_ledger_date || report.import_ledger_date_label || report.updated_at || report.created_at || "").trim();
+      return String(report.updated_at || report.created_at || "").trim();
     }
 
     function importCostReportDateLabel(value) {
@@ -31755,8 +31755,6 @@ def import_cost_public_report(row: sqlite3.Row | dict[str, object], include_payl
     result = json.loads(str(item.get("result_json") or "{}"))
     payload = json.loads(str(item.get("payload_json") or "{}"))
     status = normalize_import_cost_status(item.get("status"))
-    import_ledger_date_raw = str(item.get("import_ledger_date") or "").strip()
-    import_ledger_date = import_shipment_date_iso(import_ledger_date_raw) or import_ledger_date_raw
     public = {
         "id": int(item.get("id") or 0),
         "created_at": str(item.get("created_at") or ""),
@@ -31773,8 +31771,6 @@ def import_cost_public_report(row: sqlite3.Row | dict[str, object], include_payl
         "allocated_cost_total": int(item.get("allocated_cost_total") or 0),
         "created_by": str(item.get("created_by") or ""),
         "product_summary": import_cost_product_summary(payload),
-        "import_ledger_date": import_ledger_date,
-        "import_ledger_date_label": import_ledger_date or import_ledger_date_raw,
         "summary": result.get("summary") if isinstance(result, dict) else {},
         "warnings": import_cost_report_warnings(payload),
     }
@@ -31937,39 +31933,6 @@ def save_import_cost_report(
                 """,
                 (report_id, now, original_name, stored_name, str(stored_path), stored_path.stat().st_size),
             )
-        if hbl_no:
-            shipment_row = connection.execute(
-                "SELECT id FROM import_shipments WHERE UPPER(COALESCE(hbl_no, '')) = ? LIMIT 1",
-                (hbl_no,),
-            ).fetchone()
-            products = payload.get("products") if isinstance(payload.get("products"), list) else []
-            item_names = [str(product.get("name") or "").strip() for product in products if isinstance(product, dict) and str(product.get("name") or "").strip()]
-            quantities = [str(product.get("quantity") or "").strip() for product in products if isinstance(product, dict) and str(product.get("quantity") or "").strip()]
-            if not shipment_row:
-                columns = ["created_at", "updated_at", *IMPORT_SHIPMENT_FIELDS]
-                values = {field: "" for field in IMPORT_SHIPMENT_FIELDS}
-                values.update({
-                    "item": " / ".join(item_names[:3]),
-                    "quantity": " / ".join(quantities[:3]),
-                    "hbl_no": hbl_no,
-                    "progress_status": "원가 계산 완료",
-                })
-                placeholders = ", ".join("?" for _ in columns)
-                connection.execute(
-                    f"INSERT INTO import_shipments ({', '.join(columns)}) VALUES ({placeholders})",
-                    [now, now] + [values[field] for field in IMPORT_SHIPMENT_FIELDS],
-                )
-            else:
-                connection.execute(
-                    """
-                    UPDATE import_shipments
-                       SET item = CASE WHEN COALESCE(item, '') = '' THEN ? ELSE item END,
-                           quantity = CASE WHEN COALESCE(quantity, '') = '' THEN ? ELSE quantity END,
-                           updated_at = ?
-                     WHERE id = ?
-                    """,
-                    (" / ".join(item_names[:3]), " / ".join(quantities[:3]), now, int(shipment_row["id"])),
-                )
         connection.commit()
     finally:
         connection.close()
@@ -31978,7 +31941,7 @@ def save_import_cost_report(
 
 
 def import_cost_report_sort_key(report: dict[str, object]) -> tuple[int, int, int, str, int]:
-    date_text = report.get("import_ledger_date") or report.get("updated_at") or report.get("created_at")
+    date_text = report.get("updated_at") or report.get("created_at")
     year, month, day = import_shipment_date_key(date_text)
     if year == 9999:
         year, month, day = 0, 0, 0
@@ -32000,15 +31963,7 @@ def list_import_cost_reports(limit: int = 100) -> list[dict[str, object]]:
             """
             SELECT id, created_at, updated_at, hbl_no, invoice_no, managed_product_name, remittance_rate,
                    allocation_basis, landed_total, allocated_cost_total, payload_json,
-                   result_json, created_by, status, version,
-                   (
-                       SELECT COALESCE(NULLIF(warehouse_due_date, ''), NULLIF(arrival_date, ''), NULLIF(departure_date, ''))
-                         FROM import_shipments
-                        WHERE UPPER(COALESCE(import_shipments.hbl_no, '')) = UPPER(COALESCE(import_cost_reports.hbl_no, ''))
-                          AND COALESCE(import_shipments.hbl_no, '') <> ''
-                        ORDER BY id DESC
-                        LIMIT 1
-                   ) AS import_ledger_date
+                   result_json, created_by, status, version
               FROM import_cost_reports
              ORDER BY updated_at DESC, id DESC
              LIMIT ?
@@ -32031,15 +31986,7 @@ def get_import_cost_report(report_id: int) -> dict[str, object] | None:
             """
             SELECT id, created_at, updated_at, hbl_no, invoice_no, managed_product_name, remittance_rate,
                    allocation_basis, landed_total, allocated_cost_total, payload_json,
-                   result_json, created_by, status, version,
-                   (
-                       SELECT COALESCE(NULLIF(warehouse_due_date, ''), NULLIF(arrival_date, ''), NULLIF(departure_date, ''))
-                         FROM import_shipments
-                        WHERE UPPER(COALESCE(import_shipments.hbl_no, '')) = UPPER(COALESCE(import_cost_reports.hbl_no, ''))
-                          AND COALESCE(import_shipments.hbl_no, '') <> ''
-                        ORDER BY id DESC
-                        LIMIT 1
-                   ) AS import_ledger_date
+                   result_json, created_by, status, version
               FROM import_cost_reports
              WHERE id = ?
             """,
