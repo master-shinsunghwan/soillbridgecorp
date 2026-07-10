@@ -1501,6 +1501,20 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         self.assertNotIn("import_cost_report_id", after[0])
         self.assertNotIn("import_cost_landed_total", after[0])
 
+    def test_completed_import_shipments_are_hidden_from_the_progress_table(self) -> None:
+        app = self.load_app()
+        html_source = app.HTML
+
+        self.assertIn(
+            "const activeRecords = importShipments.filter((record) => !record.completed_at);",
+            html_source,
+        )
+        self.assertIn(
+            "sortImportShipmentsByWarehouseDate(activeRecords).forEach((record) => {",
+            html_source,
+        )
+        self.assertIn("진행 중인 수입제품 입고 건이 없습니다.", html_source)
+
     def test_import_cost_reports_track_status_version_and_history(self) -> None:
         app = self.load_app()
         payload = {

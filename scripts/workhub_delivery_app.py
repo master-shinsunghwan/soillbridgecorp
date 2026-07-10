@@ -14737,30 +14737,30 @@ HTML = r"""<!doctype html>
     }
 
     function renderImportShipments() {
-      const activeCount = importShipments.filter((record) => !record.completed_at).length;
+      const activeRecords = importShipments.filter((record) => !record.completed_at);
+      const activeCount = activeRecords.length;
       const doneCount = importShipments.length - activeCount;
       importShipmentSummary.textContent = `진행 ${activeCount}건 / 완료 ${doneCount}건`;
       renderDashboardImportSchedule();
-      if (!importShipments.length) {
-        importShipmentBody.innerHTML = `<tr><td colspan="11"><div class="import-empty">등록된 수입제품 입고 진행 건이 없습니다.</div></td></tr>`;
+      if (!activeRecords.length) {
+        importShipmentBody.innerHTML = `<tr><td colspan="11"><div class="import-empty">진행 중인 수입제품 입고 건이 없습니다.</div></td></tr>`;
         return;
       }
       importShipmentBody.innerHTML = "";
-      sortImportShipmentsByWarehouseDate(importShipments).forEach((record) => {
+      sortImportShipmentsByWarehouseDate(activeRecords).forEach((record) => {
         const row = document.createElement("tr");
         row.dataset.importRow = record.id;
-        if (record.completed_at) row.classList.add("completed");
         const canManageImportShipment = can("import_shipment_manage");
         const canCompleteImportShipment = currentUser.role === "admin";
         const progressCell = canManageImportShipment
           ? `<td>
-              <span>${escapeHtml(record.completed_at ? "완료" : record.progress_status)}</span>
+              <span>${escapeHtml(record.progress_status)}</span>
               <span class="import-row-actions">
                 <button type="button" data-import-edit="${record.id}">수정</button>
-                ${record.completed_at || !canCompleteImportShipment ? "" : `<button type="button" data-import-complete="${record.id}">입고 완료</button>`}
+                ${canCompleteImportShipment ? `<button type="button" data-import-complete="${record.id}">입고 완료</button>` : ""}
               </span>
             </td>`
-          : `<td>${escapeHtml(record.completed_at ? "완료" : record.progress_status)}</td>`;
+          : `<td>${escapeHtml(record.progress_status)}</td>`;
         row.innerHTML = `
           <td>${escapeHtml(shortKoreanDate(record.warehouse_due_date))}</td>
           <td>${escapeHtml(shortKoreanDate(record.departure_date))}</td>
