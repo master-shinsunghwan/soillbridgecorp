@@ -1515,6 +1515,18 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         )
         self.assertIn("진행 중인 수입제품 입고 건이 없습니다.", html_source)
 
+    def test_completed_import_shipments_can_start_the_import_cost_next_step(self) -> None:
+        app = self.load_app()
+        html_source = app.HTML + app.IMPORT_COST_WORKSPACE_HTML
+
+        self.assertIn("입고 완료 컨테이너 · 원가 계산 다음 단계", html_source)
+        self.assertIn('fetch("/api/import-shipments")', html_source)
+        self.assertIn(".filter((shipment) => Boolean(String(shipment.completed_at || \"\").trim()))", html_source)
+        self.assertIn('data-import-cost-shipment-start="${escapeHtml(shipment.id)}"', html_source)
+        self.assertIn("startImportCostFromShipment", html_source)
+        self.assertIn("products: importCostProductsFromShipment(shipment)", html_source)
+        self.assertIn('data-import-cost-shipment-report="${escapeHtml(report.id)}"', html_source)
+
     def test_import_cost_reports_track_status_version_and_history(self) -> None:
         app = self.load_app()
         payload = {

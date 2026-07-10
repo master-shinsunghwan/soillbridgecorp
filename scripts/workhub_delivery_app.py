@@ -2120,6 +2120,59 @@ HTML = r"""<!doctype html>
       border-radius: 8px;
       background: #fbfcff;
     }
+    .import-cost-handoff-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 2px;
+    }
+    .import-cost-handoff-title {
+      display: grid;
+      gap: 3px;
+    }
+    .import-cost-handoff-title strong {
+      color: #0f172a;
+      font-size: 14px;
+      font-weight: 950;
+    }
+    .import-cost-handoff-title span {
+      color: #64748b;
+      font-size: 11px;
+      font-weight: 750;
+    }
+    .import-cost-handoff-summary {
+      color: #1d4ed8;
+      font-size: 12px;
+      font-weight: 900;
+      white-space: nowrap;
+    }
+    .import-cost-handoff-table td:first-child,
+    .import-cost-handoff-table th:first-child {
+      width: 110px;
+      white-space: nowrap;
+    }
+    .import-cost-handoff-table td:last-child,
+    .import-cost-handoff-table th:last-child {
+      width: 130px;
+      text-align: center;
+      white-space: nowrap;
+    }
+    .import-cost-handoff-status {
+      display: inline-flex;
+      align-items: center;
+      min-height: 24px;
+      padding: 3px 8px;
+      border-radius: 999px;
+      background: #eff6ff;
+      color: #1d4ed8;
+      font-size: 11px;
+      font-weight: 900;
+    }
+    .import-cost-handoff-status.done {
+      background: #ecfdf3;
+      color: #15803d;
+    }
     .import-cost-tabs {
       display: flex;
       gap: 6px;
@@ -12841,10 +12894,14 @@ HTML = r"""<!doctype html>
     const importCostSavedStatusFilter = document.querySelector("#importCostSavedStatusFilter");
     const importCostSavedMonthFilter = document.querySelector("#importCostSavedMonthFilter");
     const importCostSavedResetFilters = document.querySelector("#importCostSavedResetFilters");
+    const importCostHandoffBody = document.querySelector("#importCostHandoffBody");
+    const importCostHandoffSummary = document.querySelector("#importCostHandoffSummary");
+    const importCostHandoffRefresh = document.querySelector("#importCostHandoffRefresh");
     const importCostOriginalFilesBody = document.querySelector("#importCostOriginalFilesBody");
     const importCostHistoryBody = document.querySelector("#importCostHistoryBody");
     let selectedImportCostFiles = [];
     let importCostSavedReports = [];
+    let importCostCompletedShipments = [];
     let currentImportCostReport = null;
     let pendingImportCostAnalysis = null;
     const orderWorkspace = document.querySelector("#orderWorkspace");
@@ -16765,6 +16822,97 @@ HTML = r"""<!doctype html>
       return String(report.updated_at || report.created_at || "").trim();
     }
 
+    function importCostHblKey(value) {
+      return String(value || "").trim().toUpperCase();
+    }
+
+    function importCostReportForShipment(shipment = {}) {
+      const hblKey = importCostHblKey(shipment.hbl_no);
+      if (!hblKey) return null;
+      return importCostSavedReports.find((report) => importCostHblKey(report.hbl_no) === hblKey) || null;
+    }
+
+    function importCostProductsFromShipment(shipment = {}) {
+      const itemText = String(shipment.item || "").trim();
+      const quantityText = String(shipment.quantity || "").trim();
+      const quantities = quantityText.split(/\s*\/\s*/).filter(Boolean);
+      const itemParts = itemText.split(/\s*\/\s*/).filter(Boolean);
+      if (quantities.length > 1 && itemParts.length === quantities.length) {
+        return itemParts.map((name, index) => ({ name, quantity: quantities[index] || "" }));
+      }
+      return [{ name: itemText, quantity: quantityText }];
+    }
+
+    function renderImportCostHandoff() {
+      if (!importCostHandoffBody || !importCostHandoffSummary) return;
+      const waitingCount = importCostCompletedShipments.filter((shipment) => !importCostReportForShipment(shipment)).length;
+      importCostHandoffSummary.textContent = `계산 대기 ${waitingCount}건 · 입고 완료 ${importCostCompletedShipments.length}건`;
+      if (!importCostCompletedShipments.length) {
+        importCostHandoffBody.innerHTML = `<tr><td colspan="6" class="empty">입고 완료된 컨테이너가 없습니다.</td></tr>`;
+        return;
+      }
+      importCostHandoffBody.innerHTML = importCostCompletedShipments.map((shipment) => {
+        const report = importCostReportForShipment(shipment);
+        const completedDate = importCostReportDateLabel(shipment.completed_at || shipment.updated_at || "");
+        const status = report ? (report.status_label || importCostStatusLabel(report.status || "saved")) : "계산 대기";
+        const action = report
+          ? `<button class="workspace-button ghost" type="button" data-import-cost-shipment-report="${escapeHtml(report.id)}">저장 데이터 열기</button>`
+          : `<button class="workspace-button" type="button" data-import-cost-shipment-start="${escapeHtml(shipment.id)}">원가 계산 시작</button>`;
+        return `
+          <tr>
+            <td>${escapeHtml(completedDate)}</td>
+            <td><strong>${escapeHtml(shipment.hbl_no || "-")}</strong></td>
+            <td class="left" title="${escapeHtml(shipment.item || "-")}">${escapeHtml(compactImportItemName(shipment.item, 42))}</td>
+            <td>${escapeHtml(shipment.quantity || "-")}</td>
+            <td><span class="import-cost-handoff-status ${report ? "done" : ""}">${escapeHtml(status)}</span></td>
+            <td>${action}</td>
+          </tr>
+        `;
+      }).join("");
+    }
+
+    async function loadImportCostCompletedShipments() {
+      if (!canViewImportCostProgram()) return;
+      try {
+        const response = await fetch("/api/import-shipments");
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "입고 완료 컨테이너를 불러오지 못했습니다.");
+        importCostCompletedShipments = (data.shipments || [])
+          .filter((shipment) => Boolean(String(shipment.completed_at || "").trim()))
+          .sort((a, b) => String(b.completed_at || "").localeCompare(String(a.completed_at || "")));
+        renderImportCostHandoff();
+      } catch (error) {
+        importCostCompletedShipments = [];
+        if (importCostHandoffSummary) importCostHandoffSummary.textContent = "불러오기 오류";
+        if (importCostHandoffBody) {
+          importCostHandoffBody.innerHTML = `<tr><td colspan="6" class="empty">${escapeHtml(error.message || "입고 완료 컨테이너를 불러오지 못했습니다.")}</td></tr>`;
+        }
+      }
+    }
+
+    async function startImportCostFromShipment(shipmentId) {
+      const shipment = importCostCompletedShipments.find((row) => String(row.id) === String(shipmentId));
+      if (!shipment) {
+        if (importCostMessage) importCostMessage.textContent = "선택한 입고 완료 컨테이너를 찾지 못했습니다.";
+        return;
+      }
+      resetImportCostProgram();
+      currentImportCostReport = null;
+      fillImportCostForm({
+        hbl_no: shipment.hbl_no || "",
+        allocation_basis: "amount",
+        include_import_vat: true,
+        include_service_vat: true,
+        products: importCostProductsFromShipment(shipment),
+      });
+      setImportCostTab("calculate");
+      if (importCostMessage) {
+        importCostMessage.textContent = `${shipment.hbl_no || "HBL 미입력"} 입고 완료 건을 불러왔습니다. 인보이스, 패킹리스트, 정산서를 업로드해주세요.`;
+      }
+      setImportCostRunStatus("idle", "입고 완료 정보를 적용했습니다. 원본 파일을 업로드하면 다음 계산을 진행합니다.");
+      document.querySelector("#importCostFileChoose")?.scrollIntoView({ block: "center", behavior: "smooth" });
+    }
+
     function filteredImportCostSavedReports() {
       const keyword = String(importCostSavedSearch?.value || "").trim().toLowerCase();
       const status = String(importCostSavedStatusFilter?.value || "").trim();
@@ -16950,9 +17098,11 @@ HTML = r"""<!doctype html>
         if (!response.ok) throw new Error(data.error || "저장된 수입 원가 데이터를 불러오지 못했습니다.");
         importCostSavedReports = data.reports || [];
         renderImportCostSavedReports();
+        renderImportCostHandoff();
       } catch (error) {
         importCostSavedReports = [];
         renderImportCostSavedReports();
+        renderImportCostHandoff();
         if (importCostMessage) importCostMessage.textContent = error.message || "저장된 수입 원가 데이터를 불러오지 못했습니다.";
       }
     }
@@ -17062,7 +17212,7 @@ HTML = r"""<!doctype html>
         importCostMessage.textContent = data.message || "수입 원가 데이터를 DB에 저장했습니다.";
         setImportCostRunStatus("done", "수입 원가 데이터가 DB에 저장됐습니다.");
         await loadImportCostSavedReports();
-        await loadImportShipments().catch(() => {});
+        await loadImportCostCompletedShipments().catch(() => {});
       } catch (error) {
         const message = error.message || "수입 원가 데이터 저장에 실패했습니다.";
         importCostMessage.textContent = message;
@@ -17110,7 +17260,7 @@ HTML = r"""<!doctype html>
         renderImportCostSavedFiles(currentImportCostReport);
         renderImportCostHistory(currentImportCostReport);
         await loadImportCostSavedReports();
-        await loadImportShipments().catch(() => {});
+        await loadImportCostCompletedShipments().catch(() => {});
         importCostMessage.textContent = finalData.message || "수입 원가 데이터가 최종 저장됐습니다.";
         setImportCostRunStatus("done", "수입 원가 데이터가 최종 저장됐습니다.");
         setImportCostTab("saved");
@@ -24325,6 +24475,7 @@ HTML = r"""<!doctype html>
         closeLedgerFilter();
         if (!importCostProductBody?.querySelector("tr")) resetImportCostProgram();
         loadImportCostSavedReports();
+        loadImportCostCompletedShipments();
       } else if (showFileLibrary) {
         setPageTitle("업무 파일 자료실");
         closeLedgerFilter();
@@ -25463,6 +25614,10 @@ HTML = r"""<!doctype html>
     importCostSaveReport?.addEventListener("click", saveCurrentImportCostReport);
     importCostFinalizeReport?.addEventListener("click", finalizeCurrentImportCostReport);
     importCostSavedRefresh?.addEventListener("click", loadImportCostSavedReports);
+    importCostHandoffRefresh?.addEventListener("click", () => {
+      loadImportCostSavedReports();
+      loadImportCostCompletedShipments();
+    });
     importCostTabs.forEach((button) => {
       button.addEventListener("click", () => setImportCostTab(button.dataset.importCostTab || "calculate"));
     });
@@ -25481,6 +25636,18 @@ HTML = r"""<!doctype html>
       loadImportCostReport(button.dataset.importCostLoad);
     });
     importCostWorkspace?.addEventListener("click", (event) => {
+      const shipmentStartButton = event.target.closest("[data-import-cost-shipment-start]");
+      if (shipmentStartButton) {
+        event.preventDefault();
+        startImportCostFromShipment(shipmentStartButton.dataset.importCostShipmentStart);
+        return;
+      }
+      const shipmentReportButton = event.target.closest("[data-import-cost-shipment-report]");
+      if (shipmentReportButton) {
+        event.preventDefault();
+        loadImportCostReport(shipmentReportButton.dataset.importCostShipmentReport);
+        return;
+      }
       const loadButton = event.target.closest("[data-import-cost-load]");
       if (loadButton) {
         event.preventDefault();
@@ -26566,6 +26733,35 @@ IMPORT_COST_WORKSPACE_HTML = r"""
             <button class="import-cost-tab" type="button" data-import-cost-tab="history">변경 이력</button>
           </div>
           <div class="import-cost-tab-panel active" data-import-cost-panel="calculate">
+          <section class="import-cost-card" id="importCostHandoffPanel">
+            <div class="import-cost-handoff-head">
+              <div class="import-cost-handoff-title">
+                <strong>입고 완료 컨테이너 · 원가 계산 다음 단계</strong>
+                <span>수출입 업무에서 입고 완료한 건만 표시합니다. 계산 시작 시 HBL, 제품명, 수량만 가져옵니다.</span>
+              </div>
+              <div class="workspace-actions">
+                <span class="import-cost-handoff-summary" id="importCostHandoffSummary">확인 중</span>
+                <button class="workspace-button ghost" type="button" id="importCostHandoffRefresh">새로고침</button>
+              </div>
+            </div>
+            <div class="import-cost-table-wrap">
+              <table class="import-cost-table import-cost-handoff-table">
+                <thead>
+                  <tr>
+                    <th>입고 완료일</th>
+                    <th>HBL</th>
+                    <th>제품명</th>
+                    <th>수량</th>
+                    <th>원가 상태</th>
+                    <th>다음 단계</th>
+                  </tr>
+                </thead>
+                <tbody id="importCostHandoffBody">
+                  <tr><td colspan="6" class="empty">입고 완료 컨테이너를 확인하는 중입니다.</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
           <section class="import-cost-card">
             <div class="admin-section-title">파일 자동 분석</div>
             <div class="import-cost-upload-panel">
