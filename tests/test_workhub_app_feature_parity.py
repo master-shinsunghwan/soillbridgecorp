@@ -1269,7 +1269,9 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         self.assertIn("제품 원가 계산의 기준 환율입니다.", admin_html)
         self.assertIn("function exportImportCostReport", admin_html)
         self.assertIn('"/api/import-cost-report-export"', admin_html)
-        self.assertIn('await downloadWorkbookResponse(response, "수입원가_계산보고서.xlsx")', admin_html)
+        self.assertIn("file.download_url", admin_html)
+        self.assertIn("다운로드가 시작되지 않으면 여기를 눌러주세요.", admin_html)
+        self.assertIn("/api/import-cost-report-download?id=", source)
         self.assertIn('setImportCostRunStatus("running"', admin_html)
         self.assertIn('setImportCostRunStatus("done"', admin_html)
         self.assertIn('setImportCostRunStatus("error"', admin_html)
@@ -1434,6 +1436,14 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
             self.assertIn(result["summary"]["landed_total"], values)
         finally:
             workbook.close()
+
+        export_file = app.register_import_cost_export(data)
+        self.assertTrue(export_file["download_url"].startswith("/api/import-cost-report-download?id="))
+        self.assertTrue(export_file["filename"].endswith(".xlsx"))
+        self.assertGreater(export_file["file_size"], 0)
+        stored_path, stored_filename = app.import_cost_export_download_info(export_file["id"])
+        self.assertEqual(stored_filename, export_file["filename"])
+        self.assertEqual(stored_path.read_bytes(), data)
 
     def test_import_cost_report_is_saved_without_linking_to_import_shipments(self) -> None:
         app = self.load_app()

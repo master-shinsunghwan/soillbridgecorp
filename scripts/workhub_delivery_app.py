@@ -81,6 +81,8 @@ DOWNLOAD_DIR = OUTPUT_DIR / "downloads"
 ORDER_DOWNLOAD_DIR = DOWNLOAD_DIR / "order_outputs"
 ORDER_DOWNLOAD_HISTORY_PATH = ORDER_DOWNLOAD_DIR / "history.json"
 ORDER_DOWNLOAD_LIMIT = 10
+IMPORT_COST_EXPORT_DIR = DOWNLOAD_DIR / "import_cost_reports"
+IMPORT_COST_EXPORT_LIMIT = 30
 SHARED_FILE_DIR = RUNTIME_ROOT / "shared_files"
 HERMES_RESULT_DIR = RUNTIME_ROOT / "hermes_results"
 SALES_REPORT_DIR = RUNTIME_ROOT / "sales_reports"
@@ -17376,13 +17378,19 @@ HTML = r"""<!doctype html>
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(collectImportCostPayload()),
         });
-        if (!response.ok) {
-          const data = await response.json().catch(() => ({}));
-          throw new Error(data.error || "수입원가 보고서 생성에 실패했습니다.");
-        }
-        await downloadWorkbookResponse(response, "수입원가_계산보고서.xlsx");
-        importCostMessage.textContent = "보고서용 엑셀 다운로드를 시작했습니다.";
-        setImportCostRunStatus("done", "보고서용 엑셀 다운로드를 시작했습니다.");
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok || data.error) throw new Error(data.error || "수입원가 보고서 생성에 실패했습니다.");
+        const file = data.file || {};
+        if (!file.download_url) throw new Error("생성된 보고서 다운로드 주소를 확인하지 못했습니다.");
+        const link = document.createElement("a");
+        link.href = file.download_url;
+        link.download = file.filename || "수입원가_계산보고서.xlsx";
+        link.style.display = "none";
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        importCostMessage.innerHTML = `보고서 파일을 생성했습니다. <a href="${escapeHtml(file.download_url)}" download="${escapeHtml(file.filename || "수입원가_계산보고서.xlsx")}">다운로드가 시작되지 않으면 여기를 눌러주세요.</a>`;
+        setImportCostRunStatus("done", `보고서 파일 생성 완료 · ${file.filename || "수입원가_계산보고서.xlsx"}`);
       } catch (error) {
         const message = error.message || "수입원가 보고서 생성에 실패했습니다.";
         importCostMessage.textContent = message;
@@ -31850,6 +31858,48 @@ def import_cost_report_workbook_bytes(payload: dict, result: dict[str, object]) 
     return stream.getvalue()
 
 
+def register_import_cost_export(data: bytes) -> dict[str, object]:
+    if not data:
+        raise ValueError("생성된 수입원가 보고서 파일이 비어 있습니다.")
+    IMPORT_COST_EXPORT_DIR.mkdir(parents=True, exist_ok=True)
+    export_id = secrets.token_hex(12)
+    filename = f"수입원가_계산보고서_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+    stored_name = f"{export_id}_{safe_filename(filename)}"
+    target = IMPORT_COST_EXPORT_DIR / stored_name
+    target.write_bytes(data)
+    exports = sorted(
+        (path for path in IMPORT_COST_EXPORT_DIR.glob("*.xlsx") if path.is_file()),
+        key=lambda path: path.stat().st_mtime,
+        reverse=True,
+    )
+    for stale in exports[IMPORT_COST_EXPORT_LIMIT:]:
+        try:
+            stale.unlink()
+        except OSError:
+            continue
+    return {
+        "id": export_id,
+        "filename": filename,
+        "file_size": target.stat().st_size,
+        "download_url": f"/api/import-cost-report-download?id={quote(export_id)}",
+    }
+
+
+def import_cost_export_download_info(export_id: object) -> tuple[Path, str]:
+    token = str(export_id or "").strip().lower()
+    if not re.fullmatch(r"[0-9a-f]{24}", token):
+        raise ValueError("다운로드할 수입원가 보고서를 찾지 못했습니다.")
+    base_dir = IMPORT_COST_EXPORT_DIR.resolve()
+    matches = list(IMPORT_COST_EXPORT_DIR.glob(f"{token}_*.xlsx"))
+    if len(matches) != 1:
+        raise ValueError("다운로드할 수입원가 보고서를 찾지 못했습니다.")
+    target = matches[0].resolve()
+    if target.parent != base_dir or not target.is_file():
+        raise ValueError("다운로드할 수입원가 보고서를 찾지 못했습니다.")
+    filename = target.name[len(token) + 1:]
+    return target, filename
+
+
 IMPORT_COST_STATUS_LABELS = {
     "draft": "계산중",
     "saved": "저장됨",
@@ -41668,6 +41718,28 @@ class WorkhubHandler(BaseHTTPRequestHandler):
             self.wfile.write(data)
             return
 
+        if self.path.startswith("/api/import-cost-report-download"):
+            if not can_view_import_cost_program(user):
+                self.send_json({"error": "수입 원가 계산 권한이 없습니다."}, status=403)
+                return
+            parsed = urlsplit(self.path)
+            params = parse_qs(parsed.query)
+            try:
+                path, filename = import_cost_export_download_info(params.get("id", [""])[0])
+            except ValueError as exc:
+                self.send_json({"error": str(exc)}, status=404)
+                return
+            data = path.read_bytes()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+            self.send_header("Content-Disposition", f"attachment; filename*=UTF-8''{quote(filename)}")
+            self.send_header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
+            self.send_header("Pragma", "no-cache")
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+            return
+
         if self.path.startswith("/api/order-download"):
             if not self.require_permission(user, "excel_download", "엑셀 다운로드"):
                 return
@@ -42233,16 +42305,11 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                 try:
                     result = calculate_import_cost(payload)
                     data = import_cost_report_workbook_bytes(payload, result)
+                    export_file = register_import_cost_export(data)
                 except ValueError as exc:
                     self.send_json({"error": str(exc)}, status=400)
                     return
-                filename = quote(f"수입원가_계산보고서_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx")
-                self.send_response(200)
-                self.send_header("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-                self.send_header("Content-Disposition", f"attachment; filename*=UTF-8''{filename}")
-                self.send_header("Content-Length", str(len(data)))
-                self.end_headers()
-                self.wfile.write(data)
+                self.send_json({"message": "보고서용 엑셀 파일을 생성했습니다.", "file": export_file})
                 return
 
             if self.path == "/api/internal-message-save":
