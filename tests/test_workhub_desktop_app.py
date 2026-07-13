@@ -56,6 +56,25 @@ class WorkhubDesktopAppTests(unittest.TestCase):
                 self.assertNotIn(":", saved_path.name)
                 self.assertNotIn("?", saved_path.name)
 
+    def test_desktop_download_bridge_saves_chunked_files(self) -> None:
+        module = load_desktop_module()
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            with mock.patch.dict(os.environ, {"WORKHUB_DESKTOP_DOWNLOAD_DIR": tempdir}, clear=False):
+                api = module.WorkhubDesktopApi("https://workhub.soilbridgecorp.cloud/")
+                started = api.beginDownload("chunked.xlsx")
+                self.assertTrue(started["ok"])
+                download_id = str(started["id"])
+
+                self.assertTrue(api.appendDownloadChunk(download_id, "V09SSw==")["ok"])
+                self.assertTrue(api.appendDownloadChunk(download_id, "SFVC")["ok"])
+                finished = api.finishDownload(download_id)
+
+                self.assertTrue(finished["ok"])
+                saved_path = Path(str(finished["path"]))
+                self.assertTrue(saved_path.exists())
+                self.assertEqual(saved_path.read_bytes(), b"WORKHUB")
+
     def test_launcher_has_no_browser_fallback(self) -> None:
         source = MODULE_PATH.read_text(encoding="utf-8")
 
@@ -64,6 +83,7 @@ class WorkhubDesktopAppTests(unittest.TestCase):
         self.assertIn("webview.create_window", source)
         self.assertIn("private_mode=False", source)
         self.assertIn("def saveDownload", source)
+        self.assertIn("def beginDownload", source)
 
     def test_build_script_packages_windowed_exe(self) -> None:
         build_script = (ROOT / "build_workhub_desktop_app.ps1").read_text(encoding="utf-8")

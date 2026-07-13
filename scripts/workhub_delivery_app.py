@@ -23863,12 +23863,33 @@ HTML = r"""<!doctype html>
       return asciiMatch ? asciiMatch[1] : fallback;
     }
 
-    function hasDesktopDownloadBridge() {
-      return Boolean(window.pywebview && window.pywebview.api && typeof window.pywebview.api.saveDownload === "function");
+    function desktopDownloadBridgeApi() {
+      const api = window.pywebview && window.pywebview.api;
+      if (!api) return null;
+      const save = typeof api.saveDownload === "function" ? api.saveDownload.bind(api) : (
+        typeof api.save_download === "function" ? api.save_download.bind(api) : null
+      );
+      const begin = typeof api.beginDownload === "function" ? api.beginDownload.bind(api) : (
+        typeof api.begin_download === "function" ? api.begin_download.bind(api) : null
+      );
+      const append = typeof api.appendDownloadChunk === "function" ? api.appendDownloadChunk.bind(api) : (
+        typeof api.append_download_chunk === "function" ? api.append_download_chunk.bind(api) : null
+      );
+      const finish = typeof api.finishDownload === "function" ? api.finishDownload.bind(api) : (
+        typeof api.finish_download === "function" ? api.finish_download.bind(api) : null
+      );
+      const cancel = typeof api.cancelDownload === "function" ? api.cancelDownload.bind(api) : (
+        typeof api.cancel_download === "function" ? api.cancel_download.bind(api) : null
+      );
+      if (save || (begin && append && finish)) return { save, begin, append, finish, cancel };
+      return null;
     }
 
-    function arrayBufferToBase64(buffer) {
-      const bytes = new Uint8Array(buffer);
+    function hasDesktopDownloadBridge() {
+      return Boolean(desktopDownloadBridgeApi());
+    }
+
+    function bytesToBase64(bytes) {
       let binary = "";
       const chunkSize = 0x8000;
       for (let index = 0; index < bytes.length; index += chunkSize) {
@@ -23878,9 +23899,44 @@ HTML = r"""<!doctype html>
       return btoa(binary);
     }
 
+    function arrayBufferToBase64(buffer) {
+      return bytesToBase64(new Uint8Array(buffer));
+    }
+
     async function saveBlobThroughDesktopBridge(blob, filename) {
-      const base64 = arrayBufferToBase64(await blob.arrayBuffer());
-      const result = await window.pywebview.api.saveDownload(filename, base64);
+      const bridge = desktopDownloadBridgeApi();
+      if (!bridge) {
+        throw new Error("실행파일 다운로드 저장 기능을 찾지 못했습니다. 최신 실행파일로 다시 실행해주세요.");
+      }
+      const buffer = await blob.arrayBuffer();
+      if (bridge.begin && bridge.append && bridge.finish) {
+        const started = await bridge.begin(filename);
+        if (!started || !started.ok || !started.id) {
+          throw new Error((started && started.message) || "실행파일 창에서 다운로드 파일 생성을 시작하지 못했습니다.");
+        }
+        const bytes = new Uint8Array(buffer);
+        const chunkSize = 512 * 1024;
+        try {
+          for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+            const chunk = bytes.subarray(offset, Math.min(offset + chunkSize, bytes.length));
+            const appended = await bridge.append(started.id, bytesToBase64(chunk));
+            if (!appended || !appended.ok) {
+              throw new Error((appended && appended.message) || "실행파일 창에서 다운로드 파일 저장 중 오류가 발생했습니다.");
+            }
+          }
+          const finished = await bridge.finish(started.id);
+          if (!finished || !finished.ok) {
+            throw new Error((finished && finished.message) || "실행파일 창에서 다운로드 파일 저장을 완료하지 못했습니다.");
+          }
+          return finished;
+        } catch (error) {
+          if (bridge.cancel) {
+            try { await bridge.cancel(started.id); } catch {}
+          }
+          throw error;
+        }
+      }
+      const result = await bridge.save(filename, arrayBufferToBase64(buffer));
       if (!result || !result.ok) {
         throw new Error((result && result.message) || "실행파일 창에서 파일 저장에 실패했습니다.");
       }
@@ -23891,8 +23947,7 @@ HTML = r"""<!doctype html>
       const blob = await response.blob();
       const filename = filenameFromResponse(response, fallbackName);
       if (hasDesktopDownloadBridge()) {
-        await saveBlobThroughDesktopBridge(blob, filename);
-        return;
+        return await saveBlobThroughDesktopBridge(blob, filename);
       }
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
@@ -23903,6 +23958,7 @@ HTML = r"""<!doctype html>
       link.click();
       link.remove();
       window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+      return { ok: true, filename };
     }
 
     function safeNumberConfirmMessage(candidates) {

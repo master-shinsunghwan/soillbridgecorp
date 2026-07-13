@@ -2104,8 +2104,13 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
             self.assertIn("function downloadWorkbookResponse(response, fallbackName)", html_source)
             if "_workhub_zip_inspect" not in app_file.parts:
                 self.assertIn("function hasDesktopDownloadBridge()", html_source)
-                self.assertIn("window.pywebview.api.saveDownload", html_source)
-                self.assertIn("arrayBufferToBase64(await blob.arrayBuffer())", html_source)
+                self.assertIn("function desktopDownloadBridgeApi()", html_source)
+                self.assertIn("api.saveDownload", html_source)
+                self.assertIn("api.save_download", html_source)
+                self.assertIn("api.beginDownload", html_source)
+                self.assertIn("api.appendDownloadChunk", html_source)
+                self.assertIn("api.finishDownload", html_source)
+                self.assertIn("bytesToBase64(chunk)", html_source)
             self.assertIn("window.setTimeout(() => URL.revokeObjectURL(url), 1000)", html_source)
             self.assertIn('await downloadWorkbookResponse(response, "차량인수증.xlsx")', html_source)
             self.assertIn(

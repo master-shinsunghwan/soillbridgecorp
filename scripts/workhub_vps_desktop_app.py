@@ -7,6 +7,7 @@ import json
 import os
 import re
 import sys
+import uuid
 from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse
@@ -241,6 +242,7 @@ def offline_html(app_url: str, message: str) -> str:
 class WorkhubDesktopApi:
     def __init__(self, app_url: str):
         self.app_url = app_url
+        self._active_downloads: dict[str, dict[str, object]] = {}
 
     def retry(self) -> dict[str, object]:
         ok, message = app_is_reachable(self.app_url)
@@ -260,6 +262,81 @@ class WorkhubDesktopApi:
 
     def save_download(self, filename: str, base64_data: str) -> dict[str, object]:
         return self.saveDownload(filename, base64_data)
+
+    def beginDownload(self, filename: str) -> dict[str, object]:
+        try:
+            download_dir = desktop_download_dir()
+            final_path = unique_download_path(download_dir, safe_download_filename(filename))
+            download_id = uuid.uuid4().hex
+            temp_path = final_path.with_name(f".{final_path.name}.{download_id}.part")
+            handle = temp_path.open("wb")
+            self._active_downloads[download_id] = {
+                "handle": handle,
+                "temp_path": temp_path,
+                "final_path": final_path,
+                "size": 0,
+            }
+            return {"ok": True, "id": download_id, "filename": final_path.name}
+        except Exception as exc:  # noqa: BLE001
+            return {"ok": False, "message": str(exc)}
+
+    def appendDownloadChunk(self, download_id: str, base64_data: str) -> dict[str, object]:
+        try:
+            download = self._active_downloads.get(str(download_id or ""))
+            if not download:
+                return {"ok": False, "message": "download session not found"}
+            data = base64.b64decode(str(base64_data or ""), validate=True)
+            handle = download["handle"]
+            handle.write(data)
+            download["size"] = int(download.get("size") or 0) + len(data)
+            return {"ok": True, "size": download["size"]}
+        except Exception as exc:  # noqa: BLE001
+            return {"ok": False, "message": str(exc)}
+
+    def finishDownload(self, download_id: str) -> dict[str, object]:
+        download = self._active_downloads.pop(str(download_id or ""), None)
+        if not download:
+            return {"ok": False, "message": "download session not found"}
+        try:
+            handle = download["handle"]
+            handle.close()
+            temp_path = download["temp_path"]
+            final_path = download["final_path"]
+            temp_path.replace(final_path)
+            return {
+                "ok": True,
+                "path": str(final_path),
+                "filename": final_path.name,
+                "size": int(download.get("size") or 0),
+            }
+        except Exception as exc:  # noqa: BLE001
+            return {"ok": False, "message": str(exc)}
+
+    def cancelDownload(self, download_id: str) -> dict[str, object]:
+        download = self._active_downloads.pop(str(download_id or ""), None)
+        if not download:
+            return {"ok": True}
+        try:
+            handle = download["handle"]
+            handle.close()
+            temp_path = download["temp_path"]
+            if temp_path.exists():
+                temp_path.unlink()
+            return {"ok": True}
+        except Exception as exc:  # noqa: BLE001
+            return {"ok": False, "message": str(exc)}
+
+    def begin_download(self, filename: str) -> dict[str, object]:
+        return self.beginDownload(filename)
+
+    def append_download_chunk(self, download_id: str, base64_data: str) -> dict[str, object]:
+        return self.appendDownloadChunk(download_id, base64_data)
+
+    def finish_download(self, download_id: str) -> dict[str, object]:
+        return self.finishDownload(download_id)
+
+    def cancel_download(self, download_id: str) -> dict[str, object]:
+        return self.cancelDownload(download_id)
 
 
 def run_desktop_app(app_url: str, *, debug: bool = False, skip_preflight: bool = False) -> None:
