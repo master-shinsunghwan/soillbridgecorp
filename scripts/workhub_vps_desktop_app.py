@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import argparse
+import base64
 import html
 import json
 import os
+import re
 import sys
 from pathlib import Path
 from urllib.error import HTTPError, URLError
@@ -18,6 +20,7 @@ STARTUP_SCRIPT_NAME = "SoilbridgeWorkhubDesktop_AutoStart.vbs"
 
 LOCAL_APPDATA = Path(os.environ.get("LOCALAPPDATA") or Path.home() / "AppData" / "Local")
 DEFAULT_STORAGE_DIR = LOCAL_APPDATA / "SoilbridgeWorkhubDesktop" / "WebViewData"
+DEFAULT_DOWNLOAD_DIR = Path.home() / "Downloads"
 
 _window = None
 
@@ -35,6 +38,35 @@ def desktop_storage_dir() -> Path:
     if configured:
         return Path(configured).expanduser()
     return DEFAULT_STORAGE_DIR
+
+
+def desktop_download_dir() -> Path:
+    configured = os.environ.get("WORKHUB_DESKTOP_DOWNLOAD_DIR")
+    if configured:
+        return Path(configured).expanduser()
+    return DEFAULT_DOWNLOAD_DIR
+
+
+def safe_download_filename(filename: str | None, fallback: str = "workhub_download.xlsx") -> str:
+    value = str(filename or "").strip() or fallback
+    value = value.replace("\\", "_").replace("/", "_").replace(":", "_")
+    value = re.sub(r"[\x00-\x1f<>|?*]+", "_", value)
+    value = value.strip(" .")
+    return value or fallback
+
+
+def unique_download_path(folder: Path, filename: str) -> Path:
+    folder.mkdir(parents=True, exist_ok=True)
+    candidate = folder / filename
+    if not candidate.exists():
+        return candidate
+    stem = candidate.stem
+    suffix = candidate.suffix
+    for index in range(1, 1000):
+        numbered = folder / f"{stem} ({index}){suffix}"
+        if not numbered.exists():
+            return numbered
+    raise FileExistsError("Cannot find an available download filename.")
 
 
 def startup_folder() -> Path | None:
@@ -215,6 +247,19 @@ class WorkhubDesktopApi:
         if ok and _window is not None:
             _window.load_url(self.app_url)
         return {"ok": ok, "message": message}
+
+    def saveDownload(self, filename: str, base64_data: str) -> dict[str, object]:
+        try:
+            data = base64.b64decode(str(base64_data or ""), validate=True)
+            download_dir = desktop_download_dir()
+            path = unique_download_path(download_dir, safe_download_filename(filename))
+            path.write_bytes(data)
+            return {"ok": True, "path": str(path), "filename": path.name, "size": len(data)}
+        except Exception as exc:  # noqa: BLE001
+            return {"ok": False, "message": str(exc)}
+
+    def save_download(self, filename: str, base64_data: str) -> dict[str, object]:
+        return self.saveDownload(filename, base64_data)
 
 
 def run_desktop_app(app_url: str, *, debug: bool = False, skip_preflight: bool = False) -> None:

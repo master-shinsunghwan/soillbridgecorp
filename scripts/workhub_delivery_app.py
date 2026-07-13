@@ -17382,13 +17382,19 @@ HTML = r"""<!doctype html>
         if (!response.ok || data.error) throw new Error(data.error || "수입원가 보고서 생성에 실패했습니다.");
         const file = data.file || {};
         if (!file.download_url) throw new Error("생성된 보고서 다운로드 주소를 확인하지 못했습니다.");
-        const link = document.createElement("a");
-        link.href = file.download_url;
-        link.download = file.filename || "수입원가_계산보고서.xlsx";
-        link.style.display = "none";
-        document.body.appendChild(link);
-        link.click();
-        link.remove();
+        if (hasDesktopDownloadBridge()) {
+          const downloadResponse = await fetch(file.download_url);
+          if (!downloadResponse.ok) throw new Error("생성된 보고서 파일 다운로드에 실패했습니다.");
+          await downloadWorkbookResponse(downloadResponse, file.filename || "수입원가_계산보고서.xlsx");
+        } else {
+          const link = document.createElement("a");
+          link.href = file.download_url;
+          link.download = file.filename || "수입원가_계산보고서.xlsx";
+          link.style.display = "none";
+          document.body.appendChild(link);
+          link.click();
+          link.remove();
+        }
         importCostMessage.innerHTML = `보고서 파일을 생성했습니다. <a href="${escapeHtml(file.download_url)}" download="${escapeHtml(file.filename || "수입원가_계산보고서.xlsx")}">다운로드가 시작되지 않으면 여기를 눌러주세요.</a>`;
         setImportCostRunStatus("done", `보고서 파일 생성 완료 · ${file.filename || "수입원가_계산보고서.xlsx"}`);
       } catch (error) {
@@ -23857,12 +23863,41 @@ HTML = r"""<!doctype html>
       return asciiMatch ? asciiMatch[1] : fallback;
     }
 
+    function hasDesktopDownloadBridge() {
+      return Boolean(window.pywebview && window.pywebview.api && typeof window.pywebview.api.saveDownload === "function");
+    }
+
+    function arrayBufferToBase64(buffer) {
+      const bytes = new Uint8Array(buffer);
+      let binary = "";
+      const chunkSize = 0x8000;
+      for (let index = 0; index < bytes.length; index += chunkSize) {
+        const chunk = bytes.subarray(index, index + chunkSize);
+        binary += String.fromCharCode.apply(null, chunk);
+      }
+      return btoa(binary);
+    }
+
+    async function saveBlobThroughDesktopBridge(blob, filename) {
+      const base64 = arrayBufferToBase64(await blob.arrayBuffer());
+      const result = await window.pywebview.api.saveDownload(filename, base64);
+      if (!result || !result.ok) {
+        throw new Error((result && result.message) || "실행파일 창에서 파일 저장에 실패했습니다.");
+      }
+      return result;
+    }
+
     async function downloadWorkbookResponse(response, fallbackName) {
       const blob = await response.blob();
+      const filename = filenameFromResponse(response, fallbackName);
+      if (hasDesktopDownloadBridge()) {
+        await saveBlobThroughDesktopBridge(blob, filename);
+        return;
+      }
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
-      link.download = filenameFromResponse(response, fallbackName);
+      link.download = filename;
       link.style.display = "none";
       document.body.appendChild(link);
       link.click();
