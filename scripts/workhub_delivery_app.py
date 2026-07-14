@@ -10725,7 +10725,7 @@ HTML = r"""<!doctype html>
             <table class="import-table">
               <thead>
                 <tr>
-                  <th>입고예정일</th>
+                  <th>컨테이너 하역 예정일</th>
                   <th>출항일</th>
                   <th>입항일</th>
                   <th>선적항</th>
@@ -11058,7 +11058,7 @@ HTML = r"""<!doctype html>
             <table class="import-table">
               <thead>
                 <tr>
-                  <th>입고예정일</th>
+                  <th>컨테이너 하역 예정일</th>
                   <th>출항일</th>
                   <th>입항일</th>
                   <th>선적항</th>
@@ -11569,7 +11569,7 @@ HTML = r"""<!doctype html>
         <input id="importArrivalPort" type="hidden" />
         <input id="importShipper" type="hidden" />
         <div class="notice-template-grid">
-          <input id="importWarehouseDueDate" type="text" placeholder="입고예정일" />
+          <input id="importWarehouseDueDate" type="text" placeholder="컨테이너 하역 예정일" />
           <input id="importDepartureDate" type="text" placeholder="출항일 예) 6/10" />
           <input id="importArrivalDate" type="text" placeholder="입항일 예) 6/13" />
         </div>
@@ -14567,7 +14567,7 @@ HTML = r"""<!doctype html>
       cargoShipmentMode = record?.cargo_type || cargoShipmentMode || "outbound";
       const isInbound = cargoShipmentMode === "inbound";
       if (cargoShipmentPopupTitle) cargoShipmentPopupTitle.textContent = isInbound ? "화물 입고 예정건 입력" : "화물 출고건 입력";
-      if (cargoShipDate) cargoShipDate.placeholder = isInbound ? "입고예정일 예) 6/21" : "출고일 예) 6/21";
+      if (cargoShipDate) cargoShipDate.placeholder = isInbound ? "컨테이너 하역 예정일 예) 6/21" : "출고일 예) 6/21";
       if (cargoCustomer) cargoCustomer.placeholder = isInbound ? "매입처/입고처" : "거래처/현장";
       if (cargoDestination) cargoDestination.placeholder = isInbound ? "입고장소" : "도착지";
       if (cargoStatus) {

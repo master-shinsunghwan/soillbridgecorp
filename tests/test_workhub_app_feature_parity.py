@@ -86,6 +86,9 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
             self.assertLess(notice_index, import_index)
             self.assertLess(import_index, calendar_index)
             self.assertIn("수입제품 입고 일정", html_source)
+            if "_workhub_zip_inspect" not in app_file.parts:
+                self.assertIn("컨테이너 하역 예정일", html_source)
+                self.assertNotIn("<th>입고예정일</th>", html_source)
             self.assertIn('id="dashboardImportScheduleSummary"', html_source)
             self.assertIn('id="dashboardImportScheduleBody"', html_source)
             self.assertIn('class="company-card dashboard-calendar-card"', html_source)
