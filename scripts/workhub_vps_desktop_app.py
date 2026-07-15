@@ -342,6 +342,10 @@ class WorkhubDesktopApi:
 def run_desktop_app(app_url: str, *, debug: bool = False, skip_preflight: bool = False) -> None:
     import webview
 
+    # pywebview blocks WebView2 downloads by default. Workhub creates Excel and
+    # shared-file downloads from Blob URLs, so the desktop shell must opt in.
+    webview.settings["ALLOW_DOWNLOADS"] = True
+
     storage_dir = desktop_storage_dir()
     storage_dir.mkdir(parents=True, exist_ok=True)
 

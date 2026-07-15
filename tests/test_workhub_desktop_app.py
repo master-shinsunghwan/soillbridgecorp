@@ -85,6 +85,13 @@ class WorkhubDesktopAppTests(unittest.TestCase):
         self.assertIn("def saveDownload", source)
         self.assertIn("def beginDownload", source)
 
+    def test_launcher_enables_webview_downloads(self) -> None:
+        source = MODULE_PATH.read_text(encoding="utf-8")
+
+        setting = 'webview.settings["ALLOW_DOWNLOADS"] = True'
+        self.assertIn(setting, source)
+        self.assertLess(source.index(setting), source.index("webview.create_window"))
+
     def test_build_script_packages_windowed_exe(self) -> None:
         build_script = (ROOT / "build_workhub_desktop_app.ps1").read_text(encoding="utf-8")
 
