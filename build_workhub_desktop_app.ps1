@@ -49,8 +49,24 @@ New-Item -ItemType Directory -Force -Path $DistDir, $WorkDir, $SpecDir, $Package
 $ExeSource = Join-Path $DistDir "SoilbridgeWorkhub.exe"
 $ExeTarget = Join-Path $PackageDir "SoilbridgeWorkhub.exe"
 Copy-Item -LiteralPath $ExeSource -Destination $ExeTarget -Force
-Copy-Item -LiteralPath (Join-Path $Root "install_workhub_desktop_app.ps1") -Destination (Join-Path $PackageDir "install_workhub_desktop_app.ps1") -Force
-Copy-Item -LiteralPath (Join-Path $Root "uninstall_workhub_desktop_app.ps1") -Destination (Join-Path $PackageDir "uninstall_workhub_desktop_app.ps1") -Force
+
+function Copy-PowerShellScriptWithBom {
+  param(
+    [Parameter(Mandatory = $true)][string]$Source,
+    [Parameter(Mandatory = $true)][string]$Destination
+  )
+
+  $Content = [IO.File]::ReadAllText($Source)
+  $Utf8WithBom = New-Object Text.UTF8Encoding($true)
+  [IO.File]::WriteAllText($Destination, $Content, $Utf8WithBom)
+}
+
+Copy-PowerShellScriptWithBom `
+  -Source (Join-Path $Root "install_workhub_desktop_app.ps1") `
+  -Destination (Join-Path $PackageDir "install_workhub_desktop_app.ps1")
+Copy-PowerShellScriptWithBom `
+  -Source (Join-Path $Root "uninstall_workhub_desktop_app.ps1") `
+  -Destination (Join-Path $PackageDir "uninstall_workhub_desktop_app.ps1")
 
 $InstallCmd = @"
 @echo off

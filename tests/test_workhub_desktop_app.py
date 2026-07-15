@@ -99,6 +99,15 @@ class WorkhubDesktopAppTests(unittest.TestCase):
         self.assertIn("--windowed", build_script)
         self.assertIn("workhub_vps_desktop_app.py", build_script)
         self.assertIn("SoilbridgeWorkhub.exe", build_script)
+        self.assertIn("Copy-PowerShellScriptWithBom", build_script)
+        self.assertIn("Text.UTF8Encoding($true)", build_script)
+
+    def test_installer_avoids_fragile_vbs_quote_generation(self) -> None:
+        install_script = (ROOT / "install_workhub_desktop_app.ps1").read_text(encoding="utf-8")
+
+        self.assertNotIn("$StartupCommand", install_script)
+        self.assertNotIn("CreateObject(\"WScript.Shell\")", install_script)
+        self.assertIn("New-WorkhubDesktopShortcut", install_script)
 
 
 if __name__ == "__main__":
