@@ -20,7 +20,9 @@ APP_USER_AGENT = "SoilbridgeWorkhubDesktop/1.0"
 STARTUP_SCRIPT_NAME = "SoilbridgeWorkhubDesktop_AutoStart.vbs"
 
 LOCAL_APPDATA = Path(os.environ.get("LOCALAPPDATA") or Path.home() / "AppData" / "Local")
-DEFAULT_STORAGE_DIR = LOCAL_APPDATA / "SoilbridgeWorkhubDesktop" / "WebViewData"
+DESKTOP_APP_DIR = LOCAL_APPDATA / "SoilbridgeWorkhubDesktop"
+DEFAULT_STORAGE_DIR = DESKTOP_APP_DIR / "WebViewData"
+DESKTOP_SETTINGS_PATH = DESKTOP_APP_DIR / "settings.json"
 DEFAULT_DOWNLOAD_DIR = Path.home() / "Downloads"
 
 _window = None
@@ -41,11 +43,69 @@ def desktop_storage_dir() -> Path:
     return DEFAULT_STORAGE_DIR
 
 
+def read_desktop_settings() -> dict[str, object]:
+    try:
+        data = json.loads(DESKTOP_SETTINGS_PATH.read_text(encoding="utf-8"))
+        return data if isinstance(data, dict) else {}
+    except (FileNotFoundError, json.JSONDecodeError, OSError):
+        return {}
+
+
+def write_desktop_settings(settings: dict[str, object]) -> None:
+    DESKTOP_SETTINGS_PATH.parent.mkdir(parents=True, exist_ok=True)
+    temp_path = DESKTOP_SETTINGS_PATH.with_name(f".{DESKTOP_SETTINGS_PATH.name}.{uuid.uuid4().hex}.tmp")
+    try:
+        temp_path.write_text(
+            json.dumps(settings, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        temp_path.replace(DESKTOP_SETTINGS_PATH)
+    finally:
+        if temp_path.exists():
+            temp_path.unlink()
+
+
 def desktop_download_dir() -> Path:
     configured = os.environ.get("WORKHUB_DESKTOP_DOWNLOAD_DIR")
-    if configured:
+    if configured and configured.strip():
         return Path(configured).expanduser()
+    saved = str(read_desktop_settings().get("download_dir") or "").strip()
+    if saved:
+        return Path(saved).expanduser()
     return DEFAULT_DOWNLOAD_DIR
+
+
+def desktop_download_settings() -> dict[str, object]:
+    settings = read_desktop_settings()
+    saved = str(settings.get("download_dir") or "").strip()
+    environment_override = bool(os.environ.get("WORKHUB_DESKTOP_DOWNLOAD_DIR", "").strip())
+    return {
+        "ok": True,
+        "path": str(desktop_download_dir()),
+        "default_path": str(DEFAULT_DOWNLOAD_DIR),
+        "customized": bool(saved) and not environment_override,
+        "source": "environment" if environment_override else ("custom" if saved else "default"),
+    }
+
+
+def set_desktop_download_dir(folder: str | Path) -> Path:
+    raw_path = str(folder or "").strip()
+    if not raw_path:
+        raise ValueError("저장할 폴더를 선택해주세요.")
+    path = Path(raw_path).expanduser()
+    path.mkdir(parents=True, exist_ok=True)
+    if not path.is_dir():
+        raise NotADirectoryError("선택한 경로가 폴더가 아닙니다.")
+    settings = read_desktop_settings()
+    settings["download_dir"] = str(path)
+    write_desktop_settings(settings)
+    return path
+
+
+def reset_desktop_download_dir() -> None:
+    settings = read_desktop_settings()
+    settings.pop("download_dir", None)
+    write_desktop_settings(settings)
 
 
 def safe_download_filename(filename: str | None, fallback: str = "workhub_download.xlsx") -> str:
@@ -249,6 +309,43 @@ class WorkhubDesktopApi:
         if ok and _window is not None:
             _window.load_url(self.app_url)
         return {"ok": ok, "message": message}
+
+    def getDownloadSettings(self) -> dict[str, object]:
+        return desktop_download_settings()
+
+    def chooseDownloadFolder(self) -> dict[str, object]:
+        if _window is None:
+            return {"ok": False, "message": "앱 창을 찾지 못했습니다."}
+        try:
+            import webview
+
+            selected = _window.create_file_dialog(
+                webview.FOLDER_DIALOG,
+                directory=str(desktop_download_dir()),
+            )
+            if not selected:
+                return {**desktop_download_settings(), "cancelled": True}
+            selected_path = selected[0] if isinstance(selected, (list, tuple)) else selected
+            set_desktop_download_dir(str(selected_path))
+            return desktop_download_settings()
+        except Exception as exc:  # noqa: BLE001
+            return {"ok": False, "message": str(exc)}
+
+    def resetDownloadFolder(self) -> dict[str, object]:
+        try:
+            reset_desktop_download_dir()
+            return desktop_download_settings()
+        except Exception as exc:  # noqa: BLE001
+            return {"ok": False, "message": str(exc)}
+
+    def get_download_settings(self) -> dict[str, object]:
+        return self.getDownloadSettings()
+
+    def choose_download_folder(self) -> dict[str, object]:
+        return self.chooseDownloadFolder()
+
+    def reset_download_folder(self) -> dict[str, object]:
+        return self.resetDownloadFolder()
 
     def saveDownload(self, filename: str, base64_data: str) -> dict[str, object]:
         try:

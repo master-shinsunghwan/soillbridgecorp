@@ -228,6 +228,7 @@ const iconPaths = {
   "download": "<path d='M12 3v12'/><path d='m7 10 5 5 5-5'/><path d='M5 21h14'/>",
   "file-spreadsheet": "<path d='M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z'/><path d='M14 2v6h6'/><path d='M8 13h8'/><path d='M8 17h8'/><path d='M11 11v8'/>",
   "file-text": "<path d='M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z'/><path d='M14 2v6h6'/><path d='M8 13h8'/><path d='M8 17h5'/>",
+  "folder-down": "<path d='M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.7-.9L9.6 3.9A2 2 0 0 0 7.9 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z'/><path d='M12 10v6'/><path d='m15 13-3 3-3-3'/>",
   "headphones": "<path d='M3 18v-6a9 9 0 0 1 18 0v6'/><path d='M21 19a2 2 0 0 1-2 2h-1v-7h3z'/><path d='M3 19a2 2 0 0 0 2 2h1v-7H3z'/>",
   "home": "<path d='m3 11 9-8 9 8'/><path d='M5 10v11h14V10'/><path d='M9 21v-6h6v6'/>",
   "info": "<circle cx='12' cy='12' r='10'/><path d='M12 16v-4'/><path d='M12 8h.01'/>",
@@ -273,6 +274,7 @@ export const ClipboardCheck = {};
 export const CircleDollarSign = {};
 export const FileText = {};
 export const FileSpreadsheet = {};
+export const FolderDown = {};
 export const ClipboardList = {};
 export const BarChart3 = {};
 export const CopyCheck = {};
@@ -968,6 +970,75 @@ HTML = r"""<!doctype html>
       display: flex;
       align-items: center;
       gap: 8px;
+    }
+    .desktop-download-settings {
+      position: relative;
+    }
+    .desktop-download-settings[hidden],
+    .desktop-download-popover[hidden] {
+      display: none !important;
+    }
+    .desktop-download-settings.open .icon-button {
+      border-color: #9db7f7;
+      background: #eef4ff;
+      color: #155bc8;
+    }
+    .desktop-download-popover {
+      position: absolute;
+      z-index: 140;
+      top: calc(100% + 8px);
+      right: 0;
+      width: min(360px, calc(100vw - 32px));
+      padding: 14px;
+      border: 1px solid #dbe3f0;
+      border-radius: 8px;
+      background: #fff;
+      color: #172033;
+      box-shadow: 0 14px 34px rgba(15, 23, 42, .16);
+    }
+    .desktop-download-popover strong {
+      display: block;
+      margin-bottom: 8px;
+      font-size: 13px;
+      font-weight: 700;
+    }
+    .desktop-download-path {
+      min-height: 38px;
+      padding: 8px 9px;
+      border: 1px solid #e2e8f0;
+      border-radius: 6px;
+      background: #f8fafc;
+      color: #475467;
+      font-size: 11px;
+      line-height: 1.45;
+      overflow-wrap: anywhere;
+    }
+    .desktop-download-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 7px;
+      margin-top: 10px;
+    }
+    .desktop-download-actions button {
+      min-height: 30px;
+      padding: 0 10px;
+      border: 1px solid #cbd5e1;
+      border-radius: 7px;
+      background: #fff;
+      color: #344054;
+      font-family: inherit;
+      font-size: 11px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .desktop-download-actions button.primary {
+      border-color: #2563eb;
+      background: #2563eb;
+      color: #fff;
+    }
+    .desktop-download-actions button:disabled {
+      cursor: wait;
+      opacity: .58;
     }
     .icon-button {
       width: 36px;
@@ -5167,6 +5238,54 @@ HTML = r"""<!doctype html>
       border-radius: 7px;
       font-size: 12px;
     }
+    .ledger-filter-summary {
+      display: none;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 6px;
+      margin: -2px 0 10px;
+      padding: 8px 10px;
+      border: 1px solid #bfdbfe;
+      border-radius: 8px;
+      background: #eff6ff;
+      color: #1e3a8a;
+      font-size: 12px;
+      font-weight: 750;
+    }
+    .ledger-filter-summary.open { display: flex; }
+    .ledger-filter-summary strong { font-weight: 850; }
+    .ledger-filter-chip {
+      display: inline-flex;
+      align-items: center;
+      max-width: 260px;
+      min-height: 24px;
+      padding: 3px 8px;
+      border: 1px solid #bfdbfe;
+      border-radius: 999px;
+      background: #fff;
+      color: #1e3a8a;
+      line-height: 1.3;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .ledger-filter-chip.color {
+      border-color: #fed7aa;
+      background: #fff7ed;
+      color: #9a3412;
+    }
+    .ledger-filter-summary button {
+      min-height: 24px;
+      border: 1px solid #93c5fd;
+      border-radius: 7px;
+      background: #fff;
+      color: #155bc8;
+      font-family: inherit;
+      font-size: 11px;
+      font-weight: 850;
+      cursor: pointer;
+      padding: 2px 8px;
+    }
     .ledger-import-button {
       height: 34px;
       min-width: 86px;
@@ -5487,6 +5606,20 @@ HTML = r"""<!doctype html>
       border-radius: 999px;
       background: #2563eb;
       box-shadow: 0 0 0 2px rgba(37, 99, 235, .16);
+    }
+    .ledger-table th.filter-active .ledger-th-title::after {
+      content: "필터";
+      display: inline-flex;
+      align-items: center;
+      margin-left: 4px;
+      min-height: 14px;
+      padding: 1px 4px;
+      border-radius: 999px;
+      background: rgba(37, 99, 235, .14);
+      color: #1d4ed8;
+      font-size: 9px;
+      font-weight: 850;
+      vertical-align: middle;
     }
     .ledger-table th.color-filter-active {
       background: linear-gradient(180deg, #fff7ed 0%, #fed7aa 100%);
@@ -6279,6 +6412,11 @@ HTML = r"""<!doctype html>
       border-bottom: 1px solid var(--line);
       overflow-x: auto;
       overflow-y: hidden;
+    }
+    @media (min-width: 1180px) {
+      body:not(.standalone) #crmWorkspace .crm-tabs {
+        display: none;
+      }
     }
     .crm-tab {
       flex: 0 0 auto;
@@ -10609,12 +10747,23 @@ HTML = r"""<!doctype html>
         </div>
         <form class="top-search" id="topbarSearchForm" role="search">
           <i data-lucide="search"></i>
-          <input id="topbarSearchInput" name="topbar_search" type="search" placeholder="수령인, 송장번호, CS내용 검색" autocomplete="off" />
+          <input id="topbarSearchInput" name="topbar_search" type="search" placeholder="CS 처리대장 바로 검색" autocomplete="off" />
           <button class="top-search-submit" type="submit" title="검색" aria-label="검색"><i data-lucide="arrow-right"></i></button>
         </form>
         <div class="top-tools">
           <button class="icon-button" id="topbarAlertButton" type="button" title="알림" aria-label="알림"><i data-lucide="bell"></i></button>
           <button class="icon-button" id="topbarRefreshButton" type="button" title="현재 화면 새로고침" aria-label="현재 화면 새로고침"><i data-lucide="refresh-cw"></i></button>
+          <div class="desktop-download-settings" id="desktopDownloadSettings" hidden>
+            <button class="icon-button" id="desktopDownloadSettingsButton" type="button" title="다운로드 위치 설정" aria-label="다운로드 위치 설정" aria-expanded="false"><i data-lucide="folder-down"></i></button>
+            <div class="desktop-download-popover" id="desktopDownloadPopover" role="dialog" aria-label="다운로드 위치" hidden>
+              <strong>다운로드 위치</strong>
+              <div class="desktop-download-path" id="desktopDownloadPath">확인 중...</div>
+              <div class="desktop-download-actions">
+                <button id="desktopDownloadReset" type="button">기본값</button>
+                <button class="primary" id="desktopDownloadChoose" type="button">폴더 변경</button>
+              </div>
+            </div>
+          </div>
           <div class="user-chip"><span class="avatar"></span><span>__USER_DISPLAY__</span></div>
           <a class="logout-button" href="/logout" title="로그아웃"><i data-lucide="log-out"></i><span>로그아웃</span></a>
         </div>
@@ -11105,7 +11254,7 @@ HTML = r"""<!doctype html>
       </section>
       <section class="workspace-view" id="crmWorkspace">
         <div class="workspace-head">
-          <div class="workspace-title">업무 현황</div>
+          <div class="workspace-title" id="crmWorkspaceTitle">업무관리 · 업무 현황</div>
           <div class="workspace-actions">
             <button class="workspace-button" type="button" id="crmRefresh">새로고침</button>
             <button class="workspace-button" type="button" id="crmAccountQuick">직원 현황</button>
@@ -11965,6 +12114,7 @@ HTML = r"""<!doctype html>
             <button class="btn blue" type="button" data-ledger-import-mode="daily">CS처리대장 업로드</button>
             <button class="btn primary" id="ledgerAddCs" type="button">CS 추가</button>
           </div>
+          <div class="ledger-filter-summary" id="ledgerFilterSummary" aria-live="polite"></div>
           <div class="cell-edit-bar" id="ledgerCellEditBar">
             <div class="cell-edit-label" id="ledgerCellEditLabel">셀 선택</div>
             <div id="ledgerCellEditMount"></div>
@@ -12057,6 +12207,7 @@ HTML = r"""<!doctype html>
             </div>
             <button class="btn blue" type="button" data-management-import-mode="daily">통합관리대장 업로드</button>
           </div>
+          <div class="ledger-filter-summary" id="managementFilterSummary" aria-live="polite"></div>
           <div class="cell-edit-bar" id="managementCellEditBar">
             <div class="cell-edit-label" id="managementCellEditLabel">셀 선택</div>
             <div id="managementCellEditMount"></div>
@@ -12333,8 +12484,8 @@ HTML = r"""<!doctype html>
   </div>
 
   <script type="module">
-    import { createIcons, BriefcaseBusiness, Home, MessageCircle, Info, ChevronDown, ChevronLeft, ChevronRight, PlusSquare, RefreshCw, Ellipsis, Headphones, Package, ClipboardCheck, CircleDollarSign, FileText, FileSpreadsheet, ClipboardList, BarChart3, CopyCheck, Bell, Download, Truck, Mail, Upload, Database, CalendarDays, X, Settings, Search, LogOut, Warehouse } from "/lucide/dist/esm/lucide.js";
-    createIcons({ icons: { BriefcaseBusiness, Home, MessageCircle, Info, ChevronDown, ChevronLeft, ChevronRight, PlusSquare, RefreshCw, Ellipsis, Headphones, Package, ClipboardCheck, CircleDollarSign, FileText, FileSpreadsheet, ClipboardList, BarChart3, CopyCheck, Bell, Download, Truck, Mail, Upload, Database, CalendarDays, X, Settings, Search, LogOut, Warehouse, "package": Package, "file-text": FileText, "file-spreadsheet": FileSpreadsheet, "truck": Truck, "search": Search, "arrow-right": ChevronRight, "log-out": LogOut, "warehouse": Warehouse } });
+    import { createIcons, BriefcaseBusiness, Home, MessageCircle, Info, ChevronDown, ChevronLeft, ChevronRight, PlusSquare, RefreshCw, Ellipsis, Headphones, Package, ClipboardCheck, CircleDollarSign, FileText, FileSpreadsheet, FolderDown, ClipboardList, BarChart3, CopyCheck, Bell, Download, Truck, Mail, Upload, Database, CalendarDays, X, Settings, Search, LogOut, Warehouse } from "/lucide/dist/esm/lucide.js";
+    createIcons({ icons: { BriefcaseBusiness, Home, MessageCircle, Info, ChevronDown, ChevronLeft, ChevronRight, PlusSquare, RefreshCw, Ellipsis, Headphones, Package, ClipboardCheck, CircleDollarSign, FileText, FileSpreadsheet, FolderDown, ClipboardList, BarChart3, CopyCheck, Bell, Download, Truck, Mail, Upload, Database, CalendarDays, X, Settings, Search, LogOut, Warehouse, "package": Package, "file-text": FileText, "file-spreadsheet": FileSpreadsheet, "folder-down": FolderDown, "truck": Truck, "search": Search, "arrow-right": ChevronRight, "log-out": LogOut, "warehouse": Warehouse } });
     function applyDaisyUiClasses() {
       document.querySelectorAll(".workspace-button, .crm-mini-button, .action-button, .logout-button, .top-button").forEach((element) => {
         element.classList.add("btn", "btn-sm");
@@ -12378,6 +12529,12 @@ HTML = r"""<!doctype html>
     const topbarSearchInput = document.querySelector("#topbarSearchInput");
     const topbarAlertButton = document.querySelector("#topbarAlertButton");
     const topbarRefreshButton = document.querySelector("#topbarRefreshButton");
+    const desktopDownloadSettings = document.querySelector("#desktopDownloadSettings");
+    const desktopDownloadSettingsButton = document.querySelector("#desktopDownloadSettingsButton");
+    const desktopDownloadPopover = document.querySelector("#desktopDownloadPopover");
+    const desktopDownloadPath = document.querySelector("#desktopDownloadPath");
+    const desktopDownloadChoose = document.querySelector("#desktopDownloadChoose");
+    const desktopDownloadReset = document.querySelector("#desktopDownloadReset");
     const sidebar = document.querySelector(".sidebar");
     const sidebarSearchInput = document.querySelector("#sidebarSearchInput");
     let sidebarSearchUserTyped = false;
@@ -12676,6 +12833,7 @@ HTML = r"""<!doctype html>
     const managementImportOpen = document.querySelector("#managementImportOpen");
     const managementBody = document.querySelector("#managementBody");
     const managementMonthTabs = document.querySelector("#managementMonthTabs");
+    const managementFilterSummary = document.querySelector("#managementFilterSummary");
     const ledgerSelectAll = document.querySelector("#ledgerSelectAll");
     const managementSelectAll = document.querySelector("#managementSelectAll");
     const managementSaveAll = document.querySelector("#managementSaveAll");
@@ -12687,6 +12845,7 @@ HTML = r"""<!doctype html>
     const ledgerDeleteSelected = document.querySelector("#ledgerDeleteSelected");
     const ledgerFilterButtons = Array.from(document.querySelectorAll("[data-ledger-filter-button]"));
     const managementFilterButtons = Array.from(document.querySelectorAll("[data-management-filter-button]"));
+    const ledgerFilterSummary = document.querySelector("#ledgerFilterSummary");
     const ledgerFilterPopover = document.querySelector("#ledgerFilterPopover");
     const ledgerFilterTitle = document.querySelector("#ledgerFilterTitle");
     const ledgerFilterSearch = document.querySelector("#ledgerFilterSearch");
@@ -13073,6 +13232,7 @@ HTML = r"""<!doctype html>
     const automationBulkFind = document.querySelector("#automationBulkFind");
     const automationBulkReplace = document.querySelector("#automationBulkReplace");
     const crmWorkspace = document.querySelector("#crmWorkspace");
+    const crmWorkspaceTitle = document.querySelector("#crmWorkspaceTitle");
     const crmRefresh = document.querySelector("#crmRefresh");
     const crmAccountQuick = document.querySelector("#crmAccountQuick");
     const crmTaskQuick = document.querySelector("#crmTaskQuick");
@@ -13219,6 +13379,14 @@ HTML = r"""<!doctype html>
     let hermesChatSessionId = 0;
     let hermesChatMode = "auto";
     let crmSelectedTaskId = "";
+    const CRM_TAB_TITLES = {
+      dashboard: "업무 현황",
+      mine: "내 업무",
+      daily: "일일 업무일지",
+      tasks: "업무보드",
+      accounts: "직원 현황",
+      messages: "메신저 연동",
+    };
     const CRM_TASK_STATUSES = ["대기", "진행중", "보류", "완료"];
     const CRM_TASK_BUILTIN_VIEWS = [
       { id: "open", name: "전체 미완료", filters: { open_only: "1", sort: "smart" } },
@@ -19419,6 +19587,9 @@ HTML = r"""<!doctype html>
     function setCrmTab(tabName) {
       if (tabName === "messages" && !can("crm_message_manage")) tabName = "dashboard";
       crmActiveTab = tabName;
+      if (crmWorkspaceTitle) {
+        crmWorkspaceTitle.textContent = `업무관리 · ${CRM_TAB_TITLES[tabName] || "업무 현황"}`;
+      }
       crmTabs.forEach((button) => {
         const active = button.dataset.crmTab === tabName;
         button.classList.toggle("active", active);
@@ -21260,6 +21431,59 @@ HTML = r"""<!doctype html>
       else header.removeAttribute("title");
     }
 
+    function columnFilterLabel(scope, field) {
+      const buttons = scope === "management" ? managementFilterButtons : ledgerFilterButtons;
+      const key = scope === "management" ? "managementFilterButton" : "ledgerFilterButton";
+      const button = buttons.find((item) => item.dataset[key] === field);
+      return button?.dataset.label || field;
+    }
+
+    function renderFilterSummary(target, scope, items, count) {
+      if (!target) return;
+      if (!items.length) {
+        target.classList.remove("open");
+        target.innerHTML = "";
+        return;
+      }
+      const countText = Number.isFinite(count) ? ` · ${Number(count).toLocaleString("ko-KR")}건` : "";
+      target.classList.add("open");
+      target.innerHTML = `
+        <strong>필터 적용${countText}</strong>
+        ${items.map((item) => `<span class="ledger-filter-chip${item.color ? " color" : ""}" title="${escapeHtml(item.title || item.text)}">${escapeHtml(item.text)}</span>`).join("")}
+        <button type="button" data-filter-summary-clear="${scope}">전체 해제</button>
+      `;
+    }
+
+    function syncLedgerFilterSummary(count) {
+      const items = [];
+      const status = ledgerStatusFilter?.value?.trim();
+      if (status) items.push({ text: `상태: ${status}` });
+      Object.entries(ledgerFilters).forEach(([field, value]) => {
+        const normalized = String(value || "").trim();
+        if (!normalized) return;
+        items.push({ text: `${columnFilterLabel("ledger", field)}: ${normalized}` });
+      });
+      renderFilterSummary(ledgerFilterSummary, "ledger", items, count);
+    }
+
+    function syncManagementFilterSummary(count) {
+      const items = [];
+      Object.entries(managementFilters).forEach(([field, value]) => {
+        const normalized = String(value || "").trim();
+        if (!normalized) return;
+        items.push({ text: `${columnFilterLabel("management", field)}: ${normalized}` });
+      });
+      Object.entries(managementColorFilters).forEach(([field, value]) => {
+        if (!value) return;
+        items.push({
+          text: `${columnFilterLabel("management", field)}: 색상 표시`,
+          title: `${columnFilterLabel("management", field)} 컬럼에서 색상 표시된 셀만 보기`,
+          color: true,
+        });
+      });
+      renderFilterSummary(managementFilterSummary, "management", items, count);
+    }
+
     function applyLedgerFilters() {
       const filtered = ledgerCases.filter(matchesLedgerFilters);
       renderLedger(filtered);
@@ -21268,6 +21492,7 @@ HTML = r"""<!doctype html>
         const value = String(ledgerFilters[field] || "").trim();
         syncColumnFilterIndicator(button, { textActive: Boolean(value), value });
       });
+      syncLedgerFilterSummary(filtered.length);
       if (currentMode === "ledger") notice.textContent = `${filtered.length}건 조회되었습니다.`;
     }
 
@@ -21484,6 +21709,7 @@ HTML = r"""<!doctype html>
           value,
         });
       });
+      syncManagementFilterSummary(filtered.length);
       if (currentMode === "management") notice.textContent = `${filtered.length}건 조회되었습니다.`;
     }
 
@@ -23863,6 +24089,81 @@ HTML = r"""<!doctype html>
       return asciiMatch ? asciiMatch[1] : fallback;
     }
 
+    function desktopDownloadSettingsBridgeApi() {
+      const api = window.pywebview && window.pywebview.api;
+      if (!api) return null;
+      const get = typeof api.getDownloadSettings === "function" ? api.getDownloadSettings.bind(api) : (
+        typeof api.get_download_settings === "function" ? api.get_download_settings.bind(api) : null
+      );
+      const choose = typeof api.chooseDownloadFolder === "function" ? api.chooseDownloadFolder.bind(api) : (
+        typeof api.choose_download_folder === "function" ? api.choose_download_folder.bind(api) : null
+      );
+      const reset = typeof api.resetDownloadFolder === "function" ? api.resetDownloadFolder.bind(api) : (
+        typeof api.reset_download_folder === "function" ? api.reset_download_folder.bind(api) : null
+      );
+      return get && choose && reset ? { get, choose, reset } : null;
+    }
+
+    function renderDesktopDownloadSettings(settings) {
+      if (!desktopDownloadPath || !settings) return;
+      const path = String(settings.path || settings.default_path || "다운로드 폴더");
+      desktopDownloadPath.textContent = path;
+      desktopDownloadPath.title = path;
+      if (desktopDownloadReset) desktopDownloadReset.disabled = !settings.customized;
+    }
+
+    function setDesktopDownloadPopover(open) {
+      if (!desktopDownloadSettings || !desktopDownloadPopover || !desktopDownloadSettingsButton) return;
+      desktopDownloadSettings.classList.toggle("open", open);
+      desktopDownloadPopover.hidden = !open;
+      desktopDownloadSettingsButton.setAttribute("aria-expanded", open ? "true" : "false");
+    }
+
+    async function initializeDesktopDownloadSettings() {
+      const bridge = desktopDownloadSettingsBridgeApi();
+      if (!bridge || !desktopDownloadSettings) return;
+      desktopDownloadSettings.hidden = false;
+      try {
+        const settings = await bridge.get();
+        if (!settings || !settings.ok) throw new Error(settings?.message || "다운로드 위치를 확인하지 못했습니다.");
+        renderDesktopDownloadSettings(settings);
+      } catch (error) {
+        if (desktopDownloadPath) desktopDownloadPath.textContent = error.message || "위치 확인 실패";
+      }
+    }
+
+    async function chooseDesktopDownloadFolder() {
+      const bridge = desktopDownloadSettingsBridgeApi();
+      if (!bridge) throw new Error("최신 PC 앱에서만 다운로드 위치를 변경할 수 있습니다.");
+      desktopDownloadChoose.disabled = true;
+      if (desktopDownloadReset) desktopDownloadReset.disabled = true;
+      try {
+        const settings = await bridge.choose();
+        if (!settings || !settings.ok) throw new Error(settings?.message || "다운로드 폴더를 변경하지 못했습니다.");
+        renderDesktopDownloadSettings(settings);
+        if (!settings.cancelled) notice.textContent = `다운로드 위치를 ${settings.path} 폴더로 변경했습니다.`;
+      } finally {
+        desktopDownloadChoose.disabled = false;
+        await initializeDesktopDownloadSettings();
+      }
+    }
+
+    async function resetDesktopDownloadFolder() {
+      const bridge = desktopDownloadSettingsBridgeApi();
+      if (!bridge) throw new Error("최신 PC 앱에서만 다운로드 위치를 변경할 수 있습니다.");
+      desktopDownloadChoose.disabled = true;
+      desktopDownloadReset.disabled = true;
+      try {
+        const settings = await bridge.reset();
+        if (!settings || !settings.ok) throw new Error(settings?.message || "기본 다운로드 폴더로 되돌리지 못했습니다.");
+        renderDesktopDownloadSettings(settings);
+        notice.textContent = `다운로드 위치를 기본 폴더(${settings.path})로 되돌렸습니다.`;
+      } finally {
+        desktopDownloadChoose.disabled = false;
+        await initializeDesktopDownloadSettings();
+      }
+    }
+
     function desktopDownloadBridgeApi() {
       const api = window.pywebview && window.pywebview.api;
       if (!api) return null;
@@ -24621,12 +24922,14 @@ HTML = r"""<!doctype html>
 
     function updateTopbarSearchPlaceholder(mode = currentMode) {
       if (!topbarSearchInput) return;
-      if (mode === "management") topbarSearchInput.placeholder = "통합관리대장 검색";
-      else if (mode === "ledger") topbarSearchInput.placeholder = "수령인, 송장번호, CS내용 검색";
-      else if (mode === "crm") topbarSearchInput.placeholder = "업무명, 직원, 번호 검색";
-      else if (mode === "hermes") topbarSearchInput.placeholder = "헤르메스 업무채팅 내용 입력";
-      else if (mode === "importCost") topbarSearchInput.placeholder = "HBL, 인보이스, 제품명 검색";
-      else topbarSearchInput.placeholder = "검색어 입력 시 CS 처리대장 조회";
+      const placeholders = {
+        management: "통합관리대장 검색",
+        ledger: "수령인, 송장번호, CS내용 검색",
+        crm: "업무명, 직원, 번호 검색",
+        hermes: "헤르메스 업무채팅 내용 입력",
+        importCost: "HBL, 인보이스, 제품명 검색",
+      };
+      topbarSearchInput.placeholder = placeholders[mode] || "CS 처리대장 바로 검색";
     }
 
     async function submitTopbarSearch(event) {
@@ -25515,6 +25818,25 @@ HTML = r"""<!doctype html>
         notice.textContent = error.message || "알림을 불러오지 못했습니다.";
       });
     });
+    desktopDownloadSettingsButton?.addEventListener("click", () => {
+      setDesktopDownloadPopover(desktopDownloadPopover?.hidden !== false);
+    });
+    desktopDownloadChoose?.addEventListener("click", () => {
+      chooseDesktopDownloadFolder().catch((error) => {
+        notice.textContent = error.message || "다운로드 폴더를 변경하지 못했습니다.";
+      });
+    });
+    desktopDownloadReset?.addEventListener("click", () => {
+      resetDesktopDownloadFolder().catch((error) => {
+        notice.textContent = error.message || "기본 다운로드 폴더로 되돌리지 못했습니다.";
+      });
+    });
+    document.addEventListener("click", (event) => {
+      if (!desktopDownloadSettings?.classList.contains("open")) return;
+      if (!desktopDownloadSettings.contains(event.target)) setDesktopDownloadPopover(false);
+    });
+    window.addEventListener("pywebviewready", initializeDesktopDownloadSettings);
+    window.setTimeout(initializeDesktopDownloadSettings, 0);
     [
       crmTaskStatusFilter,
       crmTaskAssigneeFilter,
@@ -26117,6 +26439,14 @@ HTML = r"""<!doctype html>
     ledgerFilterApply.addEventListener("click", () => setActivePopoverFilter(ledgerFilterSearch.value));
     ledgerFilterClear.addEventListener("click", clearActiveLedgerFilter);
     ledgerFilterResetAll.addEventListener("click", clearAllActivePopoverFilters);
+    [ledgerFilterSummary, managementFilterSummary].forEach((summary) => {
+      summary?.addEventListener("click", (event) => {
+        const clearButton = event.target.closest("[data-filter-summary-clear]");
+        if (!clearButton) return;
+        if (clearButton.dataset.filterSummaryClear === "management") clearAllManagementFilters();
+        else clearAllLedgerFilters();
+      });
+    });
     if (managementFilterColoredOnly) managementFilterColoredOnly.addEventListener("click", toggleManagementColorFilter);
     ledgerFilterOptions.addEventListener("click", (event) => {
       const option = event.target.closest("[data-filter-value]");
@@ -26561,8 +26891,17 @@ HTML = r"""<!doctype html>
       notice.textContent = "텍스트를 복사했습니다.";
     });
 
-    document.querySelector("#downloadText").addEventListener("click", () => {
+    document.querySelector("#downloadText").addEventListener("click", async () => {
       const blob = new Blob([resultText.value], { type: "text/plain;charset=utf-8" });
+      if (hasDesktopDownloadBridge()) {
+        try {
+          const saved = await saveBlobThroughDesktopBridge(blob, "개별_택배건_요약.txt");
+          notice.textContent = `텍스트 파일을 ${saved.path || "설정한 폴더"}에 저장했습니다.`;
+        } catch (error) {
+          notice.textContent = error.message || "텍스트 파일을 저장하지 못했습니다.";
+        }
+        return;
+      }
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;

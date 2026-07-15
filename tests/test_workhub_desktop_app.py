@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import importlib.util
 import os
+import sys
 import tempfile
+import types
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -75,6 +77,64 @@ class WorkhubDesktopAppTests(unittest.TestCase):
                 self.assertTrue(saved_path.exists())
                 self.assertEqual(saved_path.read_bytes(), b"WORKHUB")
 
+    def test_custom_download_folder_is_persisted_and_used(self) -> None:
+        module = load_desktop_module()
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            root = Path(tempdir)
+            module.DESKTOP_SETTINGS_PATH = root / "settings.json"
+            module.DEFAULT_DOWNLOAD_DIR = root / "Downloads"
+            custom_dir = root / "TeamExports"
+            with mock.patch.dict(os.environ, {"WORKHUB_DESKTOP_DOWNLOAD_DIR": ""}, clear=False):
+                module.set_desktop_download_dir(custom_dir)
+                api = module.WorkhubDesktopApi("https://workhub.soilbridgecorp.cloud/")
+                result = api.saveDownload("management.xlsx", "V09SS0hVQg==")
+
+            self.assertTrue(result["ok"])
+            self.assertEqual(Path(str(result["path"])).parent, custom_dir)
+            self.assertEqual(module.read_desktop_settings()["download_dir"], str(custom_dir))
+            self.assertEqual(module.desktop_download_settings()["source"], "custom")
+
+    def test_download_folder_picker_persists_selected_folder(self) -> None:
+        module = load_desktop_module()
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            root = Path(tempdir)
+            custom_dir = root / "Selected"
+            custom_dir.mkdir()
+            module.DESKTOP_SETTINGS_PATH = root / "settings.json"
+            module.DEFAULT_DOWNLOAD_DIR = root / "Downloads"
+            module._window = mock.Mock()
+            module._window.create_file_dialog.return_value = (str(custom_dir),)
+            fake_webview = types.SimpleNamespace(FOLDER_DIALOG=20)
+            with mock.patch.dict(os.environ, {"WORKHUB_DESKTOP_DOWNLOAD_DIR": ""}, clear=False):
+                with mock.patch.dict(sys.modules, {"webview": fake_webview}):
+                    result = module.WorkhubDesktopApi(module.DEFAULT_APP_URL).chooseDownloadFolder()
+
+            self.assertTrue(result["ok"])
+            self.assertTrue(result["customized"])
+            self.assertEqual(result["path"], str(custom_dir))
+            module._window.create_file_dialog.assert_called_once_with(
+                fake_webview.FOLDER_DIALOG,
+                directory=str(module.DEFAULT_DOWNLOAD_DIR),
+            )
+
+    def test_reset_download_folder_restores_default(self) -> None:
+        module = load_desktop_module()
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            root = Path(tempdir)
+            module.DESKTOP_SETTINGS_PATH = root / "settings.json"
+            module.DEFAULT_DOWNLOAD_DIR = root / "Downloads"
+            with mock.patch.dict(os.environ, {"WORKHUB_DESKTOP_DOWNLOAD_DIR": ""}, clear=False):
+                module.set_desktop_download_dir(root / "Custom")
+                result = module.WorkhubDesktopApi(module.DEFAULT_APP_URL).resetDownloadFolder()
+
+            self.assertTrue(result["ok"])
+            self.assertFalse(result["customized"])
+            self.assertEqual(result["path"], str(module.DEFAULT_DOWNLOAD_DIR))
+            self.assertNotIn("download_dir", module.read_desktop_settings())
+
     def test_launcher_has_no_browser_fallback(self) -> None:
         source = MODULE_PATH.read_text(encoding="utf-8")
 
@@ -84,6 +144,8 @@ class WorkhubDesktopAppTests(unittest.TestCase):
         self.assertIn("private_mode=False", source)
         self.assertIn("def saveDownload", source)
         self.assertIn("def beginDownload", source)
+        self.assertIn("def chooseDownloadFolder", source)
+        self.assertIn("def resetDownloadFolder", source)
 
     def test_launcher_enables_webview_downloads(self) -> None:
         source = MODULE_PATH.read_text(encoding="utf-8")
