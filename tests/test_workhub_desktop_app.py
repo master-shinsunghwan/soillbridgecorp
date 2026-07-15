@@ -109,6 +109,16 @@ class WorkhubDesktopAppTests(unittest.TestCase):
         self.assertNotIn("CreateObject(\"WScript.Shell\")", install_script)
         self.assertIn("New-WorkhubDesktopShortcut", install_script)
 
+    def test_installer_stops_running_app_before_replacing_exe(self) -> None:
+        install_script = (ROOT / "install_workhub_desktop_app.ps1").read_text(encoding="utf-8")
+
+        stop_call = "Stop-RunningWorkhub"
+        copy_call = "Copy-Item -LiteralPath $ExeSource -Destination $ExeTarget -Force"
+        self.assertIn('Get-Process -Name "SoilbridgeWorkhub"', install_script)
+        self.assertIn("Stop-Process -Force", install_script)
+        self.assertIn("Start-Sleep -Milliseconds 300", install_script)
+        self.assertLess(install_script.rindex(stop_call), install_script.index(copy_call))
+
 
 if __name__ == "__main__":
     unittest.main()
