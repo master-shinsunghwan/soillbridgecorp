@@ -947,6 +947,112 @@ class SalesReportUploadTests(unittest.TestCase):
         self.assertEqual(dict(product_row), {"quantity": 7, "profit_sales_amount": 700})
         self.assertEqual(dict(daily_row), {"quantity": 6, "profit_sales_amount": 600})
 
+    def test_monthly_product_snapshot_replaces_same_period_rows(self) -> None:
+        connection = self.app.connect_db()
+        try:
+            upload_ids: list[int] = []
+            for index in range(3):
+                cursor = connection.execute(
+                    """
+                    INSERT INTO sales_report_uploads
+                        (stored_name, original_name, report_type, report_date, period, size, uploaded_by, uploaded_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        f"product-{index}.xlsx",
+                        "monthly-product.xlsx",
+                        "product",
+                        "",
+                        "2026-07",
+                        1,
+                        "admin",
+                        f"2026-07-0{index + 1} 09:00:00",
+                    ),
+                )
+                upload_ids.append(int(cursor.lastrowid))
+            connection.commit()
+        finally:
+            connection.close()
+
+        for upload_id in upload_ids:
+            self.app.save_sales_report_snapshot(
+                upload_id,
+                {
+                    "report_type": "product",
+                    "report_date": "",
+                    "period": "2026-07",
+                    "rows": [
+                        {
+                            "code": "P001",
+                            "name": "Milton mood lamp desk fan",
+                            "quantity": 4480,
+                            "profit_sales_amount": 24640000,
+                            "profit_margin": 3584000,
+                        }
+                    ],
+                },
+            )
+
+        connection = self.app.connect_db()
+        try:
+            rows = connection.execute(
+                """
+                SELECT file_id, quantity, profit_sales_amount, profit_margin
+                  FROM sales_report_product_rows
+                 WHERE period = ? AND product_name = ?
+                """,
+                ("2026-07", "Milton mood lamp desk fan"),
+            ).fetchall()
+        finally:
+            connection.close()
+
+        dashboard = self.app.sales_report_dashboard_payload("2026-07")
+        product_by_name = {row["name"]: row for row in dashboard["product_top"]}
+
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["file_id"], upload_ids[-1])
+        self.assertEqual(rows[0]["quantity"], 4480)
+        self.assertEqual(rows[0]["profit_sales_amount"], 24640000)
+        self.assertEqual(product_by_name["Milton mood lamp desk fan"]["quantity"], 4480)
+        self.assertEqual(product_by_name["Milton mood lamp desk fan"]["profit_sales_amount"], 24640000)
+
+    def test_init_db_removes_old_monthly_product_snapshots(self) -> None:
+        connection = self.app.connect_db()
+        try:
+            for file_id, quantity in ((10, 4480), (11, 4480), (12, 4480)):
+                connection.execute(
+                    """
+                    INSERT INTO sales_report_product_rows
+                        (period, report_date, file_id, product_code, product_name, quantity,
+                         profit_sales_amount, profit_margin)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    ("2026-07", "", file_id, "P001", "Milton mood lamp desk fan", quantity, 24640000, 3584000),
+                )
+            connection.commit()
+        finally:
+            connection.close()
+
+        self.app.init_db()
+
+        connection = self.app.connect_db()
+        try:
+            rows = connection.execute(
+                """
+                SELECT file_id, quantity, profit_sales_amount
+                  FROM sales_report_product_rows
+                 WHERE period = ? AND product_name = ?
+                """,
+                ("2026-07", "Milton mood lamp desk fan"),
+            ).fetchall()
+        finally:
+            connection.close()
+
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["file_id"], 12)
+        self.assertEqual(rows[0]["quantity"], 4480)
+        self.assertEqual(rows[0]["profit_sales_amount"], 24640000)
+
     def test_sales_report_date_from_upload_name_uses_stored_timestamp(self) -> None:
         parsed = self.app.sales_report_date_from_upload_name(
             "20260623072000_925ce8e90482e99a354c_매출처별 매출 합계.xls",

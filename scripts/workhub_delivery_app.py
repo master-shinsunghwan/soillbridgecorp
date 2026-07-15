@@ -29545,6 +29545,11 @@ def save_sales_report_snapshot(file_id: int, parsed: dict[str, object]) -> None:
         elif report_type == "product":
             if report_date:
                 connection.execute("DELETE FROM sales_report_product_rows WHERE report_date = ?", (report_date,))
+            elif period:
+                connection.execute(
+                    "DELETE FROM sales_report_product_rows WHERE period = ? AND COALESCE(report_date, '') = ''",
+                    (period,),
+                )
             else:
                 connection.execute("DELETE FROM sales_report_product_rows WHERE file_id = ?", (file_id,))
             for row in rows:
@@ -34695,6 +34700,20 @@ def init_db() -> None:
             connection.execute("ALTER TABLE sales_report_product_rows ADD COLUMN sales_total INTEGER NOT NULL DEFAULT 0")
         connection.execute("CREATE INDEX IF NOT EXISTS idx_sales_report_product_date ON sales_report_product_rows(report_date)")
         connection.execute("CREATE INDEX IF NOT EXISTS idx_sales_report_product_period ON sales_report_product_rows(period)")
+        connection.execute(
+            """
+            DELETE FROM sales_report_product_rows
+             WHERE COALESCE(report_date, '') = ''
+               AND COALESCE(period, '') != ''
+               AND file_id NOT IN (
+                    SELECT MAX(file_id)
+                      FROM sales_report_product_rows
+                     WHERE COALESCE(report_date, '') = ''
+                       AND COALESCE(period, '') != ''
+                     GROUP BY period
+               )
+            """
+        )
         connection.execute(
             """
             CREATE TABLE IF NOT EXISTS login_sessions (
