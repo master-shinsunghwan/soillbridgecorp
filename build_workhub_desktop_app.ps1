@@ -97,6 +97,8 @@ $Readme = @"
 참고
 - 이 앱은 Windows WebView2 기반 앱 창으로 Workhub VPS를 띄웁니다.
 - 로그인 세션은 PC 앱 안에 저장됩니다.
+- 새 PC 앱 버전은 백그라운드로 내려받고 다음 실행 때 자동 적용됩니다.
+- 업데이트 파일은 SHA-256 검증을 통과한 경우에만 적용됩니다.
 - 코드서명 인증서가 없으면 Windows가 첫 실행 때 알 수 없는 앱 경고를 띄울 수 있습니다.
 "@
 Set-Content -LiteralPath (Join-Path $PackageDir "README.txt") -Value $Readme -Encoding UTF8

@@ -2,11 +2,15 @@ from __future__ import annotations
 
 import argparse
 import base64
+import hashlib
 import html
 import json
 import os
 import re
+import subprocess
 import sys
+import threading
+import time
 import uuid
 from pathlib import Path
 from urllib.error import HTTPError, URLError
@@ -15,14 +19,22 @@ from urllib.request import Request, urlopen
 
 
 APP_TITLE = "(주)소일브릿지 업무자동화"
+APP_VERSION = "1.1.0"
 DEFAULT_APP_URL = "https://workhub.soilbridgecorp.cloud/"
-APP_USER_AGENT = "SoilbridgeWorkhubDesktop/1.0"
+DEFAULT_UPDATE_MANIFEST_URL = (
+    "https://raw.githubusercontent.com/master-shinsunghwan/soillbridgecorp/"
+    "main/static/desktop_update.json"
+)
+APP_USER_AGENT = f"SoilbridgeWorkhubDesktop/{APP_VERSION}"
 STARTUP_SCRIPT_NAME = "SoilbridgeWorkhubDesktop_AutoStart.vbs"
+MAX_UPDATE_BYTES = 100 * 1024 * 1024
 
 LOCAL_APPDATA = Path(os.environ.get("LOCALAPPDATA") or Path.home() / "AppData" / "Local")
 DESKTOP_APP_DIR = LOCAL_APPDATA / "SoilbridgeWorkhubDesktop"
 DEFAULT_STORAGE_DIR = DESKTOP_APP_DIR / "WebViewData"
 DESKTOP_SETTINGS_PATH = DESKTOP_APP_DIR / "settings.json"
+DESKTOP_UPDATE_DIR = DESKTOP_APP_DIR / "Updates"
+PENDING_UPDATE_PATH = DESKTOP_UPDATE_DIR / "pending_update.json"
 DEFAULT_DOWNLOAD_DIR = Path.home() / "Downloads"
 
 _window = None
@@ -51,18 +63,22 @@ def read_desktop_settings() -> dict[str, object]:
         return {}
 
 
-def write_desktop_settings(settings: dict[str, object]) -> None:
-    DESKTOP_SETTINGS_PATH.parent.mkdir(parents=True, exist_ok=True)
-    temp_path = DESKTOP_SETTINGS_PATH.with_name(f".{DESKTOP_SETTINGS_PATH.name}.{uuid.uuid4().hex}.tmp")
+def write_json_atomic(path: Path, payload: dict[str, object], *, encoding: str = "utf-8") -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temp_path = path.with_name(f".{path.name}.{uuid.uuid4().hex}.tmp")
     try:
         temp_path.write_text(
-            json.dumps(settings, ensure_ascii=False, indent=2) + "\n",
-            encoding="utf-8",
+            json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
+            encoding=encoding,
         )
-        temp_path.replace(DESKTOP_SETTINGS_PATH)
+        temp_path.replace(path)
     finally:
         if temp_path.exists():
             temp_path.unlink()
+
+
+def write_desktop_settings(settings: dict[str, object]) -> None:
+    write_json_atomic(DESKTOP_SETTINGS_PATH, settings)
 
 
 def desktop_download_dir() -> Path:
@@ -106,6 +122,288 @@ def reset_desktop_download_dir() -> None:
     settings = read_desktop_settings()
     settings.pop("download_dir", None)
     write_desktop_settings(settings)
+
+
+def version_parts(value: str) -> tuple[int, int, int, int]:
+    match = re.fullmatch(r"v?(\d+(?:\.\d+){1,3})", str(value or "").strip(), re.IGNORECASE)
+    if not match:
+        raise ValueError("업데이트 버전 형식이 올바르지 않습니다.")
+    parts = [int(part) for part in match.group(1).split(".")]
+    padded = (parts + [0, 0, 0, 0])[:4]
+    return padded[0], padded[1], padded[2], padded[3]
+
+
+def is_newer_version(candidate: str, current: str = APP_VERSION) -> bool:
+    return version_parts(candidate) > version_parts(current)
+
+
+def secure_update_url(value: str, label: str) -> str:
+    url = str(value or "").strip()
+    parsed = urlparse(url)
+    local_http = parsed.scheme == "http" and parsed.hostname in {"127.0.0.1", "localhost"}
+    if (parsed.scheme != "https" and not local_http) or not parsed.netloc:
+        raise ValueError(f"{label}은 HTTPS 주소여야 합니다.")
+    return url
+
+
+def desktop_update_manifest_url() -> str:
+    configured = os.environ.get("WORKHUB_DESKTOP_UPDATE_MANIFEST_URL", "").strip()
+    return secure_update_url(configured or DEFAULT_UPDATE_MANIFEST_URL, "업데이트 확인 주소")
+
+
+def validate_desktop_update_manifest(payload: object) -> dict[str, object]:
+    if not isinstance(payload, dict):
+        raise ValueError("업데이트 정보 형식이 올바르지 않습니다.")
+    version = str(payload.get("version") or "").strip()
+    version_parts(version)
+    download_url = secure_update_url(str(payload.get("url") or ""), "업데이트 파일 주소")
+    sha256 = str(payload.get("sha256") or "").strip().lower()
+    if not re.fullmatch(r"[0-9a-f]{64}", sha256):
+        raise ValueError("업데이트 파일 검증값이 올바르지 않습니다.")
+    try:
+        size = int(payload.get("size") or 0)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("업데이트 파일 크기가 올바르지 않습니다.") from exc
+    if size <= 0 or size > MAX_UPDATE_BYTES:
+        raise ValueError("업데이트 파일 크기가 허용 범위를 벗어났습니다.")
+    return {
+        "version": version,
+        "url": download_url,
+        "sha256": sha256,
+        "size": size,
+        "published_at": str(payload.get("published_at") or "").strip(),
+        "notes": str(payload.get("notes") or "").strip(),
+    }
+
+
+def fetch_desktop_update_manifest(manifest_url: str | None = None, timeout: float = 6.0) -> dict[str, object]:
+    url = secure_update_url(manifest_url or desktop_update_manifest_url(), "업데이트 확인 주소")
+    request = Request(
+        url,
+        headers={
+            "User-Agent": APP_USER_AGENT,
+            "Accept": "application/json",
+            "Cache-Control": "no-cache",
+        },
+    )
+    with urlopen(request, timeout=timeout) as response:
+        final_url = getattr(response, "geturl", lambda: url)()
+        secure_update_url(final_url, "업데이트 확인 주소")
+        data = response.read(64 * 1024 + 1)
+    if len(data) > 64 * 1024:
+        raise ValueError("업데이트 정보가 너무 큽니다.")
+    try:
+        payload = json.loads(data.decode("utf-8-sig"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ValueError("업데이트 정보를 읽지 못했습니다.") from exc
+    return validate_desktop_update_manifest(payload)
+
+
+def file_sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def desktop_update_log(message: str) -> None:
+    try:
+        DESKTOP_APP_DIR.mkdir(parents=True, exist_ok=True)
+        log_path = DESKTOP_APP_DIR / "update.log"
+        if log_path.exists() and log_path.stat().st_size > 256 * 1024:
+            log_path.write_text("", encoding="utf-8")
+        timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
+        with log_path.open("a", encoding="utf-8") as handle:
+            handle.write(f"[{timestamp}] {message}\n")
+    except OSError:
+        return
+
+
+def read_pending_desktop_update() -> dict[str, object] | None:
+    try:
+        payload = json.loads(PENDING_UPDATE_PATH.read_text(encoding="utf-8"))
+        manifest = validate_desktop_update_manifest(payload)
+        if not is_newer_version(str(manifest["version"])):
+            return None
+        staged_path = Path(str(payload.get("path") or "")).resolve()
+        if staged_path.parent != DESKTOP_UPDATE_DIR.resolve() or not staged_path.is_file():
+            return None
+        if staged_path.stat().st_size != int(manifest["size"]):
+            return None
+        if file_sha256(staged_path) != str(manifest["sha256"]):
+            return None
+        return {**manifest, "path": str(staged_path)}
+    except (FileNotFoundError, json.JSONDecodeError, OSError, ValueError):
+        return None
+
+
+def download_desktop_update(manifest: dict[str, object], timeout: float = 45.0) -> Path:
+    DESKTOP_UPDATE_DIR.mkdir(parents=True, exist_ok=True)
+    version = str(manifest["version"])
+    expected_size = int(manifest["size"])
+    expected_hash = str(manifest["sha256"])
+    target = DESKTOP_UPDATE_DIR / f"SoilbridgeWorkhub-{version}.exe"
+    if target.is_file() and target.stat().st_size == expected_size and file_sha256(target) == expected_hash:
+        return target
+    if target.exists():
+        target.unlink()
+    temp_path = target.with_name(f".{target.name}.{uuid.uuid4().hex}.part")
+    request = Request(
+        str(manifest["url"]),
+        headers={"User-Agent": APP_USER_AGENT, "Accept": "application/octet-stream"},
+    )
+    total = 0
+    digest = hashlib.sha256()
+    try:
+        with urlopen(request, timeout=timeout) as response, temp_path.open("wb") as handle:
+            final_url = getattr(response, "geturl", lambda: str(manifest["url"]))()
+            secure_update_url(final_url, "업데이트 파일 주소")
+            for chunk in iter(lambda: response.read(1024 * 1024), b""):
+                total += len(chunk)
+                if total > MAX_UPDATE_BYTES or total > expected_size:
+                    raise ValueError("업데이트 파일 크기가 예상보다 큽니다.")
+                digest.update(chunk)
+                handle.write(chunk)
+        if total != expected_size:
+            raise ValueError("업데이트 파일 크기가 일치하지 않습니다.")
+        if digest.hexdigest() != expected_hash:
+            raise ValueError("업데이트 파일 검증값이 일치하지 않습니다.")
+        temp_path.replace(target)
+        return target
+    finally:
+        if temp_path.exists():
+            temp_path.unlink()
+
+
+def stage_available_desktop_update(manifest_url: str | None = None) -> dict[str, object]:
+    manifest = fetch_desktop_update_manifest(manifest_url)
+    if not is_newer_version(str(manifest["version"])):
+        return {"ok": True, "update_available": False, "version": APP_VERSION}
+    pending = read_pending_desktop_update()
+    if pending and pending["version"] == manifest["version"] and pending["sha256"] == manifest["sha256"]:
+        return {"ok": True, "update_available": True, "staged": True, **pending}
+    staged_path = download_desktop_update(manifest)
+    pending_payload = {**manifest, "path": str(staged_path)}
+    write_json_atomic(PENDING_UPDATE_PATH, pending_payload)
+    desktop_update_log(f"업데이트 {manifest['version']} 다운로드 및 검증 완료")
+    return {"ok": True, "update_available": True, "staged": True, **pending_payload}
+
+
+def desktop_updates_enabled() -> bool:
+    disabled = os.environ.get("WORKHUB_DESKTOP_DISABLE_UPDATES", "").strip() == "1"
+    return os.name == "nt" and bool(getattr(sys, "frozen", False)) and not disabled
+
+
+def check_desktop_update_in_background() -> None:
+    if not desktop_updates_enabled():
+        return
+    try:
+        stage_available_desktop_update()
+    except Exception as exc:  # noqa: BLE001
+        desktop_update_log(f"업데이트 확인 실패: {exc}")
+
+
+def start_desktop_update_check() -> None:
+    if not desktop_updates_enabled():
+        return
+    threading.Thread(
+        target=check_desktop_update_in_background,
+        name="workhub-desktop-updater",
+        daemon=True,
+    ).start()
+
+
+def powershell_literal(value: str | Path) -> str:
+    return "'" + str(value).replace("'", "''") + "'"
+
+
+def pending_update_script(pending: dict[str, object], target_executable: Path, parent_pid: int) -> str:
+    source = powershell_literal(str(pending["path"]))
+    target = powershell_literal(target_executable)
+    pending_path = powershell_literal(PENDING_UPDATE_PATH)
+    expected_hash = powershell_literal(str(pending["sha256"]).upper())
+    return f'''$ErrorActionPreference = "Stop"
+$Source = {source}
+$Target = {target}
+$Pending = {pending_path}
+$ExpectedHash = {expected_hash}
+$ParentPid = {int(parent_pid)}
+$Backup = "$Target.update-backup"
+
+try {{
+  Wait-Process -Id $ParentPid -ErrorAction SilentlyContinue
+  if ((Get-FileHash -Algorithm SHA256 -LiteralPath $Source).Hash.ToUpperInvariant() -ne $ExpectedHash) {{
+    throw "Update source hash mismatch"
+  }}
+  if (Test-Path -LiteralPath $Backup) {{ Remove-Item -LiteralPath $Backup -Force }}
+  if (Test-Path -LiteralPath $Target) {{ Copy-Item -LiteralPath $Target -Destination $Backup -Force }}
+  $Copied = $false
+  for ($Attempt = 0; $Attempt -lt 40; $Attempt += 1) {{
+    try {{
+      Copy-Item -LiteralPath $Source -Destination $Target -Force
+      $Copied = $true
+      break
+    }} catch {{
+      Start-Sleep -Milliseconds 250
+    }}
+  }}
+  if (-not $Copied) {{ throw "Update target remained locked" }}
+  if ((Get-FileHash -Algorithm SHA256 -LiteralPath $Target).Hash.ToUpperInvariant() -ne $ExpectedHash) {{
+    throw "Updated executable hash mismatch"
+  }}
+  Remove-Item -LiteralPath $Pending -Force -ErrorAction SilentlyContinue
+  Remove-Item -LiteralPath $Source -Force -ErrorAction SilentlyContinue
+  Remove-Item -LiteralPath $Backup -Force -ErrorAction SilentlyContinue
+  Start-Process -FilePath $Target -WorkingDirectory (Split-Path -Parent $Target)
+}} catch {{
+  if (Test-Path -LiteralPath $Backup) {{
+    Copy-Item -LiteralPath $Backup -Destination $Target -Force -ErrorAction SilentlyContinue
+  }}
+  if (Test-Path -LiteralPath $Target) {{
+    Start-Process -FilePath $Target -WorkingDirectory (Split-Path -Parent $Target)
+  }}
+}} finally {{
+  Start-Sleep -Milliseconds 300
+  Remove-Item -LiteralPath $MyInvocation.MyCommand.Path -Force -ErrorAction SilentlyContinue
+}}
+'''
+
+
+def launch_pending_desktop_update() -> bool:
+    if not desktop_updates_enabled():
+        return False
+    pending = read_pending_desktop_update()
+    if not pending:
+        return False
+    try:
+        target_executable = Path(sys.executable).resolve()
+        script_path = DESKTOP_UPDATE_DIR / f"apply_update_{uuid.uuid4().hex}.ps1"
+        script_path.write_text(
+            pending_update_script(pending, target_executable, os.getpid()),
+            encoding="utf-8-sig",
+        )
+        creation_flags = getattr(subprocess, "CREATE_NO_WINDOW", 0) | getattr(subprocess, "DETACHED_PROCESS", 0)
+        subprocess.Popen(
+            [
+                "powershell.exe",
+                "-NoProfile",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-File",
+                str(script_path),
+            ],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            close_fds=True,
+            creationflags=creation_flags,
+        )
+        desktop_update_log(f"업데이트 {pending['version']} 적용 시작")
+        return True
+    except Exception as exc:  # noqa: BLE001
+        desktop_update_log(f"업데이트 적용 시작 실패: {exc}")
+        return False
 
 
 def safe_download_filename(filename: str | None, fallback: str = "workhub_download.xlsx") -> str:
@@ -465,6 +763,7 @@ def run_desktop_app(app_url: str, *, debug: bool = False, skip_preflight: bool =
     else:
         _window = webview.create_window(APP_TITLE, html=offline_html(app_url, message), **window_kwargs)
 
+    start_desktop_update_check()
     webview.start(
         debug=debug,
         private_mode=False,
@@ -475,6 +774,7 @@ def run_desktop_app(app_url: str, *, debug: bool = False, skip_preflight: bool =
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Soilbridge Workhub desktop app")
+    parser.add_argument("--version", action="version", version=APP_VERSION)
     parser.add_argument("--url", help="Workhub URL. Defaults to WORKHUB_DESKTOP_URL or the production VPS URL.")
     parser.add_argument("--debug", action="store_true", help="Enable pywebview debug mode.")
     parser.add_argument("--skip-preflight", action="store_true", help="Open the app without checking URL reachability first.")
@@ -489,6 +789,9 @@ def main(argv: list[str] | None = None) -> int:
     except ValueError as exc:
         print(str(exc), file=sys.stderr)
         return 2
+
+    if not args.health_check and launch_pending_desktop_update():
+        return 0
 
     if args.health_check:
         ok, message = app_is_reachable(app_url)

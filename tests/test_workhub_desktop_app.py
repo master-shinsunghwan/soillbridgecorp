@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import hashlib
 import importlib.util
+import io
+import json
 import os
 import sys
 import tempfile
@@ -12,6 +15,22 @@ from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
 MODULE_PATH = ROOT / "scripts" / "workhub_vps_desktop_app.py"
+
+
+class FakeUrlResponse(io.BytesIO):
+    def __init__(self, data: bytes, url: str):
+        super().__init__(data)
+        self._url = url
+
+    def geturl(self) -> str:
+        return self._url
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        self.close()
+        return False
 
 
 def load_desktop_module():
@@ -42,6 +61,111 @@ class WorkhubDesktopAppTests(unittest.TestCase):
 
         with self.assertRaises(ValueError):
             module.resolve_app_url("file:///C:/workhub.html")
+
+    def test_desktop_update_versions_are_compared_numerically(self) -> None:
+        module = load_desktop_module()
+
+        self.assertTrue(module.is_newer_version("1.1.1", "1.1.0"))
+        self.assertTrue(module.is_newer_version("1.10.0", "1.9.9"))
+        self.assertFalse(module.is_newer_version("1.1.0", "1.1.0"))
+        self.assertFalse(module.is_newer_version("1.0.9", "1.1.0"))
+        with self.assertRaises(ValueError):
+            module.version_parts("latest")
+
+    def test_desktop_update_is_downloaded_verified_and_staged(self) -> None:
+        module = load_desktop_module()
+        executable = b"MZ" + (b"WORKHUB-UPDATE" * 32)
+        digest = hashlib.sha256(executable).hexdigest()
+        manifest = {
+            "version": "1.1.1",
+            "url": "https://github.com/example/releases/download/desktop-v1.1.1/SoilbridgeWorkhub.exe",
+            "sha256": digest,
+            "size": len(executable),
+            "published_at": "2026-07-16T00:00:00Z",
+            "notes": "test update",
+        }
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            root = Path(tempdir)
+            module.DESKTOP_APP_DIR = root
+            module.DESKTOP_UPDATE_DIR = root / "Updates"
+            module.PENDING_UPDATE_PATH = module.DESKTOP_UPDATE_DIR / "pending_update.json"
+            responses = [
+                FakeUrlResponse(json.dumps(manifest).encode("utf-8"), "https://raw.githubusercontent.com/example/manifest.json"),
+                FakeUrlResponse(executable, "https://release-assets.githubusercontent.com/example/asset"),
+            ]
+            with mock.patch.object(module, "urlopen", side_effect=responses):
+                result = module.stage_available_desktop_update("https://raw.githubusercontent.com/example/manifest.json")
+
+            self.assertTrue(result["ok"])
+            self.assertTrue(result["staged"])
+            staged_path = Path(str(result["path"]))
+            self.assertEqual(staged_path.read_bytes(), executable)
+            self.assertEqual(module.read_pending_desktop_update()["sha256"], digest)
+
+    def test_desktop_update_rejects_tampered_executable(self) -> None:
+        module = load_desktop_module()
+        expected = b"MZ-valid"
+        tampered = b"MZ-faked"
+        manifest = {
+            "version": "1.1.1",
+            "url": "https://github.com/example/SoilbridgeWorkhub.exe",
+            "sha256": hashlib.sha256(expected).hexdigest(),
+            "size": len(expected),
+        }
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            root = Path(tempdir)
+            module.DESKTOP_APP_DIR = root
+            module.DESKTOP_UPDATE_DIR = root / "Updates"
+            module.PENDING_UPDATE_PATH = module.DESKTOP_UPDATE_DIR / "pending_update.json"
+            response = FakeUrlResponse(tampered, "https://release-assets.githubusercontent.com/example/asset")
+            with mock.patch.object(module, "urlopen", return_value=response):
+                with self.assertRaisesRegex(ValueError, "검증값"):
+                    module.download_desktop_update(module.validate_desktop_update_manifest(manifest))
+
+            self.assertFalse(list(module.DESKTOP_UPDATE_DIR.glob("*.part")))
+
+    def test_pending_update_launches_hidden_verified_replacement(self) -> None:
+        module = load_desktop_module()
+        update_bytes = b"MZ" + (b"AUTO-UPDATE" * 16)
+        digest = hashlib.sha256(update_bytes).hexdigest()
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            root = Path(tempdir)
+            update_dir = root / "Updates"
+            update_dir.mkdir()
+            staged_path = update_dir / "SoilbridgeWorkhub-1.1.1.exe"
+            staged_path.write_bytes(update_bytes)
+            target_path = root / "SoilbridgeWorkhub.exe"
+            target_path.write_bytes(b"old")
+            module.DESKTOP_APP_DIR = root
+            module.DESKTOP_UPDATE_DIR = update_dir
+            module.PENDING_UPDATE_PATH = update_dir / "pending_update.json"
+            module.write_json_atomic(
+                module.PENDING_UPDATE_PATH,
+                {
+                    "version": "1.1.1",
+                    "url": "https://github.com/example/SoilbridgeWorkhub.exe",
+                    "sha256": digest,
+                    "size": len(update_bytes),
+                    "path": str(staged_path),
+                },
+            )
+
+            with mock.patch.dict(os.environ, {"WORKHUB_DESKTOP_DISABLE_UPDATES": ""}, clear=False):
+                with mock.patch.object(module.sys, "frozen", True, create=True):
+                    with mock.patch.object(module.sys, "executable", str(target_path)):
+                        with mock.patch.object(module.subprocess, "Popen") as popen:
+                            self.assertTrue(module.launch_pending_desktop_update())
+
+            popen.assert_called_once()
+            script_path = next(update_dir.glob("apply_update_*.ps1"))
+            script = script_path.read_text(encoding="utf-8-sig")
+            self.assertIn("Wait-Process -Id $ParentPid", script)
+            self.assertIn("Get-FileHash -Algorithm SHA256", script)
+            self.assertIn("$Target.update-backup", script)
+            self.assertIn("Start-Process -FilePath $Target", script)
 
     def test_desktop_download_bridge_saves_files_to_configured_folder(self) -> None:
         module = load_desktop_module()
@@ -163,6 +287,15 @@ class WorkhubDesktopAppTests(unittest.TestCase):
         self.assertIn("SoilbridgeWorkhub.exe", build_script)
         self.assertIn("Copy-PowerShellScriptWithBom", build_script)
         self.assertIn("Text.UTF8Encoding($true)", build_script)
+
+    def test_desktop_update_publisher_builds_release_and_manifest(self) -> None:
+        publish_script = (ROOT / "publish_workhub_desktop_update.ps1").read_text(encoding="utf-8")
+
+        self.assertIn("build_workhub_desktop_app.ps1", publish_script)
+        self.assertIn("gh release create", publish_script)
+        self.assertIn("gh release upload", publish_script)
+        self.assertIn("Get-FileHash -Algorithm SHA256", publish_script)
+        self.assertIn("static\\desktop_update.json", publish_script)
 
     def test_installer_avoids_fragile_vbs_quote_generation(self) -> None:
         install_script = (ROOT / "install_workhub_desktop_app.ps1").read_text(encoding="utf-8")
