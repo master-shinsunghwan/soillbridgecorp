@@ -43,6 +43,12 @@ def find_column(headers: list[Any], candidates: tuple[str, ...], label: str) -> 
 def extract_invoice_rows(path: Path, sheet_name: str | None = None) -> list[tuple[str, str]]:
     workbook = load_workbook(path, read_only=True, data_only=True)
     worksheet = workbook[sheet_name] if sheet_name else workbook[workbook.sheetnames[0]]
+    if (
+        getattr(worksheet, "max_row", None) == 1
+        and getattr(worksheet, "max_column", None) == 1
+        and hasattr(worksheet, "reset_dimensions")
+    ):
+        worksheet.reset_dimensions()
 
     rows = worksheet.iter_rows(values_only=True)
     headers = list(next(rows))

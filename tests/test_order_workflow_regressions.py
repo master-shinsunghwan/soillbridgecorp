@@ -3,6 +3,7 @@ from __future__ import annotations
 import importlib.util
 import tempfile
 import unittest
+import zipfile
 from datetime import date
 from pathlib import Path
 
@@ -120,6 +121,24 @@ def create_invoice_workbook(path: Path) -> None:
     workbook.save(path)
 
 
+def force_bad_sheet_dimension(path: Path) -> None:
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+        temp_dir = Path(tmp)
+        extracted = temp_dir / "xlsx"
+        with zipfile.ZipFile(path) as archive:
+            archive.extractall(extracted)
+
+        sheet_path = extracted / "xl" / "worksheets" / "sheet1.xml"
+        text = sheet_path.read_text(encoding="utf-8")
+        text = text.replace('<dimension ref="A1:D3"/>', '<dimension ref="A1"/>')
+        sheet_path.write_text(text, encoding="utf-8")
+
+        with zipfile.ZipFile(path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+            for item in extracted.rglob("*"):
+                if item.is_file():
+                    archive.write(item, item.relative_to(extracted).as_posix())
+
+
 def create_lotte_source_workbook(path: Path, source_headers: list[str]) -> None:
     workbook = Workbook()
     worksheet = workbook.active
@@ -198,6 +217,19 @@ class OrderWorkflowRegressionTests(unittest.TestCase):
                     self.assertEqual(worksheet.max_row, 2)
                     self.assertEqual(worksheet["A2"].value, "\ud64d\uae38\ub3d9")
                     self.assertEqual(worksheet["B2"].value, "1234567890 / 1234567890")
+
+    def test_invoice_export_reads_lotte_files_with_bad_sheet_dimension(self) -> None:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+            workbook_path = Path(tmp) / "lotte-invoice.xlsx"
+            create_invoice_workbook(workbook_path)
+            force_bad_sheet_dimension(workbook_path)
+
+            for scripts_dir in MODULE_SETS:
+                with self.subTest(scripts_dir=scripts_dir):
+                    module = load_module(scripts_dir / "invoice_number_exporter.py")
+                    rows = module.extract_invoice_rows(workbook_path)
+
+                    self.assertEqual(rows, [("\ud64d\uae38\ub3d9", "1234567890 / 1234567890")])
 
     def test_lotte_order_export_removes_left_borders_from_columns_b_to_e(self) -> None:
         with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
