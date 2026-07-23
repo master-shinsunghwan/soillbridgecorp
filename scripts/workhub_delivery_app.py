@@ -13940,12 +13940,22 @@ HTML = r"""<!doctype html>
       formData.append("file", file);
       backupMessage.textContent = "업로드한 백업 데이터를 복원하는 중입니다.";
       try {
-        const response = await fetch("/api/backup-restore-upload", {
-          method: "POST",
-          body: formData,
+        const data = await runUploadWithProgress({
+          title: "백업 파일 복원",
+          fileName: file.name,
+          modeText: "방식: 예비백업 후 복원",
+          savingMessage: "백업 파일을 업로드하고 현재 업무 데이터를 복원하는 중입니다.",
+          doneMessage: "백업 파일 복원이 완료되었습니다.",
+          request: async () => {
+            const response = await fetch("/api/backup-restore-upload", {
+              method: "POST",
+              body: formData,
+            });
+            const data = await response.json();
+            if (!response.ok) throw new Error(data.error || "백업 복원에 실패했습니다.");
+            return data;
+          },
         });
-        const data = await response.json();
-        if (!response.ok) throw new Error(data.error || "백업 복원에 실패했습니다.");
         backupMessage.textContent = restoreCompleteMessage(data);
       } catch (error) {
         backupMessage.textContent = error.message;
@@ -15682,12 +15692,21 @@ HTML = r"""<!doctype html>
       formData.append("file", file);
       notice.textContent = "거래처 메일 주소록을 저장 중입니다.";
       try {
-        const response = await fetch("/api/vendor-contacts-import", {
-          method: "POST",
-          body: formData,
+        const data = await runUploadWithProgress({
+          title: "거래처 메일 주소록 업로드",
+          fileName: file.name,
+          savingMessage: "거래처 메일 주소록 엑셀을 업로드하고 DB에 저장하는 중입니다.",
+          doneMessage: "거래처 메일 주소록 업로드가 완료되었습니다.",
+          request: async () => {
+            const response = await fetch("/api/vendor-contacts-import", {
+              method: "POST",
+              body: formData,
+            });
+            const data = await response.json();
+            if (!response.ok) throw new Error(data.error || "거래처 메일 주소록 저장에 실패했습니다.");
+            return data;
+          },
         });
-        const data = await response.json();
-        if (!response.ok) throw new Error(data.error || "거래처 메일 주소록 저장에 실패했습니다.");
         vendorContacts = data.contacts || [];
         renderVendorContacts();
         notice.textContent = data.message || "거래처 메일 주소록을 저장했습니다.";
@@ -15780,12 +15799,21 @@ HTML = r"""<!doctype html>
       formData.append("vendor_type", activeVendorManageType);
       notice.textContent = `${vendorManageTypeLabelText()} 메일 주소록을 저장 중입니다.`;
       try {
-        const response = await fetch("/api/vendor-contacts-import", {
-          method: "POST",
-          body: formData,
+        const data = await runUploadWithProgress({
+          title: `${vendorManageTypeLabelText()} 메일 주소록 업로드`,
+          fileName: file.name,
+          savingMessage: `${vendorManageTypeLabelText()} 메일 주소록 엑셀을 업로드하고 DB에 저장하는 중입니다.`,
+          doneMessage: `${vendorManageTypeLabelText()} 메일 주소록 업로드가 완료되었습니다.`,
+          request: async () => {
+            const response = await fetch("/api/vendor-contacts-import", {
+              method: "POST",
+              body: formData,
+            });
+            const data = await response.json();
+            if (!response.ok) throw new Error(data.error || "거래처 메일 주소록 저장에 실패했습니다.");
+            return data;
+          },
         });
-        const data = await response.json();
-        if (!response.ok) throw new Error(data.error || "거래처 메일 주소록 저장에 실패했습니다.");
         vendorContacts = data.contacts || [];
         renderVendorContacts();
         notice.textContent = data.message || `${vendorManageTypeLabelText()} 메일 주소록을 저장했습니다.`;
@@ -16293,12 +16321,21 @@ HTML = r"""<!doctype html>
       formData.append("file", file);
       if (salesReportUploadMessage) salesReportUploadMessage.textContent = "매출표를 업로드하는 중입니다.";
       try {
-        const response = await fetch("/api/sales-report-upload", {
-          method: "POST",
-          body: formData,
+        const data = await runUploadWithProgress({
+          title: "매출현황 파일 업로드",
+          fileName: file.name,
+          savingMessage: "매출현황 파일을 업로드하고 매출 DB에 반영하는 중입니다.",
+          doneMessage: "매출현황 파일 업로드가 완료되었습니다.",
+          request: async () => {
+            const response = await fetch("/api/sales-report-upload", {
+              method: "POST",
+              body: formData,
+            });
+            const data = await response.json();
+            if (!response.ok) throw new Error(data.error || "매출표 업로드에 실패했습니다.");
+            return data;
+          },
         });
-        const data = await response.json();
-        if (!response.ok) throw new Error(data.error || "매출표 업로드에 실패했습니다.");
         renderSalesReportUploads(data.files || []);
         loadSalesReportDashboard();
         if (salesReportUploadMessage) salesReportUploadMessage.textContent = data.message || "매출표를 저장했습니다.";
@@ -17597,9 +17634,18 @@ HTML = r"""<!doctype html>
       });
       formData.append("review_only", "1");
       try {
-        const response = await fetch("/api/import-cost-upload", { method: "POST", body: formData });
-        const data = await response.json();
-        if (!response.ok || data.error) throw new Error(data.error || "파일 분석에 실패했습니다.");
+        const data = await runUploadWithProgress({
+          title: "수입원가 파일 분석",
+          fileName: files.map((file) => file.name).join(", "),
+          savingMessage: `${files.length}개 파일을 업로드하고 수입원가 데이터를 분석하는 중입니다.`,
+          doneMessage: "수입원가 파일 분석이 완료되었습니다.",
+          request: async () => {
+            const response = await fetch("/api/import-cost-upload", { method: "POST", body: formData });
+            const data = await response.json();
+            if (!response.ok || data.error) throw new Error(data.error || "파일 분석에 실패했습니다.");
+            return data;
+          },
+        });
         openImportCostChargeReview(data);
         renderSelectedImportCostFiles("분석 완료 · ");
         importCostMessage.textContent = data.calculation_error || "자동 인식값을 검토한 뒤 적용해주세요.";
@@ -22824,13 +22870,14 @@ HTML = r"""<!doctype html>
       setImportProgressOpen(false);
     }
 
-    function showImportProgress({ ledgerName, fileName, mode = "" } = {}) {
+    function showImportProgress({ ledgerName, title, fileName, mode = "", modeText = "" } = {}) {
       if (!importProgressDialog) return;
+      const progressTitle = title || `${ledgerName || "대장"} 업로드`;
       if (importProgressPanel) importProgressPanel.classList.remove("error");
-      if (importProgressTitle) importProgressTitle.textContent = `${ledgerName || "대장"} 업로드 진행상황`;
+      if (importProgressTitle) importProgressTitle.textContent = `${progressTitle} 진행상황`;
       if (importProgressDescription) importProgressDescription.textContent = "창을 닫거나 새로고침하지 말고 잠시만 기다려주세요.";
       if (importProgressFile) importProgressFile.textContent = `파일명: ${fileName || "-"}`;
-      if (importProgressMode) importProgressMode.textContent = `방식: ${mode ? importModeLabel(mode) : "검토 중"}`;
+      if (importProgressMode) importProgressMode.textContent = modeText || `방식: ${mode ? importModeLabel(mode) : "검토 중"}`;
       if (importProgressClose) importProgressClose.hidden = true;
       setImportProgressOpen(true);
       updateImportProgress("prepare");
@@ -22858,6 +22905,27 @@ HTML = r"""<!doctype html>
       else updateImportProgress("done", message);
       if (importProgressClose) importProgressClose.hidden = false;
       importProgressClose?.focus();
+    }
+
+    async function runUploadWithProgress({
+      title = "파일 업로드",
+      fileName = "",
+      modeText = "방식: 파일 업로드",
+      savingMessage = "파일을 업로드하고 처리하는 중입니다.",
+      doneMessage = "파일 업로드가 완료되었습니다.",
+      request,
+    } = {}) {
+      if (typeof request !== "function") throw new Error("업로드 처리 함수가 설정되지 않았습니다.");
+      showImportProgress({ title, fileName, modeText });
+      updateImportProgress("saving", savingMessage);
+      try {
+        const result = await request();
+        finishImportProgress("done", doneMessage);
+        return result;
+      } catch (error) {
+        finishImportProgress("error", error.message || "파일 업로드 중 오류가 발생했습니다.");
+        throw error;
+      }
     }
 
     function importPreviewText(preview) {
@@ -24413,9 +24481,18 @@ HTML = r"""<!doctype html>
       sharedFileUpload.disabled = true;
       if (sharedFileMessage) sharedFileMessage.textContent = "파일을 올리는 중입니다.";
       try {
-        const response = await fetch("/api/shared-file-upload", { method: "POST", body: formData });
-        const data = await response.json();
-        if (!response.ok) throw new Error(data.error || "파일 업로드에 실패했습니다.");
+        const data = await runUploadWithProgress({
+          title: "업무 파일 자료실 업로드",
+          fileName: file.name,
+          savingMessage: "업무 파일을 업로드하고 자료실에 저장하는 중입니다.",
+          doneMessage: "업무 파일 업로드가 완료되었습니다.",
+          request: async () => {
+            const response = await fetch("/api/shared-file-upload", { method: "POST", body: formData });
+            const data = await response.json();
+            if (!response.ok) throw new Error(data.error || "파일 업로드에 실패했습니다.");
+            return data;
+          },
+        });
         if (sharedFileMessage) sharedFileMessage.textContent = data.message || "파일을 저장했습니다.";
         sharedFileInput.value = "";
         if (sharedFileDropMain) sharedFileDropMain.textContent = "업무 파일을 선택해주세요.";
@@ -26834,9 +26911,20 @@ HTML = r"""<!doctype html>
           notice.textContent = "차량인수증 다운로드가 시작되었습니다.";
         } else if (currentMode === "delivery") {
           if (!fileInput.files[0]) throw new Error("주소일브릿지 엑셀 파일을 선택해주세요.");
-          const response = await fetch("/api/delivery-summary", { method: "POST", body: formData });
-          const data = await response.json();
-          if (!response.ok) throw new Error(data.error || "처리에 실패했습니다.");
+          const uploadFile = fileInput.files[0];
+          const data = await runUploadWithProgress({
+            title: "개별 택배건 정리",
+            fileName: uploadFile.name,
+            savingMessage: "주소 파일을 업로드하고 택배건 텍스트를 생성하는 중입니다.",
+            doneMessage: "개별 택배건 정리가 완료되었습니다.",
+            request: async () => {
+              const response = await fetch("/api/delivery-summary", { method: "POST", body: formData });
+              const data = await response.json();
+              if (!response.ok) throw new Error(data.error || "처리에 실패했습니다.");
+              return data;
+            },
+          });
+          hideImportProgress();
           const safeNumberCandidates = Array.isArray(data.safe_number_candidates) ? data.safe_number_candidates : [];
           let outputText = data.text;
           let safeNumberNotice = "";
@@ -26854,12 +26942,22 @@ HTML = r"""<!doctype html>
           notice.textContent = `${data.line_count}개 묶음이 생성되었습니다.${safeNumberNotice}`;
         } else if (currentMode === "salesVendor") {
           if (!fileInput.files[0]) throw new Error("주소일브릿지 원본 엑셀 파일을 선택해주세요.");
-          const response = await fetch("/api/sales-vendor-summary", { method: "POST", body: formData });
-          if (!response.ok) {
-            const data = await response.json();
-            throw new Error(data.error || "처리에 실패했습니다.");
-          }
-          await downloadWorkbookResponse(response, "주소일브릿지_매출처별_정리.xlsx");
+          const uploadFile = fileInput.files[0];
+          await runUploadWithProgress({
+            title: "매출처별 데이터 정리",
+            fileName: uploadFile.name,
+            savingMessage: "주소 파일을 업로드하고 매출처별 정리 파일을 생성하는 중입니다.",
+            doneMessage: "매출처별 정리 파일 생성이 완료되었습니다.",
+            request: async () => {
+              const response = await fetch("/api/sales-vendor-summary", { method: "POST", body: formData });
+              if (!response.ok) {
+                const data = await response.json();
+                throw new Error(data.error || "처리에 실패했습니다.");
+              }
+              await downloadWorkbookResponse(response, "주소일브릿지_매출처별_정리.xlsx");
+              return {};
+            },
+          });
           loadOrderDownloads();
           notice.textContent = "매출처별 정리 엑셀 다운로드가 시작되었습니다.";
         } else {
@@ -26867,15 +26965,27 @@ HTML = r"""<!doctype html>
             throw new Error(currentMode === "invoice" ? "출고송장 엑셀 파일을 선택해주세요." : "주소일브릿지 원본 엑셀 파일을 선택해주세요.");
           }
           const endpoint = currentMode === "invoice" ? "/api/invoice-export" : "/api/lotte-order-form";
-          const response = await fetch(endpoint, { method: "POST", body: formData });
-          if (!response.ok) {
-            const data = await response.json();
-            throw new Error(data.error || "처리에 실패했습니다.");
-          }
-          await downloadWorkbookResponse(
-            response,
-            currentMode === "invoice" ? "송장번호_추출.xlsx" : "롯데택배_발주서.xlsx"
-          );
+          const uploadFile = fileInput.files[0];
+          await runUploadWithProgress({
+            title: currentMode === "invoice" ? "송장번호 추출" : "롯데택배 발주서 생성",
+            fileName: uploadFile.name,
+            savingMessage: currentMode === "invoice"
+              ? "출고송장 파일을 업로드하고 송장번호를 추출하는 중입니다."
+              : "주소 파일을 업로드하고 롯데택배 발주서를 생성하는 중입니다.",
+            doneMessage: currentMode === "invoice" ? "송장번호 추출이 완료되었습니다." : "롯데택배 발주서 생성이 완료되었습니다.",
+            request: async () => {
+              const response = await fetch(endpoint, { method: "POST", body: formData });
+              if (!response.ok) {
+                const data = await response.json();
+                throw new Error(data.error || "처리에 실패했습니다.");
+              }
+              await downloadWorkbookResponse(
+                response,
+                currentMode === "invoice" ? "송장번호_추출.xlsx" : "롯데택배_발주서.xlsx"
+              );
+              return {};
+            },
+          });
           loadOrderDownloads();
           notice.textContent = "엑셀 파일 다운로드가 시작되었습니다.";
         }

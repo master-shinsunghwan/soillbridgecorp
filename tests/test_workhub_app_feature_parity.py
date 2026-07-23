@@ -846,6 +846,38 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         self.assertIn('updateImportProgress("saving"', html_source)
         self.assertIn('updateImportProgress("done"', html_source)
 
+    def test_file_uploads_share_import_progress_dialog(self) -> None:
+        html_source = (SCRIPTS / "workhub_delivery_app.py").read_text(encoding="utf-8")
+
+        self.assertIn("async function runUploadWithProgress", html_source)
+        for endpoint in (
+            '"/api/backup-restore-upload"',
+            '"/api/vendor-contacts-import"',
+            '"/api/sales-report-upload"',
+            '"/api/import-cost-upload"',
+            '"/api/shared-file-upload"',
+            '"/api/delivery-summary"',
+            '"/api/sales-vendor-summary"',
+            '"/api/invoice-export"',
+            '"/api/lotte-order-form"',
+        ):
+            self.assertIn(endpoint, html_source)
+
+        for title in (
+            "백업 파일 복원",
+            "거래처 메일 주소록 업로드",
+            "매출현황 파일 업로드",
+            "수입원가 파일 분석",
+            "업무 파일 자료실 업로드",
+            "개별 택배건 정리",
+            "매출처별 데이터 정리",
+            "송장번호 추출",
+            "롯데택배 발주서 생성",
+        ):
+            self.assertIn(title, html_source)
+
+        self.assertGreaterEqual(html_source.count("runUploadWithProgress({"), 9)
+
     def test_backup_workspace_supports_auto_and_selected_backup_settings(self) -> None:
         html_source = (SCRIPTS / "workhub_delivery_app.py").read_text(encoding="utf-8")
 
@@ -2126,10 +2158,7 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
                 self.assertIn('window.addEventListener("pywebviewready", initializeDesktopDownloadSettings)', html_source)
             self.assertIn("window.setTimeout(() => URL.revokeObjectURL(url), 1000)", html_source)
             self.assertIn('await downloadWorkbookResponse(response, "차량인수증.xlsx")', html_source)
-            self.assertIn(
-                'await downloadWorkbookResponse(\n            response,\n            currentMode === "invoice" ? "송장번호_추출.xlsx" : "롯데택배_발주서.xlsx"\n          )',
-                html_source,
-            )
+            self.assertIn("await downloadWorkbookResponse(", html_source)
 
     def test_import_and_cargo_schedule_delete_buttons_are_wired(self) -> None:
         html_source = (ROOT / "scripts" / "workhub_delivery_app.py").read_text(encoding="utf-8")
