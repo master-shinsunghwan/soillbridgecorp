@@ -21691,7 +21691,7 @@ HTML = r"""<!doctype html>
         };
         const handleClose = () => finish(null);
         const handleBackdrop = (event) => {
-          if (event.target === searchResultDialog) finish(null);
+          if (event.target === searchResultDialog) event.stopPropagation();
         };
         searchResultList.addEventListener("click", handleClick);
         searchResultClose?.addEventListener("click", handleClose);
@@ -22969,7 +22969,7 @@ HTML = r"""<!doctype html>
         const cancel = () => finish(false);
         const proceed = () => finish(true);
         const backdropCancel = (event) => {
-          if (event.target === importWarningDialog) finish(false);
+          if (event.target === importWarningDialog) event.stopPropagation();
         };
         importWarningCancel.addEventListener("click", cancel);
         importWarningProceed.addEventListener("click", proceed);
@@ -23007,7 +23007,7 @@ HTML = r"""<!doctype html>
         const daily = () => finish("daily");
         const replace = () => finish("replace");
         const backdropCancel = (event) => {
-          if (event.target === importModeDialog) finish("");
+          if (event.target === importModeDialog) event.stopPropagation();
         };
         importModeCancel.addEventListener("click", cancel);
         importModeDaily.addEventListener("click", daily);
@@ -23141,7 +23141,7 @@ HTML = r"""<!doctype html>
           finish(corrections);
         };
         const backdropCancel = (event) => {
-          if (event.target === importCorrectionDialog) finish(null);
+          if (event.target === importCorrectionDialog) event.stopPropagation();
         };
         importCorrectionCancel.addEventListener("click", cancel);
         importCorrectionApply.addEventListener("click", apply);
@@ -24363,7 +24363,7 @@ HTML = r"""<!doctype html>
         const approve = () => finish(true);
         const reject = () => finish(false);
         const backdropReject = (event) => {
-          if (event.target === safeNumberPackageDialog) finish(false);
+          if (event.target === safeNumberPackageDialog) event.stopPropagation();
         };
         const escapeReject = (event) => {
           if (event.key === "Escape") finish(false);
@@ -25982,7 +25982,7 @@ HTML = r"""<!doctype html>
     });
     focusWidgetClose?.addEventListener("click", closeFocusWidget);
     focusWidget?.addEventListener("click", (event) => {
-      if (event.target === focusWidget) closeFocusWidget();
+      if (event.target === focusWidget) event.stopPropagation();
     });
     focusWidgetBody?.addEventListener("click", (event) => {
       const leaveReadButton = event.target.closest("[data-leave-notification-read]");
@@ -26251,7 +26251,7 @@ HTML = r"""<!doctype html>
     });
     salesDetailClose?.addEventListener("click", closeSalesDetailPopup);
     salesDetailPopup?.addEventListener("click", (event) => {
-      if (event.target === salesDetailPopup) closeSalesDetailPopup();
+      if (event.target === salesDetailPopup) event.stopPropagation();
     });
     document.querySelector("#noticeInputOpen")?.addEventListener("click", () => {
       if (showWorkspace("dashboard") === false) return;
@@ -26284,7 +26284,7 @@ HTML = r"""<!doctype html>
     });
     noticePopupClose.addEventListener("click", closeNoticePopup);
     noticePopup.addEventListener("click", (event) => {
-      if (event.target === noticePopup) closeNoticePopup();
+      if (event.target === noticePopup) event.stopPropagation();
     });
     cargoInboundInputOpen?.addEventListener("click", () => openCargoShipmentPopup(null, "inbound"));
     cargoShipmentInputOpen?.addEventListener("click", () => openCargoShipmentPopup(null, "outbound"));
@@ -26302,7 +26302,7 @@ HTML = r"""<!doctype html>
       });
     });
     cargoShipmentPopup?.addEventListener("click", (event) => {
-      if (event.target === cargoShipmentPopup) closeCargoShipmentPopup();
+      if (event.target === cargoShipmentPopup) event.stopPropagation();
     });
     document.addEventListener("keydown", (event) => {
       if (event.key === "Escape" && focusWidget?.classList.contains("open")) {
@@ -26331,7 +26331,7 @@ HTML = r"""<!doctype html>
       });
     });
     importShipmentPopup.addEventListener("click", (event) => {
-      if (event.target === importShipmentPopup) closeImportShipmentPopup();
+      if (event.target === importShipmentPopup) event.stopPropagation();
     });
     importShipmentBody.addEventListener("click", (event) => {
       const editButton = event.target.closest("[data-import-edit]");
@@ -26352,7 +26352,7 @@ HTML = r"""<!doctype html>
     document.querySelector("#closeModal").addEventListener("click", requestCloseModal);
     document.querySelector("#cancel").addEventListener("click", requestCloseModal);
     modal.addEventListener("click", (event) => {
-      if (event.target === modal) requestCloseModal();
+      if (event.target === modal) event.stopPropagation();
     });
     fileInput.addEventListener("change", () => {
       dropMain.textContent = fileInput.files[0] ? fileInput.files[0].name : "파일을 선택하거나 여기에 올려주세요.";
@@ -26457,7 +26457,7 @@ HTML = r"""<!doctype html>
     automationCenterOpen?.addEventListener("click", openAutomationCenterPopup);
     automationCenterClose?.addEventListener("click", closeAutomationCenterPopup);
     automationCenterPopup?.addEventListener("click", (event) => {
-      if (event.target === automationCenterPopup) closeAutomationCenterPopup();
+      if (event.target === automationCenterPopup) event.stopPropagation();
     });
     automationActionList?.addEventListener("click", async (event) => {
       const button = event.target.closest("[data-automation-action]");
@@ -26780,7 +26780,7 @@ HTML = r"""<!doctype html>
     returnCheckCancel?.addEventListener("click", closeReturnCheckPopup);
     returnCheckSave?.addEventListener("click", applyReturnCheckPopup);
     returnCheckPopup?.addEventListener("click", (event) => {
-      if (event.target === returnCheckPopup) closeReturnCheckPopup();
+      if (event.target === returnCheckPopup) event.stopPropagation();
     });
     appConfirmOk?.addEventListener("click", () => closeAppConfirmDialog(true));
     appConfirmCancel?.addEventListener("click", () => closeAppConfirmDialog(false));
@@ -26794,7 +26794,7 @@ HTML = r"""<!doctype html>
         });
         return;
       }
-      if (event.target === appConfirmDialog) closeAppConfirmDialog(false);
+      if (event.target === appConfirmDialog) event.stopPropagation();
     });
     document.addEventListener("keydown", (event) => {
       if (event.key === "Escape" && appConfirmDialog?.classList.contains("open")) {

@@ -2205,6 +2205,34 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         self.assertEqual(app.list_import_shipments(), [])
         self.assertEqual(app.list_cargo_shipments(), [])
 
+    def test_popup_backdrop_clicks_do_not_discard_draft_forms(self) -> None:
+        html_source = (ROOT / "scripts" / "workhub_delivery_app.py").read_text(encoding="utf-8")
+
+        closing_backdrop_patterns = (
+            "if (event.target === modal) requestCloseModal();",
+            "if (event.target === noticePopup) closeNoticePopup();",
+            "if (event.target === cargoShipmentPopup) closeCargoShipmentPopup();",
+            "if (event.target === importShipmentPopup) closeImportShipmentPopup();",
+            "if (event.target === returnCheckPopup) closeReturnCheckPopup();",
+            "if (event.target === importCorrectionDialog) finish(null);",
+            "if (event.target === importWarningDialog) finish(false);",
+            "if (event.target === importModeDialog) finish(\"\");",
+            "if (event.target === safeNumberPackageDialog) finish(false);",
+        )
+        for pattern in closing_backdrop_patterns:
+            self.assertNotIn(pattern, html_source)
+
+        for backdrop in (
+            "modal",
+            "noticePopup",
+            "cargoShipmentPopup",
+            "importShipmentPopup",
+            "returnCheckPopup",
+            "importCorrectionDialog",
+            "safeNumberPackageDialog",
+        ):
+            self.assertIn(f"if (event.target === {backdrop}) event.stopPropagation();", html_source)
+
 
 if __name__ == "__main__":
     unittest.main()
