@@ -22159,6 +22159,34 @@ HTML = r"""<!doctype html>
       if (cell) updateSheetRangeDrag(cell);
     }
 
+    function scrollEditableCellIntoSheetView(cell) {
+      const wrap = cell?.closest(".ledger-wrap");
+      if (!cell || !wrap) {
+        cell?.scrollIntoView({ block: "nearest", inline: "nearest" });
+        return;
+      }
+      const cellRect = cell.getBoundingClientRect();
+      const wrapRect = wrap.getBoundingClientRect();
+      const headerHeight = wrap.querySelector("thead")?.getBoundingClientRect().height || 0;
+      const padding = 10;
+      const minLeft = wrapRect.left + padding;
+      const maxRight = wrapRect.right - padding;
+      const minTop = wrapRect.top + headerHeight + padding;
+      const maxBottom = wrapRect.bottom - padding;
+
+      if (cellRect.left < minLeft) {
+        wrap.scrollLeft -= minLeft - cellRect.left;
+      } else if (cellRect.right > maxRight) {
+        wrap.scrollLeft += cellRect.right - maxRight;
+      }
+
+      if (cellRect.top < minTop) {
+        wrap.scrollTop -= minTop - cellRect.top;
+      } else if (cellRect.bottom > maxBottom) {
+        wrap.scrollTop += cellRect.bottom - maxBottom;
+      }
+    }
+
     function moveEditableCell(scope, cell, rowDelta, colDelta) {
       if (!cell) return false;
       const row = cell.closest("tr");
@@ -22178,8 +22206,8 @@ HTML = r"""<!doctype html>
       }
       if (!nextCell) return false;
       selectEditableCell(scope, nextCell);
-      nextCell.focus({ preventScroll: false });
-      nextCell.scrollIntoView({ block: "nearest", inline: "nearest" });
+      nextCell.focus({ preventScroll: true });
+      scrollEditableCellIntoSheetView(nextCell);
       return true;
     }
 
