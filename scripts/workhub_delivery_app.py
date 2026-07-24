@@ -13416,6 +13416,7 @@ HTML = r"""<!doctype html>
       ledger: null,
       management: null,
     };
+    const CELL_EDITOR_AUTO_SAVE_DELAY_MS = 12000;
     const sheetRangeSelection = {
       scope: "",
       anchor: null,
@@ -22328,7 +22329,7 @@ HTML = r"""<!doctype html>
         commitCellEditorOnChange(scope).catch((error) => {
           notice.textContent = error.message || "선택 셀 값을 자동 반영하지 못했습니다.";
         });
-      }, 700);
+      }, CELL_EDITOR_AUTO_SAVE_DELAY_MS);
     }
 
     async function commitCellEditorOnChange(scope) {

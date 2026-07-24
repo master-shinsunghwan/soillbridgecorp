@@ -561,6 +561,8 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         self.assertIn("async function saveEditedCellRow(scope, row)", html_source)
         self.assertIn("function scheduleCellEditorAutoApply(scope)", html_source)
         self.assertIn("function commitCellEditorOnChange(scope)", html_source)
+        self.assertIn("const CELL_EDITOR_AUTO_SAVE_DELAY_MS = 12000;", html_source)
+        self.assertIn("}, CELL_EDITOR_AUTO_SAVE_DELAY_MS);", html_source)
         self.assertIn("control.addEventListener(\"input\", () => scheduleCellEditorAutoApply(scope));", html_source)
         self.assertIn("control.addEventListener(\"change\", () => commitCellEditorOnChange(scope));", html_source)
         self.assertIn("control.addEventListener(\"blur\", () => commitCellEditorOnChange(scope));", html_source)
