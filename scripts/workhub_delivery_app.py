@@ -22417,7 +22417,7 @@ HTML = r"""<!doctype html>
       }
       applyLedgerOverallCompletion(row, { announce: false });
       const payload = collectLedgerRow(row);
-      await saveLedgerPayload(payload);
+      const data = await saveLedgerPayload(payload);
       updateLedgerCaseCache(payload);
       updateLedgerRowCompletion(row);
       markRowDirty(row, false);
@@ -22425,6 +22425,7 @@ HTML = r"""<!doctype html>
       if (checkbox) checkbox.checked = false;
       syncLedgerSelectAll();
       applyLedgerFilters();
+      await handleReshipInvoiceMailPrompt(data.reship_mail_prompt);
     }
 
     function dirtyRows(container, rowSelector) {
@@ -23695,6 +23696,36 @@ HTML = r"""<!doctype html>
       return data;
     }
 
+    async function handleReshipInvoiceMailPrompt(prompt) {
+      if (!prompt) return;
+      if (!prompt.enabled) {
+        if (prompt.message) notice.textContent = prompt.message;
+        return;
+      }
+      if (prompt.missing_email) {
+        notice.textContent = `${prompt.vendor_name || "매입처"} 업체 메일 주소가 없어 재발송 송장 안내 메일을 보낼 수 없습니다. 관리자 메뉴에서 업체 메일을 먼저 등록해주세요.`;
+        return;
+      }
+      const approved = await requestAppConfirm({
+        kicker: "재발송 송장 안내",
+        title: "업체에 재발송 송장번호를 메일로 보낼까요?",
+        message: "저장된 네이버 메일 설정으로 매입처 담당자에게 재발송 송장번호 안내 메일을 발송합니다.",
+        highlight: `${prompt.vendor_name || ""} / ${prompt.recipient_email || ""}\n재발송 송장번호: ${prompt.reship_invoice || ""}`,
+        okText: "메일 발송",
+        cancelText: "나중에",
+        wide: true,
+      });
+      if (!approved) return;
+      const response = await fetch("/api/cs-reship-mail", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ case_id: prompt.case_id, reship_invoice: prompt.reship_invoice }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "재발송 송장 안내 메일 발송에 실패했습니다.");
+      notice.textContent = data.message || "재발송 송장 안내 메일을 발송했습니다.";
+    }
+
     function updateLedgerCaseCache(payload) {
       const savedCase = ledgerCases.find((item) => String(item.id) === String(payload.id));
       if (!savedCase) return;
@@ -23830,6 +23861,7 @@ HTML = r"""<!doctype html>
         updateLedgerCaseCache(payload);
         updateLedgerRowCompletion(row);
         markRowDirty(row, false);
+        await handleReshipInvoiceMailPrompt(data.reship_mail_prompt);
       } catch (error) {
         notice.textContent = error.message;
       } finally {
@@ -23868,12 +23900,13 @@ HTML = r"""<!doctype html>
       for (const row of rows) {
         applyLedgerOverallCompletion(row, { announce: false });
         const payload = collectLedgerRow(row);
-        await saveLedgerPayload(payload);
+        const data = await saveLedgerPayload(payload);
         updateLedgerCaseCache(payload);
         updateLedgerRowCompletion(row);
         markRowDirty(row, false);
         const checkbox = row.querySelector("[data-row-check]");
         if (checkbox) checkbox.checked = false;
+        await handleReshipInvoiceMailPrompt(data.reship_mail_prompt);
       }
       if (!silent) notice.textContent = `CS 처리대장 ${rows.length}건 저장 완료`;
       return rows.length;
@@ -35017,6 +35050,8 @@ def init_db() -> None:
             "cs_type": "TEXT",
             "return_invoice_updated_at": "TEXT",
             "reship_invoice_updated_at": "TEXT",
+            "reship_invoice_mail_sent_at": "TEXT",
+            "reship_invoice_mail_invoice": "TEXT",
             "return_checked_at": "TEXT",
             "return_check_result": "TEXT",
             "return_check_memo": "TEXT",
@@ -38176,7 +38211,7 @@ CS_CASE_UPDATE_FIELDS = [
 ]
 
 
-def update_cs_case(case_id: int, payload: dict) -> None:
+def update_cs_case(case_id: int, payload: dict) -> dict[str, object]:
     init_db()
     connection = connect_db()
     try:
@@ -38230,6 +38265,13 @@ def update_cs_case(case_id: int, payload: dict) -> None:
         connection.commit()
         if cursor.rowcount == 0:
             raise ValueError("수정할 CS건을 찾지 못했습니다.")
+        case = get_cs_case(case_id)
+        prompt = reship_invoice_mail_prompt(case) if clean_cell(values.get("reship_invoice")) else {"enabled": False}
+        return {
+            "case_id": case_id,
+            "reship_invoice_changed": bool(reship_invoice_updated_at),
+            "reship_mail_prompt": prompt,
+        }
     finally:
         connection.close()
 
@@ -41698,7 +41740,9 @@ def get_cs_case(case_id: int) -> dict[str, str | int] | None:
             SELECT id, created_at, updated_at, status, vendor_name, vendor_email,
                    original_info, original_invoice, product_name, orderer_name, orderer_phone, receiver_name,
                    receiver_phone, receiver_address, cs_type, cs_content, return_invoice,
-                   reship_invoice, mail_subject, mail_body, mail_sent_at, occurred_at, completed_at, order_date,
+                   reship_invoice, mail_subject, mail_body, mail_sent_at,
+                   reship_invoice_mail_sent_at, reship_invoice_mail_invoice,
+                   occurred_at, completed_at, order_date,
                    ship_date, sales_vendor, purchase_vendor, courier, quantity
               FROM cs_cases
              WHERE id = ?
@@ -41760,6 +41804,99 @@ def vendor_cs_mail_prompt(case: dict[str, object] | None) -> dict[str, object]:
         "missing_email": not bool(recipient_email),
         "payload": payload,
     }
+
+
+def default_reship_invoice_subject(case: dict[str, object]) -> str:
+    product_name = clean_cell(case.get("product_name"))
+    suffix = f" - {product_name}" if product_name else ""
+    return f"[소일브릿지] 재발송 송장번호 안내{suffix}"
+
+
+def default_reship_invoice_body(case: dict[str, object]) -> str:
+    return (
+        "안녕하세요. (주)소일브릿지 입니다.\n\n"
+        "요청드렸던 CS건 재발송 송장번호 안내드립니다.\n\n"
+        f"■ 매입처: {clean_cell(case.get('purchase_vendor') or case.get('vendor_name'))}\n"
+        f"■ 상품명: {clean_cell(case.get('product_name'))}\n"
+        f"■ 수령인: {clean_cell(case.get('receiver_name'))}\n"
+        f"■ 수령인 연락처: {clean_cell(case.get('receiver_phone'))}\n"
+        f"■ 원송장번호: {clean_cell(case.get('original_invoice'))}\n"
+        f"■ 재발송 송장번호: {clean_cell(case.get('reship_invoice'))}\n"
+        f"■ 택배사: {clean_cell(case.get('courier'))}\n\n"
+        "업무 진행 시 참고 부탁드립니다.\n\n"
+        "감사합니다.\n\n"
+        "(주)소일브릿지"
+    )
+
+
+def reship_invoice_mail_prompt(case: dict[str, object] | None) -> dict[str, object]:
+    if not case:
+        return {"enabled": False}
+    reship_invoice = clean_cell(case.get("reship_invoice"))
+    if not reship_invoice:
+        return {"enabled": False}
+    if clean_cell(case.get("reship_invoice_mail_invoice")) == reship_invoice:
+        return {"enabled": False, "message": "이미 같은 재발송 송장번호로 안내 메일을 발송했습니다."}
+    vendor_name = clean_cell(case.get("purchase_vendor") or case.get("vendor_name"))
+    if not is_purchase_vendor_cs_target(vendor_name):
+        return {"enabled": False}
+    contact = find_vendor_contact(vendor_name, "purchase")
+    recipient_email = contact["email"] if contact else ""
+    return {
+        "enabled": True,
+        "case_id": case.get("id") or "",
+        "vendor_name": vendor_name,
+        "recipient_email": recipient_email,
+        "missing_email": not bool(recipient_email),
+        "reship_invoice": reship_invoice,
+        "subject": default_reship_invoice_subject(case),
+        "body": default_reship_invoice_body(case),
+    }
+
+
+def mark_cs_case_reship_mail_sent(case_id: int, reship_invoice: str) -> None:
+    if not case_id:
+        raise ValueError("재발송 송장 안내 메일 처리할 CS건 ID가 없습니다.")
+    timestamp = now_text()
+    connection = connect_db()
+    try:
+        cursor = connection.execute(
+            """
+            UPDATE cs_cases
+               SET reship_invoice_mail_sent_at = ?,
+                   reship_invoice_mail_invoice = ?,
+                   updated_at = ?
+             WHERE id = ?
+            """,
+            (timestamp, clean_cell(reship_invoice), timestamp, case_id),
+        )
+        connection.commit()
+        if cursor.rowcount == 0:
+            raise ValueError("재발송 송장 안내 메일 처리할 CS건을 찾지 못했습니다.")
+    finally:
+        connection.close()
+
+
+def send_reship_invoice_mail(case_id: int, reship_invoice: str = "") -> dict[str, object]:
+    case = get_cs_case(case_id)
+    if not case:
+        raise ValueError("재발송 송장 안내 메일을 보낼 CS건을 찾지 못했습니다.")
+    if clean_cell(reship_invoice) and clean_cell(reship_invoice) != clean_cell(case.get("reship_invoice")):
+        raise ValueError("현재 저장된 재발송 송장번호와 발송 요청 송장번호가 다릅니다. 새로고침 후 다시 확인해주세요.")
+    prompt = reship_invoice_mail_prompt(case)
+    if not prompt.get("enabled"):
+        raise ValueError(str(prompt.get("message") or "재발송 송장 안내 메일 발송 대상이 아닙니다."))
+    if prompt.get("missing_email"):
+        raise ValueError("매입처 메일 주소가 없어 재발송 송장 안내 메일을 보낼 수 없습니다.")
+    payload = {
+        "recipient_email": prompt["recipient_email"],
+        "subject": prompt["subject"],
+        "body": prompt["body"],
+        "save_credentials": False,
+    }
+    result = send_cs_mail(payload)
+    mark_cs_case_reship_mail_sent(case_id, str(prompt["reship_invoice"]))
+    return {**prompt, **result}
 
 
 def mark_cs_case_mail_sent(case_id: int, payload: dict) -> None:
@@ -43467,6 +43604,22 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                 self.send_json({"message": "CS 요청 메일 전송 및 DB 저장이 완료되었습니다.", "case_id": case_id})
                 return
 
+            if self.path == "/api/cs-reship-mail":
+                if not self.require_permission(user, "mail_send", "재발송 송장 안내 메일 발송"):
+                    return
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(length).decode("utf-8"))
+                case_id = int(payload.get("case_id") or 0)
+                if not case_id:
+                    raise ValueError("재발송 송장 안내 메일을 보낼 CS건 ID가 없습니다.")
+                result = send_reship_invoice_mail(case_id, clean_payload_text(payload, "reship_invoice"))
+                self.send_json({
+                    "message": f"{result.get('vendor_name') or '매입처'}에 재발송 송장 안내 메일을 발송했습니다.",
+                    "case_id": case_id,
+                    "reship_invoice": result.get("reship_invoice", ""),
+                })
+                return
+
             if self.path == "/api/cs-case":
                 if not self.require_permission(user, "ledger_edit", "대장 수정"):
                     return
@@ -43484,8 +43637,8 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                 case_id = int(payload.get("id", 0))
                 if not case_id:
                     raise ValueError("수정할 CS건 ID가 없습니다.")
-                update_cs_case(case_id, payload)
-                self.send_json({"message": "CS 처리내용을 저장했습니다.", "case_id": case_id})
+                result = update_cs_case(case_id, payload)
+                self.send_json({"message": "CS 처리내용을 저장했습니다.", "case_id": case_id, **result})
                 return
 
             if self.path == "/api/cs-cases-import-corrections":

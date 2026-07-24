@@ -333,6 +333,70 @@ class VendorContactMailWorkflowTests(unittest.TestCase):
             self.assertEqual(updated["original_invoice"], "9999999999")
             self.assertEqual(updated["completed_at"], "2026-06-24")
 
+    def test_reship_invoice_update_prompts_vendor_mail_and_marks_sent(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            app = load_app(Path(directory))
+            app.init_db()
+            app.save_vendor_contact("Vendor A", "vendor-a@example.com", vendor_type="purchase")
+            case_id = app.save_cs_case(
+                {
+                    "vendor_type": "purchase",
+                    "vendor_name": "Vendor A",
+                    "cs_product": "Test product",
+                    "cs_receiver": "Receiver",
+                    "cs_phone": "010-0000-0000",
+                    "cs_address": "Seoul",
+                    "cs_content": "Reship requested",
+                    "original_invoice": "1111111111",
+                    "courier": "Lotte",
+                }
+            )
+
+            result = app.update_cs_case(case_id, {"reship_invoice": "2222222222"})
+
+            prompt = result["reship_mail_prompt"]
+            self.assertTrue(result["reship_invoice_changed"])
+            self.assertTrue(prompt["enabled"])
+            self.assertFalse(prompt["missing_email"])
+            self.assertEqual(prompt["recipient_email"], "vendor-a@example.com")
+            self.assertEqual(prompt["reship_invoice"], "2222222222")
+            self.assertIn("2222222222", prompt["body"])
+
+            with patch.object(app, "send_cs_mail", return_value={"recipient_count": 1, "batch_count": 1}) as send_mail:
+                send_result = app.send_reship_invoice_mail(case_id, "2222222222")
+
+            send_mail.assert_called_once()
+            payload = send_mail.call_args.args[0]
+            self.assertEqual(payload["recipient_email"], "vendor-a@example.com")
+            self.assertIn("2222222222", payload["body"])
+            self.assertEqual(send_result["reship_invoice"], "2222222222")
+
+            updated = app.get_cs_case(case_id)
+            self.assertEqual(updated["reship_invoice_mail_invoice"], "2222222222")
+            self.assertTrue(updated["reship_invoice_mail_sent_at"])
+            duplicate_prompt = app.reship_invoice_mail_prompt(updated)
+            self.assertFalse(duplicate_prompt["enabled"])
+            self.assertIn("같은", duplicate_prompt["message"])
+
+    def test_reship_invoice_mail_prompt_reports_missing_vendor_email(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            app = load_app(Path(directory))
+            case_id = app.save_cs_case(
+                {
+                    "vendor_type": "purchase",
+                    "vendor_name": "Vendor Without Mail",
+                    "cs_product": "Test product",
+                    "cs_receiver": "Receiver",
+                    "reship_invoice": "3333333333",
+                }
+            )
+
+            prompt = app.reship_invoice_mail_prompt(app.get_cs_case(case_id))
+
+            self.assertTrue(prompt["enabled"])
+            self.assertTrue(prompt["missing_email"])
+            self.assertEqual(prompt["recipient_email"], "")
+
     def test_mail_settings_store_bulk_mail_technical_defaults(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             app = load_app(Path(directory))

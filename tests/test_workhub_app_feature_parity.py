@@ -2240,6 +2240,17 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         ):
             self.assertIn(f"if (event.target === {backdrop}) event.stopPropagation();", html_source)
 
+    def test_reship_invoice_mail_prompt_is_wired_from_ledger_saves(self) -> None:
+        html_source = (ROOT / "scripts" / "workhub_delivery_app.py").read_text(encoding="utf-8")
+
+        self.assertIn("function handleReshipInvoiceMailPrompt", html_source)
+        self.assertIn('fetch("/api/cs-reship-mail"', html_source)
+        self.assertIn("await handleReshipInvoiceMailPrompt(data.reship_mail_prompt);", html_source)
+        self.assertIn("def reship_invoice_mail_prompt", html_source)
+        self.assertIn("reship_invoice_mail_sent_at", html_source)
+        self.assertIn("reship_invoice_mail_invoice", html_source)
+        self.assertIn('if self.path == "/api/cs-reship-mail":', html_source)
+
 
 if __name__ == "__main__":
     unittest.main()
