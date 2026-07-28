@@ -1426,6 +1426,27 @@ class SalesReportUploadTests(unittest.TestCase):
         self.assertEqual(second_result["duplicate_count"], 1)
         self.assertEqual(len(self.app.list_sales_report_uploads()), 1)
 
+    def test_sales_automation_operator_is_limited_to_shin_sunghwan_manager(self) -> None:
+        self.assertTrue(self.app.is_sales_automation_operator({"username": "신성환 실장", "display_name": ""}))
+        self.assertTrue(self.app.is_sales_automation_operator({"username": "sunghwan", "display_name": "신성환 실장"}))
+
+        blocked_users = [
+            {"username": "admin", "display_name": "관리자", "role": "admin"},
+            {"username": "shin", "display_name": "신성환", "role": "admin"},
+            {"username": "ceo", "display_name": "신성민 대표", "role": "admin"},
+            {"username": "", "display_name": "", "role": "user"},
+        ]
+        for user in blocked_users:
+            with self.subTest(user=user):
+                self.assertFalse(self.app.is_sales_automation_operator(user))
+
+        payload = self.app.sales_automation_operator_payload(
+            self.app.load_sales_automation_settings(),
+            {"username": "신성환 실장", "display_name": ""},
+        )
+        self.assertEqual(payload["operator_name"], "신성환 실장")
+        self.assertTrue(payload["can_run_automation"])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -28886,11 +28886,28 @@ DEFAULT_SALES_AUTOMATION_SETTINGS = {
     "last_scan_at": "",
     "last_scan_message": "",
 }
+SALES_AUTOMATION_OPERATOR_NAME = "신성환 실장"
 SALES_REPORT_NAS_UPLOADER = "auto-nas"
 SALES_REPORT_WORKBOOK_SUFFIXES = {".xlsx", ".xlsm", ".xls", ".csv"}
 SALES_REPORT_ALLOWED_SUFFIXES = {*SALES_REPORT_WORKBOOK_SUFFIXES, ".zip"}
 _SALES_REPORT_NAS_SCHEDULER_STARTED = False
 _SALES_REPORT_NAS_SCAN_LOCK = threading.Lock()
+
+
+def is_sales_automation_operator(user: dict[str, object] | None) -> bool:
+    if not user:
+        return False
+    username = str(user.get("username") or "").strip()
+    display_name = str(user.get("display_name") or "").strip()
+    return username == SALES_AUTOMATION_OPERATOR_NAME or display_name == SALES_AUTOMATION_OPERATOR_NAME
+
+
+def sales_automation_operator_payload(settings: dict[str, object], user: dict[str, object] | None = None) -> dict[str, object]:
+    return {
+        **settings,
+        "operator_name": SALES_AUTOMATION_OPERATOR_NAME,
+        "can_run_automation": is_sales_automation_operator(user),
+    }
 
 
 def clean_sales_automation_path(value: object) -> str:
@@ -42174,6 +42191,12 @@ class WorkhubHandler(BaseHTTPRequestHandler):
         self.send_json({"error": f"{label}은 관리자만 사용할 수 있습니다."}, status=403)
         return False
 
+    def require_sales_automation_operator(self, user: dict[str, str], label: str) -> bool:
+        if is_sales_automation_operator(user):
+            return True
+        self.send_json({"error": f"{label}은 {SALES_AUTOMATION_OPERATOR_NAME} 계정에서만 사용할 수 있습니다."}, status=403)
+        return False
+
     def do_GET(self) -> None:
         if self.path.startswith("/static/"):
             relative = unquote(self.path.removeprefix("/static/"))
@@ -42345,7 +42368,7 @@ class WorkhubHandler(BaseHTTPRequestHandler):
         if self.path == "/api/sales-automation-settings":
             if not self.require_permission(user, "sales_report_manage", "매출 자동화 설정"):
                 return
-            self.send_json(load_sales_automation_settings())
+            self.send_json(sales_automation_operator_payload(load_sales_automation_settings(), user))
             return
 
         if self.path.startswith("/api/sales-report-dashboard"):
@@ -42893,14 +42916,21 @@ class WorkhubHandler(BaseHTTPRequestHandler):
             if self.path == "/api/sales-automation-settings":
                 if not self.require_permission(user, "sales_report_manage", "매출 자동화 설정"):
                     return
+                if not self.require_sales_automation_operator(user, "매출 자동화 설정"):
+                    return
                 length = int(self.headers.get("Content-Length", "0"))
                 payload = json.loads(self.rfile.read(length).decode("utf-8") or "{}")
                 settings = save_sales_automation_settings(payload if isinstance(payload, dict) else {})
-                self.send_json({"message": "매출 자동화 설정을 저장했습니다.", "settings": settings})
+                self.send_json({
+                    "message": "매출 자동화 설정을 저장했습니다.",
+                    "settings": sales_automation_operator_payload(settings, user),
+                })
                 return
 
             if self.path == "/api/sales-automation-scan":
                 if not self.require_permission(user, "sales_report_manage", "매출 자동 스캔"):
+                    return
+                if not self.require_sales_automation_operator(user, "매출 자동 스캔"):
                     return
                 uploaded_by = str(user.get("display_name") or user.get("username") or SALES_REPORT_NAS_UPLOADER)
                 result = scan_sales_report_nas_folder(uploaded_by=uploaded_by)
