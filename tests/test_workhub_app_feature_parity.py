@@ -729,9 +729,14 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         self.assertIn(".crm-advanced-filters", html_source)
         self.assertIn("crmTaskAdvancedToggle?.addEventListener", html_source)
         self.assertIn('crmTaskAdvancedToggle.textContent = open ? "필터 닫기" : "고급 필터"', html_source)
-        self.assertIn('data-crm-nav-tab="dashboard">업무 현황</button>', html_source)
-        self.assertIn('data-crm-tab="accounts">직원 현황</button>', html_source)
-        self.assertIn('data-crm-tab="messages">연동 로그</button>', html_source)
+        self.assertIn('<div class="nav-subsection">오늘 할 일</div>', html_source)
+        self.assertIn('<div class="nav-subsection">팀 업무</div>', html_source)
+        self.assertIn('<div class="nav-subsection">자료 · 연동</div>', html_source)
+        self.assertIn('data-crm-nav-tab="dashboard"><i data-lucide="bar-chart-3"></i><span>업무 한눈에</span></button>', html_source)
+        self.assertIn('data-crm-tab="accounts"><i data-lucide="briefcase-business"></i><span>팀 현황</span></button>', html_source)
+        self.assertIn('data-crm-tab="messages"><i data-lucide="settings"></i><span>연동 관리</span></button>', html_source)
+        self.assertIn('data-open="fileLibrary"><i data-lucide="folder-down"></i><span>파일 자료실</span></button>', html_source)
+        self.assertIn('id="crmWorkspaceDescription"', html_source)
 
     def test_leave_workflow_has_multi_step_approval_cancel_and_accrual_ui(self) -> None:
         for app_file in (
@@ -2138,7 +2143,7 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         crm_group = html_source[crm_group_start:crm_group_end]
 
         self.assertIn('data-open="fileLibrary"', crm_group)
-        self.assertIn("업무 파일", crm_group)
+        self.assertIn("파일 자료실", crm_group)
         self.assertIn('id="fileLibraryWorkspace"', html_source)
         self.assertIn('id="sharedFileInput"', html_source)
         self.assertIn('id="sharedFileBody"', html_source)

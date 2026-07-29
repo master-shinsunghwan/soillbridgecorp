@@ -847,6 +847,13 @@ HTML = r"""<!doctype html>
       border-left: 1px solid rgba(255,255,255,.14);
     }
     .nav-group.open .nav-submenu { display: grid; gap: 4px; }
+    .nav-subsection {
+      margin: 9px 10px 2px;
+      color: rgba(191, 210, 239, .62);
+      font-size: 10px;
+      font-weight: 700;
+      line-height: 1.2;
+    }
     .nav-subitem {
       min-height: 34px;
       padding: 0 10px;
@@ -860,6 +867,21 @@ HTML = r"""<!doctype html>
       text-align: left;
       cursor: pointer;
       transition: background .16s ease, color .16s ease, transform .16s ease, box-shadow .16s ease;
+    }
+    #crmNavGroup .nav-subitem {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    #crmNavGroup .nav-subitem svg {
+      width: 14px;
+      height: 14px;
+      flex: 0 0 auto;
+      color: rgba(191, 210, 239, .78);
+      stroke-width: 2.2;
+    }
+    #crmNavGroup .nav-subitem.active svg {
+      color: #dbeafe;
     }
     .nav-subitem:hover,
     .nav-item:hover {
@@ -6406,36 +6428,85 @@ HTML = r"""<!doctype html>
     }
 
     .crm-tabs {
-      display: flex;
-      gap: 8px;
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 14px;
       flex: 0 0 auto;
-      border-bottom: 1px solid var(--line);
+      padding: 10px 12px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #ffffff;
       overflow-x: auto;
       overflow-y: hidden;
     }
-    @media (min-width: 1180px) {
-      body:not(.standalone) #crmWorkspace .crm-tabs {
-        display: none;
-      }
+    .crm-tab-group {
+      display: grid;
+      grid-template-columns: minmax(76px, auto) 1fr;
+      align-items: center;
+      gap: 7px;
+      min-width: max-content;
+    }
+    .crm-tab-group-label {
+      color: #667085;
+      font-size: 11px;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+    .crm-tab-list {
+      display: flex;
+      gap: 4px;
+      min-width: max-content;
     }
     .crm-tab {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
       flex: 0 0 auto;
       height: 34px;
-      padding: 0 13px;
-      border: 0;
-      border-bottom: 2px solid transparent;
-      background: transparent;
+      padding: 0 10px;
+      border: 1px solid transparent;
+      border-radius: 7px;
+      background: #f8fafc;
       color: #475467;
       font-family: inherit;
       font-size: 12px;
-      font-weight: 950;
+      font-weight: 700;
       cursor: pointer;
       white-space: nowrap;
       word-break: keep-all;
     }
+    .crm-tab svg {
+      width: 14px;
+      height: 14px;
+      stroke-width: 2.2;
+    }
+    .crm-tab:hover {
+      border-color: #cbd5e1;
+      background: #f1f5f9;
+    }
     .crm-tab.active {
-      color: var(--blue);
-      border-bottom-color: var(--blue);
+      border-color: #93c5fd;
+      background: #eff6ff;
+      color: #1d4ed8;
+    }
+    .crm-workspace-heading {
+      display: grid;
+      gap: 3px;
+      min-width: 0;
+    }
+    .crm-workspace-description {
+      color: #667085;
+      font-size: 12px;
+      font-weight: 600;
+      line-height: 1.4;
+    }
+    @media (max-width: 1320px) {
+      .crm-tabs {
+        display: flex;
+      }
+      .crm-tab-group {
+        flex: 0 0 auto;
+      }
     }
     .crm-message {
       display: none;
@@ -10713,13 +10784,16 @@ HTML = r"""<!doctype html>
           <i class="nav-chevron" data-lucide="chevron-right"></i>
         </button>
         <div class="nav-submenu">
-          <button class="nav-subitem" type="button" data-open="crm" data-crm-nav-tab="dashboard">업무 현황</button>
-          <button class="nav-subitem" type="button" data-open="crm" data-crm-nav-tab="mine">내 업무</button>
-          <button class="nav-subitem" type="button" data-open="crm" data-crm-nav-tab="daily">일일 업무일지</button>
-          <button class="nav-subitem" type="button" data-open="crm" data-crm-nav-tab="tasks">업무보드</button>
-          <button class="nav-subitem" type="button" data-open="fileLibrary">업무 파일</button>
-          <button class="nav-subitem" type="button" data-open="crm" data-crm-nav-tab="accounts">직원 현황</button>
-          <button class="nav-subitem" type="button" data-open="crm" data-crm-nav-tab="messages">메신저 연동</button>
+          <div class="nav-subsection">오늘 할 일</div>
+          <button class="nav-subitem" type="button" data-open="crm" data-crm-nav-tab="dashboard"><i data-lucide="bar-chart-3"></i><span>업무 한눈에</span></button>
+          <button class="nav-subitem" type="button" data-open="crm" data-crm-nav-tab="mine"><i data-lucide="clipboard-check"></i><span>내 할 일</span></button>
+          <button class="nav-subitem" type="button" data-open="crm" data-crm-nav-tab="daily"><i data-lucide="file-text"></i><span>업무 일지</span></button>
+          <div class="nav-subsection">팀 업무</div>
+          <button class="nav-subitem" type="button" data-open="crm" data-crm-nav-tab="tasks"><i data-lucide="clipboard-list"></i><span>전체 업무</span></button>
+          <button class="nav-subitem" type="button" data-open="crm" data-crm-nav-tab="accounts"><i data-lucide="briefcase-business"></i><span>팀 현황</span></button>
+          <div class="nav-subsection">자료 · 연동</div>
+          <button class="nav-subitem" type="button" data-open="fileLibrary"><i data-lucide="folder-down"></i><span>파일 자료실</span></button>
+          <button class="nav-subitem" type="button" data-open="crm" data-crm-nav-tab="messages"><i data-lucide="settings"></i><span>연동 관리</span></button>
         </div>
       </div>
       __HERMES_NAV__
@@ -11254,21 +11328,40 @@ HTML = r"""<!doctype html>
       </section>
       <section class="workspace-view" id="crmWorkspace">
         <div class="workspace-head">
-          <div class="workspace-title" id="crmWorkspaceTitle">업무관리 · 업무 현황</div>
+          <div class="crm-workspace-heading">
+            <div class="workspace-title" id="crmWorkspaceTitle">업무관리 · 업무 한눈에</div>
+            <div class="crm-workspace-description" id="crmWorkspaceDescription">진행 중인 업무와 오늘 확인할 내용을 한 번에 봅니다.</div>
+          </div>
           <div class="workspace-actions">
             <button class="workspace-button" type="button" id="crmRefresh">새로고침</button>
-            <button class="workspace-button" type="button" id="crmAccountQuick">직원 현황</button>
-            <button class="workspace-button" type="button" id="crmTaskQuick">업무 등록</button>
+            <button class="workspace-button" type="button" id="crmAccountQuick">팀 현황</button>
+            <button class="workspace-button" type="button" id="crmTaskQuick">새 업무</button>
             <button class="workspace-button" type="button" data-open-window="crm">새창으로 열기</button>
           </div>
         </div>
-        <div class="crm-tabs" role="tablist" aria-label="CRM 메뉴">
-          <button class="crm-tab active" type="button" role="tab" id="crmTabDashboard" aria-selected="true" aria-controls="crmPanelDashboard" tabindex="0" data-crm-tab="dashboard">업무 현황</button>
-          <button class="crm-tab" type="button" role="tab" id="crmTabMine" aria-selected="false" aria-controls="crmPanelMine" tabindex="-1" data-crm-tab="mine">내 업무</button>
-          <button class="crm-tab" type="button" role="tab" id="crmTabDaily" aria-selected="false" aria-controls="crmPanelDaily" tabindex="-1" data-crm-tab="daily">일일 업무일지</button>
-          <button class="crm-tab" type="button" role="tab" id="crmTabTasks" aria-selected="false" aria-controls="crmPanelTasks" tabindex="-1" data-crm-tab="tasks">업무보드</button>
-          <button class="crm-tab" type="button" role="tab" id="crmTabAccounts" aria-selected="false" aria-controls="crmPanelAccounts" tabindex="-1" data-crm-tab="accounts">직원 현황</button>
-          <button class="crm-tab" type="button" role="tab" id="crmMessagesTab" aria-selected="false" aria-controls="crmPanelMessages" tabindex="-1" data-crm-tab="messages">연동 로그</button>
+        <div class="crm-tabs" aria-label="업무관리 메뉴">
+          <div class="crm-tab-group">
+            <span class="crm-tab-group-label">오늘 할 일</span>
+            <div class="crm-tab-list" role="tablist" aria-label="오늘 할 일">
+              <button class="crm-tab active" type="button" role="tab" id="crmTabDashboard" aria-selected="true" aria-controls="crmPanelDashboard" tabindex="0" data-crm-tab="dashboard"><i data-lucide="bar-chart-3"></i><span>업무 한눈에</span></button>
+              <button class="crm-tab" type="button" role="tab" id="crmTabMine" aria-selected="false" aria-controls="crmPanelMine" tabindex="-1" data-crm-tab="mine"><i data-lucide="clipboard-check"></i><span>내 할 일</span></button>
+              <button class="crm-tab" type="button" role="tab" id="crmTabDaily" aria-selected="false" aria-controls="crmPanelDaily" tabindex="-1" data-crm-tab="daily"><i data-lucide="file-text"></i><span>업무 일지</span></button>
+            </div>
+          </div>
+          <div class="crm-tab-group">
+            <span class="crm-tab-group-label">팀 업무</span>
+            <div class="crm-tab-list" role="tablist" aria-label="팀 업무">
+              <button class="crm-tab" type="button" role="tab" id="crmTabTasks" aria-selected="false" aria-controls="crmPanelTasks" tabindex="-1" data-crm-tab="tasks"><i data-lucide="clipboard-list"></i><span>전체 업무</span></button>
+              <button class="crm-tab" type="button" role="tab" id="crmTabAccounts" aria-selected="false" aria-controls="crmPanelAccounts" tabindex="-1" data-crm-tab="accounts"><i data-lucide="briefcase-business"></i><span>팀 현황</span></button>
+            </div>
+          </div>
+          <div class="crm-tab-group">
+            <span class="crm-tab-group-label">자료 · 연동</span>
+            <div class="crm-tab-list" role="tablist" aria-label="자료와 연동">
+              <button class="crm-tab" type="button" data-open="fileLibrary"><i data-lucide="folder-down"></i><span>파일 자료실</span></button>
+              <button class="crm-tab" type="button" role="tab" id="crmMessagesTab" aria-selected="false" aria-controls="crmPanelMessages" tabindex="-1" data-crm-tab="messages"><i data-lucide="settings"></i><span>연동 관리</span></button>
+            </div>
+          </div>
         </div>
         <div class="crm-message" id="crmMessage" role="status" aria-live="polite"></div>
 
@@ -13233,6 +13326,7 @@ HTML = r"""<!doctype html>
     const automationBulkReplace = document.querySelector("#automationBulkReplace");
     const crmWorkspace = document.querySelector("#crmWorkspace");
     const crmWorkspaceTitle = document.querySelector("#crmWorkspaceTitle");
+    const crmWorkspaceDescription = document.querySelector("#crmWorkspaceDescription");
     const crmRefresh = document.querySelector("#crmRefresh");
     const crmAccountQuick = document.querySelector("#crmAccountQuick");
     const crmTaskQuick = document.querySelector("#crmTaskQuick");
@@ -13380,12 +13474,20 @@ HTML = r"""<!doctype html>
     let hermesChatMode = "auto";
     let crmSelectedTaskId = "";
     const CRM_TAB_TITLES = {
-      dashboard: "업무 현황",
-      mine: "내 업무",
-      daily: "일일 업무일지",
-      tasks: "업무보드",
-      accounts: "직원 현황",
-      messages: "메신저 연동",
+      dashboard: "업무 한눈에",
+      mine: "내 할 일",
+      daily: "업무 일지",
+      tasks: "전체 업무",
+      accounts: "팀 현황",
+      messages: "연동 관리",
+    };
+    const CRM_TAB_DESCRIPTIONS = {
+      dashboard: "진행 중인 업무와 오늘 확인할 내용을 한 번에 봅니다.",
+      mine: "내가 맡은 업무를 마감일과 우선순위에 따라 처리합니다.",
+      daily: "오늘 한 일과 다음 업무 계획을 기록하고 공유합니다.",
+      tasks: "팀 전체 업무를 등록하고 담당자와 진행 상태를 관리합니다.",
+      accounts: "직원별 담당 업무와 현재 진행 상황을 확인합니다.",
+      messages: "메신저 사용자 연결과 업무 반영 기록을 관리합니다.",
     };
     const CRM_TASK_STATUSES = ["대기", "진행중", "보류", "완료"];
     const CRM_TASK_BUILTIN_VIEWS = [
@@ -19635,7 +19737,10 @@ HTML = r"""<!doctype html>
       if (tabName === "messages" && !can("crm_message_manage")) tabName = "dashboard";
       crmActiveTab = tabName;
       if (crmWorkspaceTitle) {
-        crmWorkspaceTitle.textContent = `업무관리 · ${CRM_TAB_TITLES[tabName] || "업무 현황"}`;
+        crmWorkspaceTitle.textContent = `업무관리 · ${CRM_TAB_TITLES[tabName] || "업무 한눈에"}`;
+      }
+      if (crmWorkspaceDescription) {
+        crmWorkspaceDescription.textContent = CRM_TAB_DESCRIPTIONS[tabName] || CRM_TAB_DESCRIPTIONS.dashboard;
       }
       crmTabs.forEach((button) => {
         const active = button.dataset.crmTab === tabName;
