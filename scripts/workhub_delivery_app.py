@@ -2130,6 +2130,50 @@ HTML = r"""<!doctype html>
       border-color: #8ba7d4;
       background: #f6f9ff;
     }
+    .cs-attachment-list {
+      display: grid;
+      gap: 6px;
+      margin-top: 7px;
+    }
+    .cs-attachment-item {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto auto;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 8px;
+      border: 1px solid #d7e1ef;
+      border-radius: 7px;
+      background: #f8fbff;
+      font-size: 12px;
+      color: #1f2a3d;
+    }
+    .cs-attachment-name {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-weight: 800;
+    }
+    .cs-attachment-size {
+      color: #667085;
+      font-size: 11px;
+      white-space: nowrap;
+    }
+    .cs-attachment-remove {
+      height: 24px;
+      padding: 0 8px;
+      border: 1px solid #fecaca;
+      border-radius: 6px;
+      background: #fff7f7;
+      color: #b42318;
+      font-size: 11px;
+      font-weight: 900;
+      cursor: pointer;
+    }
+    .cs-attachment-remove:hover {
+      background: #fee4e2;
+      border-color: #fda29b;
+    }
     .workhub-modal-backdrop.open .workhub-modal,
     .workhub-modal-backdrop.open .workhub-modal .modal-title,
     .workhub-modal-backdrop.open .workhub-modal .field-label,
@@ -11982,6 +12026,7 @@ HTML = r"""<!doctype html>
               <input id="csAttachmentInput" name="cs_attachments" type="file" accept="image/*,video/*,.pdf,.xlsx,.xls,.doc,.docx,.zip" multiple />
             </div>
             <div class="hint-line" id="csAttachmentSummary">첨부파일 없음</div>
+            <div class="cs-attachment-list" id="csAttachmentList" aria-live="polite"></div>
           </div>
           <div class="text-field cs-wide">
             <label class="field-label" for="csSubjectInput">메일 제목</label>
@@ -12863,6 +12908,7 @@ HTML = r"""<!doctype html>
     const csAttachmentChoose = document.querySelector("#csAttachmentChoose");
     const csAttachmentInput = document.querySelector("#csAttachmentInput");
     const csAttachmentSummary = document.querySelector("#csAttachmentSummary");
+    const csAttachmentList = document.querySelector("#csAttachmentList");
     const csSubjectInput = document.querySelector("#csSubjectInput");
     const csBodyInput = document.querySelector("#csBodyInput");
     const saveCsCaseButton = document.querySelector("#saveCsCase");
@@ -16478,12 +16524,39 @@ HTML = r"""<!doctype html>
       if (!files.length) {
         csAttachmentSummary.textContent = "첨부파일 없음";
         if (csAttachmentDropMain) csAttachmentDropMain.textContent = "파일을 드래그하거나 파일 선택 버튼을 눌러주세요.";
+        if (csAttachmentList) csAttachmentList.innerHTML = "";
         return;
       }
       const totalSize = files.reduce((sum, file) => sum + file.size, 0);
       const sizeMb = Math.ceil((totalSize / 1024 / 1024) * 10) / 10;
       if (csAttachmentDropMain) csAttachmentDropMain.textContent = files.length === 1 ? files[0].name : `${files.length}개 파일 선택됨`;
       csAttachmentSummary.textContent = `${files.length}개 첨부 선택 / 약 ${sizeMb}MB`;
+      if (csAttachmentList) {
+        csAttachmentList.innerHTML = files.map((file, index) => {
+          const sizeLabel = file.size >= 1024 * 1024
+            ? `${Math.ceil((file.size / 1024 / 1024) * 10) / 10}MB`
+            : `${Math.max(1, Math.ceil(file.size / 1024))}KB`;
+          return `
+            <div class="cs-attachment-item">
+              <span class="cs-attachment-name" title="${escapeHtml(file.name)}">${escapeHtml(file.name)}</span>
+              <span class="cs-attachment-size">${escapeHtml(sizeLabel)}</span>
+              <button class="cs-attachment-remove" type="button" data-cs-attachment-remove="${index}">삭제</button>
+            </div>
+          `;
+        }).join("");
+      }
+    }
+
+    function removeCsAttachment(indexToRemove) {
+      if (!csAttachmentInput) return;
+      const files = Array.from(csAttachmentInput.files || []);
+      if (indexToRemove < 0 || indexToRemove >= files.length) return;
+      const dataTransfer = new DataTransfer();
+      files.forEach((file, index) => {
+        if (index !== indexToRemove) dataTransfer.items.add(file);
+      });
+      csAttachmentInput.files = dataTransfer.files;
+      updateCsAttachmentSummary();
     }
 
     function appendCsMailPayload(formData, payload) {
@@ -26587,6 +26660,13 @@ HTML = r"""<!doctype html>
       event.preventDefault();
       event.stopPropagation();
       csAttachmentInput?.click();
+    });
+    csAttachmentList?.addEventListener("click", (event) => {
+      const button = event.target.closest("[data-cs-attachment-remove]");
+      if (!button) return;
+      event.preventDefault();
+      event.stopPropagation();
+      removeCsAttachment(Number(button.dataset.csAttachmentRemove));
     });
     document.querySelector("#addProductRow").addEventListener("click", () => addProductRow());
     noticeSaveButton.addEventListener("click", saveNoticeTemplate);
