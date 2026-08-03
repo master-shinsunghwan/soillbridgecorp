@@ -220,6 +220,58 @@ def test_management_daily_upload_detects_business_duplicates_across_files(tmp_pa
     assert_import_result(app.import_management_workbook(second), 0, 1)
 
 
+def test_management_upload_reports_order_date_distribution(tmp_path: Path) -> None:
+    app = load_app(tmp_path)
+    workbook_path = tmp_path / "mixed-dates.xlsx"
+    workbook_path.parent.mkdir(parents=True, exist_ok=True)
+    workbook = Workbook()
+    worksheet = workbook.active
+    worksheet.title = "Supply"
+    worksheet.append(MANAGEMENT_HEADERS)
+    base_row = [
+        "Vendor A",
+        "Seller A",
+        "",
+        "",
+        "2026-08-03",
+        "",
+        "Orderer",
+        "010-1111-2222",
+        "Receiver A",
+        "010-3333-4444",
+        "Product A",
+        "1",
+        "Seoul",
+        "Lotte",
+        "100000000001",
+        "",
+        "ITEM-A",
+        "P-A",
+        "ORDER-A",
+        "Default",
+    ]
+    worksheet.append(base_row)
+    second_row = list(base_row)
+    second_row[4] = "2026-08-02"
+    second_row[8] = "Receiver B"
+    second_row[14] = "100000000002"
+    second_row[16] = "ITEM-B"
+    second_row[17] = "P-B"
+    second_row[18] = "ORDER-B"
+    worksheet.append(second_row)
+    workbook.save(workbook_path)
+
+    preview = app.preview_management_import(workbook_path)
+    result = app.import_management_workbook(workbook_path)
+
+    assert preview["date_counts"] == [
+        {"date": "2026-08-02", "count": 1},
+        {"date": "2026-08-03", "count": 1},
+    ]
+    assert result["date_counts"] == preview["date_counts"]
+    assert_import_result(result, 2, 0)
+
+
 def test_management_upload_requires_fixing_invalid_text_and_number_fields(tmp_path: Path) -> None:
     app = load_app(tmp_path)
     workbook_path = tmp_path / "invalid-management.xlsx"
@@ -330,6 +382,8 @@ def test_cs_upload_requires_fixing_invalid_text_and_number_fields(tmp_path: Path
 def main() -> None:
     with tempfile.TemporaryDirectory() as directory:
         test_management_daily_upload_detects_business_duplicates_across_files(Path(directory) / "management-daily")
+    with tempfile.TemporaryDirectory() as directory:
+        test_management_upload_reports_order_date_distribution(Path(directory) / "management-date-counts")
     with tempfile.TemporaryDirectory() as directory:
         test_management_upload_requires_fixing_invalid_text_and_number_fields(Path(directory) / "management-invalid")
     with tempfile.TemporaryDirectory() as directory:

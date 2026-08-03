@@ -23144,6 +23144,8 @@ HTML = r"""<!doctype html>
         `파일 안 중복: ${preview.duplicate_in_file || 0}건`,
         `확인/수정 필요: ${preview.invalid_count || 0}건`,
       ];
+      const dateNotice = managementImportDateNotice(preview);
+      if (dateNotice) lines.push("", dateNotice);
       const duplicates = Array.isArray(preview.duplicates) ? preview.duplicates : [];
       if (duplicates.length) {
         lines.push("", "중복 예시");
@@ -23152,6 +23154,15 @@ HTML = r"""<!doctype html>
         });
       }
       return lines.join("\n");
+    }
+
+    function managementImportDateNotice(result) {
+      const counts = Array.isArray(result?.date_counts) ? result.date_counts : [];
+      if (!counts.length) return "";
+      const text = counts
+        .map((item) => `${item.date || "날짜 없음"} ${Number(item.count || 0).toLocaleString()}건`)
+        .join(" / ");
+      return `주문일자별 반영: ${text}`;
     }
 
     function requestImportWarningApproval({ title, description, previewText, proceedLabel = "진행" }) {
@@ -23676,17 +23687,19 @@ HTML = r"""<!doctype html>
           endpoint: "/api/management-import-corrections",
           invalidRows: data.invalid_rows || [],
         });
-        notice.textContent = correctionResult.canceled
+        const dateNotice = managementImportDateNotice(data);
+        const finalMessage = correctionResult.canceled
           ? `${data.message || "통합관리대장 데이터를 업로드했습니다."} 수정이 필요한 행 ${correctionResult.remaining}건이 남아 있습니다.`
           : correctionResult.updated
           ? `${data.message || "통합관리대장 데이터를 업로드했습니다."} 수정 ${correctionResult.updated}건을 저장했습니다.`
           : data.message || "통합관리대장 데이터를 업로드했습니다.";
+        notice.textContent = dateNotice ? `${finalMessage} ${dateNotice}` : finalMessage;
         if (currentMode !== "management") {
           showWorkspace("management");
         } else {
           await loadManagementWorkspaceData();
         }
-        finishImportProgress("done", "통합관리대장 업로드가 완료되었습니다.");
+        finishImportProgress("done", dateNotice ? `통합관리대장 업로드가 완료되었습니다. ${dateNotice}` : "통합관리대장 업로드가 완료되었습니다.");
       } catch (error) {
         notice.textContent = error.message;
         finishImportProgress("error", error.message || "통합관리대장 업로드에 실패했습니다.");
@@ -40106,6 +40119,16 @@ def valid_import_records(records: list[dict[str, object]], issue_func) -> list[d
     return [record for record in records if not issue_func(record)]
 
 
+def import_record_date_counts(records: list[dict[str, object]], field: str = "order_date") -> list[dict[str, object]]:
+    counts: dict[str, int] = {}
+    for record in records:
+        value = clean_cell(record.get(field))
+        if not value:
+            value = "(날짜 없음)"
+        counts[value] = counts.get(value, 0) + 1
+    return [{"date": key, "count": counts[key]} for key in sorted(counts)]
+
+
 def import_preview_payload(records: list[dict[str, object]], existing_keys: set[str], key_func, summary_fields: list[str], issue_func=None) -> dict[str, object]:
     invalid_rows = invalid_import_rows(records, issue_func, summary_fields) if issue_func else []
     seen: set[str] = set()
@@ -40229,7 +40252,7 @@ def preview_management_import(path: Path, corrections: list[dict[str, object]] |
         management_duplicate_key,
         ["receiver_name", "receiver_phone", "product_name", "quantity", "invoice_number", "order_number"],
         management_import_issues,
-    )
+    ) | {"date_counts": import_record_date_counts(records, "order_date")}
 
 
 def management_import_invalid_rows(records: list[dict[str, object]]) -> list[dict[str, object]]:
@@ -40286,6 +40309,8 @@ def import_management_workbook(path: Path, mode: str = "daily", corrections: lis
     return {
         "inserted": inserted,
         "skipped": skipped,
+        "date_counts": import_record_date_counts(inserted_records, "order_date"),
+        "source_file": original_uploaded_filename(path.name),
         "invalid_rows": invalid_rows,
         "invalid_count": len(invalid_rows),
         "has_invalid_rows": bool(invalid_rows),
