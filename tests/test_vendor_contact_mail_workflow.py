@@ -560,6 +560,33 @@ class VendorContactMailWorkflowTests(unittest.TestCase):
             self.assertEqual(args[:3], ("soilbridge@naver.com", "application-password", "soilbridge@naver.com"))
             self.assertEqual(kwargs["bcc_recipients"], ["purchase@example.com", "sales@example.com"])
 
+    def test_general_notice_mail_reuses_bulk_send_with_attachments(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            app = load_app(Path(directory))
+            app.save_mail_settings("soilbridge@naver.com", "application-password")
+
+            attachment = {
+                "filename": "notice.pdf",
+                "data": b"notice-data",
+                "content_type": "application/pdf",
+            }
+            with patch.object(app, "send_naver_mail") as send_mail:
+                result = app.send_general_mail(
+                    {
+                        "recipient_email": "",
+                        "bcc_emails": ["vendor@example.com"],
+                        "subject": "Notice",
+                        "body": "Please check the attached file.",
+                    },
+                    attachments=[attachment],
+                )
+
+            self.assertEqual(result["recipient_count"], 1)
+            send_mail.assert_called_once()
+            self.assertEqual(send_mail.call_args.args[:3], ("soilbridge@naver.com", "application-password", "soilbridge@naver.com"))
+            self.assertEqual(send_mail.call_args.kwargs["bcc_recipients"], ["vendor@example.com"])
+            self.assertEqual(send_mail.call_args.kwargs["attachments"], [attachment])
+
     def test_stock_notice_mail_splits_large_bcc_batches(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             app = load_app(Path(directory))
@@ -610,6 +637,25 @@ class VendorContactMailWorkflowTests(unittest.TestCase):
             self.assertEqual(logs[0]["vendor_name"], "매입처 45곳")
             self.assertEqual(logs[0]["bcc_emails"], ["a@example.com", "b@example.com"])
             self.assertEqual(logs[0]["sent_by"], "admin")
+
+    def test_general_notice_send_log_is_separated_from_stock_notice_history(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            app = load_app(Path(directory))
+            payload = {
+                "vendor_type": "all",
+                "vendor_name": "2 vendors",
+                "recipient_email": "soilbridge@naver.com",
+                "bcc_emails": ["a@example.com", "b@example.com"],
+                "subject": "Notice",
+                "body": "Guide file",
+                "batch_count": 1,
+            }
+
+            log = app.save_vendor_mail_send_log(payload, "sent", sent_by="admin", mail_type="general_notice")
+
+            self.assertEqual(log["mail_type"], "general_notice")
+            self.assertEqual(app.list_vendor_mail_send_logs("general_notice")[0]["subject"], "Notice")
+            self.assertEqual(app.list_vendor_mail_send_logs("stock_notice"), [])
 
     def test_failed_stock_notice_vendor_can_be_admin_deleted_from_contacts(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

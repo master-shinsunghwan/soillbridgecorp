@@ -10849,6 +10849,7 @@ HTML = r"""<!doctype html>
         <div class="nav-submenu">
           <button class="nav-subitem" type="button" data-mail-popup="cs">CS 요청</button>
           <button class="nav-subitem" type="button" data-mail-popup="stock">입고 및 품절 공지</button>
+          <button class="nav-subitem" type="button" data-mail-popup="general">공지/안내자료 발송</button>
         </div>
       </div>
       __LEAVE_NAV__
@@ -12211,6 +12212,32 @@ HTML = r"""<!doctype html>
             <label class="field-label" for="stockSoldoutNoteInput">품절 특이사항</label>
             <textarea id="stockSoldoutNoteInput"></textarea>
           </div>
+          <div class="general-notice-fields" id="generalNoticeFields" hidden>
+            <div class="text-field">
+              <label class="field-label" for="generalNoticeKindInput">안내 구분</label>
+              <select id="generalNoticeKindInput">
+                <option value="공지사항">공지사항</option>
+                <option value="업무 안내">업무 안내</option>
+                <option value="자료 전달">자료 전달</option>
+                <option value="기타 안내">기타 안내</option>
+              </select>
+            </div>
+            <div class="text-field">
+              <label class="field-label" for="generalNoticeDateInput">기준일자</label>
+              <input id="generalNoticeDateInput" type="date" />
+            </div>
+            <div class="text-field cs-wide">
+              <label class="field-label" for="generalNoticeAttachmentInput">첨부자료</label>
+              <div class="cs-attachment-dropzone dropzone" id="generalNoticeAttachmentDropzone">
+                <span class="drop-main" id="generalNoticeAttachmentDropMain">자료 파일을 드래그하거나 파일 선택 버튼을 눌러주세요.</span>
+                <span class="drop-sub">이미지, PDF, 엑셀, 문서, 압축파일 첨부 가능</span>
+                <button class="cs-attachment-button" id="generalNoticeAttachmentChoose" type="button">파일 선택</button>
+                <input id="generalNoticeAttachmentInput" name="general_notice_attachments" type="file" accept="image/*,.pdf,.xlsx,.xls,.doc,.docx,.ppt,.pptx,.zip" multiple />
+              </div>
+              <div class="hint-line" id="generalNoticeAttachmentSummary">첨부자료 없음</div>
+              <div class="cs-attachment-list" id="generalNoticeAttachmentList" aria-live="polite"></div>
+            </div>
+          </div>
           <div class="text-field">
             <label class="field-label" for="stockSubjectInput">메일 제목</label>
             <input id="stockSubjectInput" type="text" />
@@ -12220,7 +12247,7 @@ HTML = r"""<!doctype html>
             <textarea id="stockBodyInput"></textarea>
           </div>
           <div class="cs-case-list">
-            <div class="cs-case-head">최근 입고/품절 발송 이력</div>
+            <div class="cs-case-head" id="stockMailHistoryTitle">최근 입고/품절 발송 이력</div>
             <div id="stockMailHistoryList"></div>
           </div>
         </div>
@@ -12503,6 +12530,18 @@ HTML = r"""<!doctype html>
       <div class="safe-number-dialog-actions">
         <button class="btn" id="importCorrectionCancel" type="button">취소</button>
         <button class="btn primary" id="importCorrectionApply" type="button">수정 후 적용</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="safe-number-dialog-backdrop" id="mailPreviewDialog" aria-hidden="true">
+    <div class="safe-number-dialog" role="dialog" aria-modal="true" aria-labelledby="mailPreviewTitle">
+      <h2 class="safe-number-dialog-title" id="mailPreviewTitle">메일 발송 미리보기</h2>
+      <p class="safe-number-dialog-description" id="mailPreviewDescription">발송 전 수신처와 본문을 확인해주세요.</p>
+      <pre class="safe-number-dialog-preview" id="mailPreviewBody"></pre>
+      <div class="safe-number-dialog-actions">
+        <button class="btn" id="mailPreviewCancel" type="button">취소</button>
+        <button class="btn primary" id="mailPreviewConfirm" type="button">확인 후 발송</button>
       </div>
     </div>
   </div>
@@ -12942,9 +12981,25 @@ HTML = r"""<!doctype html>
     const stockOutboundBlockedInput = document.querySelector("#stockOutboundBlockedInput");
     const stockRestockScheduleInput = document.querySelector("#stockRestockScheduleInput");
     const stockSoldoutNoteInput = document.querySelector("#stockSoldoutNoteInput");
+    const generalNoticeFields = document.querySelector("#generalNoticeFields");
+    const generalNoticeKindInput = document.querySelector("#generalNoticeKindInput");
+    const generalNoticeDateInput = document.querySelector("#generalNoticeDateInput");
+    const generalNoticeAttachmentDropzone = document.querySelector("#generalNoticeAttachmentDropzone");
+    const generalNoticeAttachmentDropMain = document.querySelector("#generalNoticeAttachmentDropMain");
+    const generalNoticeAttachmentChoose = document.querySelector("#generalNoticeAttachmentChoose");
+    const generalNoticeAttachmentInput = document.querySelector("#generalNoticeAttachmentInput");
+    const generalNoticeAttachmentSummary = document.querySelector("#generalNoticeAttachmentSummary");
+    const generalNoticeAttachmentList = document.querySelector("#generalNoticeAttachmentList");
     const stockSubjectInput = document.querySelector("#stockSubjectInput");
     const stockBodyInput = document.querySelector("#stockBodyInput");
+    const stockMailHistoryTitle = document.querySelector("#stockMailHistoryTitle");
     const stockMailHistoryList = document.querySelector("#stockMailHistoryList");
+    const mailPreviewDialog = document.querySelector("#mailPreviewDialog");
+    const mailPreviewTitle = document.querySelector("#mailPreviewTitle");
+    const mailPreviewDescription = document.querySelector("#mailPreviewDescription");
+    const mailPreviewBody = document.querySelector("#mailPreviewBody");
+    const mailPreviewCancel = document.querySelector("#mailPreviewCancel");
+    const mailPreviewConfirm = document.querySelector("#mailPreviewConfirm");
     const ledgerCsPopupClose = document.querySelector("#ledgerCsPopupClose");
     const managementManualClose = document.querySelector("#managementManualClose");
     const ledgerSearchInput = document.querySelector("#ledgerSearchInput");
@@ -15284,6 +15339,12 @@ HTML = r"""<!doctype html>
       if (stockBodyInput) stockBodyInput.value = defaultStockNoticeBody();
     }
 
+    function refreshGeneralNoticeBody({ overwrite = true } = {}) {
+      if (!stockBodyInput) return;
+      if (!overwrite && stockBodyInput.value.trim()) return;
+      stockBodyInput.value = defaultGeneralNoticeBody();
+    }
+
     function defaultStockContactInfo() {
       return {
         managerName: cachedMailSettings.stock_manager_name || currentUser.display_name || currentUser.username || "",
@@ -15322,6 +15383,31 @@ HTML = r"""<!doctype html>
 ▶특이사항 : ${value(stockSoldoutNoteInput)}
 
 업무 진행 시 참고 부탁드리며, 확인이 필요한 내용이 있으시면 회신 부탁드립니다.
+
+감사합니다.
+
+(주)소일브릿지
+담당자: ${contact.managerName}
+연락처: ${contact.managerPhone}
+이메일: ${contact.senderEmail}`;
+    }
+
+    function defaultGeneralNoticeBody() {
+      const contact = defaultStockContactInfo();
+      const kind = generalNoticeKindInput?.value || "공지사항";
+      const noticeDate = generalNoticeDateInput?.value || todayString();
+      return `안녕하세요. (주)소일브릿지 입니다.
+
+${kind} 안내드립니다.
+
+■ 기준일자: ${noticeDate}
+
+■ 안내 내용
+
+
+
+첨부자료가 있는 경우 함께 확인 부탁드립니다.
+확인이 필요한 내용이 있으시면 회신 부탁드립니다.
 
 감사합니다.
 
@@ -16559,6 +16645,51 @@ HTML = r"""<!doctype html>
       updateCsAttachmentSummary();
     }
 
+    function selectedGeneralNoticeAttachments() {
+      return Array.from(generalNoticeAttachmentInput?.files || []);
+    }
+
+    function updateGeneralNoticeAttachmentSummary() {
+      if (!generalNoticeAttachmentInput || !generalNoticeAttachmentSummary) return;
+      const files = selectedGeneralNoticeAttachments();
+      if (!files.length) {
+        generalNoticeAttachmentSummary.textContent = "첨부자료 없음";
+        if (generalNoticeAttachmentDropMain) generalNoticeAttachmentDropMain.textContent = "자료 파일을 드래그하거나 파일 선택 버튼을 눌러주세요.";
+        if (generalNoticeAttachmentList) generalNoticeAttachmentList.innerHTML = "";
+        return;
+      }
+      const totalSize = files.reduce((sum, file) => sum + file.size, 0);
+      const sizeMb = Math.ceil((totalSize / 1024 / 1024) * 10) / 10;
+      if (generalNoticeAttachmentDropMain) generalNoticeAttachmentDropMain.textContent = files.length === 1 ? files[0].name : `${files.length}개 파일 선택됨`;
+      generalNoticeAttachmentSummary.textContent = `${files.length}개 첨부 선택 / 약 ${sizeMb}MB`;
+      if (generalNoticeAttachmentList) {
+        generalNoticeAttachmentList.innerHTML = files.map((file, index) => {
+          const sizeLabel = file.size >= 1024 * 1024
+            ? `${Math.ceil((file.size / 1024 / 1024) * 10) / 10}MB`
+            : `${Math.max(1, Math.ceil(file.size / 1024))}KB`;
+          return `
+            <div class="cs-attachment-item">
+              <span class="cs-attachment-name" title="${escapeHtml(file.name)}">${escapeHtml(file.name)}</span>
+              <span class="cs-attachment-size">${escapeHtml(sizeLabel)}</span>
+              <button class="cs-attachment-remove" type="button" data-general-notice-attachment-remove="${index}">삭제</button>
+            </div>
+          `;
+        }).join("");
+      }
+    }
+
+    function removeGeneralNoticeAttachment(indexToRemove) {
+      if (!generalNoticeAttachmentInput) return;
+      const files = selectedGeneralNoticeAttachments();
+      if (indexToRemove < 0 || indexToRemove >= files.length) return;
+      const dataTransfer = new DataTransfer();
+      files.forEach((file, index) => {
+        if (index !== indexToRemove) dataTransfer.items.add(file);
+      });
+      generalNoticeAttachmentInput.files = dataTransfer.files;
+      updateGeneralNoticeAttachmentSummary();
+    }
+
     function appendCsMailPayload(formData, payload) {
       formData.append("payload", JSON.stringify(payload));
       Array.from(csAttachmentInput?.files || []).forEach((file, index) => {
@@ -16567,11 +16698,74 @@ HTML = r"""<!doctype html>
       return formData;
     }
 
+    function appendGeneralNoticeMailPayload(formData, payload) {
+      formData.append("payload", JSON.stringify(payload));
+      selectedGeneralNoticeAttachments().forEach((file, index) => {
+        formData.append(`cs_attachment_general_${index + 1}`, file, file.name);
+      });
+      return formData;
+    }
+
+    function mailPreviewAttachmentNames(type = currentMode) {
+      const files = type === "mail-general" ? selectedGeneralNoticeAttachments() : Array.from(csAttachmentInput?.files || []);
+      return files.map((file) => file.name);
+    }
+
+    function requestMailPreview({ title, description, payload, recipients = [], attachments = [] }) {
+      if (!mailPreviewDialog || !mailPreviewBody) return Promise.resolve(true);
+      const recipientLines = recipients.length
+        ? recipients.slice(0, 30).map((item, index) => `${index + 1}. ${item.vendor_name || "업체명 없음"} / ${item.email || "메일 없음"}`)
+        : [`1. ${payload.recipient_email || "수신 메일 없음"}`];
+      const hiddenCount = recipients.length > 30 ? `\n... 외 ${recipients.length - 30}곳` : "";
+      const attachmentText = attachments.length ? attachments.join("\n") : "첨부 없음";
+      if (mailPreviewTitle) mailPreviewTitle.textContent = title || "메일 발송 미리보기";
+      if (mailPreviewDescription) mailPreviewDescription.textContent = description || "발송 전 내용을 확인해주세요.";
+      mailPreviewBody.textContent = [
+        `발송 방식: ${payload.bcc_emails?.length ? "숨은참조(BCC) 단체 발송" : "개별 발송"}`,
+        `수신 대상: ${recipients.length || (payload.recipient_email ? 1 : 0)}곳`,
+        "",
+        "[수신처]",
+        recipientLines.join("\n") + hiddenCount,
+        "",
+        `[제목]\n${payload.subject || ""}`,
+        "",
+        `[첨부]\n${attachmentText}`,
+        "",
+        `[본문]\n${payload.body || ""}`,
+      ].join("\n");
+      mailPreviewDialog.classList.add("open");
+      mailPreviewDialog.setAttribute("aria-hidden", "false");
+      return new Promise((resolve) => {
+        const finish = (value) => {
+          mailPreviewDialog.classList.remove("open");
+          mailPreviewDialog.setAttribute("aria-hidden", "true");
+          mailPreviewCancel?.removeEventListener("click", onCancel);
+          mailPreviewConfirm?.removeEventListener("click", onConfirm);
+          resolve(value);
+        };
+        const onCancel = () => finish(false);
+        const onConfirm = () => finish(true);
+        mailPreviewCancel?.addEventListener("click", onCancel, { once: true });
+        mailPreviewConfirm?.addEventListener("click", onConfirm, { once: true });
+      });
+    }
+
     async function sendCurrentCsMail() {
       refreshCsBody();
       const payload = collectCsPayload();
       if (!payload.recipient_email || !payload.subject || !payload.body) {
         throw new Error("받는 업체 메일, 제목, 요청 내용을 입력해주세요.");
+      }
+      const proceed = await requestMailPreview({
+        title: "CS요청 메일 미리보기",
+        description: "업체에 보낼 CS 요청 내용을 확인한 뒤 발송해주세요.",
+        payload,
+        recipients: [{ vendor_name: payload.vendor_name, email: payload.recipient_email }],
+        attachments: mailPreviewAttachmentNames("cs"),
+      });
+      if (!proceed) {
+        notice.textContent = "메일 발송을 취소했습니다.";
+        return;
       }
       const response = await fetch("/api/cs-mail", {
         method: "POST",
@@ -16609,7 +16803,9 @@ HTML = r"""<!doctype html>
       const contact = defaultStockContactInfo();
       const selectedType = targetRecipients[0]?.vendor_type || stockVendorTypeSelect?.value || "purchase";
       const selectedLabel = selectedType === "sales" ? "매출처" : "매입처";
+      const mailType = currentMode === "mail-general" ? "general_notice" : "stock_notice";
       return {
+        mail_type: mailType,
         vendor_type: selectedType,
         recipient_email: contact.senderEmail || "",
         bcc_emails: bccEmails,
@@ -16626,17 +16822,35 @@ HTML = r"""<!doctype html>
     }
 
     async function sendCurrentStockNoticeMail() {
-      refreshStockNoticeBody();
+      if (currentMode === "mail-stock") refreshStockNoticeBody();
+      if (currentMode === "mail-general") refreshGeneralNoticeBody({ overwrite: false });
       const recipients = collectStockNoticeRecipients();
       const basePayload = collectStockNoticePayload(null, recipients);
       if (!recipients.length || !basePayload.subject || !basePayload.body) {
         throw new Error("받는 업체를 선택하고 제목, 공지 내용을 입력해주세요.");
       }
-      const response = await fetch("/api/mail-send", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(basePayload),
+      const isGeneral = currentMode === "mail-general";
+      const proceed = await requestMailPreview({
+        title: isGeneral ? "공지/안내자료 메일 미리보기" : "입고 및 품절 공지 미리보기",
+        description: "업체에 발송될 제목, 본문, 수신처를 확인해주세요.",
+        payload: basePayload,
+        recipients,
+        attachments: isGeneral ? mailPreviewAttachmentNames("mail-general") : [],
       });
+      if (!proceed) {
+        notice.textContent = "메일 발송을 취소했습니다.";
+        return;
+      }
+      const response = isGeneral && selectedGeneralNoticeAttachments().length
+        ? await fetch("/api/mail-send", {
+          method: "POST",
+          body: appendGeneralNoticeMailPayload(new FormData(), basePayload),
+        })
+        : await fetch("/api/mail-send", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(basePayload),
+        });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "공지 메일 발송에 실패했습니다.");
       if (Array.isArray(data.logs)) renderStockMailHistory(data.logs);
@@ -16729,7 +16943,8 @@ HTML = r"""<!doctype html>
 
     async function loadStockMailHistory() {
       if (!stockMailHistoryList) return;
-      const response = await fetch("/api/vendor-mail-send-logs?mail_type=stock_notice&limit=20");
+      const mailType = currentMode === "mail-general" ? "general_notice" : "stock_notice";
+      const response = await fetch(`/api/vendor-mail-send-logs?mail_type=${encodeURIComponent(mailType)}&limit=20`);
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "발송 이력을 불러오지 못했습니다.");
       renderStockMailHistory(data.logs || []);
@@ -22774,6 +22989,8 @@ HTML = r"""<!doctype html>
       setSelectedStockVendor(null);
       if (stockVendorTree) stockVendorTree.hidden = true;
       if (stockNoticeDateInput) stockNoticeDateInput.value = todayString();
+      if (generalNoticeDateInput) generalNoticeDateInput.value = todayString();
+      if (generalNoticeKindInput) generalNoticeKindInput.value = "공지사항";
       [
         stockInboundProductInput,
         stockInboundScheduleInput,
@@ -22787,6 +23004,8 @@ HTML = r"""<!doctype html>
         if (input) input.value = "";
       });
       if (stockSubjectInput) stockSubjectInput.value = "입고 및 품절 공지";
+      if (generalNoticeAttachmentInput) generalNoticeAttachmentInput.value = "";
+      updateGeneralNoticeAttachmentSummary();
       refreshStockNoticeBody();
       activeCsCaseId = "";
     }
@@ -24781,6 +25000,7 @@ HTML = r"""<!doctype html>
     const mailPopupTitles = {
       cs: "CS 요청",
       stock: "입고 및 품절 공지",
+      general: "공지/안내자료 발송",
       purchaseContacts: "매입처 관리",
       salesContacts: "매출처 관리",
     };
@@ -24795,7 +25015,7 @@ HTML = r"""<!doctype html>
         return;
       }
       const title = mailPopupTitles[type] || "거래처 업무관련";
-      openModal(type === "stock" ? "mail-stock" : "cs");
+      openModal(type === "stock" ? "mail-stock" : (type === "general" ? "mail-general" : "cs"));
       modalTitle.textContent = title;
     }
 
@@ -24962,13 +25182,73 @@ HTML = r"""<!doctype html>
         vehicleFields.style.display = "none";
         csFields.style.display = "none";
         stockNoticeFields.style.display = "block";
+        if (generalNoticeFields) generalNoticeFields.hidden = true;
+        [
+          stockNoticeDateInput,
+          stockInboundProductInput,
+          stockInboundScheduleInput,
+          stockOutboundAvailableInput,
+          stockInboundNoteInput,
+          stockSoldoutProductInput,
+          stockOutboundBlockedInput,
+          stockRestockScheduleInput,
+          stockSoldoutNoteInput,
+        ].forEach((input) => {
+          const field = input?.closest(".text-field");
+          if (field) field.style.display = "block";
+        });
+        if (stockMailHistoryTitle) stockMailHistoryTitle.textContent = "최근 입고/품절 발송 이력";
         ledgerFields.style.display = "none";
         managementFields.style.display = "none";
         messagePlaceholder.style.display = "none";
         fileInput.required = false;
         templateInput.required = false;
+        if (generalNoticeAttachmentInput) generalNoticeAttachmentInput.value = "";
+        updateGeneralNoticeAttachmentSummary();
         loadMailSettings().then(refreshStockNoticeBody);
         refreshStockNoticeBody();
+        loadVendorContacts();
+        loadStockMailHistory().catch((error) => {
+          console.warn(error);
+          renderStockMailHistory([]);
+        });
+      } else if (mode === "mail-general") {
+        modalTitle.textContent = "공지/안내자료 발송";
+        submitButton.textContent = "미리보기 후 발송";
+        submitButton.className = "btn primary";
+        deliveryOptions.style.display = "none";
+        templateUpload.style.display = "none";
+        vehicleFields.style.display = "none";
+        csFields.style.display = "none";
+        stockNoticeFields.style.display = "block";
+        if (generalNoticeFields) generalNoticeFields.hidden = false;
+        [
+          stockNoticeDateInput,
+          stockInboundProductInput,
+          stockInboundScheduleInput,
+          stockOutboundAvailableInput,
+          stockInboundNoteInput,
+          stockSoldoutProductInput,
+          stockOutboundBlockedInput,
+          stockRestockScheduleInput,
+          stockSoldoutNoteInput,
+        ].forEach((input) => {
+          const field = input?.closest(".text-field");
+          if (field) field.style.display = "none";
+        });
+        if (stockMailHistoryTitle) stockMailHistoryTitle.textContent = "최근 공지/안내자료 발송 이력";
+        ledgerFields.style.display = "none";
+        managementFields.style.display = "none";
+        messagePlaceholder.style.display = "none";
+        fileInput.required = false;
+        templateInput.required = false;
+        if (generalNoticeDateInput) generalNoticeDateInput.value = todayString();
+        if (generalNoticeKindInput) generalNoticeKindInput.value = "공지사항";
+        if (generalNoticeAttachmentInput) generalNoticeAttachmentInput.value = "";
+        updateGeneralNoticeAttachmentSummary();
+        if (stockSubjectInput) stockSubjectInput.value = "[소일브릿지] 공지사항 및 안내자료";
+        loadMailSettings().then(() => refreshGeneralNoticeBody());
+        refreshGeneralNoticeBody();
         loadVendorContacts();
         loadStockMailHistory().catch((error) => {
           console.warn(error);
@@ -26334,6 +26614,7 @@ HTML = r"""<!doctype html>
       button.addEventListener("click", () => openMailMessagePopup(button.dataset.mailPopup));
     });
     csAttachmentInput?.addEventListener("change", updateCsAttachmentSummary);
+    generalNoticeAttachmentInput?.addEventListener("change", updateGeneralNoticeAttachmentSummary);
     document.querySelector("#adminNavToggle")?.addEventListener("click", () => {
       document.querySelector("#adminNavGroup")?.classList.toggle("open");
     });
@@ -26669,10 +26950,16 @@ HTML = r"""<!doctype html>
       "업무 파일을 선택해주세요."
     );
     setupDropzone(csAttachmentDropzone, csAttachmentInput, csAttachmentDropMain, "파일을 드래그하거나 파일 선택 버튼을 눌러주세요.");
+    setupDropzone(generalNoticeAttachmentDropzone, generalNoticeAttachmentInput, generalNoticeAttachmentDropMain, "자료 파일을 드래그하거나 파일 선택 버튼을 눌러주세요.");
     csAttachmentChoose?.addEventListener("click", (event) => {
       event.preventDefault();
       event.stopPropagation();
       csAttachmentInput?.click();
+    });
+    generalNoticeAttachmentChoose?.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      generalNoticeAttachmentInput?.click();
     });
     csAttachmentList?.addEventListener("click", (event) => {
       const button = event.target.closest("[data-cs-attachment-remove]");
@@ -26680,6 +26967,17 @@ HTML = r"""<!doctype html>
       event.preventDefault();
       event.stopPropagation();
       removeCsAttachment(Number(button.dataset.csAttachmentRemove));
+    });
+    generalNoticeAttachmentList?.addEventListener("click", (event) => {
+      const button = event.target.closest("[data-general-notice-attachment-remove]");
+      if (!button) return;
+      event.preventDefault();
+      event.stopPropagation();
+      removeGeneralNoticeAttachment(Number(button.dataset.generalNoticeAttachmentRemove));
+    });
+    [generalNoticeKindInput, generalNoticeDateInput].forEach((input) => {
+      input?.addEventListener("input", () => refreshGeneralNoticeBody({ overwrite: false }));
+      input?.addEventListener("change", () => refreshGeneralNoticeBody({ overwrite: false }));
     });
     document.querySelector("#addProductRow").addEventListener("click", () => addProductRow());
     noticeSaveButton.addEventListener("click", saveNoticeTemplate);
@@ -26743,7 +27041,7 @@ HTML = r"""<!doctype html>
     sendCsMailButton?.addEventListener("click", async () => {
       if (!can("mail_send")) return;
       sendCsMailButton.disabled = true;
-      notice.textContent = "CS요청 메일을 발송하는 중입니다.";
+      notice.textContent = "CS요청 메일 미리보기를 준비하는 중입니다.";
       try {
         await sendCurrentCsMail();
       } catch (error) {
@@ -43792,25 +44090,33 @@ class WorkhubHandler(BaseHTTPRequestHandler):
             if self.path == "/api/mail-send":
                 if not self.require_permission(user, "mail_send", "메일 발송"):
                     return
-                length = int(self.headers.get("Content-Length", "0"))
-                payload = json.loads(self.rfile.read(length).decode("utf-8"))
+                attachments: list[dict[str, object]] = []
+                if self.headers.get("Content-Type", "").lower().startswith("multipart/form-data"):
+                    fields = parse_multipart(self.headers, self.rfile)
+                    raw_payload = fields.get("payload", "{}")
+                    payload = json.loads(str(raw_payload or "{}"))
+                    attachments = collect_mail_attachments(fields)
+                else:
+                    length = int(self.headers.get("Content-Length", "0"))
+                    payload = json.loads(self.rfile.read(length).decode("utf-8"))
                 sent_by = str(user.get("username") or user.get("name") or "")
+                mail_type = str(payload.get("mail_type") or "stock_notice").strip() or "stock_notice"
                 try:
-                    result = send_general_mail(payload)
+                    result = send_general_mail(payload, attachments=attachments)
                 except Exception as exc:  # noqa: BLE001
                     failed_payload = {**payload, "batch_count": 1}
-                    log = save_vendor_mail_send_log(failed_payload, "failed", error=str(exc), sent_by=sent_by)
+                    log = save_vendor_mail_send_log(failed_payload, "failed", error=str(exc), sent_by=sent_by, mail_type=mail_type)
                     self.send_json(
                         {
                             "error": str(exc),
                             "log": log,
-                            "logs": list_vendor_mail_send_logs(mail_type="stock_notice", limit=20),
+                            "logs": list_vendor_mail_send_logs(mail_type=mail_type, limit=20),
                         },
                         status=400,
                     )
                     return
                 success_payload = {**payload, "batch_count": result.get("batch_count", 1)}
-                log = save_vendor_mail_send_log(success_payload, "sent", sent_by=sent_by)
+                log = save_vendor_mail_send_log(success_payload, "sent", sent_by=sent_by, mail_type=mail_type)
                 batch_count = int(result.get("batch_count", 1))
                 recipient_count = int(result.get("recipient_count", log.get("recipient_count", 0)))
                 self.send_json({
@@ -43819,7 +44125,7 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                     "recipient_count": recipient_count,
                     "batch_size": int(result.get("batch_size", 0)),
                     "log": log,
-                    "logs": list_vendor_mail_send_logs(mail_type="stock_notice", limit=20),
+                    "logs": list_vendor_mail_send_logs(mail_type=mail_type, limit=20),
                 })
                 return
 
