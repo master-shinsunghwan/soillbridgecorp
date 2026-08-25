@@ -192,6 +192,34 @@ def expand_product_area(worksheet, wanted_rows: int) -> None:
         worksheet.merge_cells(start_row=row, start_column=10, end_row=row, end_column=13)
 
 
+def normalize_product_area_merges(worksheet, product_rows: int) -> None:
+    """Keep each product row independent from stale template merges."""
+    product_end = PRODUCT_START_ROW + product_rows - 1
+    product_columns = ((3, 6), (7, 9), (10, 13))
+
+    for merged_range in list(worksheet.merged_cells.ranges):
+        intersects_rows = (
+            merged_range.max_row >= PRODUCT_START_ROW
+            and merged_range.min_row <= product_end
+        )
+        intersects_columns = any(
+            merged_range.max_col >= start_col and merged_range.min_col <= end_col
+            for start_col, end_col in product_columns
+        )
+        if intersects_rows and intersects_columns:
+            worksheet.unmerge_cells(str(merged_range))
+
+    remove_stale_merged_cells(worksheet, PRODUCT_START_ROW, product_end)
+    for row in range(PRODUCT_START_ROW, product_end + 1):
+        for start_col, end_col in product_columns:
+            worksheet.merge_cells(
+                start_row=row,
+                start_column=start_col,
+                end_row=row,
+                end_column=end_col,
+            )
+
+
 def clear_product_rows(worksheet, product_rows: int) -> None:
     for row in range(PRODUCT_START_ROW, PRODUCT_START_ROW + product_rows):
         worksheet.cell(row, NO_COL).value = None
@@ -312,6 +340,7 @@ def generate_vehicle_receipt(
 
     expand_product_area(worksheet, product_rows)
     shrink_product_area(worksheet, product_rows)
+    normalize_product_area_merges(worksheet, product_rows)
     clear_product_rows(worksheet, product_rows)
 
     for row in range(1, 6):

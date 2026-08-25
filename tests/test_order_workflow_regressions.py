@@ -324,6 +324,34 @@ class OrderWorkflowRegressionTests(unittest.TestCase):
                             f"A{row} should not have a right border",
                         )
 
+    def test_vehicle_receipt_supports_product_rows_crossing_stale_template_merge(self) -> None:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+            temp_dir = Path(tmp)
+            module = load_module(ROOT / "scripts" / "vehicle_receipt_generator.py")
+            items = [
+                {
+                    "product_name": f"테스트 제품 {index}",
+                    "quantity": "6",
+                    "pack_quantity": "6",
+                }
+                for index in range(1, 23)
+            ]
+
+            output_path = module.generate_vehicle_receipt(
+                supplier="테스트 거래처",
+                items=items,
+                delivery_place="테스트 납품장소",
+                manager="테스트 담당자",
+                request_note="총 22박스",
+                output_dir=temp_dir,
+                template_path=ROOT / "templates" / "vehicle_receipt_template.xlsx",
+                output_date=date(2026, 8, 25),
+            )
+
+            worksheet = load_workbook(output_path).active
+            self.assertEqual(worksheet["J29"].value, "1박스\n(입수량 : 6EA)")
+            self.assertIn("J29:M29", {str(cell_range) for cell_range in worksheet.merged_cells.ranges})
+
 
 if __name__ == "__main__":
     unittest.main()
