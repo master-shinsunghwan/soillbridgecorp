@@ -25358,6 +25358,8 @@ ${kind} 안내드립니다.
     }
 
     function setActiveNav(mode) {
+      const subtitle = document.querySelector(".subtitle");
+      if (mode !== "catalog" && subtitle.dataset.beforeCatalog) {subtitle.textContent = subtitle.dataset.beforeCatalog; delete subtitle.dataset.beforeCatalog;}
       document.querySelector("#catalogWorkspace").style.display = mode === "catalog" ? "block" : "none";
       document.querySelectorAll(".nav-item, .nav-subitem").forEach((item) => item.classList.remove("active"));
       if (mode === "catalog") {
@@ -25467,7 +25469,9 @@ ${kind} 안내드립니다.
       setActiveNav(mode);
       if (mode === "catalog") {
         setPageTitle("상품 제안서 · 품절 관리");
-        document.querySelector(".subtitle").textContent = "상품 상태와 재입고 일정을 관리하고 거래처 제안서에 반영합니다.";
+        const subtitle = document.querySelector(".subtitle");
+        if (!subtitle.dataset.beforeCatalog) subtitle.dataset.beforeCatalog = subtitle.textContent;
+        subtitle.textContent = "상품 상태와 재입고 일정을 관리하고 거래처 제안서에 반영합니다.";
         const frame = document.querySelector("#catalogFrame");
         if (!frame.getAttribute("src")) frame.src = "/catalog-editor";
       } else if (showManagement) {
@@ -44748,7 +44752,7 @@ class WorkhubHandler(BaseHTTPRequestHandler):
         self.send_header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
         self.send_header("Pragma", "no-cache")
         self.send_header("X-Content-Type-Options", "nosniff")
-        self.send_header("X-Frame-Options", "DENY")
+        self.send_header("X-Frame-Options", "SAMEORIGIN" if self.path == "/catalog-editor" else "DENY")
         self.send_header("Referrer-Policy", "same-origin")
         self.send_header("Content-Length", str(len(data)))
         self.end_headers()
