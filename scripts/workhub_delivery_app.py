@@ -37,6 +37,8 @@ from openpyxl import Workbook, load_workbook
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 
+import workhub_catalog
+
 from delivery_text_summary import build_summary_payload
 from invoice_number_exporter import export_invoice_numbers, extract_invoice_rows
 from lotte_order_form_converter import convert_lotte_order_form
@@ -159,6 +161,7 @@ DEFAULT_LOCAL_BOOTSTRAP_USERS = (
 )
 PERMISSION_DEFINITIONS = (
     ("ledger_delete", "대장 삭제", "통합관리대장/CS처리대장 선택 삭제"),
+    ("catalog_manage", "상품 제안서 관리", "상품 품절 상태와 재입고 일정 관리"),
     ("notice_manage", "공지사항 관리", "공지사항 작성/수정/삭제"),
     ("ledger_edit", "대장 수정", "통합관리대장/CS처리대장 내용 저장"),
     ("excel_upload", "엑셀 업로드", "업로드/대량 등록 기능 사용"),
@@ -191,6 +194,7 @@ DEFAULT_ROLE_PERMISSIONS = {
     "sub_admin": (
         "ledger_delete",
         "notice_manage",
+        "catalog_manage",
         "ledger_edit",
         "excel_upload",
         "excel_download",
@@ -10787,6 +10791,7 @@ HTML = r"""<!doctype html>
         </button>
         <div class="nav-submenu">
           <button class="nav-subitem active" type="button" data-view="dashboard" data-company-tab="notice">공지사항</button>
+          <a class="nav-subitem" href="/catalog-admin">상품 제안서 상태 관리</a>
           <button class="nav-subitem" id="noticeInputOpen" type="button">공지사항 입력</button>
           <button class="nav-subitem" type="button" data-view="dashboard" data-company-tab="calendar">캘린더</button>
           <button class="nav-subitem" type="button" data-view="dashboard" data-company-tab="rules">사규/가이드</button>
@@ -42706,6 +42711,9 @@ class WorkhubHandler(BaseHTTPRequestHandler):
         return False
 
     def do_GET(self) -> None:
+        if self.path == "/api/catalog-public-issues":
+            self.send_json(workhub_catalog.load(CONFIG_DIR))
+            return
         if self.path.startswith("/static/"):
             relative = unquote(self.path.removeprefix("/static/"))
             target = (STATIC_DIR / relative).resolve()
@@ -42762,6 +42770,15 @@ class WorkhubHandler(BaseHTTPRequestHandler):
 
         if self.path == "/" or self.path.startswith("/?"):
             self.send_bytes(render_app_html(user).encode("utf-8"), "text/html; charset=utf-8")
+            return
+
+        if self.path in ("/catalog-admin", "/api/catalog-status"):
+            if not self.require_permission(user, "catalog_manage", "상품 제안서 관리"):
+                return
+            if self.path == "/catalog-admin":
+                self.send_bytes(workhub_catalog.HTML.encode("utf-8"), "text/html; charset=utf-8")
+            else:
+                self.send_json({"products": workhub_catalog.products(), "issues": workhub_catalog.load(CONFIG_DIR)})
             return
 
         if self.path == "/api/users":
@@ -43419,6 +43436,23 @@ class WorkhubHandler(BaseHTTPRequestHandler):
             user = self.current_user()
             if not user:
                 self.send_json({"error": "로그인이 필요합니다."}, status=401)
+                return
+
+            if self.path == "/api/catalog-status":
+                if not self.require_permission(user, "catalog_manage", "상품 제안서 관리"):
+                    return
+                origin = self.headers.get("Origin", "")
+                if (self.headers.get("X-Workhub-Catalog") != "1"
+                    or self.headers.get("Content-Type", "").split(";")[0] != "application/json"
+                    or (origin and urlsplit(origin).netloc != self.headers.get("Host", ""))):
+                    self.send_json({"error": "허용되지 않은 요청입니다."}, status=403)
+                    return
+                length = int(self.headers.get("Content-Length", "0"))
+                if not 0 < length <= 16384:
+                    self.send_json({"error": "입력 크기가 올바르지 않습니다."}, status=400)
+                    return
+                payload = json.loads(self.rfile.read(length).decode("utf-8"))
+                self.send_json({"issues": workhub_catalog.save(CONFIG_DIR, payload)})
                 return
 
             if self.path == "/api/sales-automation-settings":
