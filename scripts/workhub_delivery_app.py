@@ -10800,9 +10800,9 @@ HTML = r"""<!doctype html>
         </div>
       </div>
       <div class="nav-group" id="catalogNavGroup">
-        <a class="nav-item" href="/catalog-admin" style="text-decoration:none" data-nav-tone="home">
+        <button class="nav-item" id="catalogNavToggle" type="button" data-view="catalog" data-nav-tone="home">
           <span class="nav-label"><i data-lucide="package"></i> <span>상품 제안서 · 품절 관리</span></span>
-        </a>
+        </button>
       </div>
       __SALES_REPORT_NAV__
       __IMPORT_COST_NAV__
@@ -10898,6 +10898,7 @@ HTML = r"""<!doctype html>
         </div>
       </header>
 
+      <section id="catalogWorkspace" style="display:none;height:calc(100vh - 100px);min-height:500px"><iframe id="catalogFrame" title="상품 제안서 · 품절 관리" style="width:100%;height:100%;border:0" ></iframe></section>
       <section class="content company-portal notice-calendar-mode" id="dashboardContent">
         <div class="company-tabs">
           <button class="company-tab active" type="button" data-company-tab="notice">공지사항</button>
@@ -25357,7 +25358,12 @@ ${kind} 안내드립니다.
     }
 
     function setActiveNav(mode) {
+      document.querySelector("#catalogWorkspace").style.display = mode === "catalog" ? "block" : "none";
       document.querySelectorAll(".nav-item, .nav-subitem").forEach((item) => item.classList.remove("active"));
+      if (mode === "catalog") {
+        document.querySelector("#catalogNavToggle")?.classList.add("active");
+        return;
+      }
       if (mode === "crm") {
         document.querySelector("#crmNavToggle")?.classList.add("active");
         document.querySelector("#crmNavGroup")?.classList.add("open");
@@ -25422,6 +25428,7 @@ ${kind} 안내드립니다.
       if (mode === "crm" && !can("crm_view")) mode = "dashboard";
       if (mode === "hermes" && (!hermesWorkspace || !can("hermes_use"))) mode = "dashboard";
       if (mode === "importCost" && (!importCostWorkspace || !canViewImportCostProgram())) mode = "dashboard";
+      if (mode === "catalog" && !can("catalog_manage")) mode = "dashboard";
       currentMode = mode;
       updateTopbarSearchPlaceholder(mode);
       const showImport = mode === "import";
@@ -25458,7 +25465,12 @@ ${kind} 안내드립니다.
       if (backupWorkspace) backupWorkspace.classList.toggle("active", showBackup);
       if (systemUpdateWorkspace) systemUpdateWorkspace.classList.toggle("active", showSystemUpdate);
       setActiveNav(mode);
-      if (showManagement) {
+      if (mode === "catalog") {
+        setPageTitle("상품 제안서 · 품절 관리");
+        document.querySelector(".subtitle").textContent = "상품 상태와 재입고 일정을 관리하고 거래처 제안서에 반영합니다.";
+        const frame = document.querySelector("#catalogFrame");
+        if (!frame.getAttribute("src")) frame.src = "/catalog-editor";
+      } else if (showManagement) {
         setPageTitle("통합관리대장 관리");
         managementSearchInput.value = "";
         managementPageSize.value = "500";
@@ -27590,8 +27602,8 @@ ${kind} 안내드립니다.
       URL.revokeObjectURL(url);
     });
 
-    const initialView = new URLSearchParams(window.location.search).get("view");
-    showWorkspace(["management", "ledger", "crm", "hermes", "import", "importCost", "fileLibrary", "leave", "userAdmin", "salesReport", "backup", "systemUpdate"].includes(initialView) ? initialView : "dashboard");
+    const initialView = location.pathname === "/catalog-admin" ? "catalog" : new URLSearchParams(window.location.search).get("view");
+    showWorkspace(["catalog", "management", "ledger", "crm", "hermes", "import", "importCost", "fileLibrary", "leave", "userAdmin", "salesReport", "backup", "systemUpdate"].includes(initialView) ? initialView : "dashboard");
   </script>
 </body>
 </html>
@@ -42777,10 +42789,12 @@ class WorkhubHandler(BaseHTTPRequestHandler):
             self.send_bytes(render_app_html(user).encode("utf-8"), "text/html; charset=utf-8")
             return
 
-        if self.path in ("/catalog-admin", "/api/catalog-status"):
+        if self.path in ("/catalog-admin", "/catalog-editor", "/api/catalog-status"):
             if not self.require_permission(user, "catalog_manage", "상품 제안서 관리"):
                 return
             if self.path == "/catalog-admin":
+                self.send_bytes(render_app_html(user).encode("utf-8"), "text/html; charset=utf-8")
+            elif self.path == "/catalog-editor":
                 self.send_bytes(workhub_catalog.HTML.encode("utf-8"), "text/html; charset=utf-8")
             else:
                 self.send_json({"products": workhub_catalog.products(), "issues": workhub_catalog.load(CONFIG_DIR)})
