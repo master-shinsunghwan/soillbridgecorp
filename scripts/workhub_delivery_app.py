@@ -10791,13 +10791,18 @@ HTML = r"""<!doctype html>
         </button>
         <div class="nav-submenu">
           <button class="nav-subitem active" type="button" data-view="dashboard" data-company-tab="notice">공지사항</button>
-          <a class="nav-subitem" href="/catalog-admin">상품 제안서 상태 관리</a>
+
           <button class="nav-subitem" id="noticeInputOpen" type="button">공지사항 입력</button>
           <button class="nav-subitem" type="button" data-view="dashboard" data-company-tab="calendar">캘린더</button>
           <button class="nav-subitem" type="button" data-view="dashboard" data-company-tab="rules">사규/가이드</button>
           <button class="nav-subitem" type="button" data-view="dashboard" data-company-tab="staff">직원 대시보드</button>
           <button class="nav-subitem" type="button" data-view="dashboard" data-company-tab="chat">사내 메신저</button>
         </div>
+      </div>
+      <div class="nav-group" id="catalogNavGroup">
+        <a class="nav-item" href="/catalog-admin" style="text-decoration:none" data-nav-tone="home">
+          <span class="nav-label"><i data-lucide="package"></i> <span>상품 제안서 · 품절 관리</span></span>
+        </a>
       </div>
       __SALES_REPORT_NAV__
       __IMPORT_COST_NAV__
