@@ -1,282 +1,422 @@
 [
   {
     "id": "SB-EX-001",
-    "name": "노르디쿡 블랙 스완 에어프라이어 9L"
+    "name": "노르디쿡 블랙 스완 에어프라이어 9L",
+    "preview": "/catalog/assets/SB-EX-001/product-package-original.jpg",
+    "image": "/catalog/assets/SB-EX-001/product-package-original.jpg"
   },
   {
     "id": "SB-EX-002",
-    "name": "[아이제나흐] 에센 오븐형 에어프라어 18L"
+    "name": "[아이제나흐] 에센 오븐형 에어프라어 18L",
+    "preview": "/catalog/assets/SB-EX-002/essen-oven-18l-package-original.jpg",
+    "image": "/catalog/assets/SB-EX-002/essen-oven-18l-package-original.jpg"
   },
   {
     "id": "SB-EX-003",
-    "name": "[아이제나흐] 에센 자이언트 팬"
+    "name": "[아이제나흐] 에센 자이언트 팬",
+    "preview": "/catalog/assets/SB-EX-003/essen-giant-pan-package-original.jpg",
+    "image": "/catalog/assets/SB-EX-003/essen-giant-pan-package-original.jpg"
   },
   {
     "id": "SB-EX-004",
-    "name": "[아이제나흐] 2 IN 1 레트로 글라스 대용량 믹서기 1.5L"
+    "name": "[아이제나흐] 2 IN 1 레트로 글라스 대용량 믹서기 1.5L",
+    "preview": "/catalog/assets/SB-EX-004/preview.webp",
+    "image": "/catalog/assets/SB-EX-004/main-10.jpg"
   },
   {
     "id": "SB-EX-005",
-    "name": "아이제나흐 에센 IH 스텐냄비 3종 (18편수,20양수,26전골)"
+    "name": "아이제나흐 에센 IH 스텐냄비 3종 (18편수,20양수,26전골)",
+    "preview": "/catalog/assets/SB-EX-005/product-package-original.jpg",
+    "image": "/catalog/assets/SB-EX-005/product-package-original.jpg"
   },
   {
     "id": "SB-EX-006",
-    "name": "아이제나흐 벨트리(VELTRI) 페이셜 티슈"
+    "name": "아이제나흐 벨트리(VELTRI) 페이셜 티슈",
+    "preview": "/catalog/assets/SB-EX-006/veltri-facial-tissue-original.jpg",
+    "image": "/catalog/assets/SB-EX-006/veltri-facial-tissue-original.jpg"
   },
   {
     "id": "SB-EX-007",
-    "name": "[아이제나흐] 베르크(WERK)  IH 인덕션 스텐 후라이팬 20cm"
+    "name": "[아이제나흐] 베르크(WERK)  IH 인덕션 스텐 후라이팬 20cm",
+    "preview": "/catalog/assets/SB-EX-007/werk-package-original.png",
+    "image": "/catalog/assets/SB-EX-007/werk-package-original.png"
   },
   {
     "id": "SB-EX-008",
-    "name": "[아이제나흐] 베르크(WERK)  IH 인덕션 스텐 후라이팬 28cm"
+    "name": "[아이제나흐] 베르크(WERK)  IH 인덕션 스텐 후라이팬 28cm",
+    "preview": "/catalog/assets/SB-EX-008/werk-package-original.png",
+    "image": "/catalog/assets/SB-EX-008/werk-package-original.png"
   },
   {
     "id": "SB-EX-009",
-    "name": "[아이제나흐] 베르크(WERK)  IH 인덕션 스텐 궁중팬 28cm"
+    "name": "[아이제나흐] 베르크(WERK)  IH 인덕션 스텐 궁중팬 28cm",
+    "preview": "/catalog/assets/SB-EX-009/werk-package-original.png",
+    "image": "/catalog/assets/SB-EX-009/werk-package-original.png"
   },
   {
     "id": "SB-EX-010",
-    "name": "아이제나흐 스테인레스 칼5종 세트"
+    "name": "아이제나흐 스테인레스 칼5종 세트",
+    "preview": "/catalog/assets/SB-EX-010/product-package-original.jpg",
+    "image": "/catalog/assets/SB-EX-010/product-package-original.jpg"
   },
   {
     "id": "SB-EX-011",
-    "name": "아이제나흐 티타늄 코팅 가위&집게 세트"
+    "name": "아이제나흐 티타늄 코팅 가위&집게 세트",
+    "preview": "/catalog/assets/SB-EX-011/scissors-tongs-package-original.jpg",
+    "image": "/catalog/assets/SB-EX-011/scissors-tongs-package-original.jpg"
   },
   {
     "id": "SB-EX-012",
-    "name": "아이제나흐 에센 믹싱볼 3종세트/아이보리"
+    "name": "아이제나흐 에센 믹싱볼 3종세트/아이보리",
+    "preview": "/catalog/assets/SB-EX-012/mixing-bowl-ivory-package-original.jpg",
+    "image": "/catalog/assets/SB-EX-012/mixing-bowl-ivory-package-original.jpg"
   },
   {
     "id": "SB-EX-013",
-    "name": "아이제나흐 에센 믹싱볼 3종세트/그레이"
+    "name": "아이제나흐 에센 믹싱볼 3종세트/그레이",
+    "preview": "/catalog/assets/SB-EX-013/mixing-bowl-gray-package-original.jpg",
+    "image": "/catalog/assets/SB-EX-013/mixing-bowl-gray-package-original.jpg"
   },
   {
     "id": "SB-EX-014",
-    "name": "[아이제나흐] 에센 대용량 3단 찜솥 32cm"
+    "name": "[아이제나흐] 에센 대용량 3단 찜솥 32cm",
+    "preview": "/catalog/assets/SB-EX-014/steamer-32-package-original.jpg",
+    "image": "/catalog/assets/SB-EX-014/steamer-32-package-original.jpg"
   },
   {
     "id": "SB-EX-015",
-    "name": "[아이제나흐] 에센 요리 스푼"
+    "name": "[아이제나흐] 에센 요리 스푼",
+    "preview": "/catalog/assets/SB-EX-015/preview.webp",
+    "image": "/catalog/assets/SB-EX-015/main-11.jpg"
   },
   {
     "id": "SB-EX-016",
-    "name": "아이제나흐 스텐 찬통 1800ml+2500ml"
+    "name": "아이제나흐 스텐 찬통 1800ml+2500ml",
+    "preview": "/catalog/assets/SB-EX-016/essen-container-package-original.jpg",
+    "image": "/catalog/assets/SB-EX-016/essen-container-package-original.jpg"
   },
   {
     "id": "SB-EX-017",
-    "name": "[아이제나흐] 스테넬(STENEL-STAINLESS+PANEL) 양면도마"
+    "name": "[아이제나흐] 스테넬(STENEL-STAINLESS+PANEL) 양면도마",
+    "preview": "/catalog/assets/SB-EX-017/preview.webp",
+    "image": "/catalog/assets/SB-EX-017/main-03.jpg"
   },
   {
     "id": "SB-EX-018",
-    "name": "노르디쿡 IH 무쇠팬 28cm + 뒤집개"
+    "name": "노르디쿡 IH 무쇠팬 28cm + 뒤집개",
+    "preview": "/catalog/assets/SB-EX-018/nordicook-package-original.jpg",
+    "image": "/catalog/assets/SB-EX-018/nordicook-package-original.jpg"
   },
   {
     "id": "SB-EX-019",
-    "name": "[아이제나흐] IH인덕션 에센 세라믹 후라이팬 28cm"
+    "name": "[아이제나흐] IH인덕션 에센 세라믹 후라이팬 28cm",
+    "preview": "/catalog/assets/SB-EX-019/preview.webp",
+    "image": "/catalog/assets/SB-EX-019/main-08.jpg"
   },
   {
     "id": "SB-EX-020",
-    "name": "[아이제나흐] IH인덕션 에센 세라믹 궁중팬 28cm+유리뚜껑"
+    "name": "[아이제나흐] IH인덕션 에센 세라믹 궁중팬 28cm+유리뚜껑",
+    "preview": "/catalog/assets/SB-EX-020/preview.webp",
+    "image": "/catalog/assets/SB-EX-020/main-09.jpg"
   },
   {
     "id": "SB-EX-021",
-    "name": "[아이제나흐] IH 인덕션 세라믹 팬(20cm + 24cm)"
+    "name": "[아이제나흐] IH 인덕션 세라믹 팬(20cm + 24cm)",
+    "preview": "/catalog/assets/SB-EX-021/product-package-original.jpg",
+    "image": "/catalog/assets/SB-EX-021/product-package-original.jpg"
   },
   {
     "id": "SB-EX-022",
-    "name": "[아이제나흐] 무쇠 그리들팬 33cm"
+    "name": "[아이제나흐] 무쇠 그리들팬 33cm",
+    "preview": "/catalog/assets/SB-EX-022/preview.webp",
+    "image": "/catalog/assets/SB-EX-022/main-13.jpg"
   },
   {
     "id": "SB-EX-023",
-    "name": "[아이제나흐] 무쇠 그리들팬 39cm"
+    "name": "[아이제나흐] 무쇠 그리들팬 39cm",
+    "preview": "/catalog/assets/SB-EX-023/preview.webp",
+    "image": "/catalog/assets/SB-EX-023/main-08.jpg"
   },
   {
     "id": "SB-EX-024",
-    "name": "아이제나흐 에센 양면도마(소) ※컬러박스 추가 1,000원※"
+    "name": "아이제나흐 에센 양면도마(소) ※컬러박스 추가 1,000원※",
+    "preview": "/catalog/assets/SB-EX-024/cutting-board-small-package-original.jpg",
+    "image": "/catalog/assets/SB-EX-024/cutting-board-small-package-original.jpg"
   },
   {
     "id": "SB-EX-025",
-    "name": "아이제나흐 에센 양면도마(대) ※컬러박스 추가 1,000원※"
+    "name": "아이제나흐 에센 양면도마(대) ※컬러박스 추가 1,000원※",
+    "preview": "/catalog/assets/SB-EX-025/cutting-board-large-package-original.jpg",
+    "image": "/catalog/assets/SB-EX-025/cutting-board-large-package-original.jpg"
   },
   {
     "id": "SB-EX-026",
-    "name": "아이제나흐 에쎈 레인지 쿡 6종/12P"
+    "name": "아이제나흐 에쎈 레인지 쿡 6종/12P",
+    "preview": "/catalog/assets/SB-EX-026/product-package-original.jpg",
+    "image": "/catalog/assets/SB-EX-026/product-package-original.jpg"
   },
   {
     "id": "SB-EX-027",
-    "name": "아이제나흐 에쎈 레인지 쿡 12종/24P"
+    "name": "아이제나흐 에쎈 레인지 쿡 12종/24P",
+    "preview": "/catalog/assets/SB-EX-027/product-package-original.jpg",
+    "image": "/catalog/assets/SB-EX-027/product-package-original.jpg"
   },
   {
     "id": "SB-EX-028",
-    "name": "[코렐] 세카 저소음 모던 에어프라이어 4.5L 저스트 화이트"
+    "name": "[코렐] 세카 저소음 모던 에어프라이어 4.5L 저스트 화이트",
+    "preview": "/catalog/assets/SB-EX-028/preview.webp",
+    "image": "/catalog/assets/SB-EX-028/main-01.jpg"
   },
   {
     "id": "SB-EX-029",
-    "name": "아이제나흐(EiseNach) 베틴 IH 스텐냄비 18편수"
+    "name": "아이제나흐(EiseNach) 베틴 IH 스텐냄비 18편수",
+    "preview": "/catalog/assets/SB-EX-029/wettin-29-package-original.jpg",
+    "image": "/catalog/assets/SB-EX-029/wettin-29-package-original.jpg"
   },
   {
     "id": "SB-EX-030",
-    "name": "아이제나흐(EiseNach) 베틴 IH 스텐냄비 20양수"
+    "name": "아이제나흐(EiseNach) 베틴 IH 스텐냄비 20양수",
+    "preview": "/catalog/assets/SB-EX-030/wettin-30-package-original.jpg",
+    "image": "/catalog/assets/SB-EX-030/wettin-30-package-original.jpg"
   },
   {
     "id": "SB-EX-031",
-    "name": "아이제나흐(EiseNach) 베틴 IH 스텐냄비 22양수"
+    "name": "아이제나흐(EiseNach) 베틴 IH 스텐냄비 22양수",
+    "preview": "/catalog/assets/SB-EX-031/wettin-31-package-original.jpg",
+    "image": "/catalog/assets/SB-EX-031/wettin-31-package-original.jpg"
   },
   {
     "id": "SB-EX-032",
-    "name": "아이제나흐(EiseNach) 베틴 IH 스텐냄비 26전골"
+    "name": "아이제나흐(EiseNach) 베틴 IH 스텐냄비 26전골",
+    "preview": "/catalog/assets/SB-EX-032/wettin-32-package-original.jpg",
+    "image": "/catalog/assets/SB-EX-032/wettin-32-package-original.jpg"
   },
   {
     "id": "SB-EX-033",
-    "name": "아이제나흐(EiseNach) 베틴 IH 스텐냄비 26곰솥"
+    "name": "아이제나흐(EiseNach) 베틴 IH 스텐냄비 26곰솥",
+    "preview": "/catalog/assets/SB-EX-033/wettin-33-package-original.jpg",
+    "image": "/catalog/assets/SB-EX-033/wettin-33-package-original.jpg"
   },
   {
     "id": "SB-EX-034",
-    "name": "아이제나흐(EiseNach) 베틴 IH 스텐냄비 2종 A세트 (18편수+20양수)"
+    "name": "아이제나흐(EiseNach) 베틴 IH 스텐냄비 2종 A세트 (18편수+20양수)",
+    "preview": "/catalog/assets/SB-EX-034/preview.webp",
+    "image": "/catalog/assets/SB-EX-034/main-01.jpg"
   },
   {
     "id": "SB-EX-035",
-    "name": "아이제나흐(EiseNach) 베틴 IH 스텐냄비 2종 B세트 (18편수+22양수)"
+    "name": "아이제나흐(EiseNach) 베틴 IH 스텐냄비 2종 B세트 (18편수+22양수)",
+    "preview": "/catalog/assets/SB-EX-035/preview.webp",
+    "image": "/catalog/assets/SB-EX-035/main-01.jpg"
   },
   {
     "id": "SB-EX-036",
-    "name": "아이제나흐(EiseNach) 베틴 IH 스텐냄비 2종 C세트 (18편수+26전골)"
+    "name": "아이제나흐(EiseNach) 베틴 IH 스텐냄비 2종 C세트 (18편수+26전골)",
+    "preview": "/catalog/assets/SB-EX-036/preview.webp",
+    "image": "/catalog/assets/SB-EX-036/main-01.jpg"
   },
   {
     "id": "SB-EX-037",
-    "name": "아이제나흐(EiseNach) 베틴 IH 스텐냄비 3종 A세트 (18편수+20양수+26전골)"
+    "name": "아이제나흐(EiseNach) 베틴 IH 스텐냄비 3종 A세트 (18편수+20양수+26전골)",
+    "preview": "/catalog/assets/SB-EX-037/preview.webp",
+    "image": "/catalog/assets/SB-EX-037/main-01.jpg"
   },
   {
     "id": "SB-EX-038",
-    "name": "아이제나흐(EiseNach) 베틴 IH 스텐냄비 3종 B세트 (18편수+20양수+26곰솥)"
+    "name": "아이제나흐(EiseNach) 베틴 IH 스텐냄비 3종 B세트 (18편수+20양수+26곰솥)",
+    "preview": "/catalog/assets/SB-EX-038/preview.webp",
+    "image": "/catalog/assets/SB-EX-038/main-01.jpg"
   },
   {
     "id": "SB-EX-039",
-    "name": "아이제나흐(EiseNach) 베틴 IH 스텐냄비 4종세트 (18편수+20양수+26곰솥+26전골)"
+    "name": "아이제나흐(EiseNach) 베틴 IH 스텐냄비 4종세트 (18편수+20양수+26곰솥+26전골)",
+    "preview": "/catalog/assets/SB-EX-039/preview.webp",
+    "image": "/catalog/assets/SB-EX-039/main-01.jpg"
   },
   {
     "id": "SB-EX-040",
-    "name": "아이제나흐(EiseNach) 베틴 IH 스텐냄비 5종세트 (18편수+20양수+22양수+26곰솥+26전골)"
+    "name": "아이제나흐(EiseNach) 베틴 IH 스텐냄비 5종세트 (18편수+20양수+22양수+26곰솥+26전골)",
+    "preview": "/catalog/assets/SB-EX-040/preview.webp",
+    "image": "/catalog/assets/SB-EX-040/main-01.jpg"
   },
   {
     "id": "SB-EX-041",
-    "name": "아이제나흐(EiseNach) 에센 스텐 전골냄비 28cm"
+    "name": "아이제나흐(EiseNach) 에센 스텐 전골냄비 28cm",
+    "preview": "/catalog/assets/SB-EX-041/product-package-original.jpg",
+    "image": "/catalog/assets/SB-EX-041/product-package-original.jpg"
   },
   {
     "id": "SB-EX-042",
-    "name": "아이제나흐(EiseNach) 에센 스텐 찜솥 28cm"
+    "name": "아이제나흐(EiseNach) 에센 스텐 찜솥 28cm",
+    "preview": "/catalog/assets/SB-EX-042/product-package-original.jpg",
+    "image": "/catalog/assets/SB-EX-042/product-package-original.jpg"
   },
   {
     "id": "SB-EX-043",
-    "name": "프로벨라 멀티맘 쿠션 (베이지, 머스타드)"
+    "name": "프로벨라 멀티맘 쿠션 (베이지, 머스타드)",
+    "preview": "/catalog/assets/SB-EX-043/preview.webp",
+    "image": "/catalog/assets/SB-EX-043/main-03.jpg"
   },
   {
     "id": "SB-EX-044",
-    "name": "[해피콜] IH인덕션 코지 다이아몬드 후라이팬 20cm ※컬러박스 추가 1,000원※"
+    "name": "[해피콜] IH인덕션 코지 다이아몬드 후라이팬 20cm ※컬러박스 추가 1,000원※",
+    "preview": "/catalog/assets/SB-EX-044/preview.webp",
+    "image": "/catalog/assets/SB-EX-044/main-01.jpg"
   },
   {
     "id": "SB-EX-045",
-    "name": "[해피콜] IH인덕션 코지 다이아몬드 후라이팬 24cm ※컬러박스 추가 1,000원※"
+    "name": "[해피콜] IH인덕션 코지 다이아몬드 후라이팬 24cm ※컬러박스 추가 1,000원※",
+    "preview": "/catalog/assets/SB-EX-045/preview.webp",
+    "image": "/catalog/assets/SB-EX-045/main-01.jpg"
   },
   {
     "id": "SB-EX-046",
-    "name": "[해피콜] IH인덕션 코지 다이아몬드 궁중팬 24cm ※컬러박스 추가 1,000원※"
+    "name": "[해피콜] IH인덕션 코지 다이아몬드 궁중팬 24cm ※컬러박스 추가 1,000원※",
+    "preview": "/catalog/assets/SB-EX-046/preview.webp",
+    "image": "/catalog/assets/SB-EX-046/main-01.jpg"
   },
   {
     "id": "SB-EX-047",
-    "name": "[해피콜] IH인덕션 코지 다이아몬드 후라이팬 28cm ※컬러박스 추가 1,000원※"
+    "name": "[해피콜] IH인덕션 코지 다이아몬드 후라이팬 28cm ※컬러박스 추가 1,000원※",
+    "preview": "/catalog/assets/SB-EX-047/preview.webp",
+    "image": "/catalog/assets/SB-EX-047/main-01.jpg"
   },
   {
     "id": "SB-EX-048",
-    "name": "[해피콜] IH인덕션 코지 다이아몬드 궁중팬 28cm ※컬러박스 추가 1,000원※"
+    "name": "[해피콜] IH인덕션 코지 다이아몬드 궁중팬 28cm ※컬러박스 추가 1,000원※",
+    "preview": "/catalog/assets/SB-EX-048/preview.webp",
+    "image": "/catalog/assets/SB-EX-048/main-01.jpg"
   },
   {
     "id": "SB-EX-049",
-    "name": "[해피콜] IH인덕션 코지 다이아몬드 후라이팬 2종(28후+28유리) ※컬러박스 추가 1,000원※"
+    "name": "[해피콜] IH인덕션 코지 다이아몬드 후라이팬 2종(28후+28유리) ※컬러박스 추가 1,000원※",
+    "preview": "/catalog/assets/SB-EX-049/preview.webp",
+    "image": "/catalog/assets/SB-EX-049/main-excel.png"
   },
   {
     "id": "SB-EX-050",
-    "name": "[해피콜] IH인덕션 코지 다이아몬드 궁중팬 2종(28궁+28유리) ※컬러박스 추가 1,000원※"
+    "name": "[해피콜] IH인덕션 코지 다이아몬드 궁중팬 2종(28궁+28유리) ※컬러박스 추가 1,000원※",
+    "preview": "/catalog/assets/SB-EX-050/preview.webp",
+    "image": "/catalog/assets/SB-EX-050/main-excel.png"
   },
   {
     "id": "SB-EX-051",
-    "name": "[해피콜] IH인덕션 코지 다이아몬드 후라이팬 2종(20후+24후) ※컬러박스 추가 1,000원※"
+    "name": "[해피콜] IH인덕션 코지 다이아몬드 후라이팬 2종(20후+24후) ※컬러박스 추가 1,000원※",
+    "preview": "/catalog/assets/SB-EX-051/preview.webp",
+    "image": "/catalog/assets/SB-EX-051/main-excel.png"
   },
   {
     "id": "SB-EX-052",
-    "name": "[해피콜] IH인덕션 코지 다이아몬드 후라이팬 2종(20후+28후) ※컬러박스 추가 1,000원※"
+    "name": "[해피콜] IH인덕션 코지 다이아몬드 후라이팬 2종(20후+28후) ※컬러박스 추가 1,000원※",
+    "preview": "/catalog/assets/SB-EX-052/preview.webp",
+    "image": "/catalog/assets/SB-EX-052/main-excel.png"
   },
   {
     "id": "SB-EX-053",
-    "name": "[해피콜] IH인덕션 코지 다이아몬드 후라이팬 2종(20후+28웍) ※컬러박스 추가 1,000원※"
+    "name": "[해피콜] IH인덕션 코지 다이아몬드 후라이팬 2종(20후+28웍) ※컬러박스 추가 1,000원※",
+    "preview": "/catalog/assets/SB-EX-053/preview.webp",
+    "image": "/catalog/assets/SB-EX-053/main-excel.png"
   },
   {
     "id": "SB-EX-054",
-    "name": "[해피콜] IH인덕션 코지 다이아몬드 후라이팬 2종(24후+24웍) ※컬러박스 추가 1,000원※"
+    "name": "[해피콜] IH인덕션 코지 다이아몬드 후라이팬 2종(24후+24웍) ※컬러박스 추가 1,000원※",
+    "preview": "/catalog/assets/SB-EX-054/preview.webp",
+    "image": "/catalog/assets/SB-EX-054/main-excel.png"
   },
   {
     "id": "SB-EX-055",
-    "name": "[해피콜] IH인덕션 코지 다이아몬드 후라이팬 2종(28후+28웍) ※컬러박스 추가 1,000원※"
+    "name": "[해피콜] IH인덕션 코지 다이아몬드 후라이팬 2종(28후+28웍) ※컬러박스 추가 1,000원※",
+    "preview": "/catalog/assets/SB-EX-055/preview.webp",
+    "image": "/catalog/assets/SB-EX-055/main-excel.png"
   },
   {
     "id": "SB-EX-056",
-    "name": "[해피콜] IH인덕션 코지 다이아몬드 후라이팬 2종(28후+28웍+28유리)"
+    "name": "[해피콜] IH인덕션 코지 다이아몬드 후라이팬 2종(28후+28웍+28유리)",
+    "preview": "/catalog/assets/SB-EX-056/preview.webp",
+    "image": "/catalog/assets/SB-EX-056/main-excel.png"
   },
   {
     "id": "SB-EX-057",
-    "name": "[해피콜] IH인덕션 코지 다이아몬드 후라이팬 3종(20후+24후+24웍)"
+    "name": "[해피콜] IH인덕션 코지 다이아몬드 후라이팬 3종(20후+24후+24웍)",
+    "preview": "/catalog/assets/SB-EX-057/preview.webp",
+    "image": "/catalog/assets/SB-EX-057/main-excel.png"
   },
   {
     "id": "SB-EX-058",
-    "name": "[해피콜] IH인덕션 코지 다이아몬드 후라이팬 3종(20후+28후+28웍)"
+    "name": "[해피콜] IH인덕션 코지 다이아몬드 후라이팬 3종(20후+28후+28웍)",
+    "preview": "/catalog/assets/SB-EX-058/preview.webp",
+    "image": "/catalog/assets/SB-EX-058/main-excel.png"
   },
   {
     "id": "SB-EX-059",
-    "name": "[해피콜] IH인덕션 코지 다이아몬드 후라이팬 4종(20후+28후+28웍+28유리)"
+    "name": "[해피콜] IH인덕션 코지 다이아몬드 후라이팬 4종(20후+28후+28웍+28유리)",
+    "preview": "/catalog/assets/SB-EX-059/preview.webp",
+    "image": "/catalog/assets/SB-EX-059/main-excel.png"
   },
   {
     "id": "SB-EX-060",
-    "name": "[해피콜] IH인덕션 코지 다이아몬드 후라이팬 4종(24후+28후+28웍+28유리)"
+    "name": "[해피콜] IH인덕션 코지 다이아몬드 후라이팬 4종(24후+28후+28웍+28유리)",
+    "preview": "/catalog/assets/SB-EX-060/preview.webp",
+    "image": "/catalog/assets/SB-EX-060/main-excel.png"
   },
   {
     "id": "SB-EX-061",
-    "name": "[해피콜] IH인덕션 코지 다이아몬드 후라이팬 4종(20후+24후+28후+28웍)"
+    "name": "[해피콜] IH인덕션 코지 다이아몬드 후라이팬 4종(20후+24후+28후+28웍)",
+    "preview": "/catalog/assets/SB-EX-061/preview.webp",
+    "image": "/catalog/assets/SB-EX-061/main-excel.png"
   },
   {
     "id": "SB-EX-062",
-    "name": "[해피콜] IH인덕션 코지 다이아몬드 후라이팬 5종(24후+28후+24웍+28웍+28유리)"
+    "name": "[해피콜] IH인덕션 코지 다이아몬드 후라이팬 5종(24후+28후+24웍+28웍+28유리)",
+    "preview": "/catalog/assets/SB-EX-062/preview.webp",
+    "image": "/catalog/assets/SB-EX-062/main-excel.png"
   },
   {
     "id": "SB-EX-063",
-    "name": "[해피콜] IH인덕션 코지 다이아몬드 후라이팬 5종(20후+24후+28후+24웍+28웍)"
+    "name": "[해피콜] IH인덕션 코지 다이아몬드 후라이팬 5종(20후+24후+28후+24웍+28웍)",
+    "preview": "/catalog/assets/SB-EX-063/preview.webp",
+    "image": "/catalog/assets/SB-EX-063/main-excel.jpg"
   },
   {
     "id": "SB-EX-064",
-    "name": "AGK 블랙스톤 커트러리 세트 (개별)"
+    "name": "AGK 블랙스톤 커트러리 세트 (개별)",
+    "preview": "/catalog/assets/SB-EX-064/preview.webp",
+    "image": "/catalog/assets/SB-EX-064/main-01.jpg"
   },
   {
     "id": "SB-EX-065",
-    "name": "멜로우 실리콘 키친툴 6종"
+    "name": "멜로우 실리콘 키친툴 6종",
+    "preview": "/catalog/assets/SB-EX-065/preview.webp",
+    "image": "/catalog/assets/SB-EX-065/main-01.jpg"
   },
   {
     "id": "SB-EX-066",
-    "name": "바이마르 엔틱스테인레스 28cm 2단 찜솥"
+    "name": "바이마르 엔틱스테인레스 28cm 2단 찜솥",
+    "preview": "/catalog/assets/SB-EX-066/preview.webp",
+    "image": "/catalog/assets/SB-EX-066/main-02.jpg"
   },
   {
     "id": "SB-EX-067",
-    "name": "[3년 발효] 악양 대봉감식초 1,000ml / 면세"
+    "name": "[3년 발효] 악양 대봉감식초 1,000ml / 면세",
+    "preview": "/catalog/assets/SB-EX-067/preview.webp",
+    "image": "/catalog/assets/SB-EX-067/main-01.jpg"
   },
   {
     "id": "SB-EX-068",
-    "name": "[황금비율] 악양 매실 액기스 1,000ml / 면세"
+    "name": "[황금비율] 악양 매실 액기스 1,000ml / 면세",
+    "preview": "/catalog/assets/SB-EX-068/preview.webp",
+    "image": "/catalog/assets/SB-EX-068/main-01.jpg"
   },
   {
     "id": "SB-EX-069",
-    "name": "잔디로 매직행주 4P"
+    "name": "잔디로 매직행주 4P",
+    "preview": "/catalog/assets/SB-EX-069/preview.webp",
+    "image": "/catalog/assets/SB-EX-069/main-01.jpg"
   },
   {
     "id": "SB-EX-070",
-    "name": "프로벨라 IH 우드 세라믹 전골웍팬 & 실리콘 조리도구 4종"
+    "name": "프로벨라 IH 우드 세라믹 전골웍팬 & 실리콘 조리도구 4종",
+    "preview": "/catalog/assets/SB-EX-070/preview.webp",
+    "image": "/catalog/assets/SB-EX-070/main-01.jpg"
   }
 ]
