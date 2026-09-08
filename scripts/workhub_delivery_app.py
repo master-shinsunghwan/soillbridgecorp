@@ -17610,6 +17610,7 @@ ${kind} 안내드립니다.
               <td>
                 <div class="import-cost-report-actions inline">
                   <button class="btn" type="button" data-import-cost-load="${escapeHtml(report.id)}">불러오기</button>
+                  ${status === "final" ? `<button class="btn" type="button" data-import-cost-unfinalize="${escapeHtml(report.id)}">확정해제</button>` : ""}
                   <button class="btn" type="button" data-import-cost-show-files="${escapeHtml(report.id)}">원본파일</button>
                   <button class="btn" type="button" data-import-cost-show-history="${escapeHtml(report.id)}">변경이력</button>
                 </div>
@@ -17671,6 +17672,7 @@ ${kind} 안내드립니다.
             ${warningHtml}
             <div class="import-cost-report-actions">
               <button class="btn" type="button" data-import-cost-load="${escapeHtml(report.id)}">불러오기</button>
+              ${status === "final" ? `<button class="btn" type="button" data-import-cost-unfinalize="${escapeHtml(report.id)}">확정해제</button>` : ""}
               <button class="btn" type="button" data-import-cost-show-files="${escapeHtml(report.id)}">원본파일</button>
               <button class="btn" type="button" data-import-cost-show-history="${escapeHtml(report.id)}">변경이력</button>
             </div>
@@ -17694,6 +17696,7 @@ ${kind} 안내드립니다.
           <td>
             ${warnings.length ? `<div class="import-cost-report-warning">정산 비용 누락: ${escapeHtml(warnings.join(", "))}</div>` : ""}
             <button class="btn" type="button" data-import-cost-load="${escapeHtml(report.id)}">불러오기</button>
+            ${status === "final" ? `<button class="btn" type="button" data-import-cost-unfinalize="${escapeHtml(report.id)}">확정해제</button>` : ""}
           </td>
         </tr>
       `}).join("");
@@ -17949,6 +17952,40 @@ ${kind} 안내드립니다.
       }
     }
 
+    async function unfinalizeImportCostReport(reportId) {
+      if (!reportId || !importCostMessage || !canViewImportCostProgram()) return;
+      const report = importCostSavedReports.find((item) => String(item.id) === String(reportId));
+      if (!await requestAppConfirm({
+        kicker: "수입 원가 확정 해제",
+        title: "최종확정을 해제하고 다시 계산할까요?",
+        message: `${report?.hbl_no || "선택한 저장 데이터"} 상태를 저장됨으로 되돌립니다. 이후 불러오기 후 값을 수정하고 다시 저장할 수 있습니다.`,
+        okText: "확정해제",
+        cancelText: "취소",
+      })) return;
+      importCostMessage.textContent = "최종확정 상태를 해제하는 중입니다.";
+      setImportCostRunStatus("running", "저장 데이터를 다시 계산할 수 있도록 상태를 변경합니다.");
+      try {
+        const response = await fetch("/api/import-cost-report-status", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: reportId, status: "saved" }),
+        });
+        const data = await response.json();
+        if (!response.ok || data.error) throw new Error(data.error || "최종확정 해제에 실패했습니다.");
+        currentImportCostReport = data.report || currentImportCostReport;
+        renderImportCostSavedFiles(currentImportCostReport || {});
+        renderImportCostHistory(currentImportCostReport || {});
+        await loadImportCostSavedReports();
+        await loadImportCostCompletedShipments().catch(() => {});
+        importCostMessage.textContent = data.message || "최종확정 상태를 해제했습니다. 저장 데이터를 불러와 다시 계산할 수 있습니다.";
+        setImportCostRunStatus("done", "최종확정 상태를 해제했습니다.");
+      } catch (error) {
+        const message = error.message || "최종확정 해제에 실패했습니다.";
+        importCostMessage.textContent = message;
+        setImportCostRunStatus("error", message);
+      }
+    }
+
     async function calculateImportCost() {
       if (!importCostMessage || !canViewImportCostProgram()) return;
       importCostMessage.textContent = "제품별 수입원가를 계산하는 중입니다.";
@@ -18066,6 +18103,7 @@ ${kind} 안내드립니다.
 
     function resetImportCostProgram() {
       if (!importCostWorkspace) return;
+      currentImportCostReport = null;
       importCostWorkspace.querySelectorAll("input").forEach((input) => {
         if (input.type === "checkbox") input.checked = false;
         else input.value = "";
@@ -26710,6 +26748,12 @@ ${kind} 안내드립니다.
       if (loadButton) {
         event.preventDefault();
         loadImportCostReport(loadButton.dataset.importCostLoad);
+        return;
+      }
+      const unfinalizeButton = event.target.closest("[data-import-cost-unfinalize]");
+      if (unfinalizeButton) {
+        event.preventDefault();
+        unfinalizeImportCostReport(unfinalizeButton.dataset.importCostUnfinalize);
         return;
       }
       const filesButton = event.target.closest("[data-import-cost-show-files]");

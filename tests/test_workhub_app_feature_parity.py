@@ -1306,6 +1306,9 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         self.assertIn("function saveCurrentImportCostReport", admin_html)
         self.assertIn("function saveAndFinalizeCurrentImportCostReport", admin_html)
         self.assertIn("import-cost-report-warning", admin_html)
+        self.assertIn("function unfinalizeImportCostReport", admin_html)
+        self.assertIn("data-import-cost-unfinalize", admin_html)
+        self.assertIn("currentImportCostReport = null;", admin_html)
         self.assertIn('id="importCostReviewBackdrop"', admin_html)
         self.assertIn("function openImportCostChargeReview", admin_html)
         self.assertIn("function applyImportCostChargeReview", admin_html)
@@ -1636,6 +1639,9 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
 
         finalized = app.set_import_cost_report_status(first["id"], "final", user={"display_name": "Admin", "role": "admin"})
         self.assertEqual(finalized["status"], "final")
+
+        reset = app.set_import_cost_report_status(first["id"], "saved", user={"display_name": "Admin", "role": "admin"})
+        self.assertEqual(reset["status"], "saved")
 
         detailed = app.get_import_cost_report(first["id"])
         self.assertGreaterEqual(len(detailed["history"]), 3)
