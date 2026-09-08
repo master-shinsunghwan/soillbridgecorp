@@ -3142,6 +3142,24 @@ HTML = r"""<!doctype html>
       flex-wrap: wrap;
       gap: 8px;
     }
+    .sales-upload-date {
+      display: grid;
+      gap: 3px;
+      margin: 0;
+      color: #475569;
+      font-size: 11px;
+      font-weight: 900;
+    }
+    .sales-upload-date input {
+      min-width: 142px;
+      height: 36px;
+      padding: 6px 9px;
+      border: 1px solid #bfdbfe;
+      border-radius: 6px;
+      background: #ffffff;
+      color: #0f172a;
+      font: inherit;
+    }
     .sales-upload-button.secondary {
       background: #ffffff;
       color: #1d4ed8;
@@ -12873,6 +12891,8 @@ HTML = r"""<!doctype html>
     const vendorContactsFileInput = document.querySelector("#vendorContactsFileInput");
     const vendorContactsDropMain = document.querySelector("#vendorContactsDropMain");
     const salesReportFileInput = document.querySelector("#salesReportFileInput");
+    const salesReportTargetDate = document.querySelector("#salesReportTargetDate");
+    const salesReportResetDate = document.querySelector("#salesReportResetDate");
     const salesReportManualUpload = document.querySelector("#salesReportManualUpload");
     const salesReportManualEntryToggle = document.querySelector("#salesReportManualEntryToggle");
     const salesReportManualEntryForm = document.querySelector("#salesReportManualEntryForm");
@@ -16565,6 +16585,7 @@ ${kind} 안내드립니다.
       if (!file) return;
       const formData = new FormData();
       formData.append("file", file);
+      if (salesReportTargetDate?.value) formData.append("report_date", salesReportTargetDate.value);
       if (salesReportUploadMessage) salesReportUploadMessage.textContent = "매출표를 업로드하는 중입니다.";
       try {
         const data = await runUploadWithProgress({
@@ -17700,6 +17721,42 @@ ${kind} 안내드립니다.
           </td>
         </tr>
       `}).join("");
+    }
+
+    async function resetSalesReportDate() {
+      const reportDate = salesReportTargetDate?.value || "";
+      if (!reportDate) {
+        if (salesReportUploadMessage) salesReportUploadMessage.textContent = "리셋할 매출일자를 먼저 선택해주세요.";
+        salesReportTargetDate?.focus();
+        return;
+      }
+      const approved = await requestAppConfirm({
+        kicker: "매출 자료 일자별 리셋",
+        title: `${reportDate} 매출 자료를 초기화할까요?`,
+        message: "해당 날짜의 일자별·판매처별·매입처별·상품별 표시 데이터와 업로드 이력이 삭제됩니다. 다른 날짜와 서버에 보관된 원본 파일은 유지됩니다.",
+        highlight: reportDate,
+        okText: "해당 일자 리셋",
+        cancelText: "취소",
+      });
+      if (!approved) return;
+      if (salesReportResetDate) salesReportResetDate.disabled = true;
+      if (salesReportUploadMessage) salesReportUploadMessage.textContent = `${reportDate} 매출 자료를 리셋하는 중입니다.`;
+      try {
+        const response = await fetch("/api/sales-report-reset-date", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ report_date: reportDate }),
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "매출 자료 일자별 리셋에 실패했습니다.");
+        renderSalesReportUploads(data.files || []);
+        await loadSalesReportDashboard(reportDate.slice(0, 7));
+        if (salesReportUploadMessage) salesReportUploadMessage.textContent = data.message || "해당 일자 매출 자료를 리셋했습니다.";
+      } catch (error) {
+        if (salesReportUploadMessage) salesReportUploadMessage.textContent = error.message;
+      } finally {
+        if (salesReportResetDate) salesReportResetDate.disabled = false;
+      }
     }
 
     async function loadImportCostSavedReports() {
@@ -27105,6 +27162,7 @@ ${kind} 안내드립니다.
     automationExecuteButton?.addEventListener("click", executeAutomationAction);
     if (salesReportFileInput) salesReportFileInput.addEventListener("change", uploadSalesReportWorkbook);
     salesReportManualUpload?.addEventListener("click", openSalesReportUploadPicker);
+    salesReportResetDate?.addEventListener("click", resetSalesReportDate);
     salesReportManualEntryToggle?.addEventListener("click", toggleSalesManualEntryForm);
     salesManualEntrySave?.addEventListener("click", saveSalesManualEntry);
     saveCsCaseButton.addEventListener("click", saveCurrentCsCase);
@@ -28530,8 +28588,13 @@ ADMIN_WORKSPACE_HTML = r"""
                 </div>
                 <div class="sales-upload-actions">
                   <input id="salesReportFileInput" name="sales_report" type="file" accept=".xlsx,.xlsm,.xls,.csv,.zip" hidden />
+                  <label class="sales-upload-date" for="salesReportTargetDate">
+                    적용 일자(선택)
+                    <input id="salesReportTargetDate" type="date" />
+                  </label>
                   <button class="sales-upload-button secondary" id="salesReportManualEntryToggle" type="button">수기 매출 등록</button>
                   <button class="sales-upload-button" id="salesReportManualUpload" type="button">매출표 업로드</button>
+                  <button class="workspace-button danger" id="salesReportResetDate" type="button">일자별 리셋</button>
                 </div>
               </div>
               <div class="sales-manual-form" id="salesReportManualEntryForm" hidden>
@@ -34793,6 +34856,7 @@ def save_sales_report_file(
     uploaded_by: str = "",
     source_kind: str = "",
     source_fingerprint: str = "",
+    report_date_override: str = "",
 ) -> dict[str, str | int]:
     source = Path(source_path)
     if not source.is_file():
@@ -34819,6 +34883,21 @@ def save_sales_report_file(
             parsed_report = parse_sales_report_file(target, safe_original)
         report_date = str(parsed_report.get("report_date") or "")
         period = str(parsed_report.get("period") or report_date[:7] or "")
+
+    override_date = str(report_date_override or "").strip()
+    if override_date:
+        try:
+            override_date = date.fromisoformat(override_date).isoformat()
+        except ValueError as exc:
+            target.unlink(missing_ok=True)
+            raise ValueError("적용 일자는 YYYY-MM-DD 형식으로 입력해주세요.") from exc
+        if not parsed_report or report_type not in {"seller", "supplier", "product"}:
+            target.unlink(missing_ok=True)
+            raise ValueError("적용 일자 지정은 판매처별·매입처별·상품별 매출표에서만 사용할 수 있습니다.")
+        report_date = override_date
+        period = override_date[:7]
+        parsed_report["report_date"] = report_date
+        parsed_report["period"] = period
 
     connection = connect_db()
     try:
@@ -34874,6 +34953,47 @@ def save_sales_report_file(
         "row_count": len(parsed_report.get("rows", [])) if parsed_report else 0,
         "source_file_count": int(parsed_report.get("source_file_count", 0)) if parsed_report else 0,
         "skipped_current_or_future_rows": int(parsed_report.get("skipped_current_or_future_rows", 0)) if parsed_report else 0,
+    }
+
+
+def reset_sales_report_date(report_date: str) -> dict[str, object]:
+    target_date = str(report_date or "").strip()
+    try:
+        target_date = date.fromisoformat(target_date).isoformat()
+    except ValueError as exc:
+        raise ValueError("리셋할 매출일자를 YYYY-MM-DD 형식으로 입력해주세요.") from exc
+
+    init_db()
+    table_names = (
+        "sales_report_daily_rows",
+        "sales_report_seller_rows",
+        "sales_report_supplier_rows",
+        "sales_report_product_rows",
+    )
+    deleted: dict[str, int] = {}
+    connection = connect_db()
+    try:
+        connection.execute("BEGIN")
+        for table_name in table_names:
+            cursor = connection.execute(f"DELETE FROM {table_name} WHERE report_date = ?", (target_date,))
+            deleted[table_name] = max(0, int(cursor.rowcount or 0))
+        upload_cursor = connection.execute(
+            "DELETE FROM sales_report_uploads WHERE report_date = ?",
+            (target_date,),
+        )
+        deleted["sales_report_uploads"] = max(0, int(upload_cursor.rowcount or 0))
+        connection.commit()
+    except Exception:
+        connection.rollback()
+        raise
+    finally:
+        connection.close()
+
+    return {
+        "report_date": target_date,
+        "deleted": deleted,
+        "deleted_row_count": sum(deleted[name] for name in table_names),
+        "deleted_upload_count": deleted["sales_report_uploads"],
     }
 
 
@@ -43560,6 +43680,22 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                 })
                 return
 
+            if self.path == "/api/sales-report-reset-date":
+                if not self.require_permission(user, "sales_report_manage", "매출 자료 일자별 리셋"):
+                    return
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(length).decode("utf-8") or "{}")
+                result = reset_sales_report_date(str(payload.get("report_date") or ""))
+                self.send_json({
+                    "message": (
+                        f"{result['report_date']} 매출 자료 {result['deleted_row_count']}건과 "
+                        f"업로드 이력 {result['deleted_upload_count']}건을 리셋했습니다."
+                    ),
+                    "result": result,
+                    "files": list_sales_report_uploads(),
+                })
+                return
+
             if self.path == "/api/import-cost-calculate":
                 if not can_view_import_cost_program(user):
                     self.send_json({"error": "수입 원가 계산 권한이 없습니다."}, status=403)
@@ -44588,7 +44724,14 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                     return
                 upload_path = save_uploaded_sales_report_file(fields, "file")
                 uploaded_by = str(user.get("display_name") or user.get("username") or "")
-                saved = save_sales_report_file(upload_path, original_uploaded_filename(upload_path.name), uploaded_by)
+                report_date_override = fields.get("report_date", "")
+                report_date_override = report_date_override if isinstance(report_date_override, str) else ""
+                saved = save_sales_report_file(
+                    upload_path,
+                    original_uploaded_filename(upload_path.name),
+                    uploaded_by,
+                    report_date_override=report_date_override,
+                )
                 self.send_json({
                     "message": "매출표를 저장했습니다.",
                     "file": saved,

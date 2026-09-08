@@ -46,6 +46,97 @@ class SalesReportUploadTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.app.save_uploaded_sales_report_file({"file": ("sales_report.txt", b"plain")}, "file")
 
+    def test_sales_report_upload_can_override_snapshot_date(self) -> None:
+        source = Path(self.tempdir.name) / "Statistics_Sales_Seller_2026-09-09.xls"
+        source.write_bytes(b"test")
+        original_detect = self.app.detect_sales_report_type
+        original_parse = self.app.parse_sales_report_file
+
+        try:
+            self.app.detect_sales_report_type = lambda path, original_name="": "seller"
+            self.app.parse_sales_report_file = lambda path, original_name="": {
+                "report_type": "seller",
+                "report_date": "2026-09-09",
+                "period": "2026-09",
+                "rows": [{"name": "테스트 판매처", "quantity": 3, "profit_sales_amount": 12000}],
+            }
+            saved = self.app.save_sales_report_file(
+                source,
+                source.name,
+                "admin",
+                report_date_override="2026-09-08",
+            )
+        finally:
+            self.app.detect_sales_report_type = original_detect
+            self.app.parse_sales_report_file = original_parse
+
+        self.assertEqual(saved["report_date"], "2026-09-08")
+        connection = self.app.connect_db()
+        try:
+            row = connection.execute(
+                "SELECT report_date, period FROM sales_report_seller_rows WHERE seller_name = ?",
+                ("테스트 판매처",),
+            ).fetchone()
+        finally:
+            connection.close()
+        self.assertEqual((row["report_date"], row["period"]), ("2026-09-08", "2026-09"))
+
+    def test_reset_sales_report_date_only_deletes_selected_date(self) -> None:
+        connection = self.app.connect_db()
+        try:
+            for report_date in ("2026-09-08", "2026-09-09"):
+                cursor = connection.execute(
+                    """
+                    INSERT INTO sales_report_uploads
+                        (stored_name, original_name, size, uploaded_by, uploaded_at, report_type, report_date, period)
+                    VALUES (?, ?, 1, 'admin', '2026-09-09 10:00:00', 'seller', ?, '2026-09')
+                    """,
+                    (f"{report_date}.xls", f"{report_date}.xls", report_date),
+                )
+                file_id = int(cursor.lastrowid)
+                connection.execute(
+                    "INSERT INTO sales_report_daily_rows (report_date, period, file_id) VALUES (?, '2026-09', ?)",
+                    (report_date, file_id),
+                )
+                connection.execute(
+                    "INSERT INTO sales_report_seller_rows (period, report_date, file_id, seller_name) VALUES ('2026-09', ?, ?, '판매처')",
+                    (report_date, file_id),
+                )
+                connection.execute(
+                    "INSERT INTO sales_report_supplier_rows (period, report_date, file_id, supplier_name) VALUES ('2026-09', ?, ?, '매입처')",
+                    (report_date, file_id),
+                )
+                connection.execute(
+                    "INSERT INTO sales_report_product_rows (period, report_date, file_id, product_name) VALUES ('2026-09', ?, ?, '상품')",
+                    (report_date, file_id),
+                )
+            connection.commit()
+        finally:
+            connection.close()
+
+        result = self.app.reset_sales_report_date("2026-09-08")
+
+        self.assertEqual(result["deleted_row_count"], 4)
+        self.assertEqual(result["deleted_upload_count"], 1)
+        connection = self.app.connect_db()
+        try:
+            for table_name in (
+                "sales_report_daily_rows",
+                "sales_report_seller_rows",
+                "sales_report_supplier_rows",
+                "sales_report_product_rows",
+            ):
+                dates = [row["report_date"] for row in connection.execute(
+                    f"SELECT report_date FROM {table_name} ORDER BY report_date"
+                ).fetchall()]
+                self.assertEqual(dates, ["2026-09-09"])
+            upload_dates = [row["report_date"] for row in connection.execute(
+                "SELECT report_date FROM sales_report_uploads ORDER BY report_date"
+            ).fetchall()]
+            self.assertEqual(upload_dates, ["2026-09-09"])
+        finally:
+            connection.close()
+
     def test_manual_sales_entry_uses_uploaded_product_options_and_updates_dashboard(self) -> None:
         connection = self.app.connect_db()
         try:
