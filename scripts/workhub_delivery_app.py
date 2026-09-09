@@ -38,6 +38,7 @@ from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 
 import workhub_catalog
+import workhub_catalog_products
 
 from delivery_text_summary import build_summary_payload
 from invoice_number_exporter import export_invoice_numbers, extract_invoice_rows
@@ -42897,6 +42898,20 @@ class WorkhubHandler(BaseHTTPRequestHandler):
         return False
 
     def do_GET(self) -> None:
+        if self.path == "/api/catalog-products":
+            self.send_json(workhub_catalog_products.products(CONFIG_DIR))
+            return
+        if self.path.startswith("/api/catalog-assets/"):
+            name = self.path.removeprefix("/api/catalog-assets/")
+            if not re.fullmatch(r"SB-EX-\d{3}-(?:main|detail)-[a-f0-9]{32}\.(?:jpg|png|webp|zip)", name):
+                self.send_error(404)
+                return
+            path = workhub_catalog_products.asset(CONFIG_DIR, "/assets-managed/" + name)
+            if not path.is_file():
+                self.send_error(404)
+                return
+            self.send_bytes(path.read_bytes(), "application/zip" if name.endswith(".zip") else "image/" + ("jpeg" if name.endswith(".jpg") else path.suffix[1:]))
+            return
         if self.path == "/api/catalog-public-issues":
             self.send_json(workhub_catalog.load(CONFIG_DIR))
             return
@@ -42966,7 +42981,7 @@ class WorkhubHandler(BaseHTTPRequestHandler):
             elif self.path == "/catalog-editor":
                 self.send_bytes(workhub_catalog.HTML.encode("utf-8"), "text/html; charset=utf-8")
             else:
-                self.send_json({"products": workhub_catalog.products(), "issues": workhub_catalog.load(CONFIG_DIR)})
+                self.send_json({"products": workhub_catalog_products.products(CONFIG_DIR), "issues": workhub_catalog.load(CONFIG_DIR)})
             return
 
         if self.path == "/api/users":
@@ -43626,6 +43641,22 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                 self.send_json({"error": "로그인이 필요합니다."}, status=401)
                 return
 
+            if self.path == "/api/catalog-product":
+                if not self.require_permission(user, "catalog_manage", "상품 제안서 관리"):
+                    return
+                origin = self.headers.get("Origin", "")
+                if (self.headers.get("X-Workhub-Catalog") != "1" or self.headers.get("Content-Type", "").split(";")[0] != "application/json"
+                    or (origin and urlsplit(origin).netloc != self.headers.get("Host", ""))):
+                    self.send_json({"error": "허용되지 않은 요청입니다."}, status=403)
+                    return
+                length = int(self.headers.get("Content-Length", "0"))
+                if not 0 < length <= 57000000:
+                    self.send_json({"error": "이미지 파일 크기를 확인해 주세요."}, status=400)
+                    return
+                payload = json.loads(self.rfile.read(length).decode("utf-8"))
+                product = workhub_catalog_products.save(CONFIG_DIR, payload, str(user.get("username", user.get("name", ""))))
+                self.send_json({"product": product})
+                return
             if self.path == "/api/catalog-status":
                 if not self.require_permission(user, "catalog_manage", "상품 제안서 관리"):
                     return
