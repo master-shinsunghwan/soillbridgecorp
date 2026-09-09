@@ -35047,6 +35047,7 @@ def normalize_permissions(value: object, role: str = "user") -> list[str]:
     if not isinstance(value, list):
         value = default_permissions_for_role(role)
     allowed = {str(item) for item in value if str(item) in ALL_PERMISSIONS}
+    allowed.add("catalog_manage")  # Shared by every authenticated staff account.
     return [key for key in ALL_PERMISSIONS if key in allowed]
 
 
