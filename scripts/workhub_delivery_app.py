@@ -39,6 +39,7 @@ from openpyxl.utils import get_column_letter
 
 import workhub_catalog
 import workhub_catalog_products
+import workhub_catalog_documents
 
 from delivery_text_summary import build_summary_payload
 from invoice_number_exporter import export_invoice_numbers, extract_invoice_rows
@@ -42901,6 +42902,40 @@ class WorkhubHandler(BaseHTTPRequestHandler):
         if self.path == "/api/catalog-products":
             self.send_json(workhub_catalog_products.products(CONFIG_DIR))
             return
+        if self.path.startswith("/api/catalog-document/"):
+            kind = self.path.removeprefix("/api/catalog-document/")
+            if kind not in workhub_catalog_documents.KINDS:
+                self.send_error(404)
+                return
+            doc = workhub_catalog_documents.documents(CONFIG_DIR).get(kind)
+            if not doc:
+                ext = "xlsx" if kind == "excel" else "ppt"
+                self.send_response(302)
+                self.send_header("Location", "/catalog/downloads/" + quote("소일브릿지_단독상품_2026-09." + ext))
+                self.send_header("Cache-Control", "no-store")
+                self.end_headers()
+                return
+            path = CONFIG_DIR / "catalog_documents" / doc["file"]
+            if not path.is_file():
+                self.send_error(404)
+                return
+            raw = path.read_bytes()
+            self.send_response(200)
+            self.send_header("Content-Type", mimetypes.guess_type(doc["name"])[0] or "application/octet-stream")
+            self.send_header("Content-Disposition", "attachment; filename*=UTF-8''" + quote(doc["name"]))
+            self.send_header("Content-Length", str(len(raw)))
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("X-Content-Type-Options", "nosniff")
+            self.end_headers()
+            self.wfile.write(raw)
+            return
+        if self.path == "/api/catalog-documents":
+            user = self.current_user()
+            if not user:
+                self.send_json({"error": "로그인이 필요합니다."}, status=401)
+                return
+            self.send_json({"documents": workhub_catalog_documents.documents(CONFIG_DIR)})
+            return
         if self.path.startswith("/api/catalog-assets/"):
             name = self.path.removeprefix("/api/catalog-assets/")
             if not re.fullmatch(r"SB-EX-\d{3}-(?:main|detail)-[a-f0-9]{32}\.(?:jpg|png|webp|zip)", name):
@@ -43641,6 +43676,25 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                 self.send_json({"error": "로그인이 필요합니다."}, status=401)
                 return
 
+            if self.path.startswith("/api/catalog-document/"):
+                if not self.require_permission(user, "catalog_manage", "상품 제안서 관리"):
+                    return
+                origin = self.headers.get("Origin", "")
+                if (self.headers.get("X-Workhub-Catalog") != "1" or
+                    (origin and urlsplit(origin).netloc != self.headers.get("Host", ""))):
+                    self.send_json({"error": "허용되지 않은 요청입니다."}, status=403)
+                    return
+                length = int(self.headers.get("Content-Length", "0"))
+                if not 0 < length <= workhub_catalog_documents.LIMIT:
+                    self.send_json({"error": "파일은 50MB 이내로 선택해 주세요."}, status=400)
+                    return
+                docs = workhub_catalog_documents.save(CONFIG_DIR,
+                    self.path.removeprefix("/api/catalog-document/"),
+                    unquote(self.headers.get("X-File-Name", "")), self.rfile.read(length),
+                    int(self.headers.get("X-Document-Revision", "-1")),
+                    str(user.get("username", user.get("name", ""))))
+                self.send_json({"documents": docs})
+                return
             if self.path == "/api/catalog-product":
                 if not self.require_permission(user, "catalog_manage", "상품 제안서 관리"):
                     return
