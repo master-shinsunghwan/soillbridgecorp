@@ -2253,6 +2253,8 @@ HTML = r"""<!doctype html>
     }
     .import-cost-panel {
       display: grid;
+      grid-auto-rows: max-content;
+      align-content: start;
       gap: 12px;
       padding: 14px;
       overflow-y: auto;
@@ -2320,6 +2322,8 @@ HTML = r"""<!doctype html>
     }
     .import-cost-tabs {
       display: flex;
+      flex: 0 0 auto;
+      min-height: 46px;
       gap: 6px;
       align-items: center;
       padding: 4px;
@@ -2329,6 +2333,10 @@ HTML = r"""<!doctype html>
       overflow-x: auto;
     }
     .import-cost-tab {
+      display: inline-flex;
+      flex: 0 0 auto;
+      align-items: center;
+      justify-content: center;
       min-height: 34px;
       padding: 0 13px;
       border: 1px solid transparent;
@@ -2337,6 +2345,7 @@ HTML = r"""<!doctype html>
       color: #475569;
       font-family: inherit;
       font-size: 13px;
+      line-height: 1.5;
       font-weight: 850;
       white-space: nowrap;
       cursor: pointer;
