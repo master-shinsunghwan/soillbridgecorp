@@ -11033,7 +11033,7 @@ HTML = r"""<!doctype html>
             <table class="import-table">
               <thead>
                 <tr>
-                  <th>컨테이너 하역 예정일</th>
+                  <th>컨테이너 하역 예정일시</th>
                   <th>출항일</th>
                   <th>입항일</th>
                   <th>선적항</th>
@@ -11366,7 +11366,7 @@ HTML = r"""<!doctype html>
             <table class="import-table">
               <thead>
                 <tr>
-                  <th>컨테이너 하역 예정일</th>
+                  <th>컨테이너 하역 예정일시</th>
                   <th>출항일</th>
                   <th>입항일</th>
                   <th>선적항</th>
@@ -11896,7 +11896,8 @@ HTML = r"""<!doctype html>
         <input id="importArrivalPort" type="hidden" />
         <input id="importShipper" type="hidden" />
         <div class="notice-template-grid">
-          <input id="importWarehouseDueDate" type="text" placeholder="컨테이너 하역 예정일" />
+          <label>컨테이너 하역 예정일<input id="importWarehouseDueDate" type="date" /></label>
+          <label>하역 예정 시간 (한국시간 · 선택)<input id="importWarehouseDueTime" type="time" step="60" /></label>
           <input id="importDepartureDate" type="text" placeholder="출항일 예) 6/10" />
           <input id="importArrivalDate" type="text" placeholder="입항일 예) 6/13" />
         </div>
@@ -13255,6 +13256,7 @@ HTML = r"""<!doctype html>
     const importProgressStatus = document.querySelector("#importProgressStatus");
     const importFreeTime = document.querySelector("#importFreeTime");
     const importWarehouseDueDate = document.querySelector("#importWarehouseDueDate");
+    const importWarehouseDueTime = document.querySelector("#importWarehouseDueTime");
     const managementWorkspace = document.querySelector("#managementWorkspace");
     const ledgerWorkspace = document.querySelector("#ledgerWorkspace");
     const importWorkspace = document.querySelector("#importWorkspace");
@@ -15152,7 +15154,8 @@ HTML = r"""<!doctype html>
       importSize.value = record?.size || "";
       importProgressStatus.value = record?.progress_status || "";
       importFreeTime.value = record?.free_time || "";
-      importWarehouseDueDate.value = record?.warehouse_due_date || "";
+      importWarehouseDueDate.value = fullDateForSave(record?.warehouse_due_date || "", "");
+      importWarehouseDueTime.value = record?.warehouse_due_time || "";
       if (importShipmentDelete) importShipmentDelete.hidden = !record?.id;
     }
 
@@ -15172,6 +15175,7 @@ HTML = r"""<!doctype html>
         progress_status: importProgressStatus.value.trim(),
         free_time: importFreeTime.value.trim(),
         warehouse_due_date: importWarehouseDueDate.value.trim(),
+        warehouse_due_time: importWarehouseDueTime.value,
       };
     }
 
@@ -15204,7 +15208,7 @@ HTML = r"""<!doctype html>
       }
       dashboardImportScheduleBody.innerHTML = activeRecords.slice(0, 6).map((record) => `
         <tr>
-          <td>${escapeHtml(shortKoreanDate(record.warehouse_due_date) || "-")}</td>
+          <td>${escapeHtml(warehouseDueLabel(record))}</td>
           <td>${escapeHtml(shortKoreanDate(record.departure_date) || "-")}</td>
           <td>${escapeHtml(shortKoreanDate(record.arrival_date) || "-")}</td>
           <td>${escapeHtml(record.loading_port || "-")}</td>
@@ -15245,7 +15249,7 @@ HTML = r"""<!doctype html>
             </td>`
           : `<td>${escapeHtml(record.progress_status)}</td>`;
         row.innerHTML = `
-          <td>${escapeHtml(shortKoreanDate(record.warehouse_due_date))}</td>
+          <td>${escapeHtml(warehouseDueLabel(record))}</td>
           <td>${escapeHtml(shortKoreanDate(record.departure_date))}</td>
           <td>${escapeHtml(shortKoreanDate(record.arrival_date))}</td>
           <td>${escapeHtml(record.loading_port)}</td>
@@ -21741,12 +21745,18 @@ ${kind} 안내드립니다.
       return `${year}-${parts.month}-${parts.day}`;
     }
 
+    function warehouseDueLabel(record) {
+      return [shortKoreanDate(record.warehouse_due_date), record.warehouse_due_time].filter(Boolean).join(" ") || "-";
+    }
+
     function sortImportShipmentsByWarehouseDate(rows) {
       return [...rows].sort((a, b) => {
         const completedCompare = Number(Boolean(a.completed_at)) - Number(Boolean(b.completed_at));
         if (completedCompare) return completedCompare;
         const dateCompare = importDateSortKey(a.warehouse_due_date).localeCompare(importDateSortKey(b.warehouse_due_date));
         if (dateCompare) return dateCompare;
+        const timeCompare = (a.warehouse_due_time || "99:99").localeCompare(b.warehouse_due_time || "99:99");
+        if (timeCompare) return timeCompare;
         return Number(b.id || 0) - Number(a.id || 0);
       });
     }
@@ -35949,6 +35959,8 @@ def init_db() -> None:
         import_shipment_columns = {
             row["name"] for row in connection.execute("PRAGMA table_info(import_shipments)").fetchall()
         }
+        if "warehouse_due_time" not in import_shipment_columns:
+            connection.execute("ALTER TABLE import_shipments ADD COLUMN warehouse_due_time TEXT")
         if "quantity" not in import_shipment_columns:
             connection.execute("ALTER TABLE import_shipments ADD COLUMN quantity TEXT")
         connection.execute(
@@ -39272,6 +39284,7 @@ IMPORT_SHIPMENT_FIELDS = (
     "progress_status",
     "free_time",
     "warehouse_due_date",
+    "warehouse_due_time",
 )
 
 CARGO_SHIPMENT_FIELDS = (
@@ -39320,7 +39333,7 @@ def list_import_shipments() -> list[dict[str, str | int]]:
             """
             SELECT id, created_at, updated_at, departure_date, arrival_date,
                    loading_port, arrival_port, shipper, item, quantity, vessel_name,
-                   hbl_no, size, progress_status, free_time, warehouse_due_date, completed_at
+                   hbl_no, size, progress_status, free_time, warehouse_due_date, warehouse_due_time, completed_at
               FROM import_shipments
              ORDER BY CASE WHEN completed_at IS NULL OR completed_at = '' THEN 0 ELSE 1 END,
                       id DESC
@@ -39334,6 +39347,7 @@ def list_import_shipments() -> list[dict[str, str | int]]:
         key=lambda row: (
             1 if row.get("completed_at") else 0,
             import_shipment_date_key(row.get("warehouse_due_date")),
+            row.get("warehouse_due_time") or "99:99",
             -int(row.get("id") or 0),
         ),
     )
@@ -39489,6 +39503,11 @@ def save_import_shipment(payload: dict) -> int:
     init_db()
     now = now_text()
     values = {field: clean_payload_text(payload, field) for field in IMPORT_SHIPMENT_FIELDS}
+    if values["warehouse_due_time"]:
+        if not re.fullmatch(r"(?:[01]\d|2[0-3]):[0-5]\d", values["warehouse_due_time"]):
+            raise ValueError("하역 예정 시간을 시:분 형식으로 입력해 주세요.")
+        if not import_shipment_date_iso(values["warehouse_due_date"]):
+            raise ValueError("하역 예정 시간을 입력하려면 날짜도 지정해 주세요.")
     if not any(values.values()):
         raise ValueError("수입제품 입고 진행 내용을 입력해주세요.")
     shipment_id = int(payload.get("id") or 0)
