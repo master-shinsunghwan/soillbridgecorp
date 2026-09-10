@@ -43723,7 +43723,7 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                     str(user.get("username", user.get("name", ""))))
                 self.send_json({"documents": docs})
                 return
-            if self.path == "/api/catalog-product":
+            if self.path in {"/api/catalog-product", "/api/catalog-product-new"}:
                 if not self.require_permission(user, "catalog_manage", "상품 제안서 관리"):
                     return
                 origin = self.headers.get("Origin", "")
@@ -43736,7 +43736,7 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                     self.send_json({"error": "이미지 파일 크기를 확인해 주세요."}, status=400)
                     return
                 payload = json.loads(self.rfile.read(length).decode("utf-8"))
-                product = workhub_catalog_products.save(CONFIG_DIR, payload, str(user.get("username", user.get("name", ""))))
+                product = workhub_catalog_products.save(CONFIG_DIR, payload, str(user.get("username", user.get("name", ""))), create=self.path == "/api/catalog-product-new")
                 self.send_json({"product": product})
                 return
             if self.path == "/api/catalog-status":

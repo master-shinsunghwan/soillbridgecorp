@@ -7,7 +7,7 @@ class E{
  addEventListener(n,f){this.listeners[n]=f}
  querySelector(){return null}
 }
-const nodes={};for(const id of ['documentUploads','refreshDocuments','search','filter','items','status','total','temporary','marked'])nodes['#'+id]=new E('div');nodes['#filter'].value='all';
+const nodes={};for(const id of ['addProduct','newProduct','documentUploads','refreshDocuments','search','filter','items','status','total','temporary','marked'])nodes['#'+id]=new E('div');nodes['#filter'].value='all';
 const calls=[];const p={id:'SB-EX-009',name:'test',main:[{url:'/a.jpg'}],preview:'/a.jpg',spec:'',features:'',price:100,sortPrice:100,pack:'1EA',revision:0};
 const ctx={console,URL,setTimeout,confirm:()=>true,location:{origin:'https://test'},window:{addEventListener(){}},document:{createElement:t=>new E(t),querySelector:s=>nodes[s]||null,querySelectorAll:()=>[]},fetch:async(url,options)=>{calls.push([url,options]);return {ok:true,json:async()=>url.includes('documents')?{documents:{}}:options?.method==='POST'?{issues:{[p.id]:{type:'temporary',restock:'2026-10-01'}}}:{products:[p],issues:{}}}}};
 vm.createContext(ctx);const source=fs.readFileSync('scripts/catalog_editor.html','utf8').split('<script>')[1].split('</script>')[0];vm.runInContext(source,ctx);

@@ -4,6 +4,22 @@ sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'scripts'))
 from PIL import Image
 import workhub_catalog_products as m
 class ProductEditTests(unittest.TestCase):
+ def test_new_product_publication_edit_and_stock(self):
+  import workhub_catalog as stock
+  with tempfile.TemporaryDirectory() as d:
+   config=Path(d);before=m.products(config)
+   out=io.BytesIO();Image.new('RGB',(8,8)).save(out,format='PNG')
+   body=dict(name='새 상품',category='생활용품',shipping='무료배송',tax='VAT 포함',spec='구성 1개',features='',price=5000,sortPrice=5000,pack='8EA',images={'main':base64.b64encode(out.getvalue()).decode()})
+   with self.assertRaises(ValueError):m.save(config,dict(body,images={}), 'tester',create=True)
+   p=m.save(config,body,'tester',create=True)
+   rows=m.products(config)
+   self.assertEqual(len(rows),len(before)+1)
+   self.assertEqual(rows[-1]['id'],p['id'])
+   self.assertEqual(rows[:-1],before)
+   self.assertEqual(m.asset(config,p['preview']).read_bytes(),out.getvalue())
+   edited=m.save(config,dict(body,id=p['id'],revision=1,pack='12EA',images={}), 'tester')
+   self.assertEqual(edited['pack'],'12EA')
+   self.assertEqual(stock.save(config,dict(id=p['id'],type='temporary',restock='2026-10-01'))[p['id']]['restock'],'2026-10-01')
  def test_roundtrip_conflict_validation_images_and_history(self):
   with tempfile.TemporaryDirectory() as d:
    config=Path(d);oldbase=m.BASE;baseline=config/'base.json';p=json.loads(oldbase.read_text(encoding='utf8'))[0];p['main']=[];p['detail']=[];baseline.write_text(json.dumps([p]),encoding='utf8');m.BASE=baseline

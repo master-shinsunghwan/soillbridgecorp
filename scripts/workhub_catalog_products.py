@@ -16,6 +16,9 @@ def products(config):
  finally:c.close()
  for p in rows:
   data,revision=edits.get(p['id'],({},0));p.update(data);p['revision']=revision
+ known={p['id'] for p in rows}
+ rows.extend(dict(data,revision=rev) for pid,(data,rev) in edits.items() if pid not in known and data.get('added'))
+ rows.sort(key=lambda p:p['no'])
  return rows
 def asset(config,url):
  if url.startswith('/assets-managed/'):
@@ -26,11 +29,22 @@ def asset(config,url):
  path=(root/name).resolve()
  if not path.is_relative_to(root):raise ValueError('잘못된 이미지 경로입니다.')
  return path
-def save(config,payload,actor):
+def save(config,payload,actor,create=False):
  if not isinstance(payload,dict):raise ValueError('입력 형식이 올바르지 않습니다.')
- old=next((p for p in products(config) if p['id']==payload.get('id')),None)
+ existing=products(config)
+ old=next((p for p in existing if p['id']==payload.get('id')),None)
+ if create:
+  number=max((p['no'] for p in existing),default=0)+1
+  if number>999:raise ValueError('상품 번호 범위를 초과했습니다. 관리자에게 문의해 주세요.')
+  old={'id':f'SB-EX-{number:03d}','no':number,'revision':0,'added':True,'main':[],'detail':[],'zips':{'main':'','detail':''},'preview':'','excelImage':False,'packagingNote':''}
+  for key,limit in [('name',300),('category',100),('model',200),('manufacturer',200),('origin',100),('shipping',1000),('tax',50),('note',2000),('terms',4000)]:
+   value=payload.get(key,'')
+   if not isinstance(value,str) or len(value)>limit:raise ValueError('상품 정보의 입력 길이를 확인해 주세요.')
+   if key in {'name','category','shipping','tax'} and not value.strip():raise ValueError('상품명, 분류, 배송비, 부가세 기준을 입력해 주세요.')
+   old[key]=value.strip()
+  if not isinstance(payload.get('images'),dict) or not payload['images'].get('main'):raise ValueError('대표 이미지를 등록해 주세요.')
  if not old:raise ValueError('상품을 찾을 수 없습니다.')
- if payload.get('revision')!=old['revision']:raise ValueError('다른 직원이 수정한 상품입니다. 새로고침 후 다시 확인해 주세요.')
+ if not create and payload.get('revision')!=old['revision']:raise ValueError('다른 직원이 수정한 상품입니다. 새로고침 후 다시 확인해 주세요.')
  p=copy.deepcopy(old)
  for key,limit in [('spec',12000),('features',12000),('pack',100)]:
   v=payload.get(key)
