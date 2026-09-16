@@ -10887,7 +10887,8 @@ HTML = r"""<!doctype html>
         </button>
         <div class="nav-submenu">
           <button class="nav-subitem" type="button" data-mail-popup="cs">CS 요청</button>
-          <button class="nav-subitem" type="button" data-mail-popup="stock">입고 및 품절 공지</button>
+          <button class="nav-subitem" type="button" data-mail-popup="inbound">입고 안내 메일</button>
+          <button class="nav-subitem" type="button" data-mail-popup="soldout">품절 안내 메일</button>
           <button class="nav-subitem" type="button" data-mail-popup="general">공지/안내자료 발송</button>
         </div>
       </div>
@@ -12288,7 +12289,7 @@ HTML = r"""<!doctype html>
             <textarea id="stockBodyInput"></textarea>
           </div>
           <div class="cs-case-list">
-            <div class="cs-case-head" id="stockMailHistoryTitle">최근 입고/품절 발송 이력</div>
+            <div class="cs-case-head" id="stockMailHistoryTitle">최근 발송 이력</div>
             <div id="stockMailHistoryList"></div>
           </div>
         </div>
@@ -15382,7 +15383,10 @@ HTML = r"""<!doctype html>
     }
 
     function refreshStockNoticeBody() {
-      if (stockBodyInput) stockBodyInput.value = defaultStockNoticeBody();
+      if (!stockBodyInput) return;
+      stockBodyInput.value = currentMode === "mail-soldout"
+        ? defaultSoldoutNoticeBody()
+        : defaultInboundNoticeBody();
     }
 
     function refreshGeneralNoticeBody({ overwrite = true } = {}) {
@@ -15399,12 +15403,12 @@ HTML = r"""<!doctype html>
       };
     }
 
-    function defaultStockNoticeBody() {
+    function defaultInboundNoticeBody() {
       const value = (input) => input?.value.trim() || "";
       const contact = defaultStockContactInfo();
       return `안녕하세요. (주)소일브릿지 입니다.
 
-제품 입고 및 품절 현황 안내드립니다.
+제품 입고 일정을 안내드립니다.
 
 ■ 기준일자: ${stockNoticeDateInput?.value || ""}
 
@@ -15417,6 +15421,25 @@ HTML = r"""<!doctype html>
 ▶출고 가능 일정 : ${value(stockOutboundAvailableInput)}
 
 ▶특이사항 : ${value(stockInboundNoteInput)}
+
+업무 진행 시 참고 부탁드리며, 확인이 필요한 내용이 있으시면 회신 부탁드립니다.
+
+감사합니다.
+
+(주)소일브릿지
+담당자: ${contact.managerName}
+연락처: ${contact.managerPhone}
+이메일: ${contact.senderEmail}`;
+    }
+
+    function defaultSoldoutNoticeBody() {
+      const value = (input) => input?.value.trim() || "";
+      const contact = defaultStockContactInfo();
+      return `안녕하세요. (주)소일브릿지 입니다.
+
+제품 품절 및 재입고 일정을 안내드립니다.
+
+■ 기준일자: ${stockNoticeDateInput?.value || ""}
 
 ■ 제품 일시 품절(단종) 안내
 
@@ -15825,7 +15848,7 @@ ${kind} 안내드립니다.
       vendorTypeSelect.value = selected.vendor_type || "purchase";
       vendorNameInput.value = selected.vendor_name;
       recipientEmailInput.value = selected.email;
-      csSubjectInput.value = currentMode === "mail-stock" ? "입고 및 품절 공지" : defaultCsSubject(selected.vendor_name);
+      csSubjectInput.value = defaultCsSubject(selected.vendor_name);
     }
 
     function syncVendorEmailFromName({ overwrite = false } = {}) {
@@ -16844,13 +16867,34 @@ ${kind} 안내드립니다.
       }];
     }
 
+    function stockNoticeModeConfig(mode = currentMode) {
+      if (mode === "mail-soldout") {
+        return {
+          mailType: "soldout_notice",
+          title: "품절 안내 메일",
+          subject: "[소일브릿지] 제품 품절 및 재입고 안내",
+          previewTitle: "품절 안내 메일 미리보기",
+          historyTitle: "최근 품절 안내 발송 이력",
+        };
+      }
+      return {
+        mailType: "inbound_notice",
+        title: "입고 안내 메일",
+        subject: "[소일브릿지] 제품 입고 일정 안내",
+        previewTitle: "입고 안내 메일 미리보기",
+        historyTitle: "최근 입고 안내 발송 이력",
+      };
+    }
+
     function collectStockNoticePayload(vendor = null, recipients = null) {
       const targetRecipients = recipients || (vendor ? [vendor] : collectStockNoticeRecipients());
       const bccEmails = [...new Set(targetRecipients.map((item) => item.email).filter(Boolean))];
       const contact = defaultStockContactInfo();
       const selectedType = targetRecipients[0]?.vendor_type || stockVendorTypeSelect?.value || "purchase";
       const selectedLabel = selectedType === "sales" ? "매출처" : "매입처";
-      const mailType = currentMode === "mail-general" ? "general_notice" : "stock_notice";
+      const mailType = currentMode === "mail-general"
+        ? "general_notice"
+        : stockNoticeModeConfig().mailType;
       return {
         mail_type: mailType,
         vendor_type: selectedType,
@@ -16869,8 +16913,14 @@ ${kind} 안내드립니다.
     }
 
     async function sendCurrentStockNoticeMail() {
-      if (currentMode === "mail-stock") refreshStockNoticeBody();
+      if (currentMode === "mail-inbound" || currentMode === "mail-soldout") refreshStockNoticeBody();
       if (currentMode === "mail-general") refreshGeneralNoticeBody({ overwrite: false });
+      if (currentMode === "mail-inbound" && !stockInboundProductInput?.value.trim()) {
+        throw new Error("입고 안내할 품명(모델명)을 입력해주세요.");
+      }
+      if (currentMode === "mail-soldout" && !stockSoldoutProductInput?.value.trim()) {
+        throw new Error("품절 안내할 품명(모델명)을 입력해주세요.");
+      }
       const recipients = collectStockNoticeRecipients();
       const basePayload = collectStockNoticePayload(null, recipients);
       if (!recipients.length || !basePayload.subject || !basePayload.body) {
@@ -16878,7 +16928,7 @@ ${kind} 안내드립니다.
       }
       const isGeneral = currentMode === "mail-general";
       const proceed = await requestMailPreview({
-        title: isGeneral ? "공지/안내자료 메일 미리보기" : "입고 및 품절 공지 미리보기",
+        title: isGeneral ? "공지/안내자료 메일 미리보기" : stockNoticeModeConfig().previewTitle,
         description: "업체에 발송될 제목, 본문, 수신처를 확인해주세요.",
         payload: basePayload,
         recipients,
@@ -16901,9 +16951,10 @@ ${kind} 안내드립니다.
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "공지 메일 발송에 실패했습니다.");
       if (Array.isArray(data.logs)) renderStockMailHistory(data.logs);
+      const noticeLabel = isGeneral ? "공지" : (currentMode === "mail-soldout" ? "품절 안내" : "입고 안내");
       notice.textContent = data.message || (recipients.length === 1
-        ? "공지 메일을 숨은참조 방식으로 발송했습니다."
-        : `공지 메일을 ${recipients.length}곳에 숨은참조 방식으로 1회 발송했습니다.`);
+        ? `${noticeLabel} 메일을 숨은참조 방식으로 발송했습니다.`
+        : `${noticeLabel} 메일을 ${recipients.length}곳에 숨은참조 방식으로 1회 발송했습니다.`);
     }
 
     function renderStockMailHistory(logs) {
@@ -16990,7 +17041,9 @@ ${kind} 안내드립니다.
 
     async function loadStockMailHistory() {
       if (!stockMailHistoryList) return;
-      const mailType = currentMode === "mail-general" ? "general_notice" : "stock_notice";
+      const mailType = currentMode === "mail-general"
+        ? "general_notice"
+        : stockNoticeModeConfig().mailType;
       const response = await fetch(`/api/vendor-mail-send-logs?mail_type=${encodeURIComponent(mailType)}&limit=20`);
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "발송 이력을 불러오지 못했습니다.");
@@ -23130,7 +23183,7 @@ ${kind} 안내드립니다.
       ].forEach((input) => {
         if (input) input.value = "";
       });
-      if (stockSubjectInput) stockSubjectInput.value = "입고 및 품절 공지";
+      if (stockSubjectInput) stockSubjectInput.value = stockNoticeModeConfig().subject;
       if (generalNoticeAttachmentInput) generalNoticeAttachmentInput.value = "";
       updateGeneralNoticeAttachmentSummary();
       refreshStockNoticeBody();
@@ -25126,7 +25179,8 @@ ${kind} 안내드립니다.
 
     const mailPopupTitles = {
       cs: "CS 요청",
-      stock: "입고 및 품절 공지",
+      inbound: "입고 안내 메일",
+      soldout: "품절 안내 메일",
       general: "공지/안내자료 발송",
       purchaseContacts: "매입처 관리",
       salesContacts: "매출처 관리",
@@ -25142,7 +25196,10 @@ ${kind} 안내드립니다.
         return;
       }
       const title = mailPopupTitles[type] || "거래처 업무관련";
-      openModal(type === "stock" ? "mail-stock" : (type === "general" ? "mail-general" : "cs"));
+      const mode = type === "inbound"
+        ? "mail-inbound"
+        : (type === "soldout" ? "mail-soldout" : (type === "general" ? "mail-general" : "cs"));
+      openModal(mode);
       modalTitle.textContent = title;
     }
 
@@ -25300,9 +25357,11 @@ ${kind} 안내드립니다.
         templateInput.required = false;
         renderVendorManageContacts();
         loadVendorContacts();
-      } else if (mode === "mail-stock") {
-        modalTitle.textContent = "입고 및 품절 공지";
-        submitButton.textContent = "공지 메일 발송";
+      } else if (mode === "mail-inbound" || mode === "mail-soldout") {
+        const config = stockNoticeModeConfig(mode);
+        const isInbound = mode === "mail-inbound";
+        modalTitle.textContent = config.title;
+        submitButton.textContent = `${isInbound ? "입고" : "품절"} 안내 메일 발송`;
         submitButton.className = "btn primary";
         deliveryOptions.style.display = "none";
         templateUpload.style.display = "none";
@@ -25310,21 +25369,22 @@ ${kind} 안내드립니다.
         csFields.style.display = "none";
         stockNoticeFields.style.display = "block";
         if (generalNoticeFields) generalNoticeFields.hidden = true;
-        [
-          stockNoticeDateInput,
-          stockInboundProductInput,
-          stockInboundScheduleInput,
-          stockOutboundAvailableInput,
-          stockInboundNoteInput,
-          stockSoldoutProductInput,
-          stockOutboundBlockedInput,
-          stockRestockScheduleInput,
-          stockSoldoutNoteInput,
-        ].forEach((input) => {
+        [stockNoticeDateInput].forEach((input) => {
           const field = input?.closest(".text-field");
           if (field) field.style.display = "block";
         });
-        if (stockMailHistoryTitle) stockMailHistoryTitle.textContent = "최근 입고/품절 발송 이력";
+        [stockInboundProductInput, stockInboundScheduleInput, stockOutboundAvailableInput, stockInboundNoteInput]
+          .forEach((input) => {
+            const field = input?.closest(".text-field");
+            if (field) field.style.display = isInbound ? "block" : "none";
+          });
+        [stockSoldoutProductInput, stockOutboundBlockedInput, stockRestockScheduleInput, stockSoldoutNoteInput]
+          .forEach((input) => {
+            const field = input?.closest(".text-field");
+            if (field) field.style.display = isInbound ? "none" : "block";
+          });
+        if (stockSubjectInput) stockSubjectInput.value = config.subject;
+        if (stockMailHistoryTitle) stockMailHistoryTitle.textContent = config.historyTitle;
         ledgerFields.style.display = "none";
         managementFields.style.display = "none";
         messagePlaceholder.style.display = "none";
@@ -27536,7 +27596,7 @@ ${kind} 안내드립니다.
       }
     });
     vendorNameInput.addEventListener("input", () => {
-      csSubjectInput.value = currentMode === "mail-stock" ? "입고 및 품절 공지" : defaultCsSubject(vendorNameInput.value.trim());
+      csSubjectInput.value = defaultCsSubject(vendorNameInput.value.trim());
       syncVendorEmailFromName();
     });
     vendorTypeSelect.addEventListener("change", () => syncVendorEmailFromName({ overwrite: true }));
@@ -27597,7 +27657,7 @@ ${kind} 안내드립니다.
           closeModal();
         } else if (currentMode === "cs") {
           await sendCurrentCsMail();
-        } else if (currentMode === "mail-stock") {
+        } else if (["mail-inbound", "mail-soldout", "mail-general"].includes(currentMode)) {
           await sendCurrentStockNoticeMail();
         } else if (currentMode === "vehicle") {
           const payload = collectVehiclePayload();
@@ -31534,7 +31594,13 @@ def classify_mail_failure(error: object) -> str:
 
 
 def preview_mail_failure_ops() -> dict[str, object]:
-    logs = [log for log in list_vendor_mail_send_logs(mail_type="stock_notice", limit=200) if log.get("status") == "failed"]
+    logs = []
+    for mail_type in ("inbound_notice", "soldout_notice", "stock_notice"):
+        logs.extend(
+            log
+            for log in list_vendor_mail_send_logs(mail_type=mail_type, limit=200)
+            if log.get("status") == "failed"
+        )
     rows = []
     for log in logs:
         category = classify_mail_failure(log.get("error"))
@@ -42296,7 +42362,7 @@ def approve_failed_vendor_contact_delete(payload: dict, approved_by: str = "") -
         "message": "실패 이력 업체를 주소록에서 삭제 승인 처리했습니다.",
         "delete_count": delete_count,
         "contacts": load_vendor_contacts(),
-        "logs": list_vendor_mail_send_logs(mail_type="stock_notice", limit=20),
+        "logs": list_vendor_mail_send_logs(mail_type=str(log.get("mail_type") or "stock_notice"), limit=20),
     }
 
 
@@ -44470,8 +44536,13 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                 log = save_vendor_mail_send_log(success_payload, "sent", sent_by=sent_by, mail_type=mail_type)
                 batch_count = int(result.get("batch_count", 1))
                 recipient_count = int(result.get("recipient_count", log.get("recipient_count", 0)))
+                mail_label = {
+                    "inbound_notice": "입고 안내",
+                    "soldout_notice": "품절 안내",
+                    "general_notice": "공지/안내자료",
+                }.get(mail_type, "공지")
                 self.send_json({
-                    "message": f"공지 메일을 {recipient_count}곳에 숨은참조 방식으로 {batch_count}회 나눠 발송했습니다.",
+                    "message": f"{mail_label} 메일을 {recipient_count}곳에 숨은참조 방식으로 {batch_count}회 나눠 발송했습니다.",
                     "batch_count": batch_count,
                     "recipient_count": recipient_count,
                     "batch_size": int(result.get("batch_size", 0)),

@@ -657,6 +657,37 @@ class VendorContactMailWorkflowTests(unittest.TestCase):
             self.assertEqual(app.list_vendor_mail_send_logs("general_notice")[0]["subject"], "Notice")
             self.assertEqual(app.list_vendor_mail_send_logs("stock_notice"), [])
 
+    def test_inbound_and_soldout_notice_histories_are_separated(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            app = load_app(Path(directory))
+            base_payload = {
+                "vendor_type": "purchase",
+                "vendor_name": "매입처 1곳",
+                "recipient_email": "soilbridge@naver.com",
+                "bcc_emails": ["vendor@example.com"],
+                "subject": "안내",
+                "body": "내용",
+                "batch_count": 1,
+            }
+
+            app.save_vendor_mail_send_log(
+                {**base_payload, "subject": "입고 안내"},
+                "sent",
+                sent_by="admin",
+                mail_type="inbound_notice",
+            )
+            app.save_vendor_mail_send_log(
+                {**base_payload, "subject": "품절 안내"},
+                "sent",
+                sent_by="admin",
+                mail_type="soldout_notice",
+            )
+
+            inbound_logs = app.list_vendor_mail_send_logs("inbound_notice")
+            soldout_logs = app.list_vendor_mail_send_logs("soldout_notice")
+            self.assertEqual([log["subject"] for log in inbound_logs], ["입고 안내"])
+            self.assertEqual([log["subject"] for log in soldout_logs], ["품절 안내"])
+
     def test_failed_stock_notice_vendor_can_be_admin_deleted_from_contacts(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             app = load_app(Path(directory))
