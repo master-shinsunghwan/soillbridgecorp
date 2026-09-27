@@ -1326,6 +1326,7 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         self.assertIn("function analyzeSavedImportCostFile", admin_html)
         self.assertIn('"/api/import-cost-report-save"', admin_html)
         self.assertIn('"/api/import-cost-report-status"', admin_html)
+        self.assertIn('"/api/import-cost-report-delete"', admin_html)
         self.assertIn('"/api/import-cost-original-analyze"', admin_html)
         self.assertIn('"/api/import-cost-reports"', admin_html)
         self.assertIn("import-cost-rate-field", admin_html)
@@ -1338,6 +1339,8 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         self.assertIn('setImportCostRunStatus("running"', admin_html)
         self.assertIn('setImportCostRunStatus("done"', admin_html)
         self.assertIn('setImportCostRunStatus("error"', admin_html)
+        self.assertIn("data-import-cost-delete", admin_html)
+        self.assertIn("function deleteImportCostReport", admin_html)
 
     def test_import_cost_report_tracks_managed_product_name(self) -> None:
         app = self.load_app()
@@ -1372,6 +1375,55 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
         detailed = app.get_import_cost_report(report["id"])
         self.assertEqual(detailed["managed_product_name"], "노르디쿡 IH 무쇠팬 28cm")
         self.assertEqual(detailed["history"][-1]["action"], "managed_product")
+
+    def test_import_cost_report_delete_removes_report_history_and_original_files(self) -> None:
+        app = self.load_app()
+        payload = {
+            "hbl_no": "DELETE-ME-HBL",
+            "invoice_no": "DELETE-ME-INVOICE",
+            "remittance_rate": "1512",
+            "allocation_basis": "amount",
+            "products": [{
+                "name": "Duplicate product",
+                "quantity": "10",
+                "unit_usd": "1",
+                "amount_usd": "10",
+                "gross_weight": "1",
+                "cbm": "1",
+            }],
+        }
+        upload_path = Path(os.environ["WORKHUB_DATA_DIR"]) / "duplicate-source.xlsx"
+        upload_path.write_bytes(b"duplicate source")
+        report = app.save_import_cost_report(
+            payload,
+            app.calculate_import_cost(payload),
+            user={"display_name": "Admin", "role": "admin"},
+            upload_paths=[upload_path],
+        )
+        stored_path, _metadata = app.import_cost_file_download_info(report["files"][0]["id"])
+        self.assertTrue(stored_path.exists())
+        self.assertTrue(app.import_cost_report_history(report["id"]))
+
+        deleted = app.delete_import_cost_report(report["id"])
+
+        self.assertEqual(deleted["id"], report["id"])
+        self.assertEqual(deleted["hbl_no"], "DELETE-ME-HBL")
+        self.assertIsNone(app.get_import_cost_report(report["id"]))
+        self.assertFalse(stored_path.exists())
+        connection = app.connect_db()
+        try:
+            history_count = connection.execute(
+                "SELECT COUNT(*) FROM import_cost_report_history WHERE report_id = ?",
+                (report["id"],),
+            ).fetchone()[0]
+            file_count = connection.execute(
+                "SELECT COUNT(*) FROM import_cost_report_files WHERE report_id = ?",
+                (report["id"],),
+            ).fetchone()[0]
+        finally:
+            connection.close()
+        self.assertEqual(history_count, 0)
+        self.assertEqual(file_count, 0)
 
     def test_import_cost_saved_reports_do_not_read_import_shipment_dates(self) -> None:
         app = self.load_app()

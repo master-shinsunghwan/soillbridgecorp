@@ -17702,6 +17702,7 @@ ${kind} 안내드립니다.
                   ${status === "final" ? `<button class="btn" type="button" data-import-cost-unfinalize="${escapeHtml(report.id)}">확정해제</button>` : ""}
                   <button class="btn" type="button" data-import-cost-show-files="${escapeHtml(report.id)}">원본파일</button>
                   <button class="btn" type="button" data-import-cost-show-history="${escapeHtml(report.id)}">변경이력</button>
+                  ${currentUser.role === "admin" ? `<button class="workspace-button danger" type="button" data-import-cost-delete="${escapeHtml(report.id)}">삭제</button>` : ""}
                 </div>
               </td>
             </tr>
@@ -17923,6 +17924,44 @@ ${kind} 안내드립니다.
         if (importCostMessage) importCostMessage.textContent = data.message || "관리 품명을 저장했습니다.";
       } catch (error) {
         if (importCostMessage) importCostMessage.textContent = error.message || "관리 품명을 저장하지 못했습니다.";
+      }
+    }
+
+    async function deleteImportCostReport(reportId) {
+      if (!reportId || currentUser.role !== "admin") return;
+      const report = importCostSavedReports.find((item) => String(item.id) === String(reportId));
+      const identity = [report?.hbl_no, report?.invoice_no].filter(Boolean).join(" / ") || "선택한 저장 데이터";
+      if (!await requestAppConfirm({
+        kicker: "수입 원가 계산 삭제",
+        title: "이 계산 내역을 삭제할까요?",
+        message: "저장된 계산 결과, 변경 이력, 첨부한 원본 파일이 함께 삭제됩니다. 삭제 후에는 화면에서 복구할 수 없습니다.",
+        highlight: `${identity} · ${formatImportCostWon(report?.landed_total || 0)}`,
+        okText: "계산 내역 삭제",
+        cancelText: "취소",
+      })) return;
+      if (importCostMessage) importCostMessage.textContent = "수입 원가 계산 내역을 삭제하는 중입니다.";
+      setImportCostRunStatus("running", "저장 데이터와 연결된 원본 파일을 삭제합니다.");
+      try {
+        const response = await fetch("/api/import-cost-report-delete", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: reportId }),
+        });
+        const data = await response.json();
+        if (!response.ok || data.error) throw new Error(data.error || "수입 원가 계산 내역을 삭제하지 못했습니다.");
+        if (String(currentImportCostReport?.id || "") === String(reportId)) {
+          currentImportCostReport = null;
+          renderImportCostSavedFiles({});
+          renderImportCostHistory({});
+        }
+        await loadImportCostSavedReports();
+        await loadImportCostCompletedShipments().catch(() => {});
+        if (importCostMessage) importCostMessage.textContent = data.message || "수입 원가 계산 내역을 삭제했습니다.";
+        setImportCostRunStatus("done", "수입 원가 계산 내역을 삭제했습니다.");
+      } catch (error) {
+        const message = error.message || "수입 원가 계산 내역을 삭제하지 못했습니다.";
+        if (importCostMessage) importCostMessage.textContent = message;
+        setImportCostRunStatus("error", message);
       }
     }
 
@@ -26906,6 +26945,12 @@ ${kind} 안내드립니다.
         loadImportCostReport(historyButton.dataset.importCostShowHistory).then(() => setImportCostTab("history"));
         return;
       }
+      const deleteButton = event.target.closest("[data-import-cost-delete]");
+      if (deleteButton) {
+        event.preventDefault();
+        deleteImportCostReport(deleteButton.dataset.importCostDelete);
+        return;
+      }
       const managedProductSaveButton = event.target.closest("[data-import-cost-managed-product-save]");
       if (managedProductSaveButton) {
         event.preventDefault();
@@ -33673,6 +33718,45 @@ def update_import_cost_report_managed_product(
     if not report:
         raise ValueError("수입 원가 데이터를 찾지 못했습니다.")
     return report
+
+
+def delete_import_cost_report(report_id: int) -> dict[str, object]:
+    init_db()
+    safe_report_id = int(report_id or 0)
+    connection = connect_db()
+    file_paths: list[Path] = []
+    try:
+        row = connection.execute(
+            """
+            SELECT id, hbl_no, invoice_no, managed_product_name, landed_total
+              FROM import_cost_reports
+             WHERE id = ?
+            """,
+            (safe_report_id,),
+        ).fetchone()
+        if not row:
+            raise ValueError("삭제할 수입 원가 데이터를 찾지 못했습니다.")
+        file_rows = connection.execute(
+            "SELECT file_path FROM import_cost_report_files WHERE report_id = ?",
+            (safe_report_id,),
+        ).fetchall()
+        file_paths = [Path(str(file_row["file_path"] or "")) for file_row in file_rows]
+        connection.execute("DELETE FROM import_cost_report_history WHERE report_id = ?", (safe_report_id,))
+        connection.execute("DELETE FROM import_cost_report_files WHERE report_id = ?", (safe_report_id,))
+        connection.execute("DELETE FROM import_cost_reports WHERE id = ?", (safe_report_id,))
+        connection.commit()
+        deleted = dict(row)
+    finally:
+        connection.close()
+
+    originals_root = IMPORT_COST_ORIGINAL_DIR.resolve()
+    for path in file_paths:
+        if not str(path):
+            continue
+        resolved = path.resolve()
+        if resolved.is_relative_to(originals_root):
+            resolved.unlink(missing_ok=True)
+    return deleted
 
 
 def import_cost_file_download_info(file_id: object) -> tuple[Path, dict[str, object]]:
@@ -43971,6 +44055,25 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                     self.send_json({"error": str(exc)}, status=400)
                     return
                 self.send_json({"message": "관리 품명을 저장했습니다.", "report": report})
+                return
+
+            if self.path == "/api/import-cost-report-delete":
+                if not can_view_import_cost_program(user):
+                    self.send_json({"error": "수입 원가 계산 권한이 없습니다."}, status=403)
+                    return
+                if not self.require_admin(user, "수입 원가 계산 삭제"):
+                    return
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(length).decode("utf-8") or "{}")
+                if not isinstance(payload, dict):
+                    self.send_json({"error": "삭제 요청이 올바르지 않습니다."}, status=400)
+                    return
+                try:
+                    deleted = delete_import_cost_report(int(payload.get("id") or 0))
+                except ValueError as exc:
+                    self.send_json({"error": str(exc)}, status=400)
+                    return
+                self.send_json({"message": "수입 원가 계산 내역을 삭제했습니다.", "deleted": deleted})
                 return
 
             if self.path == "/api/import-cost-report-export":
