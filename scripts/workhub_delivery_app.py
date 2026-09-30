@@ -12257,26 +12257,6 @@ HTML = r"""<!doctype html>
             <input id="stockRecipientEmailInput" type="hidden" />
             <input id="stockVendorNameInput" type="hidden" />
           </div>
-          <div class="text-field">
-            <label class="field-label" for="stockNoticeDateInput">기준일자</label>
-            <input id="stockNoticeDateInput" type="date" />
-          </div>
-          <div class="text-field">
-            <label class="field-label" for="stockInboundProductInput">입고 품명(모델명)</label>
-            <input id="stockInboundProductInput" type="text" />
-          </div>
-          <div class="text-field">
-            <label class="field-label" for="stockInboundScheduleInput">입고 일정</label>
-            <input id="stockInboundScheduleInput" type="text" />
-          </div>
-          <div class="text-field">
-            <label class="field-label" for="stockOutboundAvailableInput">출고 가능 일정</label>
-            <input id="stockOutboundAvailableInput" type="text" />
-          </div>
-          <div class="text-field">
-            <label class="field-label" for="stockInboundNoteInput">입고 특이사항</label>
-            <textarea id="stockInboundNoteInput"></textarea>
-          </div>
           <div class="general-notice-fields" id="generalNoticeFields" hidden>
             <div class="text-field">
               <label class="field-label" for="generalNoticeKindInput">안내 구분</label>
@@ -13047,15 +13027,6 @@ HTML = r"""<!doctype html>
     const vendorManageDropMain = document.querySelector("#vendorManageDropMain");
     const vendorManageListTitle = document.querySelector("#vendorManageListTitle");
     const vendorManageList = document.querySelector("#vendorManageList");
-    const stockNoticeDateInput = document.querySelector("#stockNoticeDateInput");
-    const stockInboundProductInput = document.querySelector("#stockInboundProductInput");
-    const stockInboundScheduleInput = document.querySelector("#stockInboundScheduleInput");
-    const stockOutboundAvailableInput = document.querySelector("#stockOutboundAvailableInput");
-    const stockInboundNoteInput = document.querySelector("#stockInboundNoteInput");
-    const stockSoldoutProductInput = document.querySelector("#stockSoldoutProductInput");
-    const stockOutboundBlockedInput = document.querySelector("#stockOutboundBlockedInput");
-    const stockRestockScheduleInput = document.querySelector("#stockRestockScheduleInput");
-    const stockSoldoutNoteInput = document.querySelector("#stockSoldoutNoteInput");
     const generalNoticeFields = document.querySelector("#generalNoticeFields");
     const generalNoticeKindInput = document.querySelector("#generalNoticeKindInput");
     const generalNoticeDateInput = document.querySelector("#generalNoticeDateInput");
@@ -15437,32 +15408,21 @@ HTML = r"""<!doctype html>
     }
 
     function defaultInboundNoticeBody() {
-      const value = (input) => input?.value.trim() || "";
-      const contact = defaultStockContactInfo();
-      return `안녕하세요. (주)소일브릿지 입니다.
+      return `안녕하세요. (주)소일브릿지입니다.
 
-제품 입고 일정을 안내드립니다.
+아래 상품의 입고 일정을 안내드립니다.
 
-■ 기준일자: ${stockNoticeDateInput?.value || ""}
+■ 상품명:
+■ 입고 예정일:
+■ 출고 가능일:
+■ 안내사항:
 
-■ 제품 입고 안내
+입고 일정은 현장 상황에 따라 변경될 수 있으며, 변동 사항이 발생하면 다시 안내드리겠습니다.
 
-▶품명(모델명) : ${value(stockInboundProductInput)}
-
-▶입고 일정 : ${value(stockInboundScheduleInput)}
-
-▶출고 가능 일정 : ${value(stockOutboundAvailableInput)}
-
-▶특이사항 : ${value(stockInboundNoteInput)}
-
-업무 진행 시 참고 부탁드리며, 확인이 필요한 내용이 있으시면 회신 부탁드립니다.
+업무에 참고 부탁드립니다.
 
 감사합니다.
-
-(주)소일브릿지
-담당자: ${contact.managerName}
-연락처: ${contact.managerPhone}
-이메일: ${contact.senderEmail}`;
+(주)소일브릿지`;
     }
 
     function defaultSoldoutNoticeBody() {
@@ -16909,7 +16869,7 @@ ${kind} 안내드립니다.
       return {
         mailType: "inbound_notice",
         title: "입고 안내 메일",
-        subject: "[소일브릿지] 제품 입고 일정 안내",
+        subject: "[소일브릿지] 상품 입고 안내 - 상품명",
         previewTitle: "입고 안내 메일 미리보기",
         historyTitle: "최근 입고 안내 발송 이력",
       };
@@ -16942,11 +16902,7 @@ ${kind} 안내드립니다.
     }
 
     async function sendCurrentStockNoticeMail() {
-      if (currentMode === "mail-inbound") refreshStockNoticeBody();
       if (currentMode === "mail-general") refreshGeneralNoticeBody({ overwrite: false });
-      if (currentMode === "mail-inbound" && !stockInboundProductInput?.value.trim()) {
-        throw new Error("입고 안내할 품명(모델명)을 입력해주세요.");
-      }
       const recipients = collectStockNoticeRecipients();
       const basePayload = collectStockNoticePayload(null, recipients);
       if (!recipients.length || !basePayload.subject || !basePayload.body) {
@@ -23233,21 +23189,8 @@ ${kind} 안내드립니다.
       refreshCsBody();
       setSelectedStockVendor(null);
       if (stockVendorTree) stockVendorTree.hidden = true;
-      if (stockNoticeDateInput) stockNoticeDateInput.value = todayString();
       if (generalNoticeDateInput) generalNoticeDateInput.value = todayString();
       if (generalNoticeKindInput) generalNoticeKindInput.value = "공지사항";
-      [
-        stockInboundProductInput,
-        stockInboundScheduleInput,
-        stockOutboundAvailableInput,
-        stockInboundNoteInput,
-        stockSoldoutProductInput,
-        stockOutboundBlockedInput,
-        stockRestockScheduleInput,
-        stockSoldoutNoteInput,
-      ].forEach((input) => {
-        if (input) input.value = "";
-      });
       if (stockSubjectInput) stockSubjectInput.value = stockNoticeModeConfig().subject;
       if (generalNoticeAttachmentInput) generalNoticeAttachmentInput.value = "";
       updateGeneralNoticeAttachmentSummary();
@@ -25434,15 +25377,6 @@ ${kind} 안내드립니다.
         csFields.style.display = "none";
         stockNoticeFields.style.display = "block";
         if (generalNoticeFields) generalNoticeFields.hidden = true;
-        [stockNoticeDateInput].forEach((input) => {
-          const field = input?.closest(".text-field");
-          if (field) field.style.display = isInbound ? "block" : "none";
-        });
-        [stockInboundProductInput, stockInboundScheduleInput, stockOutboundAvailableInput, stockInboundNoteInput]
-          .forEach((input) => {
-            const field = input?.closest(".text-field");
-            if (field) field.style.display = isInbound ? "block" : "none";
-          });
         if (stockSubjectInput) stockSubjectInput.value = config.subject;
         if (stockMailHistoryTitle) stockMailHistoryTitle.textContent = config.historyTitle;
         ledgerFields.style.display = "none";
@@ -25452,8 +25386,7 @@ ${kind} 안내드립니다.
         templateInput.required = false;
         if (generalNoticeAttachmentInput) generalNoticeAttachmentInput.value = "";
         updateGeneralNoticeAttachmentSummary();
-        const mailSettingsPromise = loadMailSettings();
-        if (isInbound) mailSettingsPromise.then(refreshStockNoticeBody);
+        loadMailSettings();
         refreshStockNoticeBody();
         loadVendorContacts();
         loadStockMailHistory().catch((error) => {
@@ -25470,20 +25403,6 @@ ${kind} 안내드립니다.
         csFields.style.display = "none";
         stockNoticeFields.style.display = "block";
         if (generalNoticeFields) generalNoticeFields.hidden = false;
-        [
-          stockNoticeDateInput,
-          stockInboundProductInput,
-          stockInboundScheduleInput,
-          stockOutboundAvailableInput,
-          stockInboundNoteInput,
-          stockSoldoutProductInput,
-          stockOutboundBlockedInput,
-          stockRestockScheduleInput,
-          stockSoldoutNoteInput,
-        ].forEach((input) => {
-          const field = input?.closest(".text-field");
-          if (field) field.style.display = "none";
-        });
         if (stockMailHistoryTitle) stockMailHistoryTitle.textContent = "최근 공지/안내자료 발송 이력";
         ledgerFields.style.display = "none";
         managementFields.style.display = "none";
@@ -27689,19 +27608,6 @@ ${kind} 안내드립니다.
       if (!selectAllButton) return;
       toggleAllStockVendorsForType(selectAllButton.dataset.stockVendorSelectAllButton !== "clear");
     });
-    [
-      stockNoticeDateInput,
-      stockInboundProductInput,
-      stockInboundScheduleInput,
-      stockOutboundAvailableInput,
-      stockInboundNoteInput,
-      stockSoldoutProductInput,
-      stockOutboundBlockedInput,
-      stockRestockScheduleInput,
-      stockSoldoutNoteInput,
-    ].forEach((input) => input?.addEventListener("input", refreshStockNoticeBody));
-    stockNoticeDateInput?.addEventListener("change", refreshStockNoticeBody);
-
     startLeaveNotificationWatcher();
 
     setInterval(() => {
