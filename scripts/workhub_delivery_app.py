@@ -1903,6 +1903,45 @@ HTML = r"""<!doctype html>
       gap: 10px;
       margin-top: 18px;
     }
+    .mail-preview-dialog {
+      width: min(760px, 100%);
+    }
+    .mail-preview-summary {
+      max-height: 180px;
+      margin-bottom: 14px;
+    }
+    .mail-preview-edit-grid {
+      display: grid;
+      gap: 12px;
+    }
+    .mail-preview-edit-grid label {
+      display: grid;
+      gap: 6px;
+      color: #344054;
+      font-size: 13px;
+      font-weight: 900;
+    }
+    .mail-preview-edit-grid input,
+    .mail-preview-edit-grid textarea {
+      width: 100%;
+      box-sizing: border-box;
+      border: 1px solid #cbd5e1;
+      border-radius: 7px;
+      background: #fff;
+      color: #111827;
+      font: inherit;
+      line-height: 1.55;
+      padding: 10px 12px;
+    }
+    .mail-preview-edit-grid textarea {
+      min-height: 260px;
+      resize: vertical;
+    }
+    .mail-preview-edit-grid input:focus,
+    .mail-preview-edit-grid textarea:focus {
+      border-color: #2563eb;
+      outline: 2px solid rgba(37, 99, 235, .14);
+    }
     .import-progress-dialog {
       width: min(560px, 100%);
     }
@@ -12238,22 +12277,6 @@ HTML = r"""<!doctype html>
             <label class="field-label" for="stockInboundNoteInput">입고 특이사항</label>
             <textarea id="stockInboundNoteInput"></textarea>
           </div>
-          <div class="text-field">
-            <label class="field-label" for="stockSoldoutProductInput">품절/단종 품명(모델명)</label>
-            <input id="stockSoldoutProductInput" type="text" />
-          </div>
-          <div class="text-field">
-            <label class="field-label" for="stockOutboundBlockedInput">출고 불가 일정</label>
-            <input id="stockOutboundBlockedInput" type="text" />
-          </div>
-          <div class="text-field">
-            <label class="field-label" for="stockRestockScheduleInput">재입고 일정</label>
-            <input id="stockRestockScheduleInput" type="text" />
-          </div>
-          <div class="text-field">
-            <label class="field-label" for="stockSoldoutNoteInput">품절 특이사항</label>
-            <textarea id="stockSoldoutNoteInput"></textarea>
-          </div>
           <div class="general-notice-fields" id="generalNoticeFields" hidden>
             <div class="text-field">
               <label class="field-label" for="generalNoticeKindInput">안내 구분</label>
@@ -12577,10 +12600,18 @@ HTML = r"""<!doctype html>
   </div>
 
   <div class="safe-number-dialog-backdrop" id="mailPreviewDialog" aria-hidden="true">
-    <div class="safe-number-dialog" role="dialog" aria-modal="true" aria-labelledby="mailPreviewTitle">
+    <div class="safe-number-dialog mail-preview-dialog" role="dialog" aria-modal="true" aria-labelledby="mailPreviewTitle">
       <h2 class="safe-number-dialog-title" id="mailPreviewTitle">메일 발송 미리보기</h2>
       <p class="safe-number-dialog-description" id="mailPreviewDescription">발송 전 수신처와 본문을 확인해주세요.</p>
-      <pre class="safe-number-dialog-preview" id="mailPreviewBody"></pre>
+      <pre class="safe-number-dialog-preview mail-preview-summary" id="mailPreviewBody"></pre>
+      <div class="mail-preview-edit-grid">
+        <label for="mailPreviewSubjectInput">메일 제목
+          <input id="mailPreviewSubjectInput" type="text" />
+        </label>
+        <label for="mailPreviewContentInput">공지 내용
+          <textarea id="mailPreviewContentInput"></textarea>
+        </label>
+      </div>
       <div class="safe-number-dialog-actions">
         <button class="btn" id="mailPreviewCancel" type="button">취소</button>
         <button class="btn primary" id="mailPreviewConfirm" type="button">확인 후 발송</button>
@@ -13042,6 +13073,8 @@ HTML = r"""<!doctype html>
     const mailPreviewTitle = document.querySelector("#mailPreviewTitle");
     const mailPreviewDescription = document.querySelector("#mailPreviewDescription");
     const mailPreviewBody = document.querySelector("#mailPreviewBody");
+    const mailPreviewSubjectInput = document.querySelector("#mailPreviewSubjectInput");
+    const mailPreviewContentInput = document.querySelector("#mailPreviewContentInput");
     const mailPreviewCancel = document.querySelector("#mailPreviewCancel");
     const mailPreviewConfirm = document.querySelector("#mailPreviewConfirm");
     const ledgerCsPopupClose = document.querySelector("#ledgerCsPopupClose");
@@ -15433,32 +15466,19 @@ HTML = r"""<!doctype html>
     }
 
     function defaultSoldoutNoticeBody() {
-      const value = (input) => input?.value.trim() || "";
-      const contact = defaultStockContactInfo();
-      return `안녕하세요. (주)소일브릿지 입니다.
+      return `안녕하세요. (주)소일브릿지입니다.
 
-제품 품절 및 재입고 일정을 안내드립니다.
+아래 상품의 품절을 안내드립니다.
 
-■ 기준일자: ${stockNoticeDateInput?.value || ""}
+■ 상품명:
+■ 품절 적용일:
+■ 재입고 예정일: 미정
+■ 안내사항:
 
-■ 제품 일시 품절(단종) 안내
-
-▶품명(모델명) : ${value(stockSoldoutProductInput)}
-
-▶출고 불가 일정 : ${value(stockOutboundBlockedInput)}
-
-▶재입고 일정 : ${value(stockRestockScheduleInput)}
-
-▶특이사항 : ${value(stockSoldoutNoteInput)}
-
-업무 진행 시 참고 부탁드리며, 확인이 필요한 내용이 있으시면 회신 부탁드립니다.
+업무에 참고 부탁드리며, 재입고 일정이 확정되면 다시 안내드리겠습니다.
 
 감사합니다.
-
-(주)소일브릿지
-담당자: ${contact.managerName}
-연락처: ${contact.managerPhone}
-이메일: ${contact.senderEmail}`;
+(주)소일브릿지`;
     }
 
     function defaultGeneralNoticeBody() {
@@ -16797,12 +16817,10 @@ ${kind} 안내드립니다.
         "[수신처]",
         recipientLines.join("\n") + hiddenCount,
         "",
-        `[제목]\n${payload.subject || ""}`,
-        "",
         `[첨부]\n${attachmentText}`,
-        "",
-        `[본문]\n${payload.body || ""}`,
       ].join("\n");
+      if (mailPreviewSubjectInput) mailPreviewSubjectInput.value = payload.subject || "";
+      if (mailPreviewContentInput) mailPreviewContentInput.value = payload.body || "";
       mailPreviewDialog.classList.add("open");
       mailPreviewDialog.setAttribute("aria-hidden", "false");
       return new Promise((resolve) => {
@@ -16814,9 +16832,20 @@ ${kind} 안내드립니다.
           resolve(value);
         };
         const onCancel = () => finish(false);
-        const onConfirm = () => finish(true);
-        mailPreviewCancel?.addEventListener("click", onCancel, { once: true });
-        mailPreviewConfirm?.addEventListener("click", onConfirm, { once: true });
+        const onConfirm = () => {
+          const subject = mailPreviewSubjectInput?.value.trim() || "";
+          const body = mailPreviewContentInput?.value.trim() || "";
+          if (!subject || !body) {
+            if (mailPreviewDescription) mailPreviewDescription.textContent = "메일 제목과 공지 내용을 모두 입력해주세요.";
+            (!subject ? mailPreviewSubjectInput : mailPreviewContentInput)?.focus();
+            return;
+          }
+          payload.subject = subject;
+          payload.body = body;
+          finish(true);
+        };
+        mailPreviewCancel?.addEventListener("click", onCancel);
+        mailPreviewConfirm?.addEventListener("click", onConfirm);
       });
     }
 
@@ -16872,7 +16901,7 @@ ${kind} 안내드립니다.
         return {
           mailType: "soldout_notice",
           title: "품절 안내 메일",
-          subject: "[소일브릿지] 제품 품절 및 재입고 안내",
+          subject: "[소일브릿지] 품절 안내 - 상품명",
           previewTitle: "품절 안내 메일 미리보기",
           historyTitle: "최근 품절 안내 발송 이력",
         };
@@ -16913,13 +16942,10 @@ ${kind} 안내드립니다.
     }
 
     async function sendCurrentStockNoticeMail() {
-      if (currentMode === "mail-inbound" || currentMode === "mail-soldout") refreshStockNoticeBody();
+      if (currentMode === "mail-inbound") refreshStockNoticeBody();
       if (currentMode === "mail-general") refreshGeneralNoticeBody({ overwrite: false });
       if (currentMode === "mail-inbound" && !stockInboundProductInput?.value.trim()) {
         throw new Error("입고 안내할 품명(모델명)을 입력해주세요.");
-      }
-      if (currentMode === "mail-soldout" && !stockSoldoutProductInput?.value.trim()) {
-        throw new Error("품절 안내할 품명(모델명)을 입력해주세요.");
       }
       const recipients = collectStockNoticeRecipients();
       const basePayload = collectStockNoticePayload(null, recipients);
@@ -25410,17 +25436,12 @@ ${kind} 안내드립니다.
         if (generalNoticeFields) generalNoticeFields.hidden = true;
         [stockNoticeDateInput].forEach((input) => {
           const field = input?.closest(".text-field");
-          if (field) field.style.display = "block";
+          if (field) field.style.display = isInbound ? "block" : "none";
         });
         [stockInboundProductInput, stockInboundScheduleInput, stockOutboundAvailableInput, stockInboundNoteInput]
           .forEach((input) => {
             const field = input?.closest(".text-field");
             if (field) field.style.display = isInbound ? "block" : "none";
-          });
-        [stockSoldoutProductInput, stockOutboundBlockedInput, stockRestockScheduleInput, stockSoldoutNoteInput]
-          .forEach((input) => {
-            const field = input?.closest(".text-field");
-            if (field) field.style.display = isInbound ? "none" : "block";
           });
         if (stockSubjectInput) stockSubjectInput.value = config.subject;
         if (stockMailHistoryTitle) stockMailHistoryTitle.textContent = config.historyTitle;
@@ -25431,7 +25452,8 @@ ${kind} 안내드립니다.
         templateInput.required = false;
         if (generalNoticeAttachmentInput) generalNoticeAttachmentInput.value = "";
         updateGeneralNoticeAttachmentSummary();
-        loadMailSettings().then(refreshStockNoticeBody);
+        const mailSettingsPromise = loadMailSettings();
+        if (isInbound) mailSettingsPromise.then(refreshStockNoticeBody);
         refreshStockNoticeBody();
         loadVendorContacts();
         loadStockMailHistory().catch((error) => {
