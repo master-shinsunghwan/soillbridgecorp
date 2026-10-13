@@ -34980,6 +34980,13 @@ def save_sales_report_file(
     if report_type:
         if parsed_report is None:
             parsed_report = parse_sales_report_file(target, safe_original)
+        parsed_rows = parsed_report.get("rows", [])
+        if not isinstance(parsed_rows, list) or not parsed_rows:
+            target.unlink(missing_ok=True)
+            raise ValueError(
+                "매출표에 업로드할 데이터 행이 없습니다. "
+                "조회 기간과 매출일자를 확인한 뒤 데이터가 표시된 파일을 다시 내려받아주세요."
+            )
         report_date = str(parsed_report.get("report_date") or "")
         period = str(parsed_report.get("period") or report_date[:7] or "")
 

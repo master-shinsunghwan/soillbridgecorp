@@ -81,6 +81,55 @@ class SalesReportUploadTests(unittest.TestCase):
             connection.close()
         self.assertEqual((row["report_date"], row["period"]), ("2026-09-08", "2026-09"))
 
+    def test_empty_sales_report_is_rejected_without_replacing_existing_rows(self) -> None:
+        source = Path(self.tempdir.name) / "Statistics_Good_2026-10-13.xls"
+        source.write_bytes(b"empty report")
+        connection = self.app.connect_db()
+        try:
+            connection.execute(
+                """
+                INSERT INTO sales_report_product_rows
+                    (period, report_date, file_id, product_name, quantity)
+                VALUES ('2026-10', '2026-10-09', 0, '기존 상품', 10)
+                """
+            )
+            connection.commit()
+        finally:
+            connection.close()
+
+        original_detect = self.app.detect_sales_report_type
+        original_parse = self.app.parse_sales_report_file
+        try:
+            self.app.detect_sales_report_type = lambda path, original_name="": "product"
+            self.app.parse_sales_report_file = lambda path, original_name="": {
+                "report_type": "product",
+                "report_date": "2026-10-13",
+                "period": "2026-10",
+                "rows": [],
+            }
+            with self.assertRaisesRegex(ValueError, "업로드할 데이터 행이 없습니다"):
+                self.app.save_sales_report_file(
+                    source,
+                    source.name,
+                    "admin",
+                    report_date_override="2026-10-09",
+                )
+        finally:
+            self.app.detect_sales_report_type = original_detect
+            self.app.parse_sales_report_file = original_parse
+
+        connection = self.app.connect_db()
+        try:
+            existing = connection.execute(
+                "SELECT product_name, quantity FROM sales_report_product_rows WHERE report_date = '2026-10-09'"
+            ).fetchall()
+            upload_count = connection.execute("SELECT COUNT(*) AS count FROM sales_report_uploads").fetchone()["count"]
+        finally:
+            connection.close()
+
+        self.assertEqual([(row["product_name"], row["quantity"]) for row in existing], [("기존 상품", 10)])
+        self.assertEqual(upload_count, 0)
+
     def test_reset_sales_report_date_only_deletes_selected_date(self) -> None:
         connection = self.app.connect_db()
         try:
