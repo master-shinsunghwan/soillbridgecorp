@@ -121,6 +121,16 @@ def create_invoice_workbook(path: Path) -> None:
     workbook.save(path)
 
 
+def create_invoice_detail_workbook(path: Path) -> None:
+    workbook = Workbook()
+    worksheet = workbook.active
+    worksheet.title = "Sheet1"
+    worksheet.append(["No", "운송장번호", "받는분명", "받는분주소", "고객주문번호"])
+    worksheet.append([1, "6008-6368-1722", "홍길동", "서울시 테스트로 1", "ORDER-1"])
+    worksheet.append([2, "6008-6368-1733", "홍길동", "서울시 테스트로 1", "ORDER-1"])
+    workbook.save(path)
+
+
 def force_bad_sheet_dimension(path: Path) -> None:
     with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
         temp_dir = Path(tmp)
@@ -230,6 +240,19 @@ class OrderWorkflowRegressionTests(unittest.TestCase):
                     rows = module.extract_invoice_rows(workbook_path)
 
                     self.assertEqual(rows, [("\ud64d\uae38\ub3d9", "1234567890 / 1234567890")])
+
+    def test_invoice_export_accepts_invoice_detail_headers(self) -> None:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+            workbook_path = Path(tmp) / "운송장출력데이터 상세.xlsx"
+            create_invoice_detail_workbook(workbook_path)
+            force_bad_sheet_dimension(workbook_path)
+
+            for scripts_dir in MODULE_SETS:
+                with self.subTest(scripts_dir=scripts_dir):
+                    module = load_module(scripts_dir / "invoice_number_exporter.py")
+                    rows = module.extract_invoice_rows(workbook_path)
+
+                    self.assertEqual(rows, [("홍길동", "6008-6368-1722 / 6008-6368-1733")])
 
     def test_lotte_order_export_removes_left_borders_from_columns_b_to_e(self) -> None:
         with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:

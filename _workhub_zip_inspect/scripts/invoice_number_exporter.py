@@ -13,10 +13,10 @@ from openpyxl.utils import get_column_letter
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_OUTPUT_DIR = ROOT / "output" / "invoice_numbers"
 
-NAME_HEADERS = ("수하인명", "받으시는분", "받는분", "수취인", "고객명", "이름")
+NAME_HEADERS = ("수하인명", "받으시는분", "받는분", "받는분명", "수취인", "고객명", "이름")
 INVOICE_HEADERS = ("운송장번호", "송장번호", "송장 번호", "택배번호", "tracking number")
-ORDER_HEADERS = ("주문번호", "주문 번호", "order number", "order_no")
-ADDRESS_HEADERS = ("수하인기본주소", "수하인 기본주소", "받으시는분주소", "주소", "기본주소")
+ORDER_HEADERS = ("주문번호", "주문 번호", "고객주문번호", "order number", "order_no")
+ADDRESS_HEADERS = ("수하인기본주소", "수하인 기본주소", "받으시는분주소", "받는분주소", "주소", "기본주소")
 
 
 def clean_cell(value: Any) -> str:
