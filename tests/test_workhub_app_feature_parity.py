@@ -752,7 +752,6 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
             html_source = app_file.read_text(encoding="utf-8")
 
             for permission in (
-                "leave_approve_team",
                 "leave_approve_director",
                 "leave_approve_ceo",
                 "leave_director_override",

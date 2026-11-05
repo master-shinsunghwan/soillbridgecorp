@@ -56,7 +56,7 @@ class LeaveAdvancedWorkflowTests(unittest.TestCase):
                 "role": "sub_admin",
                 "password": "SafePass!3456",
                 "active": True,
-                "permissions": ["leave_view", "leave_approve_team"],
+                "permissions": ["leave_view"],
             },
             "director": {
                 "username": "director",
@@ -82,6 +82,96 @@ class LeaveAdvancedWorkflowTests(unittest.TestCase):
     def set_balance(self, app, user: dict[str, str], total: float = 15) -> None:
         admin = get_user(app, "admin")
         app.set_leave_balance({"user_id": user["id"], "total_days": total, "used_days": 0}, admin)
+
+    def test_leave_request_starts_with_director_approval(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            app = load_app(Path(directory))
+            users = self.make_users(app)
+            self.set_balance(app, users["requester"], total=5)
+
+            request_id = app.create_leave_request(
+                users["requester"],
+                {
+                    "leave_type_id": app.get_leave_type_id("annual"),
+                    "unit": "FULL_DAY",
+                    "start_date": "2026-01-05",
+                    "end_date": "2026-01-05",
+                    "reason": "개인 일정",
+                },
+            )
+
+            connection = app.connect_db()
+            try:
+                request = connection.execute(
+                    "SELECT approval_step, team_status, director_status, ceo_status FROM leave_requests WHERE id = ?",
+                    (request_id,),
+                ).fetchone()
+            finally:
+                connection.close()
+
+            requester_messages = leave_notification_messages(app, users["requester"])
+            director_messages = leave_notification_messages(app, users["director"])
+            team_messages = leave_notification_messages(app, users["team"])
+            self.assertEqual(request["approval_step"], "DIRECTOR")
+            self.assertEqual(request["team_status"], "NOT_REQUIRED")
+            self.assertEqual(request["director_status"], "PENDING")
+            self.assertEqual(request["ceo_status"], "WAITING")
+            self.assertTrue(any("실장 확인" in message for message in requester_messages))
+            self.assertTrue(any("실장 확인" in message for message in director_messages))
+            self.assertFalse(any("팀장 확인" in message for message in team_messages))
+
+    def test_init_db_moves_legacy_team_lead_requests_to_director(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            app = load_app(Path(directory))
+            users = self.make_users(app)
+            self.set_balance(app, users["requester"], total=5)
+            request_id = app.create_leave_request(
+                users["requester"],
+                {
+                    "leave_type_id": app.get_leave_type_id("annual"),
+                    "unit": "FULL_DAY",
+                    "start_date": "2026-01-05",
+                    "end_date": "2026-01-05",
+                    "reason": "기존 대기 건",
+                },
+            )
+            connection = app.connect_db()
+            try:
+                connection.execute(
+                    """
+                    UPDATE leave_requests
+                       SET approval_step = 'TEAM_LEAD', team_status = 'PENDING', director_status = 'WAITING'
+                     WHERE id = ?
+                    """,
+                    (request_id,),
+                )
+                connection.execute(
+                    """
+                    INSERT INTO leave_notifications
+                        (user_id, request_id, notification_type, message, is_read, created_at)
+                    VALUES (?, ?, 'approval_waiting', '팀장 확인 승인 대기', 0, ?)
+                    """,
+                    (users["team"]["id"], request_id, app.now_text()),
+                )
+                connection.commit()
+            finally:
+                connection.close()
+
+            app.init_db()
+
+            connection = app.connect_db()
+            try:
+                request = connection.execute(
+                    "SELECT approval_step, team_status, director_status FROM leave_requests WHERE id = ?",
+                    (request_id,),
+                ).fetchone()
+            finally:
+                connection.close()
+            self.assertEqual(request["approval_step"], "DIRECTOR")
+            self.assertEqual(request["team_status"], "NOT_REQUIRED")
+            self.assertEqual(request["director_status"], "PENDING")
+            self.assertFalse(any("팀장 확인" in message for message in leave_notification_messages(app, users["team"])))
+            self.assertTrue(any("실장 확인" in message for message in leave_notification_messages(app, users["director"])))
 
     def test_public_holiday_is_excluded_and_pending_request_reserves_balance(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -112,16 +202,16 @@ class LeaveAdvancedWorkflowTests(unittest.TestCase):
                 connection.close()
 
             self.assertEqual(request["requested_days"], 1.0)
-            self.assertEqual(request["approval_step"], "TEAM_LEAD")
-            self.assertEqual(request["team_status"], "PENDING")
-            self.assertEqual(request["director_status"], "WAITING")
+            self.assertEqual(request["approval_step"], "DIRECTOR")
+            self.assertEqual(request["team_status"], "NOT_REQUIRED")
+            self.assertEqual(request["director_status"], "PENDING")
             self.assertEqual(request["ceo_status"], "WAITING")
             self.assertEqual(balance["used_days"], 0)
             self.assertEqual(balance["reserved_days"], 1.0)
             self.assertEqual(balance["remaining_days"], 4.0)
 
-            team_notifications = app.list_leave_notifications(users["team"])
-            self.assertTrue(any(item["request_id"] == request_id for item in team_notifications))
+            director_notifications = app.list_leave_notifications(users["director"])
+            self.assertTrue(any(item["request_id"] == request_id for item in director_notifications))
 
     def test_leave_request_and_approval_notifications_reach_requester_and_managers(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -141,16 +231,11 @@ class LeaveAdvancedWorkflowTests(unittest.TestCase):
             )
 
             requester_messages = leave_notification_messages(app, users["requester"])
-            team_messages = leave_notification_messages(app, users["team"])
-            self.assertTrue(any("접수" in message and "팀장 확인" in message for message in requester_messages))
-            self.assertTrue(any("신청자님" in message and "팀장 확인" in message for message in team_messages))
-
-            app.decide_leave_request(request_id, users["team"], "approve", "팀장 확인")
-
-            requester_messages = leave_notification_messages(app, users["requester"])
             director_messages = leave_notification_messages(app, users["director"])
-            self.assertTrue(any("팀장 확인 승인" in message and "실장 확인" in message for message in requester_messages))
+            team_messages = leave_notification_messages(app, users["team"])
+            self.assertTrue(any("접수" in message and "실장 확인" in message for message in requester_messages))
             self.assertTrue(any("신청자님" in message and "실장 확인" in message for message in director_messages))
+            self.assertFalse(any("팀장 확인" in message for message in team_messages))
 
             app.decide_leave_request(request_id, users["director"], "approve", "실장 확인")
 
@@ -186,9 +271,9 @@ class LeaveAdvancedWorkflowTests(unittest.TestCase):
             app.cancel_leave_request(request_id, users["requester"], "일정 변경")
 
             requester_messages = leave_notification_messages(app, users["requester"])
-            team_messages = leave_notification_messages(app, users["team"])
+            director_messages = leave_notification_messages(app, users["director"])
             self.assertTrue(any("취소" in message and "2026-01-09" in message for message in requester_messages))
-            self.assertTrue(any("취소" in message and "신청자님" in message for message in team_messages))
+            self.assertTrue(any("취소" in message and "신청자님" in message for message in director_messages))
 
     def test_leave_notification_read_state_is_personal(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -211,20 +296,20 @@ class LeaveAdvancedWorkflowTests(unittest.TestCase):
                 item for item in app.list_leave_notifications(users["requester"])
                 if item["request_id"] == request_id
             )
-            team_notification = next(
-                item for item in app.list_leave_notifications(users["team"])
+            director_notification = next(
+                item for item in app.list_leave_notifications(users["director"])
                 if item["request_id"] == request_id
             )
 
-            updated = app.mark_leave_notifications_read(users["requester"], [requester_notification["id"], team_notification["id"]])
+            updated = app.mark_leave_notifications_read(users["requester"], [requester_notification["id"], director_notification["id"]])
 
             requester_notifications = app.list_leave_notifications(users["requester"])
-            team_notifications = app.list_leave_notifications(users["team"])
+            director_notifications = app.list_leave_notifications(users["director"])
             self.assertEqual(updated, 1)
             self.assertTrue(any(item["id"] == requester_notification["id"] and item["is_read"] == 1 for item in requester_notifications))
-            self.assertTrue(any(item["id"] == team_notification["id"] and item["is_read"] == 0 for item in team_notifications))
+            self.assertTrue(any(item["id"] == director_notification["id"] and item["is_read"] == 0 for item in director_notifications))
 
-    def test_three_step_approval_finalizes_only_after_ceo_approval(self) -> None:
+    def test_two_step_approval_finalizes_only_after_ceo_approval(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             app = load_app(Path(directory))
             users = self.make_users(app)
@@ -240,7 +325,6 @@ class LeaveAdvancedWorkflowTests(unittest.TestCase):
                 },
             )
 
-            app.decide_leave_request(request_id, users["team"], "approve", "팀장 확인")
             app.decide_leave_request(request_id, users["director"], "approve", "실장 확인")
 
             connection = app.connect_db()
@@ -375,15 +459,15 @@ class LeaveAdvancedWorkflowTests(unittest.TestCase):
             users = self.make_users(app)
             admin = get_user(app, "admin")
 
-            team_payload = app.leave_payload(users["team"])
+            director_payload = app.leave_payload(users["director"])
             admin_payload = app.leave_payload(admin)
 
-            self.assertTrue(team_payload["can_approve"])
-            self.assertFalse(team_payload["can_manage"])
-            self.assertGreaterEqual(len(team_payload["users"]), 1)
-            self.assertTrue(any(row["username"] == "requester" for row in team_payload["users"]))
+            self.assertTrue(director_payload["can_approve"])
+            self.assertFalse(director_payload["can_manage"])
+            self.assertGreaterEqual(len(director_payload["users"]), 1)
+            self.assertTrue(any(row["username"] == "requester" for row in director_payload["users"]))
             self.assertTrue(admin_payload["can_manage"])
-            self.assertGreaterEqual(len(admin_payload["users"]), len(team_payload["users"]))
+            self.assertGreaterEqual(len(admin_payload["users"]), len(director_payload["users"]))
 
     def test_leave_payload_sends_staff_usage_dates_to_managers(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
