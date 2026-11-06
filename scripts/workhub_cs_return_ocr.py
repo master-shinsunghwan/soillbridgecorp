@@ -157,7 +157,7 @@ def ocr_return_label_image(data: bytes) -> dict[str, object]:
     except Exception as exc:  # pragma: no cover - deployment dependency
         raise RuntimeError(f"OCR 구성요소를 불러오지 못했습니다: {exc}") from exc
     try:
-        image = Image.open(BytesIO(data)).convert("RGB")
+        image = ImageOps.exif_transpose(Image.open(BytesIO(data))).convert("RGB")
     except Exception as exc:
         raise ValueError("이미지 파일을 읽을 수 없습니다.") from exc
     languages = set(pytesseract.get_languages(config=""))
@@ -166,9 +166,19 @@ def ocr_return_label_image(data: bytes) -> dict[str, object]:
     best_rank = (-1, -1)
     for angle in (0, 90, 270, 180):
         rotated = image.rotate(angle, expand=True)
+        scale = min(1.0, 2200 / max(rotated.size))
+        if scale < 1:
+            rotated = rotated.resize(
+                (
+                    max(1, round(rotated.width * scale)),
+                    max(1, round(rotated.height * scale)),
+                ),
+                Image.Resampling.LANCZOS,
+            )
         gray = ImageOps.autocontrast(rotated.convert("L"))
-        gray = ImageEnhance.Sharpness(gray).enhance(1.8)
-        text = pytesseract.image_to_string(gray, lang=lang, config="--psm 6")
+        gray = ImageEnhance.Contrast(gray).enhance(1.4)
+        gray = ImageEnhance.Sharpness(gray).enhance(2.0)
+        text = pytesseract.image_to_string(gray, lang=lang, config="--psm 11")
         parsed = extract_return_label_fields(text)
         rank = (1 if parsed["tracking_number"] else 0, len(compact_text(text)))
         if rank > best_rank:

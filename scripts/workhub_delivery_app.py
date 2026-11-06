@@ -39394,8 +39394,9 @@ def analyze_cs_return_label_uploads(
             raise ValueError(f"{filename}: JPG, PNG, WEBP 이미지만 분석할 수 있습니다.")
         parsed = ocr_func(data)
         match = match_return_label(parsed, cases)
+        candidates = match.get("candidates") or cases[:30]
         attachment = save_cs_return_label_attachment(filename, data, mimetypes.guess_type(filename)[0] or "")
-        matched_case = match["candidates"][0] if match.get("match_status") == "matched" and match.get("candidates") else {}
+        matched_case = candidates[0] if match.get("match_status") == "matched" and candidates else {}
         status = str(match.get("match_status") or "unregistered")
         row = {
             "row_id": index,
@@ -39411,7 +39412,7 @@ def analyze_cs_return_label_uploads(
             "match_status": status,
             "case_id": int(match.get("case_id") or 0),
             "match_score": int(match.get("match_score") or 0),
-            "candidates": match.get("candidates") or [],
+            "candidates": candidates,
             "action": "match" if status == "matched" else "skip",
             "selected": True,
             "raw_text": parsed.get("raw_text", ""),

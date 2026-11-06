@@ -172,6 +172,24 @@ class ReturnLabelPersistenceTests(unittest.TestCase):
                 [{"action": "match", "case_id": second, "tracking_number": "8448-2028-2810"}]
             )
 
+    def test_unrecognized_photo_offers_recent_cs_cases_for_manual_selection(self) -> None:
+        case_id = self.create_case("배신옥", "벨트리 페이셜 티슈 100매")
+
+        result = self.app.analyze_cs_return_label_uploads(
+            [("label.jpg", b"photo-data")],
+            ocr_func=lambda _data: {
+                "tracking_number": "8448-1920-7540",
+                "masked_names": [],
+                "quantity": "",
+                "condition": "",
+                "raw_text": "",
+            },
+        )
+
+        self.assertEqual(result["rows"][0]["match_status"], "unregistered")
+        self.assertEqual(result["rows"][0]["action"], "skip")
+        self.assertIn(case_id, [item["id"] for item in result["rows"][0]["candidates"]])
+
 
 if __name__ == "__main__":
     unittest.main()
