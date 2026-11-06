@@ -186,6 +186,60 @@ class SalesReportUploadTests(unittest.TestCase):
         finally:
             connection.close()
 
+    def test_delete_sales_report_upload_only_deletes_selected_upload_rows(self) -> None:
+        connection = self.app.connect_db()
+        try:
+            seller_upload = connection.execute(
+                """
+                INSERT INTO sales_report_uploads
+                    (stored_name, original_name, size, uploaded_by, uploaded_at, report_type, report_date, period)
+                VALUES ('seller.xls', '판매처별.xls', 1, 'admin', '2026-11-06 10:00:00', 'seller', '2026-11-05', '2026-11')
+                """
+            )
+            seller_file_id = int(seller_upload.lastrowid)
+            product_upload = connection.execute(
+                """
+                INSERT INTO sales_report_uploads
+                    (stored_name, original_name, size, uploaded_by, uploaded_at, report_type, report_date, period)
+                VALUES ('product.xls', '상품별.xls', 1, 'admin', '2026-11-06 10:01:00', 'product', '2026-11-05', '2026-11')
+                """
+            )
+            product_file_id = int(product_upload.lastrowid)
+            connection.execute(
+                "INSERT INTO sales_report_seller_rows (period, report_date, file_id, seller_name) VALUES ('2026-11', '2026-11-05', ?, '판매처')",
+                (seller_file_id,),
+            )
+            connection.execute(
+                "INSERT INTO sales_report_product_rows (period, report_date, file_id, product_name) VALUES ('2026-11', '2026-11-05', ?, '상품')",
+                (product_file_id,),
+            )
+            connection.commit()
+        finally:
+            connection.close()
+
+        result = self.app.delete_sales_report_upload(seller_file_id)
+
+        self.assertEqual(result["id"], seller_file_id)
+        self.assertEqual(result["report_date"], "2026-11-05")
+        self.assertEqual(result["report_type"], "seller")
+        self.assertEqual(result["deleted_row_count"], 1)
+        connection = self.app.connect_db()
+        try:
+            self.assertIsNone(connection.execute(
+                "SELECT id FROM sales_report_uploads WHERE id = ?", (seller_file_id,)
+            ).fetchone())
+            self.assertEqual(connection.execute(
+                "SELECT COUNT(*) AS count FROM sales_report_seller_rows WHERE file_id = ?", (seller_file_id,)
+            ).fetchone()["count"], 0)
+            self.assertIsNotNone(connection.execute(
+                "SELECT id FROM sales_report_uploads WHERE id = ?", (product_file_id,)
+            ).fetchone())
+            self.assertEqual(connection.execute(
+                "SELECT COUNT(*) AS count FROM sales_report_product_rows WHERE file_id = ?", (product_file_id,)
+            ).fetchone()["count"], 1)
+        finally:
+            connection.close()
+
     def test_manual_sales_entry_uses_uploaded_product_options_and_updates_dashboard(self) -> None:
         connection = self.app.connect_db()
         try:

@@ -3159,6 +3159,55 @@ HTML = r"""<!doctype html>
     .sales-upload-status[hidden] {
       display: none !important;
     }
+    .sales-upload-history-title {
+      color: #0f172a;
+      font-size: 12px;
+      font-weight: 950;
+    }
+    .sales-upload-history-list {
+      display: grid;
+      gap: 6px;
+      max-height: 260px;
+      overflow: auto;
+    }
+    .sales-upload-history-row {
+      display: grid;
+      grid-template-columns: 92px 86px minmax(0, 1fr) auto;
+      gap: 8px;
+      align-items: center;
+      min-height: 38px;
+      padding: 5px 7px;
+      border: 1px solid #e2e8f0;
+      border-radius: 6px;
+      background: #ffffff;
+    }
+    .sales-upload-history-row span {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .sales-upload-history-date,
+    .sales-upload-history-type {
+      color: #334155;
+      font-weight: 900;
+    }
+    .sales-upload-history-delete {
+      width: 32px;
+      height: 28px;
+      padding: 0;
+      border: 1px solid #fecaca;
+      border-radius: 6px;
+      background: #fff1f2;
+      color: #b91c1c;
+      font-size: 11px;
+      font-weight: 950;
+      cursor: pointer;
+    }
+    .sales-upload-history-delete:disabled {
+      cursor: wait;
+      opacity: .55;
+    }
     .sales-upload-panel {
       display: grid;
       grid-template-columns: minmax(0, 1fr) auto;
@@ -16001,14 +16050,29 @@ ${kind} 안내드립니다.
 
     function renderSalesReportUploads(files = []) {
       if (!salesReportRecentList) return;
-      const recent = files.slice(0, 5);
+      const recent = files.slice(0, 20);
       if (!recent.length) {
         salesReportRecentList.textContent = "업로드된 매출표가 없습니다.";
         return;
       }
+      const typeLabels = {
+        daily: "일자별",
+        seller: "매출처별",
+        supplier: "매입처별",
+        product: "상품별",
+        manual_sale: "수기 매출",
+        partner_daily: "거래처 일자별",
+      };
       salesReportRecentList.innerHTML = recent
-        .map((file) => `${escapeHtml(file.original_name || "")} · ${escapeHtml(file.uploaded_at || "")}`)
-        .join("<br />");
+        .map((file) => `
+          <div class="sales-upload-history-row">
+            <span class="sales-upload-history-date" title="적용 일자">${escapeHtml(file.report_date || "일자 미지정")}</span>
+            <span class="sales-upload-history-type" title="자료 구분">${escapeHtml(typeLabels[file.report_type] || file.report_type || "기타")}</span>
+            <span title="${escapeHtml(file.original_name || "")}">${escapeHtml(file.original_name || "")}</span>
+            <button class="sales-upload-history-delete" type="button" data-sales-report-delete="${escapeHtml(file.id)}" aria-label="이 매출 자료 삭제" title="이 매출 자료 삭제">삭제</button>
+          </div>
+        `)
+        .join("");
     }
 
     async function loadSalesReportUploads() {
@@ -16020,6 +16084,42 @@ ${kind} 안내드립니다.
         renderSalesReportUploads(data.files || []);
       } catch (error) {
         salesReportRecentList.textContent = error.message;
+      }
+    }
+
+    async function deleteSalesReportUpload(fileId) {
+      const file = Number(fileId || 0);
+      if (!file || !can("sales_report_manage")) return;
+      const button = salesReportRecentList?.querySelector(`[data-sales-report-delete="${file}"]`);
+      const row = button?.closest(".sales-upload-history-row");
+      const reportDate = row?.querySelector(".sales-upload-history-date")?.textContent?.trim() || "선택 일자";
+      const reportType = row?.querySelector(".sales-upload-history-type")?.textContent?.trim() || "매출 자료";
+      const approved = await requestAppConfirm({
+        kicker: "특정 매출 자료 삭제",
+        title: `${reportDate} ${reportType} 자료를 삭제할까요?`,
+        message: "선택한 업로드 건이 반영한 매출 데이터만 삭제합니다. 다른 날짜와 다른 자료 종류는 유지되며 서버 원본 파일도 보존됩니다.",
+        highlight: `${reportDate} · ${reportType}`,
+        okText: "선택 자료 삭제",
+        cancelText: "취소",
+      });
+      if (!approved) return;
+      if (button) button.disabled = true;
+      if (salesReportUploadMessage) salesReportUploadMessage.textContent = `${reportDate} ${reportType} 자료를 삭제하는 중입니다.`;
+      try {
+        const response = await fetch("/api/sales-report-delete", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ file_id: file }),
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "선택한 매출 자료를 삭제하지 못했습니다.");
+        renderSalesReportUploads(data.files || []);
+        if (data.result?.period) activeSalesReportPeriod = data.result.period;
+        await loadSalesReportDashboard();
+        if (salesReportUploadMessage) salesReportUploadMessage.textContent = data.message || "선택한 매출 자료를 삭제했습니다.";
+      } catch (error) {
+        if (button) button.disabled = false;
+        if (salesReportUploadMessage) salesReportUploadMessage.textContent = error.message;
       }
     }
 
@@ -27228,6 +27328,10 @@ ${kind} 안내드립니다.
     if (salesReportFileInput) salesReportFileInput.addEventListener("change", uploadSalesReportWorkbook);
     salesReportManualUpload?.addEventListener("click", openSalesReportUploadPicker);
     salesReportResetDate?.addEventListener("click", resetSalesReportDate);
+    salesReportRecentList?.addEventListener("click", (event) => {
+      const button = event.target.closest("[data-sales-report-delete]");
+      if (button) deleteSalesReportUpload(button.dataset.salesReportDelete);
+    });
     salesReportManualEntryToggle?.addEventListener("click", toggleSalesManualEntryForm);
     salesManualEntrySave?.addEventListener("click", saveSalesManualEntry);
     saveCsCaseButton.addEventListener("click", saveCurrentCsCase);
@@ -28696,9 +28800,10 @@ ADMIN_WORKSPACE_HTML = r"""
                   <button class="sales-upload-button" id="salesManualEntrySave" type="button">수기 매출 저장</button>
                 </div>
               </div>
-              <div class="sales-upload-status" hidden>
+              <div class="sales-upload-status">
                 <div id="salesReportUploadMessage">매출표 파일을 직접 업로드해서 현황을 갱신합니다.</div>
-                <div id="salesReportRecentList">업로드된 매출표가 없습니다.</div>
+                <div class="sales-upload-history-title">최근 반영 자료 · 특정 매출 삭제</div>
+                <div class="sales-upload-history-list" id="salesReportRecentList">업로드된 매출표가 없습니다.</div>
               </div>
               <div class="sales-dashboard" id="salesReportDashboard">
                 <div class="sales-period-toolbar" id="salesReportPeriodToolbar">
@@ -29439,10 +29544,13 @@ def _sales_report_public(row: sqlite3.Row | dict) -> dict[str, str | int]:
         "size": int(row["size"] or 0),
         "uploaded_by": str(row["uploaded_by"] or ""),
         "uploaded_at": str(row["uploaded_at"] or ""),
+        "report_type": str(row["report_type"] or ""),
+        "report_date": str(row["report_date"] or ""),
+        "period": str(row["period"] or ""),
     }
 
 
-def list_sales_report_uploads(limit: int = 5) -> list[dict[str, str | int]]:
+def list_sales_report_uploads(limit: int = 20) -> list[dict[str, str | int]]:
     init_db()
     SALES_REPORT_DIR.mkdir(parents=True, exist_ok=True)
     safe_limit = max(1, min(int(limit or 5), 20))
@@ -29450,7 +29558,8 @@ def list_sales_report_uploads(limit: int = 5) -> list[dict[str, str | int]]:
     try:
         rows = connection.execute(
             """
-            SELECT id, original_name, size, uploaded_by, uploaded_at
+            SELECT id, original_name, size, uploaded_by, uploaded_at,
+                   report_type, report_date, period
               FROM sales_report_uploads
              ORDER BY id DESC
              LIMIT ?
@@ -29458,6 +29567,56 @@ def list_sales_report_uploads(limit: int = 5) -> list[dict[str, str | int]]:
             (safe_limit,),
         ).fetchall()
         return [_sales_report_public(row) for row in rows]
+    finally:
+        connection.close()
+
+
+def delete_sales_report_upload(file_id: int) -> dict[str, object]:
+    try:
+        target_id = int(file_id)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("삭제할 매출 자료를 선택해주세요.") from exc
+    if target_id <= 0:
+        raise ValueError("삭제할 매출 자료를 선택해주세요.")
+
+    init_db()
+    table_names = (
+        "sales_report_daily_rows",
+        "sales_report_seller_rows",
+        "sales_report_supplier_rows",
+        "sales_report_product_rows",
+    )
+    connection = connect_db()
+    try:
+        connection.execute("BEGIN")
+        upload = connection.execute(
+            """
+            SELECT id, original_name, report_type, report_date, period
+              FROM sales_report_uploads
+             WHERE id = ?
+            """,
+            (target_id,),
+        ).fetchone()
+        if upload is None:
+            raise ValueError("삭제할 매출 자료를 찾지 못했습니다.")
+        deleted: dict[str, int] = {}
+        for table_name in table_names:
+            cursor = connection.execute(f"DELETE FROM {table_name} WHERE file_id = ?", (target_id,))
+            deleted[table_name] = max(0, int(cursor.rowcount or 0))
+        connection.execute("DELETE FROM sales_report_uploads WHERE id = ?", (target_id,))
+        connection.commit()
+        return {
+            "id": target_id,
+            "original_name": str(upload["original_name"] or ""),
+            "report_type": str(upload["report_type"] or ""),
+            "report_date": str(upload["report_date"] or ""),
+            "period": str(upload["period"] or ""),
+            "deleted": deleted,
+            "deleted_row_count": sum(deleted.values()),
+        }
+    except Exception:
+        connection.rollback()
+        raise
     finally:
         connection.close()
 
@@ -43920,6 +44079,22 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                     "message": (
                         f"{result['report_date']} 매출 자료 {result['deleted_row_count']}건과 "
                         f"업로드 이력 {result['deleted_upload_count']}건을 리셋했습니다."
+                    ),
+                    "result": result,
+                    "files": list_sales_report_uploads(),
+                })
+                return
+
+            if self.path == "/api/sales-report-delete":
+                if not self.require_permission(user, "sales_report_manage", "특정 매출 자료 삭제"):
+                    return
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(length).decode("utf-8") or "{}")
+                result = delete_sales_report_upload(payload.get("file_id"))
+                self.send_json({
+                    "message": (
+                        f"{result['report_date'] or '일자 미지정'} {result['original_name']}의 "
+                        f"매출 데이터 {result['deleted_row_count']}건을 삭제했습니다."
                     ),
                     "result": result,
                     "files": list_sales_report_uploads(),
