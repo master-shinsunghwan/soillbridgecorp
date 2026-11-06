@@ -46,6 +46,12 @@ from invoice_number_exporter import export_invoice_numbers, extract_invoice_rows
 from lotte_order_form_converter import convert_lotte_order_form
 from sales_vendor_summary_converter import convert_sales_vendor_workbook
 from vehicle_receipt_generator import generate_vehicle_receipt
+from workhub_cs_return_ocr import (
+    format_kakao_return_text,
+    match_return_label,
+    ocr_return_label_image,
+    tracking_display,
+)
 from workhub_crm import (
     add_crm_task_comment,
     change_crm_task_status,
@@ -81,6 +87,7 @@ RUNTIME_ROOT = Path(os.environ.get("WORKHUB_DATA_DIR", str(RUNTIME_ROOT)))
 
 OUTPUT_DIR = RUNTIME_ROOT / "output" / "workhub_app"
 UPLOAD_DIR = OUTPUT_DIR / "uploads"
+CS_RETURN_LABEL_DIR = UPLOAD_DIR / "cs-return-labels"
 DOWNLOAD_DIR = OUTPUT_DIR / "downloads"
 ORDER_DOWNLOAD_DIR = DOWNLOAD_DIR / "order_outputs"
 ORDER_DOWNLOAD_HISTORY_PATH = ORDER_DOWNLOAD_DIR / "history.json"
@@ -1900,6 +1907,38 @@ HTML = r"""<!doctype html>
       justify-content: flex-end;
       gap: 10px;
       margin-top: 18px;
+    }
+    .return-label-dialog { width: min(1180px, 100%); padding: 18px; }
+    .return-label-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+    .return-label-dropzone {
+      display: grid; place-items: center; min-height: 92px; margin: 12px 0;
+      border: 1px dashed #8aa4c5; border-radius: 8px; background: #f7faff;
+      color: #334155; font-weight: 800; cursor: pointer; text-align: center; padding: 14px;
+    }
+    .return-label-dropzone.dragging { border-color: #2563eb; background: #eff6ff; }
+    .return-label-dropzone input { display: none; }
+    .return-label-progress { min-height: 22px; color: #475467; font-size: 13px; font-weight: 750; }
+    .return-label-layout { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(300px, .7fr); gap: 14px; }
+    .return-label-table-wrap { max-height: 52vh; overflow: auto; border: 1px solid #d7dce5; border-radius: 8px; }
+    .return-label-table { width: 100%; min-width: 920px; border-collapse: collapse; font-size: 12px; }
+    .return-label-table th { position: sticky; top: 0; z-index: 1; background: #eaf1fb; color: #172033; }
+    .return-label-table th, .return-label-table td { border-bottom: 1px solid #dfe5ee; padding: 7px; vertical-align: middle; }
+    .return-label-table input, .return-label-table select {
+      width: 100%; min-width: 72px; height: 32px; border: 1px solid #cbd5e1; border-radius: 5px; padding: 4px 7px; background: white;
+    }
+    .return-label-thumb { width: 58px; height: 46px; object-fit: cover; border: 1px solid #cbd5e1; border-radius: 5px; cursor: pointer; }
+    .return-label-badge { display: inline-flex; align-items: center; white-space: nowrap; border-radius: 999px; padding: 4px 7px; font-weight: 900; }
+    .return-label-badge.matched { color: #087443; background: #e7f8ef; }
+    .return-label-badge.review { color: #9a4d00; background: #fff3d6; }
+    .return-label-badge.unregistered { color: #b42318; background: #feeceb; }
+    .return-label-side { display: grid; align-content: start; gap: 10px; min-width: 0; }
+    .return-label-preview { width: 100%; max-height: 230px; object-fit: contain; border: 1px solid #d7dce5; border-radius: 8px; background: #f8fafc; }
+    .return-label-preview:not([src]) { display: none; }
+    .return-label-kakao { width: 100%; min-height: 260px; resize: vertical; border: 1px solid #b7c5d8; border-radius: 8px; padding: 12px; font: 13px/1.55 "Malgun Gothic", sans-serif; }
+    .return-label-actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+    @media (max-width: 860px) {
+      .return-label-layout { grid-template-columns: 1fr; }
+      .return-label-table-wrap { max-height: 40vh; }
     }
     .mail-preview-dialog {
       width: min(760px, 100%);
@@ -12369,6 +12408,7 @@ HTML = r"""<!doctype html>
               </div>
             </div>
             <button class="btn blue" type="button" data-ledger-import-mode="daily">CS처리대장 업로드</button>
+            <button class="btn blue" id="ledgerReturnLabelOcr" type="button">회수송장 사진 분석</button>
             <button class="btn primary" id="ledgerAddCs" type="button">CS 추가</button>
           </div>
           <div class="ledger-filter-summary" id="ledgerFilterSummary" aria-live="polite"></div>
@@ -12547,6 +12587,41 @@ HTML = r"""<!doctype html>
           <button class="btn" type="button" id="copyResult">복사</button>
           <button class="btn blue" type="button" id="downloadText">텍스트 저장</button>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="safe-number-dialog-backdrop" id="returnLabelOcrModal" aria-hidden="true">
+    <div class="safe-number-dialog return-label-dialog" role="dialog" aria-modal="true" aria-labelledby="returnLabelOcrTitle">
+      <div class="return-label-head">
+        <div>
+          <h2 class="safe-number-dialog-title" id="returnLabelOcrTitle">회수송장 사진 분석</h2>
+          <p class="safe-number-dialog-description">사진에서 송장번호를 읽고 기존 CS장부와 비교합니다. 확인한 항목만 장부에 반영됩니다.</p>
+        </div>
+        <button class="close popup-close-button" id="returnLabelOcrClose" type="button" aria-label="닫기"><i data-lucide="x"></i></button>
+      </div>
+      <label class="return-label-dropzone" id="returnLabelDropzone" for="returnLabelImageInput">
+        <span id="returnLabelDropText">회수송장 사진을 선택하거나 여기에 올려주세요. 최대 30장</span>
+        <input id="returnLabelImageInput" type="file" accept="image/jpeg,image/png,image/webp" multiple />
+      </label>
+      <div class="return-label-progress" id="returnLabelProgress">사진을 선택하면 분석을 시작합니다.</div>
+      <div class="return-label-layout">
+        <div class="return-label-table-wrap">
+          <table class="return-label-table">
+            <thead><tr><th>포함</th><th>사진</th><th>매칭</th><th>반영방식</th><th>고객명</th><th>상품명</th><th>수량</th><th>상태</th><th>회수송장번호</th></tr></thead>
+            <tbody id="returnLabelResultBody"><tr><td colspan="9">분석된 사진이 없습니다.</td></tr></tbody>
+          </table>
+        </div>
+        <aside class="return-label-side">
+          <img class="return-label-preview" id="returnLabelImagePreview" alt="선택한 회수송장 원본" />
+          <label class="field-label" for="returnLabelKakaoText">카카오톡 전달용 텍스트</label>
+          <textarea class="return-label-kakao" id="returnLabelKakaoText" placeholder="분석 후 직접 수정할 수 있습니다."></textarea>
+        </aside>
+      </div>
+      <div class="return-label-actions">
+        <button class="btn" id="returnLabelCopy" type="button">텍스트 복사</button>
+        <button class="btn" id="returnLabelOcrCancel" type="button">닫기</button>
+        <button class="btn primary" id="returnLabelApply" type="button">선택 항목 적용</button>
       </div>
     </div>
   </div>
@@ -13106,6 +13181,19 @@ HTML = r"""<!doctype html>
     const ledgerDownloadMenuButton = document.querySelector("#ledgerDownloadMenuButton");
     const ledgerDownloadMenu = document.querySelector("#ledgerDownloadMenu");
     const ledgerAddCs = document.querySelector("#ledgerAddCs");
+    const ledgerReturnLabelOcr = document.querySelector("#ledgerReturnLabelOcr");
+    const returnLabelOcrModal = document.querySelector("#returnLabelOcrModal");
+    const returnLabelOcrClose = document.querySelector("#returnLabelOcrClose");
+    const returnLabelOcrCancel = document.querySelector("#returnLabelOcrCancel");
+    const returnLabelDropzone = document.querySelector("#returnLabelDropzone");
+    const returnLabelDropText = document.querySelector("#returnLabelDropText");
+    const returnLabelImageInput = document.querySelector("#returnLabelImageInput");
+    const returnLabelProgress = document.querySelector("#returnLabelProgress");
+    const returnLabelResultBody = document.querySelector("#returnLabelResultBody");
+    const returnLabelImagePreview = document.querySelector("#returnLabelImagePreview");
+    const returnLabelKakaoText = document.querySelector("#returnLabelKakaoText");
+    const returnLabelCopy = document.querySelector("#returnLabelCopy");
+    const returnLabelApply = document.querySelector("#returnLabelApply");
     const ledgerBody = document.querySelector("#ledgerBody");
     const ledgerImportInput = document.querySelector("#ledgerImportInput");
     const ledgerImportDropMain = null;
@@ -13624,6 +13712,7 @@ HTML = r"""<!doctype html>
     let cachedMailSettings = {};
     let activeCsCaseId = "";
     let ledgerCases = [];
+    let returnLabelRows = [];
     let managementRecords = [];
     let ledgerImportMode = "daily";
     let managementImportMode = "daily";
@@ -23322,6 +23411,138 @@ ${kind} 안내드립니다.
       setTimeout(() => vendorNameInput?.focus(), 0);
     }
 
+    function returnLabelStatusLabel(status) {
+      if (status === "matched") return "일치";
+      if (status === "review") return "확인 필요";
+      return "CS장부 미등록";
+    }
+
+    function buildReturnLabelKakaoText() {
+      const now = new Date();
+      const weekday = ["일", "월", "화", "수", "목", "금", "토"][now.getDay()];
+      const blocks = [`★${now.getMonth() + 1}월 ${now.getDate()}일(${weekday}) 택배 회수송장★`];
+      returnLabelRows.forEach((row) => {
+        if (!row.selected) return;
+        const name = String(row.receiver_name || "미확인").trim();
+        const product = String(row.product_name || "상품 미확인").trim();
+        const quantity = String(row.quantity || "1").trim();
+        const condition = String(row.condition || "상태 미확인").trim();
+        const lines = [`${name} / ${product} - ${quantity}개`, condition];
+        if (row.tracking_number) lines.push(`회수송장: ${row.tracking_number}`);
+        blocks.push(lines.join("\n"));
+      });
+      return blocks.join("\n\n");
+    }
+
+    function updateReturnLabelKakaoText() {
+      if (returnLabelKakaoText) returnLabelKakaoText.value = buildReturnLabelKakaoText();
+    }
+
+    function renderReturnLabelRows() {
+      if (!returnLabelResultBody) return;
+      if (!returnLabelRows.length) {
+        returnLabelResultBody.innerHTML = '<tr><td colspan="9">분석된 사진이 없습니다.</td></tr>';
+        updateReturnLabelKakaoText();
+        return;
+      }
+      returnLabelResultBody.innerHTML = returnLabelRows.map((row, index) => {
+        const candidateOptions = (row.candidates || []).map((candidate) => (
+          `<option value="${escapeHtml(String(candidate.id || ""))}" ${Number(row.case_id) === Number(candidate.id) ? "selected" : ""}>${escapeHtml(candidate.receiver_name || "이름 없음")} · ${escapeHtml(candidate.product_name || "상품 없음")} (${escapeHtml(String(candidate.match_score || 0))}점)</option>`
+        )).join("");
+        const candidateSelect = candidateOptions
+          ? `<select data-return-label-candidate="${index}"><option value="">기존 CS 선택</option>${candidateOptions}</select>`
+          : "";
+        const canMatch = Boolean((row.candidates || []).length || row.case_id);
+        return `
+          <tr data-return-label-row="${index}">
+            <td><input type="checkbox" data-return-label-selected="${index}" ${row.selected ? "checked" : ""} /></td>
+            <td><img class="return-label-thumb" src="${escapeHtml(row.image_url || "")}" alt="${escapeHtml(row.filename || "송장 사진")}" data-return-label-preview="${index}" /></td>
+            <td><span class="return-label-badge ${escapeHtml(row.match_status || "unregistered")}">${escapeHtml(returnLabelStatusLabel(row.match_status))}</span>${candidateSelect}</td>
+            <td><select data-return-label-field="action" data-return-label-index="${index}">
+              ${canMatch ? `<option value="match" ${row.action === "match" ? "selected" : ""}>기존 CS 반영</option>` : ""}
+              <option value="new" ${row.action === "new" ? "selected" : ""}>신규 CS 등록</option>
+              <option value="skip" ${row.action === "skip" ? "selected" : ""}>반영 제외</option>
+            </select></td>
+            <td><input data-return-label-field="receiver_name" data-return-label-index="${index}" value="${escapeHtml(row.receiver_name || "")}" /></td>
+            <td><input data-return-label-field="product_name" data-return-label-index="${index}" value="${escapeHtml(row.product_name || "")}" /></td>
+            <td><input data-return-label-field="quantity" data-return-label-index="${index}" value="${escapeHtml(row.quantity || "1")}" /></td>
+            <td><input data-return-label-field="condition" data-return-label-index="${index}" value="${escapeHtml(row.condition || "")}" /></td>
+            <td><input data-return-label-field="tracking_number" data-return-label-index="${index}" value="${escapeHtml(row.tracking_number || "")}" /></td>
+          </tr>`;
+      }).join("");
+      if (returnLabelImagePreview && returnLabelRows[0]?.image_url) returnLabelImagePreview.src = returnLabelRows[0].image_url;
+      updateReturnLabelKakaoText();
+    }
+
+    function openReturnLabelOcrModal() {
+      returnLabelRows = [];
+      returnLabelOcrModal?.classList.add("open");
+      returnLabelOcrModal?.setAttribute("aria-hidden", "false");
+      if (returnLabelImageInput) returnLabelImageInput.value = "";
+      if (returnLabelDropText) returnLabelDropText.textContent = "회수송장 사진을 선택하거나 여기에 올려주세요. 최대 30장";
+      if (returnLabelProgress) returnLabelProgress.textContent = "사진을 선택하면 분석을 시작합니다.";
+      if (returnLabelImagePreview) returnLabelImagePreview.removeAttribute("src");
+      renderReturnLabelRows();
+      window.lucide?.createIcons?.();
+    }
+
+    function closeReturnLabelOcrModal() {
+      returnLabelOcrModal?.classList.remove("open");
+      returnLabelOcrModal?.setAttribute("aria-hidden", "true");
+    }
+
+    async function analyzeReturnLabelImages(fileList) {
+      const files = Array.from(fileList || []);
+      if (!files.length) return;
+      if (files.length > 30) {
+        returnLabelProgress.textContent = "사진은 한 번에 30장까지 선택할 수 있습니다.";
+        return;
+      }
+      const formData = new FormData();
+      files.forEach((file, index) => formData.append(`label_image_${index + 1}`, file, file.name));
+      returnLabelProgress.textContent = `${files.length}장 업로드 중 · 송장번호와 CS장부를 비교합니다.`;
+      returnLabelDropText.textContent = files.map((file) => file.name).join(", ");
+      returnLabelApply.disabled = true;
+      try {
+        const response = await fetch("/api/cs-return-label-analyze", { method: "POST", body: formData });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "회수송장 사진 분석에 실패했습니다.");
+        returnLabelRows = (data.rows || []).map((row) => ({ ...row, selected: true }));
+        renderReturnLabelRows();
+        const summary = data.summary || {};
+        returnLabelProgress.textContent = `분석 ${summary.total || 0}장 · 일치 ${summary.matched || 0}건 · 확인 필요 ${summary.review || 0}건 · 미등록 ${summary.unregistered || 0}건`;
+      } catch (error) {
+        returnLabelProgress.textContent = error.message;
+      } finally {
+        returnLabelApply.disabled = false;
+      }
+    }
+
+    async function applyReturnLabelRows() {
+      const rows = returnLabelRows.filter((row) => row.selected && row.action !== "skip");
+      if (!rows.length) {
+        returnLabelProgress.textContent = "적용할 항목의 반영방식을 선택해주세요.";
+        return;
+      }
+      returnLabelApply.disabled = true;
+      returnLabelProgress.textContent = `${rows.length}건을 CS장부에 반영하는 중입니다.`;
+      try {
+        const response = await fetch("/api/cs-return-label-apply", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ rows }),
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "회수송장 반영에 실패했습니다.");
+        returnLabelProgress.textContent = data.message || "회수송장을 반영했습니다.";
+        await loadLedgerCases();
+      } catch (error) {
+        returnLabelProgress.textContent = error.message;
+      } finally {
+        returnLabelApply.disabled = false;
+      }
+    }
+
     function closeLedgerCsPopup() {
       csFields.classList.remove("ledger-cs-popup");
       if (currentMode === "ledger") csFields.style.display = "none";
@@ -27394,6 +27615,70 @@ ${kind} 안내드립니다.
       }
     });
     ledgerAddCs.addEventListener("click", openLedgerCsPopup);
+    ledgerReturnLabelOcr?.addEventListener("click", openReturnLabelOcrModal);
+    returnLabelOcrClose?.addEventListener("click", closeReturnLabelOcrModal);
+    returnLabelOcrCancel?.addEventListener("click", closeReturnLabelOcrModal);
+    returnLabelImageInput?.addEventListener("change", () => analyzeReturnLabelImages(returnLabelImageInput.files));
+    ["dragenter", "dragover"].forEach((name) => returnLabelDropzone?.addEventListener(name, (event) => {
+      event.preventDefault();
+      returnLabelDropzone.classList.add("dragging");
+    }));
+    ["dragleave", "drop"].forEach((name) => returnLabelDropzone?.addEventListener(name, (event) => {
+      event.preventDefault();
+      returnLabelDropzone.classList.remove("dragging");
+    }));
+    returnLabelDropzone?.addEventListener("drop", (event) => analyzeReturnLabelImages(event.dataTransfer?.files));
+    returnLabelResultBody?.addEventListener("input", (event) => {
+      const input = event.target.closest("[data-return-label-field]");
+      if (!input) return;
+      const index = Number(input.dataset.returnLabelIndex);
+      const field = input.dataset.returnLabelField;
+      if (!returnLabelRows[index] || !field) return;
+      returnLabelRows[index][field] = input.value;
+      updateReturnLabelKakaoText();
+    });
+    returnLabelResultBody?.addEventListener("change", (event) => {
+      const selected = event.target.closest("[data-return-label-selected]");
+      if (selected) {
+        const index = Number(selected.dataset.returnLabelSelected);
+        if (returnLabelRows[index]) returnLabelRows[index].selected = selected.checked;
+        updateReturnLabelKakaoText();
+        return;
+      }
+      const candidateSelect = event.target.closest("[data-return-label-candidate]");
+      if (candidateSelect) {
+        const index = Number(candidateSelect.dataset.returnLabelCandidate);
+        const row = returnLabelRows[index];
+        const candidate = (row?.candidates || []).find((item) => Number(item.id) === Number(candidateSelect.value));
+        if (row && candidate) {
+          row.case_id = Number(candidate.id);
+          row.receiver_name = candidate.receiver_name || row.receiver_name;
+          row.product_name = candidate.product_name || row.product_name;
+          row.quantity = candidate.quantity || row.quantity;
+          row.action = "match";
+          row.match_status = "matched";
+          renderReturnLabelRows();
+        }
+      }
+    });
+    returnLabelResultBody?.addEventListener("click", (event) => {
+      const preview = event.target.closest("[data-return-label-preview]");
+      if (!preview || !returnLabelImagePreview) return;
+      const row = returnLabelRows[Number(preview.dataset.returnLabelPreview)];
+      if (row?.image_url) returnLabelImagePreview.src = row.image_url;
+    });
+    returnLabelApply?.addEventListener("click", applyReturnLabelRows);
+    returnLabelCopy?.addEventListener("click", async () => {
+      const text = returnLabelKakaoText?.value || "";
+      try {
+        await navigator.clipboard.writeText(text);
+        returnLabelProgress.textContent = "카카오톡 전달용 텍스트를 복사했습니다.";
+      } catch {
+        returnLabelKakaoText?.select();
+        document.execCommand("copy");
+        returnLabelProgress.textContent = "카카오톡 전달용 텍스트를 복사했습니다.";
+      }
+    });
     ledgerCsPopupClose.addEventListener("click", closeLedgerCsPopup);
     managementAddManual.addEventListener("click", openManagementManualPopup);
     managementManualClose.addEventListener("click", closeManagementManualPopup);
@@ -36032,6 +36317,21 @@ def init_db() -> None:
         connection.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_cs_cases_source ON cs_cases(source_file, source_sheet, source_row)")
         connection.execute(
             """
+            CREATE TABLE IF NOT EXISTS cs_case_attachments (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                case_id INTEGER,
+                token TEXT NOT NULL UNIQUE,
+                original_name TEXT NOT NULL,
+                stored_name TEXT NOT NULL,
+                content_type TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                FOREIGN KEY(case_id) REFERENCES cs_cases(id)
+            )
+            """
+        )
+        connection.execute("CREATE INDEX IF NOT EXISTS idx_cs_case_attachments_case ON cs_case_attachments(case_id)")
+        connection.execute(
+            """
             CREATE TABLE IF NOT EXISTS vendor_contacts (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 vendor_type TEXT NOT NULL DEFAULT 'purchase',
@@ -39015,6 +39315,214 @@ def save_cs_case(payload: dict, status: str = "접수", mail_sent: bool = False)
         return int(cursor.lastrowid)
     finally:
         connection.close()
+
+
+RETURN_LABEL_SUFFIXES = {".jpg", ".jpeg", ".png", ".webp"}
+RETURN_LABEL_MAX_FILE_BYTES = 15 * 1024 * 1024
+RETURN_LABEL_MAX_TOTAL_BYTES = 80 * 1024 * 1024
+RETURN_LABEL_MAX_FILES = 30
+
+
+def save_cs_return_label_attachment(filename: str, data: bytes, content_type: str = "") -> dict[str, str]:
+    filename = safe_filename(filename)
+    suffix = Path(filename).suffix.lower()
+    if suffix not in RETURN_LABEL_SUFFIXES:
+        raise ValueError("회수송장 사진은 JPG, PNG, WEBP 파일만 업로드할 수 있습니다.")
+    if not data:
+        raise ValueError("비어 있는 회수송장 사진은 업로드할 수 없습니다.")
+    if len(data) > RETURN_LABEL_MAX_FILE_BYTES:
+        raise ValueError("회수송장 사진 한 장은 15MB 이하로 업로드해주세요.")
+    token = secrets.token_urlsafe(24)
+    stored_name = f"{token}{suffix}"
+    CS_RETURN_LABEL_DIR.mkdir(parents=True, exist_ok=True)
+    (CS_RETURN_LABEL_DIR / stored_name).write_bytes(data)
+    mime = content_type or mimetypes.guess_type(filename)[0] or "application/octet-stream"
+    init_db()
+    connection = connect_db()
+    try:
+        connection.execute(
+            """
+            INSERT INTO cs_case_attachments
+                (case_id, token, original_name, stored_name, content_type, created_at)
+            VALUES (NULL, ?, ?, ?, ?, ?)
+            """,
+            (token, filename, stored_name, mime, now_text()),
+        )
+        connection.commit()
+    finally:
+        connection.close()
+    return {"token": token, "name": filename, "content_type": mime}
+
+
+def cs_return_label_attachment_info(token: str) -> tuple[Path, dict[str, object]]:
+    token = str(token or "").strip()
+    if not token:
+        raise ValueError("회수송장 사진 식별자가 없습니다.")
+    init_db()
+    connection = connect_db()
+    try:
+        row = connection.execute(
+            "SELECT case_id, token, original_name, stored_name, content_type FROM cs_case_attachments WHERE token = ?",
+            (token,),
+        ).fetchone()
+    finally:
+        connection.close()
+    if not row:
+        raise FileNotFoundError("회수송장 사진을 찾지 못했습니다.")
+    path = (CS_RETURN_LABEL_DIR / str(row["stored_name"])).resolve()
+    if CS_RETURN_LABEL_DIR.resolve() not in path.parents or not path.is_file():
+        raise FileNotFoundError("회수송장 사진 파일을 찾지 못했습니다.")
+    return path, dict(row)
+
+
+def analyze_cs_return_label_uploads(
+    files: list[tuple[str, bytes]],
+    *,
+    ocr_func=ocr_return_label_image,
+) -> dict[str, object]:
+    if not files:
+        raise ValueError("분석할 회수송장 사진을 선택해주세요.")
+    if len(files) > RETURN_LABEL_MAX_FILES:
+        raise ValueError(f"회수송장 사진은 한 번에 {RETURN_LABEL_MAX_FILES}장까지 분석할 수 있습니다.")
+    if sum(len(data) for _, data in files) > RETURN_LABEL_MAX_TOTAL_BYTES:
+        raise ValueError("회수송장 사진 전체 용량은 80MB 이하로 업로드해주세요.")
+    cases = [dict(item) for item in list_cs_cases(limit=5000)]
+    rows: list[dict[str, object]] = []
+    for index, (filename, data) in enumerate(files, start=1):
+        suffix = Path(filename).suffix.lower()
+        if suffix not in RETURN_LABEL_SUFFIXES:
+            raise ValueError(f"{filename}: JPG, PNG, WEBP 이미지만 분석할 수 있습니다.")
+        parsed = ocr_func(data)
+        match = match_return_label(parsed, cases)
+        attachment = save_cs_return_label_attachment(filename, data, mimetypes.guess_type(filename)[0] or "")
+        matched_case = match["candidates"][0] if match.get("match_status") == "matched" and match.get("candidates") else {}
+        status = str(match.get("match_status") or "unregistered")
+        row = {
+            "row_id": index,
+            "filename": filename,
+            "attachment_token": attachment["token"],
+            "image_url": f"/api/cs-return-label-attachment?token={quote(attachment['token'])}",
+            "tracking_number": parsed.get("tracking_number", ""),
+            "receiver_name": matched_case.get("receiver_name") or (parsed.get("masked_names") or [""])[0],
+            "product_name": matched_case.get("product_name") or "",
+            "quantity": matched_case.get("quantity") or parsed.get("quantity") or "1",
+            "condition": parsed.get("condition") or "",
+            "occurred_at": date.today().isoformat(),
+            "match_status": status,
+            "case_id": int(match.get("case_id") or 0),
+            "match_score": int(match.get("match_score") or 0),
+            "candidates": match.get("candidates") or [],
+            "action": "match" if status == "matched" else "skip",
+            "selected": True,
+            "raw_text": parsed.get("raw_text", ""),
+        }
+        rows.append(row)
+    return {
+        "rows": rows,
+        "kakao_text": format_kakao_return_text(rows, date.today().isoformat()),
+        "summary": {
+            "total": len(rows),
+            "matched": sum(1 for row in rows if row["match_status"] == "matched"),
+            "review": sum(1 for row in rows if row["match_status"] == "review"),
+            "unregistered": sum(1 for row in rows if row["match_status"] == "unregistered"),
+        },
+    }
+
+
+def _duplicate_return_invoice(connection: sqlite3.Connection, tracking: str, case_id: int = 0) -> sqlite3.Row | None:
+    digits = re.sub(r"\D", "", tracking or "")
+    if not digits:
+        return None
+    return connection.execute(
+        """
+        SELECT id, receiver_name FROM cs_cases
+         WHERE replace(replace(COALESCE(return_invoice, ''), '-', ''), ' ', '') = ?
+           AND id != ?
+         LIMIT 1
+        """,
+        (digits, case_id),
+    ).fetchone()
+
+
+def apply_cs_return_label_rows(rows: list[dict[str, object]]) -> dict[str, int]:
+    if not isinstance(rows, list) or not rows:
+        raise ValueError("적용할 회수송장 항목이 없습니다.")
+    init_db()
+    updated = 0
+    created = 0
+    skipped = 0
+    for row in rows:
+        action = str(row.get("action") or "skip").strip().lower()
+        if action == "skip":
+            skipped += 1
+            continue
+        tracking = tracking_display(str(row.get("tracking_number") or ""))
+        if len(re.sub(r"\D", "", tracking)) != 12:
+            raise ValueError("회수운송장번호는 12자리 숫자로 확인해주세요.")
+        case_id = int(row.get("case_id") or 0) if action == "match" else 0
+        connection = connect_db()
+        try:
+            duplicate = _duplicate_return_invoice(connection, tracking, case_id)
+        finally:
+            connection.close()
+        if duplicate:
+            raise ValueError(f"회수송장 {tracking}은 이미 등록된 번호입니다.")
+        if action == "match":
+            if not case_id:
+                raise ValueError("연결할 기존 CS건을 선택해주세요.")
+            connection = connect_db()
+            try:
+                exists = connection.execute("SELECT id FROM cs_cases WHERE id = ?", (case_id,)).fetchone()
+                if not exists:
+                    raise ValueError("연결할 기존 CS건을 찾지 못했습니다.")
+                timestamp = now_text()
+                connection.execute(
+                    """
+                    UPDATE cs_cases
+                       SET return_invoice = ?, return_invoice_updated_at = ?, updated_at = ?
+                     WHERE id = ?
+                    """,
+                    (tracking, timestamp, timestamp, case_id),
+                )
+                connection.commit()
+            finally:
+                connection.close()
+            updated += 1
+        elif action == "new":
+            condition = str(row.get("condition") or "").strip()
+            compact_condition = re.sub(r"\s+", "", condition)
+            cs_type = "불량반품" if any(token in compact_condition for token in ("불량", "스크래치", "코팅", "구멍", "파손")) else "변심반품"
+            occurred_at = str(row.get("occurred_at") or date.today().isoformat())
+            case_id = save_cs_case(
+                {
+                    "cs_receiver": str(row.get("receiver_name") or ""),
+                    "cs_product": str(row.get("product_name") or ""),
+                    "quantity": str(row.get("quantity") or "1"),
+                    "cs_type": cs_type,
+                    "cs_content": condition,
+                    "return_invoice": tracking,
+                    "occurred_at": occurred_at,
+                    "courier": "CJ대한통운",
+                },
+                status=normalize_progress_status("회수지시", occurred_at=occurred_at),
+            )
+            created += 1
+        else:
+            raise ValueError("회수송장 적용 방식이 올바르지 않습니다.")
+        token = str(row.get("attachment_token") or "").strip()
+        if token:
+            connection = connect_db()
+            try:
+                cursor = connection.execute(
+                    "UPDATE cs_case_attachments SET case_id = ? WHERE token = ? AND case_id IS NULL",
+                    (case_id, token),
+                )
+                if cursor.rowcount != 1:
+                    raise ValueError("연결할 회수송장 원본 사진을 찾지 못했습니다.")
+                connection.commit()
+            finally:
+                connection.close()
+    return {"updated": updated, "created": created, "skipped": skipped}
 
 
 def date_period_condition(fields: list[str], year: str = "", month: str = "") -> tuple[str, list[str]]:
@@ -43680,6 +44188,19 @@ class WorkhubHandler(BaseHTTPRequestHandler):
             self.send_json({"alerts": list_cs_followup_alerts()})
             return
 
+        if self.path.startswith("/api/cs-return-label-attachment"):
+            if not self.require_permission(user, "ledger_edit", "대장 수정"):
+                return
+            parsed = urlsplit(self.path)
+            params = parse_qs(parsed.query)
+            try:
+                path, metadata = cs_return_label_attachment_info(params.get("token", [""])[0])
+            except Exception as exc:  # noqa: BLE001
+                self.send_json({"error": str(exc)}, status=404)
+                return
+            self.send_bytes(path.read_bytes(), str(metadata.get("content_type") or "application/octet-stream"))
+            return
+
         if self.path.startswith("/api/cs-cases"):
             parsed = urlsplit(self.path)
             params = parse_qs(parsed.query)
@@ -44857,6 +45378,21 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                 self.send_json({"message": "CS 처리내용을 저장했습니다.", "case_id": case_id, **result})
                 return
 
+            if self.path == "/api/cs-return-label-apply":
+                if not self.require_permission(user, "ledger_edit", "대장 수정"):
+                    return
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(length).decode("utf-8") or "{}")
+                rows = payload.get("rows") if isinstance(payload, dict) else []
+                if not isinstance(rows, list):
+                    raise ValueError("회수송장 적용 데이터 형식이 올바르지 않습니다.")
+                result = apply_cs_return_label_rows([row for row in rows if isinstance(row, dict)])
+                self.send_json({
+                    "message": f"회수송장 기존 CS {result['updated']}건 반영, 신규 CS {result['created']}건 등록했습니다.",
+                    **result,
+                })
+                return
+
             if self.path == "/api/cs-cases-import-corrections":
                 if not self.require_permission(user, "excel_upload", "엑셀 업로드"):
                     return
@@ -45130,6 +45666,17 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                 return
 
             fields = parse_multipart(self.headers, self.rfile)
+
+            if self.path == "/api/cs-return-label-analyze":
+                if not self.require_permission(user, "ledger_edit", "대장 수정"):
+                    return
+                files = [
+                    value
+                    for field_name, value in fields.items()
+                    if field_name.startswith("label_image_") and isinstance(value, tuple)
+                ]
+                self.send_json(analyze_cs_return_label_uploads(files))
+                return
 
             if self.path == "/api/backup-restore-upload":
                 if not self.require_permission(user, "backup_manage", "백업 관리"):
