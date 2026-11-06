@@ -173,6 +173,49 @@ class LeaveAdvancedWorkflowTests(unittest.TestCase):
             self.assertFalse(any("팀장 확인" in message for message in leave_notification_messages(app, users["team"])))
             self.assertTrue(any("실장 확인" in message for message in leave_notification_messages(app, users["director"])))
 
+    def test_init_db_removes_stale_team_lead_notifications_after_request_was_migrated(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            app = load_app(Path(directory))
+            users = self.make_users(app)
+            self.set_balance(app, users["requester"], total=5)
+            request_id = app.create_leave_request(
+                users["requester"],
+                {
+                    "leave_type_id": app.get_leave_type_id("annual"),
+                    "unit": "FULL_DAY",
+                    "start_date": "2026-01-07",
+                    "end_date": "2026-01-07",
+                    "reason": "기존 알림 정리",
+                },
+            )
+            connection = app.connect_db()
+            try:
+                connection.execute(
+                    """
+                    INSERT INTO leave_notifications
+                        (user_id, request_id, notification_type, message, is_read, created_at)
+                    VALUES (?, ?, 'approval_waiting', '신청자님의 연차 신청이 팀장 확인 승인을 기다립니다.', 0, ?)
+                    """,
+                    (users["team"]["id"], request_id, app.now_text()),
+                )
+                connection.execute(
+                    """
+                    INSERT INTO leave_notifications
+                        (user_id, request_id, notification_type, message, is_read, created_at)
+                    VALUES (?, ?, 'request_update', '연차 신청이 접수되었습니다. 현재 팀장 확인 승인 대기입니다.', 0, ?)
+                    """,
+                    (users["requester"]["id"], request_id, app.now_text()),
+                )
+                connection.commit()
+            finally:
+                connection.close()
+
+            app.init_db()
+
+            self.assertFalse(any("팀장 확인" in message for message in leave_notification_messages(app, users["team"])))
+            self.assertFalse(any("팀장 확인" in message for message in leave_notification_messages(app, users["requester"])))
+            self.assertTrue(any("실장 확인" in message for message in leave_notification_messages(app, users["director"])))
+
     def test_public_holiday_is_excluded_and_pending_request_reserves_balance(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             app = load_app(Path(directory))

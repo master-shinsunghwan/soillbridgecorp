@@ -36457,6 +36457,10 @@ def init_db() -> None:
         )
         connection.execute("CREATE INDEX IF NOT EXISTS idx_company_holidays_date ON company_holidays(holiday_date)")
         connection.execute("CREATE INDEX IF NOT EXISTS idx_leave_notifications_user ON leave_notifications(user_id, is_read)")
+        connection.execute(
+            "DELETE FROM leave_notifications WHERE instr(message, ?) > 0",
+            ("\uD300\uC7A5 \uD655\uC778",),
+        )
         timestamp = now_text()
         for request in legacy_team_requests:
             request_id = int(request["id"])
