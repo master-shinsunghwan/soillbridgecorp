@@ -371,6 +371,148 @@ class SalesReportUploadTests(unittest.TestCase):
         finally:
             connection.close()
 
+    def test_list_sales_report_entries_supports_seller_and_supplier_modes(self) -> None:
+        connection = self.app.connect_db()
+        try:
+            upload = connection.execute(
+                """
+                INSERT INTO sales_report_uploads
+                    (stored_name, original_name, size, uploaded_by, uploaded_at, report_type, report_date, period)
+                VALUES ('vendors.xls', '업체별.xls', 1, 'admin', '2026-11-10 09:00:00', 'seller', '2026-11-10', '2026-11')
+                """
+            )
+            file_id = int(upload.lastrowid)
+            connection.execute(
+                """
+                INSERT INTO sales_report_seller_rows
+                    (period, report_date, file_id, seller_name, quantity, profit_sales_amount, profit_supply_amount)
+                VALUES ('2026-11', '2026-11-10', ?, '테스트 매출처', 7, 12500, 4500)
+                """,
+                (file_id,),
+            )
+            connection.execute(
+                """
+                INSERT INTO sales_report_supplier_rows
+                    (period, report_date, file_id, supplier_name, quantity, profit_sales_amount, profit_supply_amount)
+                VALUES ('2026-11', '2026-11-10', ?, '테스트 매입처', 7, 12500, 4500)
+                """,
+                (file_id,),
+            )
+            connection.commit()
+        finally:
+            connection.close()
+
+        seller_rows = self.app.list_sales_report_entries('seller', '2026-11-10', '매출처')
+        supplier_rows = self.app.list_sales_report_entries('supplier', '2026-11-10', '매입처')
+
+        self.assertEqual([(row['name'], row['amount']) for row in seller_rows], [('테스트 매출처', 12500)])
+        self.assertEqual([(row['name'], row['amount']) for row in supplier_rows], [('테스트 매입처', 4500)])
+
+    def test_delete_sales_report_entry_only_deletes_selected_vendor_row(self) -> None:
+        connection = self.app.connect_db()
+        try:
+            upload = connection.execute(
+                """
+                INSERT INTO sales_report_uploads
+                    (stored_name, original_name, size, uploaded_by, uploaded_at, report_type, report_date, period)
+                VALUES ('sellers.xls', '매출처별.xls', 1, 'admin', '2026-11-10 09:00:00', 'seller', '2026-11-10', '2026-11')
+                """
+            )
+            file_id = int(upload.lastrowid)
+            selected = connection.execute(
+                """
+                INSERT INTO sales_report_seller_rows
+                    (period, report_date, file_id, seller_name, quantity, profit_sales_amount)
+                VALUES ('2026-11', '2026-11-10', ?, '삭제 매출처', 2, 3000)
+                """,
+                (file_id,),
+            )
+            selected_id = int(selected.lastrowid)
+            connection.execute(
+                """
+                INSERT INTO sales_report_seller_rows
+                    (period, report_date, file_id, seller_name, quantity, profit_sales_amount)
+                VALUES ('2026-11', '2026-11-10', ?, '유지 매출처', 3, 5000)
+                """,
+                (file_id,),
+            )
+            connection.execute(
+                """
+                INSERT INTO sales_report_supplier_rows
+                    (period, report_date, file_id, supplier_name, quantity, profit_supply_amount)
+                VALUES ('2026-11', '2026-11-10', ?, '유지 매입처', 5, 2500)
+                """,
+                (file_id,),
+            )
+            connection.commit()
+        finally:
+            connection.close()
+
+        result = self.app.delete_sales_report_entry('seller', selected_id)
+
+        self.assertEqual(result['name'], '삭제 매출처')
+        self.assertFalse(result['deleted_manual_bundle'])
+        connection = self.app.connect_db()
+        try:
+            self.assertEqual(
+                [row['seller_name'] for row in connection.execute(
+                    'SELECT seller_name FROM sales_report_seller_rows ORDER BY id'
+                ).fetchall()],
+                ['유지 매출처'],
+            )
+            self.assertEqual(connection.execute(
+                'SELECT COUNT(*) AS count FROM sales_report_supplier_rows'
+            ).fetchone()['count'], 1)
+            self.assertIsNotNone(connection.execute(
+                'SELECT id FROM sales_report_uploads WHERE id = ?', (file_id,)
+            ).fetchone())
+        finally:
+            connection.close()
+
+    def test_delete_manual_vendor_sale_deletes_linked_manual_bundle(self) -> None:
+        entry = self.app.save_manual_sales_report_entry(
+            {
+                'report_date': '2026-11-10',
+                'seller_name': '수기 매출처',
+                'supplier_name': '수기 매입처',
+                'product_name': '수기 상품',
+                'quantity': 2,
+                'sales_amount': 10000,
+                'supply_amount': 4000,
+                'sales_total': 10000,
+                'profit_margin': 6000,
+            },
+            'admin',
+        )
+        selected = next(
+            row for row in self.app.list_sales_report_entries('supplier', '2026-11-10')
+            if row['name'] == '수기 매입처'
+        )
+
+        result = self.app.delete_sales_report_entry('supplier', selected['id'])
+
+        self.assertTrue(result['deleted_manual_bundle'])
+        connection = self.app.connect_db()
+        try:
+            for table_name in (
+                'sales_report_product_rows',
+                'sales_report_seller_rows',
+                'sales_report_supplier_rows',
+            ):
+                self.assertEqual(connection.execute(
+                    f'SELECT COUNT(*) AS count FROM {table_name} WHERE file_id = ?',
+                    (entry['id'],),
+                ).fetchone()['count'], 0)
+            self.assertIsNone(connection.execute(
+                'SELECT id FROM sales_report_uploads WHERE id = ?', (entry['id'],)
+            ).fetchone())
+        finally:
+            connection.close()
+
+    def test_sales_report_entry_delete_rejects_unknown_kind(self) -> None:
+        with self.assertRaisesRegex(ValueError, '삭제 구분'):
+            self.app.list_sales_report_entries('uploads; DROP TABLE sales_report_uploads', '2026-11-10')
+
     def test_manual_sales_entry_uses_uploaded_product_options_and_updates_dashboard(self) -> None:
         connection = self.app.connect_db()
         try:

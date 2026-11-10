@@ -3210,6 +3210,31 @@ HTML = r"""<!doctype html>
       font-size: 11px;
       font-weight: 800;
     }
+    .sales-entry-delete-modes {
+      grid-column: 1 / -1;
+      display: inline-grid;
+      grid-template-columns: repeat(3, minmax(90px, 1fr));
+      gap: 4px;
+      width: min(100%, 390px);
+      padding: 3px;
+      border: 1px solid #fecaca;
+      border-radius: 7px;
+      background: #fff;
+    }
+    .sales-entry-delete-mode {
+      height: 32px;
+      border: 0;
+      border-radius: 5px;
+      background: transparent;
+      color: #64748b;
+      font-size: 11px;
+      font-weight: 950;
+      cursor: pointer;
+    }
+    .sales-entry-delete-mode.active {
+      background: #b91c1c;
+      color: #fff;
+    }
     .sales-product-delete-field {
       display: grid;
       gap: 4px;
@@ -13097,11 +13122,14 @@ HTML = r"""<!doctype html>
     const salesManualEntrySave = document.querySelector("#salesManualEntrySave");
     const salesManualEntryMessage = document.querySelector("#salesManualEntryMessage");
     const salesReportUploadMessage = document.querySelector("#salesReportUploadMessage");
-    const salesProductDeleteForm = document.querySelector("#salesProductDeleteForm");
-    const salesProductDeleteDate = document.querySelector("#salesProductDeleteDate");
-    const salesProductDeleteQuery = document.querySelector("#salesProductDeleteQuery");
-    const salesProductDeleteSearch = document.querySelector("#salesProductDeleteSearch");
-    const salesProductDeleteResults = document.querySelector("#salesProductDeleteResults");
+    const salesEntryDeleteForm = document.querySelector("#salesEntryDeleteForm");
+    const salesEntryDeleteDate = document.querySelector("#salesEntryDeleteDate");
+    const salesEntryDeleteQuery = document.querySelector("#salesEntryDeleteQuery");
+    const salesEntryDeleteQueryLabel = document.querySelector("#salesEntryDeleteQueryLabel");
+    const salesEntryDeleteSearch = document.querySelector("#salesEntryDeleteSearch");
+    const salesEntryDeleteResults = document.querySelector("#salesEntryDeleteResults");
+    const salesEntryDeleteModes = Array.from(document.querySelectorAll("[data-sales-entry-kind]"));
+    let activeSalesEntryDeleteKind = "product";
     const salesReportDashboard = document.querySelector("#salesReportDashboard");
     const salesReportPeriodLabel = document.querySelector("#salesReportPeriodLabel");
     const salesReportPeriodSelect = document.querySelector("#salesReportPeriodSelect");
@@ -16190,71 +16218,94 @@ ${kind} 안내드립니다.
       }
     }
 
-    function renderSalesReportProductSales(rows = []) {
-      if (!salesProductDeleteResults) return;
+    const salesEntryDeleteMeta = {
+      product: { label: "상품", searchLabel: "상품명 검색", placeholder: "상품명 일부 입력", amountLabel: "매출금액" },
+      seller: { label: "매출처", searchLabel: "매출처명 검색", placeholder: "매출처명 일부 입력", amountLabel: "매출금액" },
+      supplier: { label: "매입처", searchLabel: "매입처명 검색", placeholder: "매입처명 일부 입력", amountLabel: "매입금액" },
+    };
+
+    function renderSalesReportEntries(rows = []) {
+      if (!salesEntryDeleteResults) return;
+      const meta = salesEntryDeleteMeta[activeSalesEntryDeleteKind] || salesEntryDeleteMeta.product;
       if (!rows.length) {
-        salesProductDeleteResults.innerHTML = '<div class="sales-product-delete-empty">선택한 날짜에 삭제할 상품 매출이 없습니다.</div>';
+        salesEntryDeleteResults.innerHTML = `<div class="sales-product-delete-empty">선택한 날짜에 삭제할 ${meta.label} 매출이 없습니다.</div>`;
         return;
       }
-      salesProductDeleteResults.innerHTML = rows.map((row) => `
-        <div class="sales-product-delete-row" data-sales-product-row="${escapeHtml(row.id)}">
-          <span class="sales-product-delete-name" title="${escapeHtml(row.product_name || "")}">${escapeHtml(row.product_name || "상품명 없음")}</span>
+      salesEntryDeleteResults.innerHTML = rows.map((row) => `
+        <div class="sales-product-delete-row" data-sales-entry-row="${escapeHtml(row.id)}">
+          <span class="sales-product-delete-name" title="${escapeHtml(row.name || "")}">${escapeHtml(row.name || `${meta.label}명 없음`)}</span>
           <span class="sales-product-delete-number">${formatSalesNumber(row.quantity)}개</span>
-          <span class="sales-product-delete-number">${formatSalesMillion(row.profit_sales_amount)}</span>
-          <button class="sales-product-delete-button" type="button" data-sales-product-delete="${escapeHtml(row.id)}" data-product-name="${escapeHtml(row.product_name || "")}" data-report-date="${escapeHtml(row.report_date || "")}">삭제</button>
+          <span class="sales-product-delete-number" title="${escapeHtml(meta.amountLabel)}">${formatSalesMillion(row.amount)}</span>
+          <button class="sales-product-delete-button" type="button" data-sales-entry-delete="${escapeHtml(row.id)}" data-entry-kind="${escapeHtml(row.kind || activeSalesEntryDeleteKind)}" data-entry-name="${escapeHtml(row.name || "")}" data-report-date="${escapeHtml(row.report_date || "")}">삭제</button>
         </div>
       `).join("");
     }
 
-    async function loadSalesReportProductSales() {
-      if (!salesProductDeleteResults) return;
-      const reportDate = salesProductDeleteDate?.value || "";
+    function selectSalesEntryDeleteKind(kind) {
+      if (!salesEntryDeleteMeta[kind]) return;
+      activeSalesEntryDeleteKind = kind;
+      const meta = salesEntryDeleteMeta[kind];
+      salesEntryDeleteModes.forEach((button) => {
+        const selected = button.dataset.salesEntryKind === kind;
+        button.classList.toggle("active", selected);
+        button.setAttribute("aria-pressed", selected ? "true" : "false");
+      });
+      if (salesEntryDeleteQueryLabel) salesEntryDeleteQueryLabel.textContent = meta.searchLabel;
+      if (salesEntryDeleteQuery) salesEntryDeleteQuery.placeholder = meta.placeholder;
+      if (salesEntryDeleteDate?.value) loadSalesReportEntries();
+    }
+
+    async function loadSalesReportEntries() {
+      if (!salesEntryDeleteResults) return;
+      const reportDate = salesEntryDeleteDate?.value || "";
+      const meta = salesEntryDeleteMeta[activeSalesEntryDeleteKind] || salesEntryDeleteMeta.product;
       if (!reportDate) {
-        salesProductDeleteResults.innerHTML = '<div class="sales-product-delete-empty">삭제할 매출일자를 먼저 선택해주세요.</div>';
+        salesEntryDeleteResults.innerHTML = '<div class="sales-product-delete-empty">삭제할 매출일자를 먼저 선택해주세요.</div>';
         return;
       }
-      salesProductDeleteResults.innerHTML = '<div class="sales-product-delete-empty">상품 매출을 조회하는 중입니다.</div>';
-      const params = new URLSearchParams({ report_date: reportDate });
-      const query = salesProductDeleteQuery?.value.trim() || "";
+      salesEntryDeleteResults.innerHTML = `<div class="sales-product-delete-empty">${meta.label} 매출을 조회하는 중입니다.</div>`;
+      const params = new URLSearchParams({ kind: activeSalesEntryDeleteKind, report_date: reportDate });
+      const query = salesEntryDeleteQuery?.value.trim() || "";
       if (query) params.set("query", query);
       try {
-        const response = await fetch(`/api/sales-report-product-sales?${params.toString()}`);
+        const response = await fetch(`/api/sales-report-entries?${params.toString()}`);
         const data = await response.json();
-        if (!response.ok) throw new Error(data.error || "상품 매출을 조회하지 못했습니다.");
-        renderSalesReportProductSales(data.rows || []);
+        if (!response.ok) throw new Error(data.error || `${meta.label} 매출을 조회하지 못했습니다.`);
+        renderSalesReportEntries(data.rows || []);
       } catch (error) {
-        salesProductDeleteResults.innerHTML = `<div class="sales-product-delete-empty">${escapeHtml(error.message)}</div>`;
+        salesEntryDeleteResults.innerHTML = `<div class="sales-product-delete-empty">${escapeHtml(error.message)}</div>`;
       }
     }
 
-    async function deleteSalesReportProductSale(rowId) {
+    async function deleteSalesReportEntry(rowId, kind = activeSalesEntryDeleteKind) {
       const id = Number(rowId || 0);
       if (!id || !can("sales_report_manage")) return;
-      const button = salesProductDeleteResults?.querySelector(`[data-sales-product-delete="${id}"]`);
-      const productName = button?.dataset.productName || "선택 상품";
-      const reportDate = button?.dataset.reportDate || salesProductDeleteDate?.value || "선택 일자";
+      const meta = salesEntryDeleteMeta[kind] || salesEntryDeleteMeta.product;
+      const button = salesEntryDeleteResults?.querySelector(`[data-sales-entry-delete="${id}"]`);
+      const entryName = button?.dataset.entryName || `선택 ${meta.label}`;
+      const reportDate = button?.dataset.reportDate || salesEntryDeleteDate?.value || "선택 일자";
       const approved = await requestAppConfirm({
-        kicker: "특정 상품 매출 삭제",
-        title: `${reportDate} ${productName} 매출을 삭제할까요?`,
-        message: "일반 업로드는 상품별 집계 행만 삭제되며 판매처별·매입처별 원본 집계는 유지됩니다. 수기로 등록한 매출은 연결된 판매처·매입처 집계도 함께 삭제됩니다.",
-        highlight: `${reportDate} · ${productName}`,
-        okText: "상품 매출 삭제",
+        kicker: `특정 ${meta.label} 매출 삭제`,
+        title: `${reportDate} ${entryName} 매출을 삭제할까요?`,
+        message: `일반 업로드는 선택한 ${meta.label} 집계 행만 삭제되며 다른 집계 원본은 유지됩니다. 수기로 등록한 매출은 연결된 상품·매출처·매입처 집계도 함께 삭제됩니다.`,
+        highlight: `${reportDate} · ${entryName}`,
+        okText: `${meta.label} 매출 삭제`,
         cancelText: "취소",
       });
       if (!approved) return;
       if (button) button.disabled = true;
-      if (salesReportUploadMessage) salesReportUploadMessage.textContent = `${reportDate} ${productName} 매출을 삭제하는 중입니다.`;
+      if (salesReportUploadMessage) salesReportUploadMessage.textContent = `${reportDate} ${entryName} 매출을 삭제하는 중입니다.`;
       try {
-        const response = await fetch("/api/sales-report-product-sales-delete", {
+        const response = await fetch("/api/sales-report-entry-delete", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ row_id: id }),
+          body: JSON.stringify({ kind, row_id: id }),
         });
         const data = await response.json();
-        if (!response.ok) throw new Error(data.error || "선택한 상품 매출을 삭제하지 못했습니다.");
+        if (!response.ok) throw new Error(data.error || `선택한 ${meta.label} 매출을 삭제하지 못했습니다.`);
         if (data.result?.period) activeSalesReportPeriod = data.result.period;
-        await Promise.all([loadSalesReportProductSales(), loadSalesReportDashboard()]);
-        if (salesReportUploadMessage) salesReportUploadMessage.textContent = data.message || "선택한 상품 매출을 삭제했습니다.";
+        await Promise.all([loadSalesReportEntries(), loadSalesReportDashboard()]);
+        if (salesReportUploadMessage) salesReportUploadMessage.textContent = data.message || `선택한 ${meta.label} 매출을 삭제했습니다.`;
       } catch (error) {
         if (button) button.disabled = false;
         if (salesReportUploadMessage) salesReportUploadMessage.textContent = error.message;
@@ -16823,7 +16874,7 @@ ${kind} 안내드립니다.
         });
         const data = await response.json();
         if (!response.ok) throw new Error(data.error || "수기 매출 저장에 실패했습니다.");
-        if (salesProductDeleteDate?.value === payload.report_date) await loadSalesReportProductSales();
+        if (salesEntryDeleteDate?.value === payload.report_date) await loadSalesReportEntries();
         activeSalesReportPeriod = payload.report_date.slice(0, 7);
         await loadSalesReportDashboard(activeSalesReportPeriod);
         resetSalesManualEntryForm();
@@ -16857,7 +16908,7 @@ ${kind} 안내드립니다.
             return data;
           },
         });
-        if (salesProductDeleteDate?.value) await loadSalesReportProductSales();
+        if (salesEntryDeleteDate?.value) await loadSalesReportEntries();
         loadSalesReportDashboard();
         if (salesReportUploadMessage) salesReportUploadMessage.textContent = data.message || "매출표를 저장했습니다.";
       } catch (error) {
@@ -18036,7 +18087,7 @@ ${kind} 안내드립니다.
         });
         const data = await response.json();
         if (!response.ok) throw new Error(data.error || "매출 자료 일자별 리셋에 실패했습니다.");
-        if (salesProductDeleteDate?.value === reportDate) await loadSalesReportProductSales();
+        if (salesEntryDeleteDate?.value === reportDate) await loadSalesReportEntries();
         await loadSalesReportDashboard(reportDate.slice(0, 7));
         if (salesReportUploadMessage) salesReportUploadMessage.textContent = data.message || "해당 일자 매출 자료를 리셋했습니다.";
       } catch (error) {
@@ -27596,14 +27647,17 @@ ${kind} 안내드립니다.
     if (salesReportFileInput) salesReportFileInput.addEventListener("change", uploadSalesReportWorkbook);
     salesReportManualUpload?.addEventListener("click", openSalesReportUploadPicker);
     salesReportResetDate?.addEventListener("click", resetSalesReportDate);
-    salesProductDeleteSearch?.addEventListener("click", loadSalesReportProductSales);
-    salesProductDeleteDate?.addEventListener("change", loadSalesReportProductSales);
-    salesProductDeleteQuery?.addEventListener("keydown", (event) => {
-      if (event.key === "Enter") loadSalesReportProductSales();
+    salesEntryDeleteSearch?.addEventListener("click", loadSalesReportEntries);
+    salesEntryDeleteDate?.addEventListener("change", loadSalesReportEntries);
+    salesEntryDeleteQuery?.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") loadSalesReportEntries();
     });
-    salesProductDeleteResults?.addEventListener("click", (event) => {
-      const button = event.target.closest("[data-sales-product-delete]");
-      if (button) deleteSalesReportProductSale(button.dataset.salesProductDelete);
+    salesEntryDeleteModes.forEach((button) => button.addEventListener("click", () => {
+      selectSalesEntryDeleteKind(button.dataset.salesEntryKind || "product");
+    }));
+    salesEntryDeleteResults?.addEventListener("click", (event) => {
+      const button = event.target.closest("[data-sales-entry-delete]");
+      if (button) deleteSalesReportEntry(button.dataset.salesEntryDelete, button.dataset.entryKind);
     });
     salesReportManualEntryToggle?.addEventListener("click", toggleSalesManualEntryForm);
     salesManualEntrySave?.addEventListener("click", saveSalesManualEntry);
@@ -29137,21 +29191,26 @@ ADMIN_WORKSPACE_HTML = r"""
                   <button class="sales-upload-button" id="salesManualEntrySave" type="button">수기 매출 저장</button>
                 </div>
               </div>
-              <div class="sales-product-delete-form" id="salesProductDeleteForm">
+              <div class="sales-product-delete-form" id="salesEntryDeleteForm">
                 <div class="sales-product-delete-head">
-                  <div class="sales-product-delete-title">특정 날짜 · 특정 상품 매출 삭제</div>
-                  <div class="sales-product-delete-help">일반 업로드는 상품별 집계만 삭제되며, 수기 등록 건은 연결된 판매처·매입처 집계도 함께 삭제됩니다.</div>
-                  <label class="sales-product-delete-field" for="salesProductDeleteDate">
+                  <div class="sales-product-delete-title">특정 날짜 · 세부 매출 삭제</div>
+                  <div class="sales-product-delete-help">일반 업로드는 선택한 집계 행만 삭제되며, 수기 등록 건은 연결된 상품·매출처·매입처 집계도 함께 삭제됩니다.</div>
+                  <div class="sales-entry-delete-modes" role="group" aria-label="삭제 대상 구분">
+                    <button class="sales-entry-delete-mode active" type="button" data-sales-entry-kind="product" aria-pressed="true">상품별</button>
+                    <button class="sales-entry-delete-mode" type="button" data-sales-entry-kind="seller" aria-pressed="false">매출처별</button>
+                    <button class="sales-entry-delete-mode" type="button" data-sales-entry-kind="supplier" aria-pressed="false">매입처별</button>
+                  </div>
+                  <label class="sales-product-delete-field" for="salesEntryDeleteDate">
                     매출일자
-                    <input id="salesProductDeleteDate" type="date" />
+                    <input id="salesEntryDeleteDate" type="date" />
                   </label>
-                  <label class="sales-product-delete-field" for="salesProductDeleteQuery">
-                    상품명 검색
-                    <input id="salesProductDeleteQuery" type="search" placeholder="상품명 일부 입력" autocomplete="off" />
+                  <label class="sales-product-delete-field" for="salesEntryDeleteQuery">
+                    <span id="salesEntryDeleteQueryLabel">상품명 검색</span>
+                    <input id="salesEntryDeleteQuery" type="search" placeholder="상품명 일부 입력" autocomplete="off" />
                   </label>
-                  <button class="workspace-button danger" id="salesProductDeleteSearch" type="button">조회</button>
+                  <button class="workspace-button danger" id="salesEntryDeleteSearch" type="button">조회</button>
                 </div>
-                <div class="sales-product-delete-results" id="salesProductDeleteResults">
+                <div class="sales-product-delete-results" id="salesEntryDeleteResults">
                   <div class="sales-product-delete-empty">삭제할 매출일자를 먼저 선택해주세요.</div>
                 </div>
               </div>
@@ -29971,7 +30030,38 @@ def delete_sales_report_upload(file_id: int) -> dict[str, object]:
         connection.close()
 
 
-def list_sales_report_product_sales(report_date: object, query: object = "") -> list[dict[str, object]]:
+SALES_REPORT_ENTRY_DELETE_KINDS = {
+    "product": {
+        "table": "sales_report_product_rows",
+        "name_column": "product_name",
+        "amount_column": "profit_sales_amount",
+        "label": "상품",
+    },
+    "seller": {
+        "table": "sales_report_seller_rows",
+        "name_column": "seller_name",
+        "amount_column": "profit_sales_amount",
+        "label": "매출처",
+    },
+    "supplier": {
+        "table": "sales_report_supplier_rows",
+        "name_column": "supplier_name",
+        "amount_column": "profit_supply_amount",
+        "label": "매입처",
+    },
+}
+
+
+def _sales_report_entry_delete_config(kind: object) -> tuple[str, dict[str, str]]:
+    normalized_kind = str(kind or "").strip().lower()
+    config = SALES_REPORT_ENTRY_DELETE_KINDS.get(normalized_kind)
+    if config is None:
+        raise ValueError("삭제 구분을 상품별, 매출처별, 매입처별 중에서 선택해주세요.")
+    return normalized_kind, config
+
+
+def list_sales_report_entries(kind: object, report_date: object, query: object = "") -> list[dict[str, object]]:
+    normalized_kind, config = _sales_report_entry_delete_config(kind)
     normalized_date = str(report_date or "").strip()
     try:
         normalized_date = date.fromisoformat(normalized_date).isoformat()
@@ -29985,70 +30075,76 @@ def list_sales_report_product_sales(report_date: object, query: object = "") -> 
         params: list[object] = [normalized_date]
         search_sql = ""
         if search_text:
-            search_sql = " AND product.product_name LIKE ?"
+            search_sql = f" AND entry.{config['name_column']} LIKE ?"
             params.append(f"%{search_text}%")
         rows = connection.execute(
             f"""
-            SELECT product.id, product.report_date, product.period, product.file_id,
-                   product.product_code, product.product_name, product.quantity,
-                   product.sales_amount, product.sales_total, product.profit_sales_amount,
-                   product.profit_margin,
+            SELECT entry.id, entry.report_date, entry.period, entry.file_id,
+                   entry.{config['name_column']} AS name, entry.quantity,
+                   entry.{config['amount_column']} AS amount,
                    COALESCE(upload.report_type, '') AS report_type,
                    COALESCE(upload.source_kind, '') AS source_kind
-              FROM sales_report_product_rows AS product
-              LEFT JOIN sales_report_uploads AS upload ON upload.id = product.file_id
-             WHERE product.report_date = ?{search_sql}
-             ORDER BY product.product_name COLLATE NOCASE, product.id
+              FROM {config['table']} AS entry
+              LEFT JOIN sales_report_uploads AS upload ON upload.id = entry.file_id
+             WHERE entry.report_date = ?{search_sql}
+             ORDER BY entry.{config['name_column']} COLLATE NOCASE, entry.id
             """,
             params,
         ).fetchall()
-        return [
-            {
+        result: list[dict[str, object]] = []
+        for row in rows:
+            item: dict[str, object] = {
                 "id": int(row["id"]),
+                "kind": normalized_kind,
+                "kind_label": config["label"],
                 "report_date": str(row["report_date"] or ""),
                 "period": str(row["period"] or ""),
                 "file_id": int(row["file_id"] or 0),
-                "product_code": str(row["product_code"] or ""),
-                "product_name": str(row["product_name"] or ""),
+                "name": str(row["name"] or ""),
                 "quantity": int(row["quantity"] or 0),
-                "sales_amount": int(row["sales_amount"] or 0),
-                "sales_total": int(row["sales_total"] or 0),
-                "profit_sales_amount": int(row["profit_sales_amount"] or 0),
-                "profit_margin": int(row["profit_margin"] or 0),
+                "amount": int(row["amount"] or 0),
                 "report_type": str(row["report_type"] or ""),
                 "source_kind": str(row["source_kind"] or ""),
             }
-            for row in rows
-        ]
+            item[config["name_column"]] = item["name"]
+            item[config["amount_column"]] = item["amount"]
+            result.append(item)
+        return result
     finally:
         connection.close()
 
 
-def delete_sales_report_product_sale(row_id: object) -> dict[str, object]:
+def list_sales_report_product_sales(report_date: object, query: object = "") -> list[dict[str, object]]:
+    return list_sales_report_entries("product", report_date, query)
+
+
+def delete_sales_report_entry(kind: object, row_id: object) -> dict[str, object]:
+    normalized_kind, config = _sales_report_entry_delete_config(kind)
     try:
         target_id = int(row_id)
     except (TypeError, ValueError) as exc:
-        raise ValueError("삭제할 상품 매출을 선택해주세요.") from exc
+        raise ValueError(f"삭제할 {config['label']} 매출을 선택해주세요.") from exc
     if target_id <= 0:
-        raise ValueError("삭제할 상품 매출을 선택해주세요.")
+        raise ValueError(f"삭제할 {config['label']} 매출을 선택해주세요.")
 
     init_db()
     connection = connect_db()
     try:
         connection.execute("BEGIN")
         row = connection.execute(
-            """
-            SELECT product.id, product.report_date, product.period, product.file_id,
-                   product.product_name, product.quantity, product.profit_sales_amount,
+            f"""
+            SELECT entry.id, entry.report_date, entry.period, entry.file_id,
+                   entry.{config['name_column']} AS name, entry.quantity,
+                   entry.{config['amount_column']} AS amount,
                    COALESCE(upload.report_type, '') AS report_type
-              FROM sales_report_product_rows AS product
-              LEFT JOIN sales_report_uploads AS upload ON upload.id = product.file_id
-             WHERE product.id = ?
+              FROM {config['table']} AS entry
+              LEFT JOIN sales_report_uploads AS upload ON upload.id = entry.file_id
+             WHERE entry.id = ?
             """,
             (target_id,),
         ).fetchone()
         if row is None:
-            raise ValueError("삭제할 상품 매출을 찾지 못했습니다.")
+            raise ValueError(f"삭제할 {config['label']} 매출을 찾지 못했습니다.")
 
         file_id = int(row["file_id"] or 0)
         is_manual_bundle = str(row["report_type"] or "") == "manual_sale"
@@ -30064,26 +30160,34 @@ def delete_sales_report_product_sale(row_id: object) -> dict[str, object]:
                 deleted_row_count += max(0, int(cursor.rowcount or 0))
             connection.execute("DELETE FROM sales_report_uploads WHERE id = ?", (file_id,))
         else:
-            cursor = connection.execute("DELETE FROM sales_report_product_rows WHERE id = ?", (target_id,))
+            cursor = connection.execute(f"DELETE FROM {config['table']} WHERE id = ?", (target_id,))
             deleted_row_count = max(0, int(cursor.rowcount or 0))
 
         connection.commit()
         return {
             "id": target_id,
+            "kind": normalized_kind,
+            "kind_label": config["label"],
             "file_id": file_id,
             "report_date": str(row["report_date"] or ""),
             "period": str(row["period"] or ""),
-            "product_name": str(row["product_name"] or ""),
+            "name": str(row["name"] or ""),
             "quantity": int(row["quantity"] or 0),
-            "profit_sales_amount": int(row["profit_sales_amount"] or 0),
+            "amount": int(row["amount"] or 0),
             "deleted_manual_bundle": is_manual_bundle,
             "deleted_row_count": deleted_row_count,
+            config["name_column"]: str(row["name"] or ""),
+            config["amount_column"]: int(row["amount"] or 0),
         }
     except Exception:
         connection.rollback()
         raise
     finally:
         connection.close()
+
+
+def delete_sales_report_product_sale(row_id: object) -> dict[str, object]:
+    return delete_sales_report_entry("product", row_id)
 
 
 def list_sales_report_product_options(limit: int = 500) -> list[dict[str, str | int]]:
@@ -44118,6 +44222,23 @@ class WorkhubHandler(BaseHTTPRequestHandler):
             self.send_json({"products": list_sales_report_product_options()})
             return
 
+        if self.path.startswith("/api/sales-report-entries"):
+            if not self.require_permission(user, "sales_report_manage", "세부 매출 조회"):
+                return
+            parsed = urlsplit(self.path)
+            params = parse_qs(parsed.query)
+            try:
+                rows = list_sales_report_entries(
+                    params.get("kind", [""])[0],
+                    params.get("report_date", [""])[0],
+                    params.get("query", [""])[0],
+                )
+            except ValueError as exc:
+                self.send_json({"error": str(exc)}, status=400)
+                return
+            self.send_json({"rows": rows})
+            return
+
         if self.path.startswith("/api/sales-report-product-sales"):
             if not self.require_permission(user, "sales_report_manage", "특정 상품 매출 조회"):
                 return
@@ -44832,6 +44953,25 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                 self.send_json({
                     "message": (
                         f"{result['report_date']} {result['product_name']} 매출 "
+                        f"{result['deleted_row_count']}건을 삭제했습니다."
+                    ),
+                    "result": result,
+                })
+                return
+
+            if self.path == "/api/sales-report-entry-delete":
+                if not self.require_permission(user, "sales_report_manage", "세부 매출 삭제"):
+                    return
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(length).decode("utf-8") or "{}")
+                try:
+                    result = delete_sales_report_entry(payload.get("kind"), payload.get("row_id"))
+                except ValueError as exc:
+                    self.send_json({"error": str(exc)}, status=400)
+                    return
+                self.send_json({
+                    "message": (
+                        f"{result['report_date']} {result['name']} {result['kind_label']} 매출 "
                         f"{result['deleted_row_count']}건을 삭제했습니다."
                     ),
                     "result": result,
