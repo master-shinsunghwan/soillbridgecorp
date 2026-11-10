@@ -3183,58 +3183,85 @@ HTML = r"""<!doctype html>
       font-weight: 950;
       cursor: pointer;
     }
-    .sales-upload-status {
+    .sales-product-delete-form {
       display: grid;
-      gap: 4px;
-      padding: 8px 10px;
-      border: 1px solid #d8e0ec;
+      gap: 10px;
+      padding: 12px;
+      border: 1px solid #fecaca;
+      border-left: 4px solid #dc2626;
       border-radius: 8px;
-      background: #f8fbff;
-      color: #475569;
-      font-size: 12px;
-      font-weight: 800;
-      line-height: 1.45;
+      background: #fffafa;
     }
-    .sales-upload-status[hidden] {
-      display: none !important;
+    .sales-product-delete-head {
+      display: grid;
+      grid-template-columns: minmax(180px, .7fr) minmax(240px, 1.3fr) auto;
+      gap: 8px;
+      align-items: end;
     }
-    .sales-upload-history-title {
-      color: #0f172a;
-      font-size: 12px;
+    .sales-product-delete-title {
+      grid-column: 1 / -1;
+      color: #991b1b;
+      font-size: 13px;
       font-weight: 950;
     }
-    .sales-upload-history-list {
+    .sales-product-delete-help {
+      grid-column: 1 / -1;
+      color: #64748b;
+      font-size: 11px;
+      font-weight: 800;
+    }
+    .sales-product-delete-field {
+      display: grid;
+      gap: 4px;
+      min-width: 0;
+      margin: 0;
+      color: #475569;
+      font-size: 11px;
+      font-weight: 900;
+    }
+    .sales-product-delete-field input {
+      width: 100%;
+      height: 36px;
+      padding: 6px 9px;
+      border: 1px solid #cbd5e1;
+      border-radius: 6px;
+      background: #ffffff;
+      color: #0f172a;
+      font: inherit;
+    }
+    .sales-product-delete-results {
       display: grid;
       gap: 6px;
-      max-height: 260px;
+      max-height: 280px;
       overflow: auto;
     }
-    .sales-upload-history-row {
+    .sales-product-delete-row {
       display: grid;
-      grid-template-columns: 92px 86px minmax(0, 1fr) auto;
+      grid-template-columns: minmax(220px, 1fr) 90px 130px auto;
       gap: 8px;
       align-items: center;
-      min-height: 38px;
-      padding: 5px 7px;
+      min-height: 42px;
+      padding: 6px 8px;
       border: 1px solid #e2e8f0;
       border-radius: 6px;
       background: #ffffff;
     }
-    .sales-upload-history-row span {
+    .sales-product-delete-name {
       min-width: 0;
       overflow: hidden;
+      color: #0f172a;
+      font-weight: 900;
       text-overflow: ellipsis;
       white-space: nowrap;
     }
-    .sales-upload-history-date,
-    .sales-upload-history-type {
+    .sales-product-delete-number {
       color: #334155;
       font-weight: 900;
+      text-align: right;
     }
-    .sales-upload-history-delete {
-      width: 32px;
-      height: 28px;
-      padding: 0;
+    .sales-product-delete-button {
+      height: 30px;
+      padding: 0 10px;
       border: 1px solid #fecaca;
       border-radius: 6px;
       background: #fff1f2;
@@ -3243,9 +3270,28 @@ HTML = r"""<!doctype html>
       font-weight: 950;
       cursor: pointer;
     }
-    .sales-upload-history-delete:disabled {
+    .sales-product-delete-button:disabled {
       cursor: wait;
       opacity: .55;
+    }
+    .sales-product-delete-empty {
+      padding: 12px;
+      color: #64748b;
+      font-size: 12px;
+      font-weight: 800;
+      text-align: center;
+    }
+    @media (max-width: 760px) {
+      .sales-product-delete-head,
+      .sales-product-delete-row {
+        grid-template-columns: 1fr;
+      }
+      .sales-product-delete-number {
+        text-align: left;
+      }
+      .sales-product-delete-button {
+        width: 100%;
+      }
     }
     .sales-upload-panel {
       display: grid;
@@ -3270,6 +3316,9 @@ HTML = r"""<!doctype html>
       color: #475569;
       font-size: 12px;
       font-weight: 800;
+    }
+    #salesReportUploadMessage {
+      min-height: 17px;
     }
     .sales-upload-actions {
       display: flex;
@@ -13048,7 +13097,11 @@ HTML = r"""<!doctype html>
     const salesManualEntrySave = document.querySelector("#salesManualEntrySave");
     const salesManualEntryMessage = document.querySelector("#salesManualEntryMessage");
     const salesReportUploadMessage = document.querySelector("#salesReportUploadMessage");
-    const salesReportRecentList = document.querySelector("#salesReportRecentList");
+    const salesProductDeleteForm = document.querySelector("#salesProductDeleteForm");
+    const salesProductDeleteDate = document.querySelector("#salesProductDeleteDate");
+    const salesProductDeleteQuery = document.querySelector("#salesProductDeleteQuery");
+    const salesProductDeleteSearch = document.querySelector("#salesProductDeleteSearch");
+    const salesProductDeleteResults = document.querySelector("#salesProductDeleteResults");
     const salesReportDashboard = document.querySelector("#salesReportDashboard");
     const salesReportPeriodLabel = document.querySelector("#salesReportPeriodLabel");
     const salesReportPeriodSelect = document.querySelector("#salesReportPeriodSelect");
@@ -16137,75 +16190,71 @@ ${kind} 안내드립니다.
       }
     }
 
-    function renderSalesReportUploads(files = []) {
-      if (!salesReportRecentList) return;
-      const recent = files.slice(0, 20);
-      if (!recent.length) {
-        salesReportRecentList.textContent = "업로드된 매출표가 없습니다.";
+    function renderSalesReportProductSales(rows = []) {
+      if (!salesProductDeleteResults) return;
+      if (!rows.length) {
+        salesProductDeleteResults.innerHTML = '<div class="sales-product-delete-empty">선택한 날짜에 삭제할 상품 매출이 없습니다.</div>';
         return;
       }
-      const typeLabels = {
-        daily: "일자별",
-        seller: "매출처별",
-        supplier: "매입처별",
-        product: "상품별",
-        manual_sale: "수기 매출",
-        partner_daily: "거래처 일자별",
-      };
-      salesReportRecentList.innerHTML = recent
-        .map((file) => `
-          <div class="sales-upload-history-row">
-            <span class="sales-upload-history-date" title="적용 일자">${escapeHtml(file.report_date || "일자 미지정")}</span>
-            <span class="sales-upload-history-type" title="자료 구분">${escapeHtml(typeLabels[file.report_type] || file.report_type || "기타")}</span>
-            <span title="${escapeHtml(file.original_name || "")}">${escapeHtml(file.original_name || "")}</span>
-            <button class="sales-upload-history-delete" type="button" data-sales-report-delete="${escapeHtml(file.id)}" aria-label="이 매출 자료 삭제" title="이 매출 자료 삭제">삭제</button>
-          </div>
-        `)
-        .join("");
+      salesProductDeleteResults.innerHTML = rows.map((row) => `
+        <div class="sales-product-delete-row" data-sales-product-row="${escapeHtml(row.id)}">
+          <span class="sales-product-delete-name" title="${escapeHtml(row.product_name || "")}">${escapeHtml(row.product_name || "상품명 없음")}</span>
+          <span class="sales-product-delete-number">${formatSalesNumber(row.quantity)}개</span>
+          <span class="sales-product-delete-number">${formatSalesMillion(row.profit_sales_amount)}</span>
+          <button class="sales-product-delete-button" type="button" data-sales-product-delete="${escapeHtml(row.id)}" data-product-name="${escapeHtml(row.product_name || "")}" data-report-date="${escapeHtml(row.report_date || "")}">삭제</button>
+        </div>
+      `).join("");
     }
 
-    async function loadSalesReportUploads() {
-      if (!salesReportRecentList) return;
+    async function loadSalesReportProductSales() {
+      if (!salesProductDeleteResults) return;
+      const reportDate = salesProductDeleteDate?.value || "";
+      if (!reportDate) {
+        salesProductDeleteResults.innerHTML = '<div class="sales-product-delete-empty">삭제할 매출일자를 먼저 선택해주세요.</div>';
+        return;
+      }
+      salesProductDeleteResults.innerHTML = '<div class="sales-product-delete-empty">상품 매출을 조회하는 중입니다.</div>';
+      const params = new URLSearchParams({ report_date: reportDate });
+      const query = salesProductDeleteQuery?.value.trim() || "";
+      if (query) params.set("query", query);
       try {
-        const response = await fetch("/api/sales-report-uploads");
+        const response = await fetch(`/api/sales-report-product-sales?${params.toString()}`);
         const data = await response.json();
-        if (!response.ok) throw new Error(data.error || "매출표 업로드 목록을 불러오지 못했습니다.");
-        renderSalesReportUploads(data.files || []);
+        if (!response.ok) throw new Error(data.error || "상품 매출을 조회하지 못했습니다.");
+        renderSalesReportProductSales(data.rows || []);
       } catch (error) {
-        salesReportRecentList.textContent = error.message;
+        salesProductDeleteResults.innerHTML = `<div class="sales-product-delete-empty">${escapeHtml(error.message)}</div>`;
       }
     }
 
-    async function deleteSalesReportUpload(fileId) {
-      const file = Number(fileId || 0);
-      if (!file || !can("sales_report_manage")) return;
-      const button = salesReportRecentList?.querySelector(`[data-sales-report-delete="${file}"]`);
-      const row = button?.closest(".sales-upload-history-row");
-      const reportDate = row?.querySelector(".sales-upload-history-date")?.textContent?.trim() || "선택 일자";
-      const reportType = row?.querySelector(".sales-upload-history-type")?.textContent?.trim() || "매출 자료";
+    async function deleteSalesReportProductSale(rowId) {
+      const id = Number(rowId || 0);
+      if (!id || !can("sales_report_manage")) return;
+      const button = salesProductDeleteResults?.querySelector(`[data-sales-product-delete="${id}"]`);
+      const productName = button?.dataset.productName || "선택 상품";
+      const reportDate = button?.dataset.reportDate || salesProductDeleteDate?.value || "선택 일자";
       const approved = await requestAppConfirm({
-        kicker: "특정 매출 자료 삭제",
-        title: `${reportDate} ${reportType} 자료를 삭제할까요?`,
-        message: "선택한 업로드 건이 반영한 매출 데이터만 삭제합니다. 다른 날짜와 다른 자료 종류는 유지되며 서버 원본 파일도 보존됩니다.",
-        highlight: `${reportDate} · ${reportType}`,
-        okText: "선택 자료 삭제",
+        kicker: "특정 상품 매출 삭제",
+        title: `${reportDate} ${productName} 매출을 삭제할까요?`,
+        message: "일반 업로드는 상품별 집계 행만 삭제되며 판매처별·매입처별 원본 집계는 유지됩니다. 수기로 등록한 매출은 연결된 판매처·매입처 집계도 함께 삭제됩니다.",
+        highlight: `${reportDate} · ${productName}`,
+        okText: "상품 매출 삭제",
         cancelText: "취소",
       });
       if (!approved) return;
       if (button) button.disabled = true;
-      if (salesReportUploadMessage) salesReportUploadMessage.textContent = `${reportDate} ${reportType} 자료를 삭제하는 중입니다.`;
+      if (salesReportUploadMessage) salesReportUploadMessage.textContent = `${reportDate} ${productName} 매출을 삭제하는 중입니다.`;
       try {
-        const response = await fetch("/api/sales-report-delete", {
+        const response = await fetch("/api/sales-report-product-sales-delete", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ file_id: file }),
+          body: JSON.stringify({ row_id: id }),
         });
         const data = await response.json();
-        if (!response.ok) throw new Error(data.error || "선택한 매출 자료를 삭제하지 못했습니다.");
-        renderSalesReportUploads(data.files || []);
+        if (!response.ok) throw new Error(data.error || "선택한 상품 매출을 삭제하지 못했습니다.");
         if (data.result?.period) activeSalesReportPeriod = data.result.period;
-        await loadSalesReportDashboard();
-        if (salesReportUploadMessage) salesReportUploadMessage.textContent = data.message || "선택한 매출 자료를 삭제했습니다.";
+        await Promise.all([loadSalesReportProductSales(), loadSalesReportDashboard()]);
+        if (salesReportUploadMessage) salesReportUploadMessage.textContent = data.message || "선택한 상품 매출을 삭제했습니다.";
       } catch (error) {
         if (button) button.disabled = false;
         if (salesReportUploadMessage) salesReportUploadMessage.textContent = error.message;
@@ -16774,7 +16823,7 @@ ${kind} 안내드립니다.
         });
         const data = await response.json();
         if (!response.ok) throw new Error(data.error || "수기 매출 저장에 실패했습니다.");
-        renderSalesReportUploads(data.files || []);
+        if (salesProductDeleteDate?.value === payload.report_date) await loadSalesReportProductSales();
         activeSalesReportPeriod = payload.report_date.slice(0, 7);
         await loadSalesReportDashboard(activeSalesReportPeriod);
         resetSalesManualEntryForm();
@@ -16808,7 +16857,7 @@ ${kind} 안내드립니다.
             return data;
           },
         });
-        renderSalesReportUploads(data.files || []);
+        if (salesProductDeleteDate?.value) await loadSalesReportProductSales();
         loadSalesReportDashboard();
         if (salesReportUploadMessage) salesReportUploadMessage.textContent = data.message || "매출표를 저장했습니다.";
       } catch (error) {
@@ -17987,7 +18036,7 @@ ${kind} 안내드립니다.
         });
         const data = await response.json();
         if (!response.ok) throw new Error(data.error || "매출 자료 일자별 리셋에 실패했습니다.");
-        renderSalesReportUploads(data.files || []);
+        if (salesProductDeleteDate?.value === reportDate) await loadSalesReportProductSales();
         await loadSalesReportDashboard(reportDate.slice(0, 7));
         if (salesReportUploadMessage) salesReportUploadMessage.textContent = data.message || "해당 일자 매출 자료를 리셋했습니다.";
       } catch (error) {
@@ -26004,7 +26053,6 @@ ${kind} 안내드립니다.
       } else if (showSalesReport) {
         setPageTitle("매출현황");
         closeLedgerFilter();
-        loadSalesReportUploads();
         loadSalesReportDashboard();
       } else if (showBackup) {
         setPageTitle("백업 관리");
@@ -26092,7 +26140,6 @@ ${kind} 안내드립니다.
         else if (currentMode === "leave") await loadLeaveData();
         else if (currentMode === "userAdmin") await loadUserAccounts();
         else if (currentMode === "salesReport") {
-          await loadSalesReportUploads();
           await loadSalesReportDashboard();
         } else if (currentMode === "backup") await loadBackups();
         else if (currentMode === "systemUpdate") await loadSystemUpdateStatus();
@@ -27549,9 +27596,14 @@ ${kind} 안내드립니다.
     if (salesReportFileInput) salesReportFileInput.addEventListener("change", uploadSalesReportWorkbook);
     salesReportManualUpload?.addEventListener("click", openSalesReportUploadPicker);
     salesReportResetDate?.addEventListener("click", resetSalesReportDate);
-    salesReportRecentList?.addEventListener("click", (event) => {
-      const button = event.target.closest("[data-sales-report-delete]");
-      if (button) deleteSalesReportUpload(button.dataset.salesReportDelete);
+    salesProductDeleteSearch?.addEventListener("click", loadSalesReportProductSales);
+    salesProductDeleteDate?.addEventListener("change", loadSalesReportProductSales);
+    salesProductDeleteQuery?.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") loadSalesReportProductSales();
+    });
+    salesProductDeleteResults?.addEventListener("click", (event) => {
+      const button = event.target.closest("[data-sales-product-delete]");
+      if (button) deleteSalesReportProductSale(button.dataset.salesProductDelete);
     });
     salesReportManualEntryToggle?.addEventListener("click", toggleSalesManualEntryForm);
     salesManualEntrySave?.addEventListener("click", saveSalesManualEntry);
@@ -29025,7 +29077,7 @@ ADMIN_WORKSPACE_HTML = r"""
               <div class="sales-upload-panel">
                 <div>
                   <strong>매출표 업로드</strong>
-                  <span>일자별, 매출처별, 매입처별, 상품별 매출표 파일을 업로드합니다.</span>
+                  <span id="salesReportUploadMessage">일자별, 매출처별, 매입처별, 상품별 매출표 파일을 업로드합니다.</span>
                 </div>
                 <div class="sales-upload-actions">
                   <input id="salesReportFileInput" name="sales_report" type="file" accept=".xlsx,.xlsm,.xls,.csv,.zip" hidden />
@@ -29085,10 +29137,23 @@ ADMIN_WORKSPACE_HTML = r"""
                   <button class="sales-upload-button" id="salesManualEntrySave" type="button">수기 매출 저장</button>
                 </div>
               </div>
-              <div class="sales-upload-status">
-                <div id="salesReportUploadMessage">매출표 파일을 직접 업로드해서 현황을 갱신합니다.</div>
-                <div class="sales-upload-history-title">최근 반영 자료 · 특정 매출 삭제</div>
-                <div class="sales-upload-history-list" id="salesReportRecentList">업로드된 매출표가 없습니다.</div>
+              <div class="sales-product-delete-form" id="salesProductDeleteForm">
+                <div class="sales-product-delete-head">
+                  <div class="sales-product-delete-title">특정 날짜 · 특정 상품 매출 삭제</div>
+                  <div class="sales-product-delete-help">일반 업로드는 상품별 집계만 삭제되며, 수기 등록 건은 연결된 판매처·매입처 집계도 함께 삭제됩니다.</div>
+                  <label class="sales-product-delete-field" for="salesProductDeleteDate">
+                    매출일자
+                    <input id="salesProductDeleteDate" type="date" />
+                  </label>
+                  <label class="sales-product-delete-field" for="salesProductDeleteQuery">
+                    상품명 검색
+                    <input id="salesProductDeleteQuery" type="search" placeholder="상품명 일부 입력" autocomplete="off" />
+                  </label>
+                  <button class="workspace-button danger" id="salesProductDeleteSearch" type="button">조회</button>
+                </div>
+                <div class="sales-product-delete-results" id="salesProductDeleteResults">
+                  <div class="sales-product-delete-empty">삭제할 매출일자를 먼저 선택해주세요.</div>
+                </div>
               </div>
               <div class="sales-dashboard" id="salesReportDashboard">
                 <div class="sales-period-toolbar" id="salesReportPeriodToolbar">
@@ -29898,6 +29963,121 @@ def delete_sales_report_upload(file_id: int) -> dict[str, object]:
             "period": str(upload["period"] or ""),
             "deleted": deleted,
             "deleted_row_count": sum(deleted.values()),
+        }
+    except Exception:
+        connection.rollback()
+        raise
+    finally:
+        connection.close()
+
+
+def list_sales_report_product_sales(report_date: object, query: object = "") -> list[dict[str, object]]:
+    normalized_date = str(report_date or "").strip()
+    try:
+        normalized_date = date.fromisoformat(normalized_date).isoformat()
+    except ValueError as exc:
+        raise ValueError("조회할 매출일자를 선택해주세요.") from exc
+    search_text = str(query or "").strip()
+
+    init_db()
+    connection = connect_db()
+    try:
+        params: list[object] = [normalized_date]
+        search_sql = ""
+        if search_text:
+            search_sql = " AND product.product_name LIKE ?"
+            params.append(f"%{search_text}%")
+        rows = connection.execute(
+            f"""
+            SELECT product.id, product.report_date, product.period, product.file_id,
+                   product.product_code, product.product_name, product.quantity,
+                   product.sales_amount, product.sales_total, product.profit_sales_amount,
+                   product.profit_margin,
+                   COALESCE(upload.report_type, '') AS report_type,
+                   COALESCE(upload.source_kind, '') AS source_kind
+              FROM sales_report_product_rows AS product
+              LEFT JOIN sales_report_uploads AS upload ON upload.id = product.file_id
+             WHERE product.report_date = ?{search_sql}
+             ORDER BY product.product_name COLLATE NOCASE, product.id
+            """,
+            params,
+        ).fetchall()
+        return [
+            {
+                "id": int(row["id"]),
+                "report_date": str(row["report_date"] or ""),
+                "period": str(row["period"] or ""),
+                "file_id": int(row["file_id"] or 0),
+                "product_code": str(row["product_code"] or ""),
+                "product_name": str(row["product_name"] or ""),
+                "quantity": int(row["quantity"] or 0),
+                "sales_amount": int(row["sales_amount"] or 0),
+                "sales_total": int(row["sales_total"] or 0),
+                "profit_sales_amount": int(row["profit_sales_amount"] or 0),
+                "profit_margin": int(row["profit_margin"] or 0),
+                "report_type": str(row["report_type"] or ""),
+                "source_kind": str(row["source_kind"] or ""),
+            }
+            for row in rows
+        ]
+    finally:
+        connection.close()
+
+
+def delete_sales_report_product_sale(row_id: object) -> dict[str, object]:
+    try:
+        target_id = int(row_id)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("삭제할 상품 매출을 선택해주세요.") from exc
+    if target_id <= 0:
+        raise ValueError("삭제할 상품 매출을 선택해주세요.")
+
+    init_db()
+    connection = connect_db()
+    try:
+        connection.execute("BEGIN")
+        row = connection.execute(
+            """
+            SELECT product.id, product.report_date, product.period, product.file_id,
+                   product.product_name, product.quantity, product.profit_sales_amount,
+                   COALESCE(upload.report_type, '') AS report_type
+              FROM sales_report_product_rows AS product
+              LEFT JOIN sales_report_uploads AS upload ON upload.id = product.file_id
+             WHERE product.id = ?
+            """,
+            (target_id,),
+        ).fetchone()
+        if row is None:
+            raise ValueError("삭제할 상품 매출을 찾지 못했습니다.")
+
+        file_id = int(row["file_id"] or 0)
+        is_manual_bundle = str(row["report_type"] or "") == "manual_sale"
+        deleted_row_count = 0
+        if is_manual_bundle:
+            for table_name in (
+                "sales_report_daily_rows",
+                "sales_report_seller_rows",
+                "sales_report_supplier_rows",
+                "sales_report_product_rows",
+            ):
+                cursor = connection.execute(f"DELETE FROM {table_name} WHERE file_id = ?", (file_id,))
+                deleted_row_count += max(0, int(cursor.rowcount or 0))
+            connection.execute("DELETE FROM sales_report_uploads WHERE id = ?", (file_id,))
+        else:
+            cursor = connection.execute("DELETE FROM sales_report_product_rows WHERE id = ?", (target_id,))
+            deleted_row_count = max(0, int(cursor.rowcount or 0))
+
+        connection.commit()
+        return {
+            "id": target_id,
+            "file_id": file_id,
+            "report_date": str(row["report_date"] or ""),
+            "period": str(row["period"] or ""),
+            "product_name": str(row["product_name"] or ""),
+            "quantity": int(row["quantity"] or 0),
+            "profit_sales_amount": int(row["profit_sales_amount"] or 0),
+            "deleted_manual_bundle": is_manual_bundle,
+            "deleted_row_count": deleted_row_count,
         }
     except Exception:
         connection.rollback()
@@ -43938,6 +44118,22 @@ class WorkhubHandler(BaseHTTPRequestHandler):
             self.send_json({"products": list_sales_report_product_options()})
             return
 
+        if self.path.startswith("/api/sales-report-product-sales"):
+            if not self.require_permission(user, "sales_report_manage", "특정 상품 매출 조회"):
+                return
+            parsed = urlsplit(self.path)
+            params = parse_qs(parsed.query)
+            try:
+                rows = list_sales_report_product_sales(
+                    params.get("report_date", [""])[0],
+                    params.get("query", [""])[0],
+                )
+            except ValueError as exc:
+                self.send_json({"error": str(exc)}, status=400)
+                return
+            self.send_json({"rows": rows})
+            return
+
         if self.path == "/api/sales-report-manual-options":
             if not self.require_permission(user, "sales_report_manage", "매출현황"):
                 return
@@ -44624,6 +44820,21 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                     ),
                     "result": result,
                     "files": list_sales_report_uploads(),
+                })
+                return
+
+            if self.path == "/api/sales-report-product-sales-delete":
+                if not self.require_permission(user, "sales_report_manage", "특정 상품 매출 삭제"):
+                    return
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(length).decode("utf-8") or "{}")
+                result = delete_sales_report_product_sale(payload.get("row_id"))
+                self.send_json({
+                    "message": (
+                        f"{result['report_date']} {result['product_name']} 매출 "
+                        f"{result['deleted_row_count']}건을 삭제했습니다."
+                    ),
+                    "result": result,
                 })
                 return
 
