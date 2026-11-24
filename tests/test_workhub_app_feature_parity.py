@@ -759,7 +759,11 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
                 self.assertIn(permission, html_source)
             for table_name in ("company_holidays", "leave_notifications"):
                 self.assertIn(table_name, html_source)
-            for endpoint in ("/api/leave-cancel", "/api/leave-accrual", "/api/company-holiday"):
+            for endpoint in (
+                "/api/leave-cancel",
+                "/api/leave-accrual",
+                "/api/company-holiday",
+            ):
                 self.assertIn(endpoint, html_source)
             for function_name in (
                 "save_company_holiday",
@@ -793,6 +797,25 @@ class WorkhubAppFeatureParityTests(unittest.TestCase):
             self.assertIn('data-leave-comment="${row.id}"', html_source)
             self.assertIn('data-leave-cancel="${row.id}"', html_source)
             self.assertIn('data-leave-decision="override"', html_source)
+
+    def test_leave_workflow_has_next_year_advance_usage_ui(self) -> None:
+        html_source = (SCRIPTS / "workhub_delivery_app.py").read_text(encoding="utf-8")
+
+        for endpoint in ("/api/leave-advance", "/api/leave-advance-delete"):
+            self.assertIn(endpoint, html_source)
+        self.assertIn('data-leave-tab="advance">다음 연도 선사용</button>', html_source)
+        for element_id in (
+            "leaveTabAdvance",
+            "leaveAdvanceUserSelect",
+            "leaveAdvanceDateInput",
+            "leaveAdvanceUnitSelect",
+            "leaveAdvanceNoteInput",
+            "leaveAdvanceSave",
+            "leaveAdvanceBody",
+        ):
+            self.assertIn(f'id="{element_id}"', html_source)
+        self.assertIn("can_manage_advance", html_source)
+        self.assertIn("data-leave-advance-delete", html_source)
 
     def test_leave_notifications_are_available_from_topbar_alerts(self) -> None:
         html_source = (SCRIPTS / "workhub_delivery_app.py").read_text(encoding="utf-8")

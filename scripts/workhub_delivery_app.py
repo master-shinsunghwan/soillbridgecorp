@@ -4971,6 +4971,20 @@ HTML = r"""<!doctype html>
       vertical-align: top;
     }
     .leave-table tr:last-child td { border-bottom: 0; }
+    .leave-table-scroll { width: 100%; overflow-x: auto; }
+    .leave-table-scroll .leave-table { min-width: 980px; }
+    .leave-advance-status {
+      display: inline-flex;
+      align-items: center;
+      min-height: 25px;
+      padding: 3px 8px;
+      border-radius: 6px;
+      font-size: 11px;
+      font-weight: 900;
+      white-space: nowrap;
+    }
+    .leave-advance-status.pending { color: #92400e; background: #fef3c7; }
+    .leave-advance-status.applied { color: #166534; background: #dcfce7; }
     .leave-admin-balance-row {
       cursor: pointer;
     }
@@ -13629,6 +13643,12 @@ HTML = r"""<!doctype html>
     const leaveEndDate = document.querySelector("#leaveEndDate");
     const leaveReasonInput = document.querySelector("#leaveReasonInput");
     const leaveRequestSubmit = document.querySelector("#leaveRequestSubmit");
+    const leaveAdvanceUserSelect = document.querySelector("#leaveAdvanceUserSelect");
+    const leaveAdvanceDateInput = document.querySelector("#leaveAdvanceDateInput");
+    const leaveAdvanceUnitSelect = document.querySelector("#leaveAdvanceUnitSelect");
+    const leaveAdvanceNoteInput = document.querySelector("#leaveAdvanceNoteInput");
+    const leaveAdvanceSave = document.querySelector("#leaveAdvanceSave");
+    const leaveAdvanceBody = document.querySelector("#leaveAdvanceBody");
     const leaveAdminUserSelect = document.querySelector("#leaveAdminUserSelect");
     const leaveAdminUserSearch = document.querySelector("#leaveAdminUserSearch");
     const leaveAdminUserList = document.querySelector("#leaveAdminUserList");
@@ -14601,7 +14621,7 @@ HTML = r"""<!doctype html>
       const targetButton = leaveTabs.find((button) => button.dataset.leaveTab === tabName && !button.classList.contains("permission-hidden"));
       const activeTab = targetButton ? tabName : "mine";
       leaveTabs.forEach((button) => button.classList.toggle("active", button.dataset.leaveTab === activeTab));
-      ["mine", "request", "approvals", "admin", "holidays", "history"].forEach((name) => {
+      ["mine", "request", "advance", "approvals", "admin", "holidays", "history"].forEach((name) => {
         const panel = document.querySelector(`#leaveTab${name[0].toUpperCase()}${name.slice(1)}`);
         if (panel) panel.classList.toggle("active", name === activeTab);
       });
@@ -14751,6 +14771,13 @@ HTML = r"""<!doctype html>
       }));
       renderLeaveSelectOptions(leaveAdminUserSelect, userOptions);
       renderLeaveSelectOptions(leaveUsageUserSelect, userOptions);
+      renderLeaveSelectOptions(leaveAdvanceUserSelect, userOptions);
+      if (leaveAdvanceDateInput) {
+        const targetYear = new Date().getFullYear() + 1;
+        leaveAdvanceDateInput.min = `${targetYear}-01-01`;
+        leaveAdvanceDateInput.max = `${targetYear}-12-31`;
+        if (!leaveAdvanceDateInput.value) leaveAdvanceDateInput.value = `${targetYear}-01-01`;
+      }
       if (leaveAdminUserSelect && !leaveAdminUserSelect.value && userOptions.length) {
         leaveAdminUserSelect.value = String(userOptions[0].id);
       }
@@ -14779,12 +14806,30 @@ HTML = r"""<!doctype html>
           <tr class="leave-admin-balance-row" data-leave-admin-balance-user="${escapeHtml(row.user_id)}"><td>${escapeHtml(row.display_name)}</td><td>${escapeHtml(row.username)}</td><td>${dayText(row.total_days)}</td><td>${dayText(row.used_days)}</td><td><strong>${dayText(row.remaining_days)}</strong></td></tr>
         `).join("")
         : `<tr><td colspan="5">직원 연차 현황이 없습니다.</td></tr>`;
+      if (leaveAdvanceBody) {
+        leaveAdvanceBody.innerHTML = (data.advance_usage || []).length
+          ? data.advance_usage.map((row) => `
+            <tr>
+              <td><strong>${escapeHtml(row.target_year)}년</strong></td>
+              <td>${escapeHtml(row.display_name)} <small>${escapeHtml(row.username)}</small></td>
+              <td>${escapeHtml(row.usage_date)}</td>
+              <td>${escapeHtml(row.unit_label)}</td>
+              <td>${dayText(row.days)}</td>
+              <td>${escapeHtml(row.note || "-")}</td>
+              <td>${escapeHtml(row.created_by_name || "-")}</td>
+              <td><span class="leave-advance-status ${row.status === "APPLIED" ? "applied" : "pending"}">${escapeHtml(row.status_label)}</span></td>
+              <td>${row.status === "PENDING" ? `<button class="leave-action reject" type="button" data-leave-advance-delete="${row.id}">삭제</button>` : "-"}</td>
+            </tr>
+          `).join("")
+          : `<tr><td colspan="9">등록된 다음 연도 선사용 내역이 없습니다.</td></tr>`;
+      }
       const availableAdminUserIds = new Set((data.admin_balances || []).map((row) => String(row.user_id)));
       if (!selectedLeaveAdminUsageUserId || !availableAdminUserIds.has(selectedLeaveAdminUsageUserId)) {
         selectedLeaveAdminUsageUserId = String((data.admin_balances || [])[0]?.user_id || leaveAdminUserSelect?.value || "");
       }
       renderLeaveAdminUsage(selectedLeaveAdminUsageUserId);
       document.querySelector('[data-leave-tab="approvals"]')?.classList.toggle("permission-hidden", !data.can_approve);
+      document.querySelector('[data-leave-tab="advance"]')?.classList.toggle("permission-hidden", !data.can_manage_advance);
       document.querySelector('[data-leave-tab="admin"]')?.classList.toggle("permission-hidden", !data.can_manage);
       document.querySelector('[data-leave-tab="holidays"]')?.classList.toggle("permission-hidden", !data.can_manage);
       const activeTab = leaveTabs.find((button) => button.classList.contains("active"))?.dataset.leaveTab || "mine";
@@ -14799,7 +14844,7 @@ HTML = r"""<!doctype html>
         const data = await response.json();
         if (!response.ok) throw new Error(data.error || "연차 정보를 불러오지 못했습니다.");
         renderLeaveData(data);
-        leaveMessage.textContent = "";
+        leaveMessage.textContent = data.accrual_warning || "";
       } catch (error) {
         leaveMessage.textContent = error.message;
       }
@@ -14939,6 +14984,55 @@ HTML = r"""<!doctype html>
         leaveMessage.textContent = data.message || "기존 사용 연차를 등록했습니다.";
         await loadLeaveData();
         if (companyActiveTab === "calendar") await loadCompanyCalendar().catch(() => {});
+      } catch (error) {
+        leaveMessage.textContent = error.message;
+      }
+    }
+
+    async function saveNextYearLeaveUsage() {
+      leaveMessage.textContent = "다음 연도 선사용 내역을 등록하는 중입니다.";
+      try {
+        const response = await fetch("/api/leave-advance", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            user_id: leaveAdvanceUserSelect?.value || "",
+            usage_date: leaveAdvanceDateInput?.value || "",
+            unit: leaveAdvanceUnitSelect?.value || "FULL_DAY",
+            note: leaveAdvanceNoteInput?.value?.trim() || "",
+          }),
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "다음 연도 선사용 등록에 실패했습니다.");
+        if (leaveAdvanceNoteInput) leaveAdvanceNoteInput.value = "";
+        await loadLeaveData();
+        leaveMessage.textContent = data.message || "다음 연도 선사용 내역을 등록했습니다.";
+        setLeaveTab("advance");
+      } catch (error) {
+        leaveMessage.textContent = error.message;
+      }
+    }
+
+    async function deleteNextYearLeaveUsage(entryId) {
+      if (!await requestAppConfirm({
+        kicker: "선사용 내역 삭제",
+        title: "이 선사용 내역을 삭제할까요?",
+        message: "차감 대기 상태의 내역만 삭제할 수 있습니다.",
+        okText: "삭제",
+        cancelText: "취소",
+      })) return;
+      leaveMessage.textContent = "다음 연도 선사용 내역을 삭제하는 중입니다.";
+      try {
+        const response = await fetch("/api/leave-advance-delete", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: entryId }),
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "다음 연도 선사용 삭제에 실패했습니다.");
+        await loadLeaveData();
+        leaveMessage.textContent = data.message || "다음 연도 선사용 내역을 삭제했습니다.";
+        setLeaveTab("advance");
       } catch (error) {
         leaveMessage.textContent = error.message;
       }
@@ -27847,6 +27941,13 @@ ${kind} 안내드립니다.
     });
     if (leaveRefresh) leaveRefresh.addEventListener("click", loadLeaveData);
     if (leaveRequestSubmit) leaveRequestSubmit.addEventListener("click", submitLeaveRequest);
+    if (leaveAdvanceSave) leaveAdvanceSave.addEventListener("click", saveNextYearLeaveUsage);
+    if (leaveAdvanceBody) {
+      leaveAdvanceBody.addEventListener("click", (event) => {
+        const button = event.target.closest("[data-leave-advance-delete]");
+        if (button) deleteNextYearLeaveUsage(button.dataset.leaveAdvanceDelete);
+      });
+    }
     if (leaveUnitSelect) leaveUnitSelect.addEventListener("change", syncHalfDayDates);
     if (leaveStartDate) leaveStartDate.addEventListener("change", syncHalfDayDates);
     if (leaveAdminUserSearch) leaveAdminUserSearch.addEventListener("input", () => renderLeaveAdminUserList(leaveAdminUserSearch.value));
@@ -28947,6 +29048,7 @@ LEAVE_WORKSPACE_HTML = r"""
             <div class="leave-tabs">
               <button class="leave-tab active" type="button" data-leave-tab="mine">내 연차</button>
               <button class="leave-tab" type="button" data-leave-tab="request">신청하기</button>
+              <button class="leave-tab" type="button" data-leave-tab="advance">다음 연도 선사용</button>
               <button class="leave-tab" type="button" data-leave-tab="approvals">승인 관리</button>
               <button class="leave-tab" type="button" data-leave-tab="admin">직원 기준</button>
               <button class="leave-tab" type="button" data-leave-tab="holidays">공휴일 설정</button>
@@ -28982,6 +29084,27 @@ LEAVE_WORKSPACE_HTML = r"""
                   <label>종료일<input id="leaveEndDate" type="date" /></label>
                   <label class="wide">사유<textarea id="leaveReasonInput" placeholder="연차 사유를 입력해주세요."></textarea></label>
                   <button class="workspace-button" type="button" id="leaveRequestSubmit">신청하기</button>
+                </div>
+              </div>
+            </section>
+            <section class="leave-tab-panel" id="leaveTabAdvance">
+              <div class="leave-card">
+                <div class="leave-card-title">다음 연도 연차 선사용 등록</div>
+                <div class="leave-form">
+                  <label>직원<select id="leaveAdvanceUserSelect"></select></label>
+                  <label>사용일<input id="leaveAdvanceDateInput" type="date" /></label>
+                  <label>구분<select id="leaveAdvanceUnitSelect"><option value="FULL_DAY">연차</option><option value="HALF_DAY">반차</option></select></label>
+                  <label class="wide">메모<input id="leaveAdvanceNoteInput" type="text" placeholder="예: 다음 연도 연차 선사용" /></label>
+                  <button class="workspace-button" type="button" id="leaveAdvanceSave">선사용 등록</button>
+                </div>
+              </div>
+              <div class="leave-card">
+                <div class="leave-card-title">선사용 내역</div>
+                <div class="leave-table-scroll">
+                  <table class="leave-table">
+                    <thead><tr><th>대상 연도</th><th>직원</th><th>사용일</th><th>구분</th><th>수량</th><th>메모</th><th>입력자</th><th>상태</th><th>작업</th></tr></thead>
+                    <tbody id="leaveAdvanceBody"></tbody>
+                  </table>
                 </div>
               </div>
             </section>
@@ -36969,6 +37092,41 @@ def init_db() -> None:
             )
             """
         )
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS leave_advance_usage (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                target_year INTEGER NOT NULL,
+                user_id INTEGER NOT NULL,
+                usage_date TEXT NOT NULL,
+                unit TEXT NOT NULL,
+                days REAL NOT NULL,
+                note TEXT NOT NULL DEFAULT '',
+                created_by INTEGER NOT NULL,
+                created_at TEXT NOT NULL,
+                applied_at TEXT,
+                applied_balance_id INTEGER,
+                applied_request_id INTEGER,
+                UNIQUE(user_id, usage_date, unit)
+            )
+            """
+        )
+        connection.execute(
+            "CREATE INDEX IF NOT EXISTS idx_leave_advance_usage_year ON leave_advance_usage(target_year, applied_at)"
+        )
+        connection.execute(
+            "CREATE INDEX IF NOT EXISTS idx_leave_advance_usage_user ON leave_advance_usage(user_id, usage_date)"
+        )
+        leave_advance_columns = {
+            row["name"] for row in connection.execute("PRAGMA table_info(leave_advance_usage)").fetchall()
+        }
+        for column, column_type in {
+            "applied_at": "TEXT",
+            "applied_balance_id": "INTEGER",
+            "applied_request_id": "INTEGER",
+        }.items():
+            if column not in leave_advance_columns:
+                connection.execute(f"ALTER TABLE leave_advance_usage ADD COLUMN {column} {column_type}")
         leave_balance_columns = {
             row["name"] for row in connection.execute("PRAGMA table_info(leave_balances)").fetchall()
         }
@@ -38990,6 +39148,13 @@ def list_leave_admin_usage_requests(connection: sqlite3.Connection) -> dict[str,
 
 def leave_payload(user: dict[str, str]) -> dict:
     user_id = int(user["id"])
+    accrual_warning = ""
+    try:
+        ensure_current_year_leave_accrual()
+    except ValueError as exc:
+        accrual_warning = str(exc)
+    can_manage_advance = can_manage_next_year_leave(user)
+    advance_usage = list_next_year_leave_usage(user) if can_manage_advance else []
     connection = connect_db()
     try:
         balances = leave_balance_rows(connection, user_id)
@@ -38999,7 +39164,7 @@ def leave_payload(user: dict[str, str]) -> dict:
             for permission in ("leave_approve", "leave_approve_director", "leave_approve_ceo", "leave_director_override", "leave_manage")
         )
         can_manage = user_has_permission(user, "leave_manage")
-        can_view_staff = can_approve or can_manage
+        can_view_staff = can_approve or can_manage or can_manage_advance
         payload = {
             "summary": {
                 "total_days": annual.get("total_days", 0),
@@ -39013,12 +39178,15 @@ def leave_payload(user: dict[str, str]) -> dict:
             "can_approve": can_approve,
             "can_override": actor_can_override_leave(user),
             "can_manage": can_manage,
+            "can_manage_advance": can_manage_advance,
             "can_view_staff": can_view_staff,
             "pending_requests": [],
             "users": [],
             "admin_balances": [],
             "admin_usage_requests": {},
             "notifications": list_leave_notifications(user, connection),
+            "advance_usage": advance_usage,
+            "accrual_warning": accrual_warning,
         }
         if payload["can_approve"]:
             payload["pending_requests"] = list_pending_leave_requests(connection)
@@ -39379,6 +39547,126 @@ def add_historical_leave_usage(payload: dict, actor: dict[str, str]) -> int:
         connection.close()
 
 
+def can_manage_next_year_leave(actor: dict[str, str]) -> bool:
+    if str(actor.get("role") or "").strip().lower() == "admin":
+        return True
+    username = re.sub(r"\s+", "", str(actor.get("username") or "").strip()).lower()
+    display_name = re.sub(r"\s+", "", str(actor.get("display_name") or "").strip()).lower()
+    allowed_names = {"신성환", "신성환실장"}
+    return username in allowed_names or display_name in allowed_names
+
+
+def require_next_year_leave_manager(actor: dict[str, str]) -> None:
+    if not can_manage_next_year_leave(actor):
+        raise ValueError("다음 연도 연차 선사용 입력 권한이 없습니다.")
+
+
+def add_next_year_leave_usage(payload: dict, actor: dict[str, str]) -> int:
+    require_next_year_leave_manager(actor)
+    init_db()
+    user_id = int(payload.get("user_id") or 0)
+    if not user_id:
+        raise ValueError("직원을 선택해주세요.")
+    usage_date = parse_iso_date(payload.get("usage_date"))
+    target_year = date.today().year + 1
+    if usage_date.year != target_year:
+        raise ValueError(f"다음 연도({target_year}년)의 사용일만 등록할 수 있습니다.")
+    unit = clean_payload_text(payload, "unit") or "FULL_DAY"
+    if unit not in {"FULL_DAY", "HALF_DAY"}:
+        raise ValueError("선사용 단위를 연차 또는 반차로 선택해주세요.")
+    days = 0.5 if unit == "HALF_DAY" else 1.0
+    note = clean_payload_text(payload, "note")
+    connection = connect_db()
+    try:
+        user = connection.execute(
+            "SELECT id FROM users WHERE id = ? AND active = 1",
+            (user_id,),
+        ).fetchone()
+        if not user:
+            raise ValueError("선사용을 등록할 직원을 찾지 못했습니다.")
+        try:
+            cursor = connection.execute(
+                """
+                INSERT INTO leave_advance_usage
+                    (target_year, user_id, usage_date, unit, days, note, created_by, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (target_year, user_id, usage_date.isoformat(), unit, days, note, int(actor["id"]), now_text()),
+            )
+        except sqlite3.IntegrityError as exc:
+            raise ValueError(f"중복된 다음 연도 선사용 내역입니다: {usage_date.isoformat()}") from exc
+        connection.commit()
+        return int(cursor.lastrowid)
+    finally:
+        connection.close()
+
+
+def list_next_year_leave_usage(actor: dict[str, str]) -> list[dict[str, object]]:
+    require_next_year_leave_manager(actor)
+    init_db()
+    connection = connect_db()
+    try:
+        rows = connection.execute(
+            """
+            SELECT advance.id, advance.target_year, advance.user_id, advance.usage_date,
+                   advance.unit, advance.days, advance.note, advance.created_at,
+                   advance.applied_at, advance.applied_balance_id, advance.applied_request_id,
+                   users.username, users.display_name,
+                   creator.username AS created_by_username,
+                   creator.display_name AS created_by_display_name
+              FROM leave_advance_usage AS advance
+              JOIN users ON users.id = advance.user_id
+              LEFT JOIN users AS creator ON creator.id = advance.created_by
+             ORDER BY advance.target_year DESC, advance.usage_date, users.display_name COLLATE NOCASE, advance.id
+            """
+        ).fetchall()
+        return [
+            {
+                "id": int(row["id"]),
+                "target_year": int(row["target_year"]),
+                "user_id": int(row["user_id"]),
+                "username": str(row["username"] or ""),
+                "display_name": str(row["display_name"] or row["username"] or ""),
+                "usage_date": str(row["usage_date"] or ""),
+                "unit": str(row["unit"] or ""),
+                "unit_label": leave_unit_label(str(row["unit"] or "")),
+                "days": round(float(row["days"] or 0), 2),
+                "note": str(row["note"] or ""),
+                "created_by_name": str(row["created_by_display_name"] or row["created_by_username"] or ""),
+                "created_at": str(row["created_at"] or ""),
+                "applied_at": str(row["applied_at"] or ""),
+                "status": "APPLIED" if row["applied_at"] else "PENDING",
+                "status_label": "차감 완료" if row["applied_at"] else "차감 대기",
+            }
+            for row in rows
+        ]
+    finally:
+        connection.close()
+
+
+def delete_next_year_leave_usage(entry_id: object, actor: dict[str, str]) -> None:
+    require_next_year_leave_manager(actor)
+    try:
+        target_id = int(entry_id)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("삭제할 선사용 내역을 선택해주세요.") from exc
+    init_db()
+    connection = connect_db()
+    try:
+        row = connection.execute(
+            "SELECT id, applied_at FROM leave_advance_usage WHERE id = ?",
+            (target_id,),
+        ).fetchone()
+        if not row:
+            raise ValueError("삭제할 선사용 내역을 찾지 못했습니다.")
+        if row["applied_at"]:
+            raise ValueError("차감 완료된 선사용 내역은 삭제할 수 없습니다.")
+        connection.execute("DELETE FROM leave_advance_usage WHERE id = ?", (target_id,))
+        connection.commit()
+    finally:
+        connection.close()
+
+
 def apply_annual_leave_accrual(year: int | None = None, actor: dict[str, str] | None = None, default_days: float = 15.0) -> int:
     init_db()
     target_year = int(year or date.today().year)
@@ -39390,31 +39678,137 @@ def apply_annual_leave_accrual(year: int | None = None, actor: dict[str, str] | 
     try:
         users = connection.execute("SELECT id FROM users WHERE active = 1").fetchall()
         for user in users:
-            balance = ensure_leave_balance(connection, int(user["id"]), annual_type_id)
-            if int(balance["accrual_year"] or 0) == target_year:
+            user_id = int(user["id"])
+            balance = ensure_leave_balance(connection, user_id, annual_type_id)
+            advance_rows = connection.execute(
+                """
+                SELECT *
+                  FROM leave_advance_usage
+                 WHERE user_id = ? AND target_year = ? AND applied_at IS NULL
+                 ORDER BY usage_date, id
+                """,
+                (user_id, target_year),
+            ).fetchall()
+            already_accrued = int(balance["accrual_year"] or 0) == target_year
+            if already_accrued and not advance_rows:
                 continue
+            total = float(balance["total_days"] or 0) if already_accrued else float(default_days)
+            base_used = float(balance["used_days"] or 0) if already_accrued else 0.0
+            advance_days = round(sum(float(row["days"] or 0) for row in advance_rows), 2)
+            new_used = round(base_used + advance_days, 2)
+            if new_used > total:
+                raise ValueError(
+                    f"{target_year}년 연차 선사용 {new_used:g}일이 부여 연차 {total:g}일을 초과합니다."
+                )
             updated_balance = update_leave_balance_amounts(
                 connection,
                 int(balance["id"]),
-                total_days=float(default_days),
-                used_days=0,
-                reserved_days=0,
+                total_days=total,
+                used_days=new_used,
+                reserved_days=float(balance["reserved_days"] or 0) if already_accrued else 0,
                 accrual_year=target_year,
             )
-            connection.execute(
-                """
-                INSERT INTO leave_balance_ledger
-                    (balance_id, user_id, actor_id, delta_days, reason, request_id, created_at)
-                VALUES (?, ?, ?, ?, ?, NULL, ?)
-                """,
-                (updated_balance["id"], user["id"], actor_id, float(default_days), f"{target_year}\uB144 \uC5F0\uCC28 \uC790\uB3D9 \uBC1C\uC0DD", now),
-            )
-            add_leave_notification(connection, int(user["id"]), None, "accrual", f"{target_year}\uB144 \uC5F0\uCC28 {default_days:g}\uC77C\uC774 \uC790\uB3D9 \uBC1C\uC0DD\uB418\uC5C8\uC2B5\uB2C8\uB2E4.")
+            if not already_accrued:
+                connection.execute(
+                    """
+                    INSERT INTO leave_balance_ledger
+                        (balance_id, user_id, actor_id, delta_days, reason, request_id, created_at)
+                    VALUES (?, ?, ?, ?, ?, NULL, ?)
+                    """,
+                    (updated_balance["id"], user_id, actor_id, total, f"{target_year}\uB144 \uC5F0\uCC28 \uC790\uB3D9 \uBC1C\uC0DD", now),
+                )
+                add_leave_notification(
+                    connection,
+                    user_id,
+                    None,
+                    "accrual",
+                    f"{target_year}\uB144 \uC5F0\uCC28 {total:g}\uC77C\uC774 \uC790\uB3D9 \uBC1C\uC0DD\uB418\uC5C8\uC2B5\uB2C8\uB2E4.",
+                )
+            for advance in advance_rows:
+                reason = f"{target_year}년 연차 선사용 반영"
+                if str(advance["note"] or "").strip():
+                    reason += f": {str(advance['note']).strip()}"
+                decided_by = actor_id or int(advance["created_by"])
+                request_cursor = connection.execute(
+                    """
+                    INSERT INTO leave_requests
+                        (user_id, leave_type_id, start_date, end_date, unit, requested_days, reason,
+                         status, approval_step, team_status, director_status, ceo_status,
+                         decided_by, finalized_at, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, 'APPROVED', 'COMPLETED', 'APPROVED', 'APPROVED', 'APPROVED', ?, ?, ?, ?)
+                    """,
+                    (
+                        user_id,
+                        annual_type_id,
+                        advance["usage_date"],
+                        advance["usage_date"],
+                        advance["unit"],
+                        advance["days"],
+                        reason,
+                        decided_by,
+                        now,
+                        now,
+                        now,
+                    ),
+                )
+                request_id = int(request_cursor.lastrowid)
+                connection.execute(
+                    """
+                    INSERT INTO leave_balance_ledger
+                        (balance_id, user_id, actor_id, delta_days, reason, request_id, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        updated_balance["id"],
+                        user_id,
+                        decided_by,
+                        -float(advance["days"]),
+                        reason,
+                        request_id,
+                        now,
+                    ),
+                )
+                connection.execute(
+                    """
+                    UPDATE leave_advance_usage
+                       SET applied_at = ?, applied_balance_id = ?, applied_request_id = ?
+                     WHERE id = ? AND applied_at IS NULL
+                    """,
+                    (now, updated_balance["id"], request_id, advance["id"]),
+                )
+            if advance_days:
+                add_leave_notification(
+                    connection,
+                    user_id,
+                    None,
+                    "advance_usage",
+                    f"{target_year}\uB144 \uC5F0\uCC28 \uC120\uC0AC\uC6A9 {advance_days:g}\uC77C\uC774 \uC790\uB3D9 \uCC28\uAC10\uB418\uC5C8\uC2B5\uB2C8\uB2E4.",
+                )
             updated += 1
         connection.commit()
         return updated
+    except Exception:
+        connection.rollback()
+        raise
     finally:
         connection.close()
+
+
+def ensure_current_year_leave_accrual(default_days: float = 15.0) -> int:
+    init_db()
+    target_year = date.today().year
+    connection = connect_db()
+    try:
+        pending = connection.execute(
+            "SELECT COUNT(*) AS count FROM leave_advance_usage WHERE target_year = ? AND applied_at IS NULL",
+            (target_year,),
+        ).fetchone()
+        pending_count = int(pending["count"] or 0)
+    finally:
+        connection.close()
+    if not pending_count:
+        return 0
+    return apply_annual_leave_accrual(target_year, actor=None, default_days=default_days)
 
 
 def extract_invoice_number(value: str) -> str:
@@ -44462,7 +44856,9 @@ class WorkhubHandler(BaseHTTPRequestHandler):
             return
 
         if self.path == "/api/leaves":
-            if not any(user_has_permission(user, permission) for permission in ("leave_view", "leave_approve", "leave_manage")):
+            if not can_manage_next_year_leave(user) and not any(
+                user_has_permission(user, permission) for permission in ("leave_view", "leave_approve", "leave_manage")
+            ):
                 self.send_json({"error": "연차 조회 권한이 없습니다."}, status=403)
                 return
             self.send_json(leave_payload(user))
@@ -45589,6 +45985,26 @@ class WorkhubHandler(BaseHTTPRequestHandler):
                 payload = json.loads(self.rfile.read(length).decode("utf-8"))
                 count = add_historical_leave_usage(payload, user)
                 self.send_json({"message": f"기존 사용 연차 {count}건을 등록했습니다.", "count": count})
+                return
+
+            if self.path == "/api/leave-advance":
+                if not can_manage_next_year_leave(user):
+                    self.send_json({"error": "다음 연도 연차 선사용 입력 권한이 없습니다."}, status=403)
+                    return
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(length).decode("utf-8"))
+                entry_id = add_next_year_leave_usage(payload, user)
+                self.send_json({"message": "다음 연도 선사용 내역을 등록했습니다.", "id": entry_id})
+                return
+
+            if self.path == "/api/leave-advance-delete":
+                if not can_manage_next_year_leave(user):
+                    self.send_json({"error": "다음 연도 연차 선사용 입력 권한이 없습니다."}, status=403)
+                    return
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(length).decode("utf-8"))
+                delete_next_year_leave_usage(payload.get("id"), user)
+                self.send_json({"message": "다음 연도 선사용 내역을 삭제했습니다."})
                 return
 
             if self.path == "/api/mail-settings":
