@@ -14773,10 +14773,11 @@ HTML = r"""<!doctype html>
       renderLeaveSelectOptions(leaveUsageUserSelect, userOptions);
       renderLeaveSelectOptions(leaveAdvanceUserSelect, userOptions);
       if (leaveAdvanceDateInput) {
-        const targetYear = new Date().getFullYear() + 1;
-        leaveAdvanceDateInput.min = `${targetYear}-01-01`;
+        const currentYear = new Date().getFullYear();
+        const targetYear = currentYear + 1;
+        leaveAdvanceDateInput.min = `${currentYear}-01-01`;
         leaveAdvanceDateInput.max = `${targetYear}-12-31`;
-        if (!leaveAdvanceDateInput.value) leaveAdvanceDateInput.value = `${targetYear}-01-01`;
+        if (!leaveAdvanceDateInput.value) leaveAdvanceDateInput.value = todayString();
       }
       if (leaveAdminUserSelect && !leaveAdminUserSelect.value && userOptions.length) {
         leaveAdminUserSelect.value = String(userOptions[0].id);
@@ -39568,9 +39569,10 @@ def add_next_year_leave_usage(payload: dict, actor: dict[str, str]) -> int:
     if not user_id:
         raise ValueError("직원을 선택해주세요.")
     usage_date = parse_iso_date(payload.get("usage_date"))
-    target_year = date.today().year + 1
-    if usage_date.year != target_year:
-        raise ValueError(f"다음 연도({target_year}년)의 사용일만 등록할 수 있습니다.")
+    current_year = date.today().year
+    target_year = current_year + 1
+    if usage_date.year not in {current_year, target_year}:
+        raise ValueError(f"현재 연도 또는 다음 연도({current_year}~{target_year}년)의 사용일만 등록할 수 있습니다.")
     unit = clean_payload_text(payload, "unit") or "FULL_DAY"
     if unit not in {"FULL_DAY", "HALF_DAY"}:
         raise ValueError("선사용 단위를 연차 또는 반차로 선택해주세요.")

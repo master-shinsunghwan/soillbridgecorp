@@ -97,9 +97,16 @@ class LeaveAdvanceUsageTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "중복"):
             self.app.add_next_year_leave_usage(self.advance_payload(unit="HALF_DAY"), self.director)
 
-        wrong_year = self.advance_payload(day=6)
-        wrong_year["usage_date"] = f"{date.today().year}-12-31"
-        with self.assertRaisesRegex(ValueError, "다음 연도"):
+        current_year_usage = self.advance_payload(day=6)
+        current_year_usage["usage_date"] = f"{date.today().year}-12-31"
+        current_year_id = self.app.add_next_year_leave_usage(current_year_usage, self.director)
+        current_year_row = next(row for row in self.app.list_next_year_leave_usage(self.director) if row["id"] == current_year_id)
+        self.assertEqual(current_year_row["target_year"], self.target_year)
+        self.assertEqual(current_year_row["usage_date"], f"{date.today().year}-12-31")
+
+        wrong_year = self.advance_payload(day=7)
+        wrong_year["usage_date"] = f"{date.today().year - 1}-12-31"
+        with self.assertRaisesRegex(ValueError, "현재 연도 또는 다음 연도"):
             self.app.add_next_year_leave_usage(wrong_year, self.director)
 
     def test_pending_advance_usage_can_be_deleted_but_applied_usage_cannot(self) -> None:
